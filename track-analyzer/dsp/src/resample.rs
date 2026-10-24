@@ -247,3 +247,55 @@ pub fn sinc_medium(x: &[f32], out: &mut [f32], in_sr: f64, out_sr: f64, f: Fused
     });
     result.map(|_| written)
 }
+
+/// libsamplerate 0.2.2's SRC_LINEAR (src_linear.c), mono, as Essentia's Resample(quality=4) calls it: one
+/// `src_simple` call on the whole signal. Each output is `x0 + t*(x1 - x0)` in double, rounded to float; the
+/// read position walks the input as in the C code (fractional part via fmod_one, whole steps via lrint).
+/// `fma`: whether the C compiler fused that `a + b*c` (see lib.rs Contract).
+pub fn linear(x: &[f32], out: &mut [f32], in_sr: f64, out_sr: f64, fma: bool) -> Result<usize, String> {
+    let ratio = (out_sr as f32 / in_sr as f32) as f64;
+    if ratio == 1.0 {
+        out[..x.len()].copy_from_slice(x);
+        return Ok(x.len());
+    }
+    if x.is_empty() {
+        return Ok(0);
+    }
+    if ratio < 1.0 / SRC_MAX_RATIO || ratio > SRC_MAX_RATIO {
+        return Err("bad sample rate ratio".into());
+    }
+    let out_count = max_output_len(x.len(), in_sr, out_sr);
+    if out.len() < out_count {
+        return Err("output buffer too small".into());
+    }
+    let lerp = |a: f32, b: f32, t: f64| -> f32 {
+        let (a, d) = (a as f64, b as f64 - a as f64);
+        (if fma { t.mul_add(d, a) } else { a + t * d }) as f32
+    };
+    let n = x.len() as f64;
+    let step = 1.0 / ratio;
+    let (mut done, mut used, mut index) = (0usize, 0i64, 0.0f64);
+    // Before the first input sample: from last_value, which a fresh state sets to x[0].
+    while index < 1.0 && done < out_count {
+        if used as f64 + (1.0 + index) >= n {
+            break;
+        }
+        out[done] = lerp(x[0], x[0], index);
+        done += 1;
+        index += step;
+    }
+    let rem = fmod_one(index);
+    used += lrint(index - rem);
+    index = rem;
+    while done < out_count && (used as f64 + index) < n {
+        // A 1-sample input makes the C code read data_in[-1] here; use x[0] instead (never happens in practice).
+        let prev = x[(used - 1).max(0) as usize];
+        out[done] = lerp(prev, x[used as usize], index);
+        done += 1;
+        index += step;
+        let rem = fmod_one(index);
+        used += lrint(index - rem);
+        index = rem;
+    }
+    Ok(done)
+}

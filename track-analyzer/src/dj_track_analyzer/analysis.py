@@ -1098,6 +1098,23 @@ def resample_medium(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
     return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=1)(mono)
 
 
+def resample_linear(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
+    """Essentia's Resample(quality=4) (libsamplerate's linear converter), bit for bit; the Rust copy if installed.
+    Used for the models' 16 kHz input, as Essentia's model docs do."""
+    if (m := dsp()) and hasattr(m, "resample_linear"):  # dsp 0.1.0 doesn't have it
+        x = np.ascontiguousarray(mono, dtype=np.float32)
+        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+        return out[: m.resample_linear(x, out, sr, out_sr)]
+    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=4)(mono)
+
+
+def mono_mix(stereo: np.ndarray, nch: int) -> np.ndarray:
+    """Essentia's MonoMixer, bit for bit: (L+R)*0.5 in float32 (its 0.5*(L+R) in double rounds the same), or the
+    left channel for a mono file (AudioLoader leaves the right one silent)."""
+    st = np.asarray(stereo, dtype=np.float32)
+    return st[:, 0].copy() if nch == 1 else (st[:, 0] + st[:, 1]) * np.float32(0.5)
+
+
 def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     """Decode once; return stereo (native rate), mono 44.1k, mono 16k, rate.
     tempo: (track's BPM, BPM to play it at) to hear it sped up / slowed down with key lock."""
@@ -1110,9 +1127,9 @@ def load_audio(p: Path, tempo: tuple[float, float] | None = None):
         stereo, sr, nch, *_ = _load_downmixed(p)
     if tempo:
         stereo = stretch(stereo, sr, *tempo)
-    mono = e.MonoMixer()(stereo, nch)
+    mono = mono_mix(stereo, nch)
     mono44 = mono if sr == 44100 else resample_medium(mono, sr, 44100)
-    mono16 = e.Resample(inputSampleRate=sr, outputSampleRate=16000, quality=4)(mono)  # matches Essentia model docs
+    mono16 = resample_linear(mono, sr, 16000)
     return stereo, mono44, mono16, float(sr)
 
 

@@ -1,7 +1,8 @@
 """Check the Rust module against Essentia, bit for bit. Run after any change to dsp/:
 
-    uv run python dsp/check.py                 # test signals: resampling at 8-192 kHz, loudness at 44.1/48 kHz
+    uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
+    uv run python dsp/check.py --files-from mixes.txt   # files listed one per line (names with spaces are fine)
 
 Prints one line per difference and exits 1 if there is any. A Rust step only replaces Essentia's while this
 passes on the whole test collection. Compare on a Mac: Essentia's arm64 build fuses multiply-adds that its
@@ -17,11 +18,17 @@ from pathlib import Path
 import numpy as np
 
 
-def _same_resample(e, dsp, x, sr, out_sr) -> bool:
-    ref = np.asarray(e.Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=1)(x), np.float32)
+def _same_resample(e, dsp, x, sr, out_sr, linear=False) -> bool:
+    ref = np.asarray(e.Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=4 if linear else 1)(x), np.float32)
     out = np.empty(dsp.resample_max_len(len(x), sr, out_sr), np.float32)
-    k = dsp.resample_sinc_medium(np.ascontiguousarray(x, np.float32), out, sr, out_sr)
+    k = (dsp.resample_linear if linear else dsp.resample_sinc_medium)(np.ascontiguousarray(x, np.float32), out, sr, out_sr)
     return k == len(ref) and np.array_equal(out[:k], ref)
+
+
+def _same_mono(e, stereo, nch) -> bool:
+    from dj_track_analyzer import analysis as a
+
+    return np.array_equal(a.mono_mix(stereo, nch), np.asarray(e.MonoMixer()(stereo, nch), np.float32))
 
 
 def _same_loudness(e, dsp, stereo, sr) -> bool:
@@ -48,6 +55,10 @@ def test_signals() -> int:
                 if not _same_resample(e, dsp, x, sr, out_sr):
                     bad += 1
                     print(f"resample DIFFERENT: {sr} -> {out_sr} Hz, {n} samples")
+                # 1 sample: libsamplerate's linear converter reads before the array (garbage), can't be matched
+                if n > 1 and not _same_resample(e, dsp, x, sr, out_sr, linear=True):
+                    bad += 1
+                    print(f"linear resample DIFFERENT: {sr} -> {out_sr} Hz, {n} samples")
     for sr in (44100.0, 48000.0):
         for sec in (0.5, 3.0, 3.05, 61.7):
             n = int(sr * sec)
@@ -56,6 +67,10 @@ def test_signals() -> int:
             if not _same_loudness(e, dsp, st, sr):
                 bad += 1
                 print(f"loudness DIFFERENT: {sr:.0f} Hz, {sec} s")
+            for nch in (1, 2):
+                if not _same_mono(e, st, nch):
+                    bad += 1
+                    print(f"mono mix DIFFERENT: {nch} channel(s), {sec} s")
     print(f"test signals: {'all identical' if not bad else f'{bad} different'}")
     return bad
 
@@ -77,8 +92,13 @@ def _check_file(path: str) -> str | None:
     out = []
     if not _same_loudness(e, dsp, stereo, sr):
         out.append("loudness")
-    if sr != 44100 and not _same_resample(e, dsp, e.MonoMixer()(stereo, nch), sr, 44100):
+    if not _same_mono(e, stereo, nch):
+        out.append("mono mix")
+    mono = e.MonoMixer()(stereo, nch)
+    if sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
         out.append("resample")
+    if not _same_resample(e, dsp, mono, sr, 16000, linear=True):
+        out.append("linear resample")
     return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
 
 
@@ -99,10 +119,13 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--collection", action="store_true", help="also every track in collection.db")
     ap.add_argument("--files", nargs="*", default=[], help="more audio files (mixes at 48 kHz, ...)")
+    ap.add_argument("--files-from", help="a text file with more audio files, one path per line")
     ap.add_argument("--workers", type=int, default=4, help="processes for the file check (long mixes: 1)")
     args = ap.parse_args()
     bad = test_signals()
     paths = list(args.files)
+    if args.files_from:
+        paths += [l.strip() for l in Path(args.files_from).read_text(encoding="utf-8").splitlines() if l.strip()]
     if args.collection:
         from dj_track_analyzer import collection
 

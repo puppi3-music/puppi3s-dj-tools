@@ -57,6 +57,8 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 |---|---|---|---|---|
 | Loudness | 1.4 s per track, 18.4 s per 65-min mix | Rust: 0.2 s, 2.5 s | 6.5–7.5x faster | 469 tracks, 3 mixes |
 | Resample to 44.1 kHz (48 kHz files) | 19.7 s per 65-min mix | Rust: 3.8 s | 5.1x faster | 34 files |
+| Mono mix | 0.010 s per 6-min track, 0.12 s per mix | numpy: 0.008 s, 0.09 s | 1.3x faster (tiny) | 10 tracks, 1 mix as FLAC and MP3 |
+| Resample to 16 kHz (models) | 0.055 s per 6-min track, 0.60 s per mix | Rust: 0.055 s, 0.61 s | same (one sequential walk) | same files |
 | Decode | 78 ms per minute of audio (0.47 s per 6-min track, 4.6–5.4 s per mix) | PyAV: 88 ms | 12% slower (+0.04 s per track, +0.7 s per mix) | 10 tracks, 1 mix as FLAC and MP3 |
 | EffNet | 0.74 s per track (median) | TF 2.15: 0.76 s; onnxruntime: 0.72 s | same | 58 tracks |
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
@@ -91,9 +93,14 @@ float pass); stage 2 does that conversion in one pass (numpy into a preallocated
   graph run per tensor, as the analyzer does. TF 2.15 has wheels for macOS arm64 (macOS 12+) and x86_64,
   Linux x86_64 and aarch64, and Windows x86_64, for Python 3.9-3.11 only.
 
-**Stage 1: mono mix and the 16 kHz resample** (Rust, small). `MonoMixer` is
-`0.5*(L+R)`, rounded from double (mono files: the left channel), and libsamplerate's linear converter is a few
-lines. After this, `load_audio` only calls Essentia to decode.
+**Stage 1: mono mix and the 16 kHz resample. Done (October 2026).** `analysis.mono_mix` is numpy:
+`(L+R)*0.5` in float32 gives the same bits as `MonoMixer`'s `0.5*(L+R)` in double (mono files: the left channel).
+`track_analyzer_dsp.resample_linear` is libsamplerate 0.2.2's linear converter as `Resample(quality=4)` calls
+it, used by `analysis.resample_linear` for the models' 16 kHz input. It needs the fused multiply-add in
+`x0 + t*(x1 - x0)`, as Essentia's arm64 build has it: the plain form passed every test signal but was 1 sample
+off (7e-15) in 62.9 million on a 65-minute 48 kHz mix. Bit-identical on the test signals and on all 469
+tracks and 39 mix recordings (`dsp/check.py`). Same speed as Essentia (speed table). After this,
+`load_audio` only calls Essentia to decode.
 
 **Stage 2: decoding** with PyAV. Copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
 file's own rate, MP3 through the fixed-point decoder, mono in the left channel only, AAC/Opus untrimmed,

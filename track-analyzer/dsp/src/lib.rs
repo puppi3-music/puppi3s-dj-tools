@@ -243,12 +243,12 @@ fn resample_max_len(n: usize, in_rate: f64, out_rate: f64) -> usize {
     resample::max_output_len(n, in_rate, out_rate)
 }
 
-/// Resample mono float32 `signal` into the float32 array `out` (at least resample_max_len long, C-contiguous,
-/// writable); returns how many samples were written. Neither array is copied.
-#[pyfunction]
-#[pyo3(signature = (signal, out, in_rate, out_rate, icoeff_fma = false, acc_fma = false))]
-fn resample_sinc_medium(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>, in_rate: f64,
-                        out_rate: f64, icoeff_fma: bool, acc_fma: bool) -> PyResult<usize> {
+/// Run `f` on `signal` and `out` (float32, C-contiguous, `out` writable, not overlapping) without copying
+/// either, with the GIL released.
+fn with_buffers<F>(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>, f: F) -> PyResult<usize>
+where
+    F: FnOnce(&[f32], &mut [f32]) -> Result<usize, String> + Send,
+{
     let ib = PyBuffer::<f32>::get(signal)?;
     let ob = PyBuffer::<f32>::get(out)?;
     if !ib.is_c_contiguous() || !ob.is_c_contiguous() || ob.readonly() {
@@ -259,16 +259,34 @@ fn resample_sinc_medium(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'
     if ip < op + ol * 4 && op < ip + il * 4 && il > 0 && ol > 0 {
         return Err(PyValueError::new_err("signal and out overlap"));
     }
-    let f = resample::Fused { icoeff: icoeff_fma, acc: acc_fma };
     // SAFETY: both buffers stay alive (we hold the PyBuffers) and don't overlap; nothing else touches them
     // while the GIL is released for the duration of this call.
     let r = py.detach(|| {
         let x = unsafe { std::slice::from_raw_parts(ip as *const f32, il) };
         let o = unsafe { std::slice::from_raw_parts_mut(op as *mut f32, ol) };
-        resample::sinc_medium(x, o, in_rate, out_rate, f)
+        f(x, o)
     });
     drop((ib, ob));
     r.map_err(PyValueError::new_err)
+}
+
+/// Resample mono float32 `signal` into the float32 array `out` (at least resample_max_len long, C-contiguous,
+/// writable); returns how many samples were written. Neither array is copied.
+#[pyfunction]
+#[pyo3(signature = (signal, out, in_rate, out_rate, icoeff_fma = false, acc_fma = false))]
+fn resample_sinc_medium(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>, in_rate: f64,
+                        out_rate: f64, icoeff_fma: bool, acc_fma: bool) -> PyResult<usize> {
+    let f = resample::Fused { icoeff: icoeff_fma, acc: acc_fma };
+    with_buffers(py, signal, out, |x, o| resample::sinc_medium(x, o, in_rate, out_rate, f))
+}
+
+/// Essentia's Resample(quality=4) (libsamplerate's linear converter), like resample_sinc_medium. The arm64 build
+/// fuses `x0 + t*(x1 - x0)`: the plain form was 1 sample off in 62.9 million on a 65-minute 48 kHz mix.
+#[pyfunction]
+#[pyo3(signature = (signal, out, in_rate, out_rate, fma = true))]
+fn resample_linear(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>, in_rate: f64,
+                   out_rate: f64, fma: bool) -> PyResult<usize> {
+    with_buffers(py, signal, out, |x, o| resample::linear(x, o, in_rate, out_rate, fma))
 }
 
 #[pymodule]
@@ -276,5 +294,6 @@ fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loudness_ebur128, m)?)?;
     m.add_function(wrap_pyfunction!(resample_max_len, m)?)?;
     m.add_function(wrap_pyfunction!(resample_sinc_medium, m)?)?;
+    m.add_function(wrap_pyfunction!(resample_linear, m)?)?;
     Ok(())
 }
