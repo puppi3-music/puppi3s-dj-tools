@@ -136,10 +136,10 @@ td code { white-space: nowrap; }
 
 <!-- ───────────────────────────── -->
 <h2 id="start">Before you start</h2>
-<div class="note"><p><b>Prefer buttons to Terminal?</b> Double-click <code>Start Track Analyzer.command</code> in the project folder (the first time: right-click → Open). It installs what's missing and opens the web page. Its <b>Setup</b> tab does most of this guide with buttons: scanning, learning your colours and cues, and writing genres, colours, hype and the tempo view into Traktor. Each one shows a preview first and offers Undo afterwards. The page shows the command each button runs, so the steps below match it one to one.</p></div>
+<div class="note"><p><b>Prefer buttons to Terminal?</b> On a Mac, double-click <code>Start Track Analyzer.command</code> in the project folder (the first time: right-click → Open). On Linux, run <code>./"Start Track Analyzer.command"</code> from a terminal in that folder. It installs what's missing and opens the web page. Its <b>Setup</b> tab does most of this guide with buttons: scanning, learning your colours and cues, and writing genres, colours, hype and the tempo view into Traktor. Each one shows a preview first and offers Undo afterwards. The page shows the command each button runs, so the steps below match it one to one.</p></div>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
-    <div class="cmd"><pre>cd ~/dj-track-analyzer</pre></div> (or wherever you put it)</li>
+    <div class="cmd"><pre>cd ~/puppi3s-dj-tools/track-analyzer</pre></div> (or wherever you put it)</li>
   <li><b>Every command starts with <code>uv run dj-track-analyzer</code></b>, for example <code>uv run dj-track-analyzer stats</code>. The copy buttons on this page copy the whole command.</li>
   <li><b>Try <code>--dry-run</code> first</b> on anything that changes files. It shows what would happen and changes nothing.</li>
   <li><b>To keep a copy of the output</b>, add <code>2>&amp;1 | tee logs/something.txt</code> to the end of a command. Handy when asking for help.</li>
@@ -207,7 +207,7 @@ td code { white-space: nowrap; }
   <li>Tracks per genre, keys, BPM spread, tracks per colour:
     <div class="cmd"><pre>uv run dj-track-analyzer stats</pre></div></li>
   <li>Open the spreadsheet in Numbers or Excel and sort by <code>approachability</code> or <code>color_position</code> to go from hardest to prettiest:
-    <div class="cmd"><pre>open data/collection.csv</pre></div></li>
+    <div class="cmd"><pre>open data/collection.csv</pre></div>On Linux: <code>xdg-open data/collection.csv</code>, or open it in LibreOffice.</li>
 </ol>
 
 <h3 id="hold">Keeping a track's genre or colour as it is</h3>
@@ -215,7 +215,7 @@ td code { white-space: nowrap; }
   <li>Open the web page, go to <b>Tracks</b>, tick the tracks and choose <b>Hold genre</b> or <b>Hold colour</b> (or use the switches in a track's panel).
     <div class="cmd"><pre>uv run dj-track-analyzer web</pre></div></li>
   <li>From then on <code>tag</code>, <code>traktor</code>, <code>colors review --apply</code> and <code>tempo load</code> leave that genre or colour alone. Nothing is written when you hold a track.</li>
-  <li>The same from the Terminal, by part of the file name; <code>hold</code> alone lists them, <code>--release</code> takes one off:
+  <li>The same from a terminal, by part of the file name; <code>hold</code> alone lists them, <code>--release</code> takes one off:
     <div class="cmd"><pre>uv run dj-track-analyzer hold --genre "part of the name"</pre></div></li>
 </ol>
 
@@ -224,11 +224,11 @@ td code { white-space: nowrap; }
   <li>Teach it once from the tracks you cued yourself (it listens to them first, about 13 minutes the first time), then let it listen to the rest:
     <div class="cmd"><pre>uv run dj-track-analyzer cues train</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer cues scan</pre></div></li>
-  <li>Open a track in the web page: <b>Cues and phrases</b> shows its waveform (lows red, mids green, highs blue), your cues numbered on top, suggested ones below (Intro, Drop, Breakdown…) and a suggested loop. Or in the Terminal:
+  <li>Open a track in the web page: <b>Cues and phrases</b> shows its waveform (lows red, mids green, highs blue), your cues numbered on top, suggested ones below (Intro, Drop, Breakdown…) and a suggested loop. Or in a terminal:
     <div class="cmd"><pre>uv run dj-track-analyzer cues show "part of the name"</pre></div></li>
   <li>Listen first: ▶ Play and the pads above the waveform jump to your cues and the suggestions (Space, 1-8, ←/→ for a bar, shift+←/→ for a phrase), and the ▶ buttons in the list let you compare your cue with a proposed correction (press ⏸ to stop).</li>
   <li>Tick the cues (and any yellow corrections of your own cues) you want, then <b>Approve ticked</b>. That writes nothing yet; <b>Approved, not written yet</b> in the Tracks filters lists them.</li>
-  <li>Quit Traktor and press <b>Write to Traktor…</b> (in the track's panel or at the top of the Tracks tab). It lists what will change first, then writes, with a backup and an <b>Undo</b> button. New cues only fill free hot-cue slots; your cues only move where you ticked a correction. Or from the Terminal:
+  <li>Quit Traktor and press <b>Write to Traktor…</b> (in the track's panel or at the top of the Tracks tab). It lists what will change first, then writes, with a backup and an <b>Undo</b> button. New cues only fill free hot-cue slots; your cues only move where you ticked a correction. Or from a terminal:
     <div class="cmd"><pre>uv run dj-track-analyzer cues apply --dry-run</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer cues apply</pre></div></li>
   <li>Changed your mind? Before opening Traktor: <b>Undo</b> in the page or <code>traktor --undo</code>. Train again after cueing more tracks.</li>
@@ -268,7 +268,7 @@ td code { white-space: nowrap; }
 <p><b>Any tempo works.</b> The default is 145. Add <code>--bpm 140</code> (or any tempo) to <code>scan</code>, <code>report</code>, <code>export</code>, <code>nml</code>, <code>refresh</code> and <code>load</code>; each tempo is its own view in <code>data/at-&lt;bpm&gt;/</code>. Only one can be loaded at a time, and <code>native</code> switches back whichever one is. The steps below use the default.</p>
 <ol>
   <li>Once: install Rubber Band, the time-stretcher.
-    <div class="cmd"><pre>brew install rubberband</pre></div></li>
+    <div class="cmd"><pre>brew install rubberband</pre></div>On Linux: <code>sudo apt install rubberband-cli</code> (version 3.0 or newer).</li>
   <li>Make sure new tracks are scanned normally first, then analyse at your tempo. About an hour the first time; resumable, and later runs only do new or changed tracks.
     <div class="cmd"><pre>uv run dj-track-analyzer scan --traktor</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer tempo scan 2>&amp;1 | tee logs/tempo-scan.txt</pre></div></li>
@@ -297,7 +297,7 @@ td code { white-space: nowrap; }
 
 <h3 id="one-track">Looking at one track</h3>
 <div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/track.mp3"</pre></div>
-<p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
+<p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Linux, drag the file into the terminal window. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
 <p><b>Checking a recorded mix against what you played:</b> add <code>--tracklist</code> to a Traktor recording. It finds that session's history file, places each track in the recording, and shows per track the key Traktor has against the key heard, the tempo you played it at, whether key lock was on, and names the mix by how it sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view, so scan the tracks first. With <code>tempo scan</code> at about the tempo you played, it also lists what your mixing pushed up or down. For a recording Traktor didn't name, add <code>--start 22:00:00</code> (when it began).</p>
 <p><b>Posting it as a video:</b> add <code>--chapters --offset 0:14</code> (how far into the finished video the first track starts: check it in the video itself) for YouTube chapters to paste into the description, and <code>--highlights</code> for two suggested 40-second clips, in video times (<code>--highlights 5</code> for five, ranked). Then <code>clips &lt;analysis&gt;.json --video final.mp4</code> makes 720p previews of them to watch, ranked by the audio and by how much moves on screen, and <code>--pick 1 4</code> makes the ones you choose at full quality next to the video.</p>
 
@@ -357,7 +357,7 @@ td code { white-space: nowrap; }
 <tr><td><code>styles</code></td><td>Lists the 400 Discogs style names and checks dj_genres.json</td><td>Nothing</td></tr>
 <tr><td><code>train &lt;folder&gt;</code></td><td>Optional: teach your own genre names from example folders</td><td>App files only</td></tr>
 <tr><td><code>serve</code></td><td>Runs the MCP server for LM Studio (<code>--http</code> for Open WebUI)</td><td>Nothing</td></tr>
-<tr><td><code>web</code></td><td>Opens everything in a web page on this Mac: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
+<tr><td><code>web</code></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
 <tr><td><code>cues train</code> / <code>cues scan</code> / <code>cues show</code></td><td>Learns where you put cues and loops; listens to your tracks bar by bar; suggestions for one track</td><td>App database and model file</td></tr>
 <tr><td><code>cues apply</code></td><td>Writes the cues and corrections you approved in the web page into free hot-cue slots</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
 <tr><td><code>hold</code></td><td>Lists the tracks whose genre or colour the writers leave alone; <code>--genre</code> / <code>--colour "name"</code> adds, with <code>--release</code> removes</td><td>The hold list only</td></tr>
@@ -504,7 +504,7 @@ td code { white-space: nowrap; }
 
 <!-- ───────────────────────────── -->
 <h2 id="how">How it works</h2>
-<p>Everything runs on your Mac; no audio leaves it. The technical details are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md#7-how-the-analysis-works">README.md</a>.</p>
+<p>Everything runs on your computer; no audio leaves it. The technical details are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md#7-how-the-analysis-works">README.md</a>.</p>
 
 <h3 id="how-listen">1. Listening to each track</h3>
 <p><code>scan</code> decodes every file once and measures it with <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library:</p>

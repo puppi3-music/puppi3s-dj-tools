@@ -374,7 +374,7 @@ async function api(path, params = {}) {
   for (let attempt = 0; ; attempt++) {
     try { r = await fetch(`/api/${path}${q.toString() ? "?" + q : ""}`); break; }
     catch (e) { // no answer at all: the server is restarting, or was stopped
-      if (attempt >= 2) throw new Error("Can't reach the Track Analyzer server. Start it again: double-click Start Track Analyzer.command, or run `uv run dj-track-analyzer web` in Terminal.");
+      if (attempt >= 2) throw new Error("Can't reach the Track Analyzer server. Start it again: double-click Start Track Analyzer.command (on a Mac), or run `uv run dj-track-analyzer web` in a terminal.");
       await new Promise(ok => setTimeout(ok, 600 * (attempt + 1)));
     }
   }
@@ -762,7 +762,7 @@ function approveBox(c) {
     <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>
       ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write to Traktor…</button>`}<span class="small muted" id="ap-msg"></span></div>
     <div class="note">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
-      (same as <span class="mono">cues apply</span> in Terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction.</div></div>
+      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction.</div></div>
     ${cueTable(c, c.cues)}`;
 }
 async function postJSON(url, body) {
@@ -1477,7 +1477,7 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
 }
 const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "tempo_load", "tempo_native"]);
 const NO_PREVIEW = new Set(["traktor_undo"]);
-const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in Terminal.</div>`;
+const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
 const OPEN_WARN = `<div class="warnbox"><b>Traktor is open.</b> Quit it first: it saves its collection when it quits and would undo these changes. Then press Check again.</div>`;
 
 // Preview → write → undo for one of the CLI's writers, in a dialog.
@@ -1604,7 +1604,7 @@ async function pageSetup(main) {
   const w = (id, title, body, extra = "", disabled) => `<div class="step"><div class="ic">→</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div>
     <div class="act">${extra}<button id="${id}" ${disabled || ""}>Preview…</button></div></div>`;
   const noScan = !sc.tracks && "disabled";
-  main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in Traktor. Each button runs the same command as in Terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
+  main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in Traktor. Each button runs the same command as in a terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
     <div id="jobpanel"></div>
     <div class="card"><h3>Get started</h3><div class="steps">${models}${traktorStep}${scanStep}${hypeStep}</div></div>
     <div class="card"><h3>Learn from your own Traktor work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}</div></div>

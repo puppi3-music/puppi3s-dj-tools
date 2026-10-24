@@ -1,0 +1,19 @@
+[package]
+name = "track_analyzer_dsp"
+version = "0.2.0"
+edition = "2024"
+description = "Fast DSP for the track analyzer, bit-identical to the Essentia code it replaces"
+publish = false
+
+[lib]
+name = "track_analyzer_dsp"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.30.1", features = ["extension-module"] }
+rayon = "1.12.0"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = true

@@ -1,0 +1,17 @@
+[project]
+name = "track-analyzer-dsp"
+version = "0.2.0"
+description = "Fast DSP for the track analyzer (Rust), bit-identical to the Essentia code it replaces"
+requires-python = ">=3.10"
+
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+module-name = "track_analyzer_dsp"
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+# rebuild when the Rust code changes (uv otherwise reuses the cached build of a path dependency)
+cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "Cargo.lock" }, { file = "src/**/*.rs" }]

@@ -26,6 +26,25 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   folders), `install_hint()` (brew on a Mac, apt on Linux), `rubberband()` (refuses < 3.0: the R3 engine).
   `color_model()` aliases `sys.modules["colors"]` because bundles trained before the package move pickled
   `colors.BlockWeights` under that name.
+- `dsp/`: Rust (PyO3 + maturin) module `track_analyzer_dsp`, replacing Essentia steps bit for bit, faster
+  (`analysis.dsp()`; Essentia when it isn't installed). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
+  in the coefficients and `b*x - a*y` to match the arm64 build) and `resample_sinc_medium` (= Resample quality 1,
+  libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
+  `analysis.resample_medium`) and `resample_linear` (= Resample quality 4, the models' 16 kHz input via
+  `analysis.resample_linear`; needs FMA in `x0 + t*(x1 - x0)`: the plain form was 1 sample off in 62.9M on a mix,
+  though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). A step goes in only
+  after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
+  `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
+  release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
+  uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
+  `dsp` index in pyproject.toml). After changing dsp/: `cd dsp && VIRTUAL_ENV=../.venv maturin develop --release
+  --uv` (needs Rust; `uv sync` puts the release wheel back), then bump the version in dsp/Cargo.toml +
+  dsp/pyproject.toml, tag `dsp-v<version>`, and update the version + index URL in pyproject.toml. Plan:
+  docs/WINDOWS.md.
+  Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
+  decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
+  AAC/Opus untrimmed. Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
+  speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
   Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).
