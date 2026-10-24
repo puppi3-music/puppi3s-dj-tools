@@ -34,7 +34,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `analysis.resample_linear`; needs FMA in `x0 + t*(x1 - x0)`: the plain form was 1 sample off in 62.9M on a mix,
   though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). A step goes in only
   after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
-  `uv run python dsp/check.py --collection --files-from <list of mixes>`.
+  `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
+  release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
   uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
   `dsp` index in pyproject.toml). After changing dsp/: `cd dsp && VIRTUAL_ENV=../.venv maturin develop --release
   --uv` (needs Rust; `uv sync` puts the release wheel back), then bump the version in dsp/Cargo.toml +
