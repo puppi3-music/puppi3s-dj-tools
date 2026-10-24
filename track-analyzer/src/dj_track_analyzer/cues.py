@@ -115,9 +115,9 @@ def _spectra(p: Path) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
         if "more than 2 channels" not in str(err):
             raise
         stereo, sr, nch, *_ = analysis._load_downmixed(p)
-    mono = e.MonoMixer()(stereo, nch)
+    mono = analysis.mono_mix(stereo, nch)
     if sr != SR:
-        mono = e.Resample(inputSampleRate=sr, outputSampleRate=SR, quality=1)(mono)
+        mono = analysis.resample_medium(mono, sr, SR)
     x = _on_traktor_time(p, np.asarray(mono, dtype=np.float32), sr)
     nfr = max(0, 1 + (len(x) - N) // HOP)
     win = np.hanning(N).astype(np.float32)
@@ -229,9 +229,9 @@ class WaveSource:
             if "more than 2 channels" not in str(err):
                 raise
             stereo, sr, nch, *_ = analysis._load_downmixed(p)
-        mono = e.MonoMixer()(stereo, nch)
+        mono = analysis.mono_mix(stereo, nch)
         if sr != SR:
-            mono = e.Resample(inputSampleRate=sr, outputSampleRate=SR, quality=1)(mono)
+            mono = analysis.resample_medium(mono, sr, SR)
         x = self.x = _on_traktor_time(p, np.asarray(mono, dtype=np.float32), sr)
         nfr = max(0, 1 + (len(x) - N) // HOP)
         win = np.hanning(N).astype(np.float32)
