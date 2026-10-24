@@ -241,10 +241,11 @@ def style_models():
         )
     if not _models:
         e = es()
-        _models["embed"] = e.TensorflowPredictEffnetDiscogs(
-            graphFilename=str(MODELS_DIR / "discogs-effnet-bs64-1.pb"),
-            output="PartitionedCall:1",
-        )
+        pb = str(MODELS_DIR / "discogs-effnet-bs64-1.pb")
+        if _rust_mels():  # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
+            _models["embed"] = e.TensorflowPredict(graphFilename=pb, inputs=[EFFNET_INPUT], outputs=[EFFNET_OUTPUT])
+        else:
+            _models["embed"] = e.TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
         _models["styles"] = e.TensorflowPredict2D(
             graphFilename=str(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb"),
             input="serving_default_model_Placeholder",
@@ -698,11 +699,32 @@ MAEST_MEL_MEAN, MAEST_MEL_STD = 2.06755686098554, 1.268292820667291
 MAEST_PATCH, MAEST_PATCH_HOP = 1876, 1875
 
 
-def _maest_patches(audio: np.ndarray) -> np.ndarray:
+def _rust_mels():
+    """The Rust module if it has musicnn_mels (dsp 0.3.0 on)."""
+    m = dsp()
+    return m if m is not None and hasattr(m, "musicnn_mels") else None
+
+
+def musicnn_mels(x: np.ndarray, streaming: bool = False) -> np.ndarray:
+    """Essentia's TensorflowInputMusiCNN on every frame of 16 kHz audio, cut as FrameGenerator(frameSize=512,
+    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (bit for bit; docs/WINDOWS.md
+    stage 3), else Essentia. streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs
+    gives them (a silent first frame comes out as silence); Rust only."""
+    x = np.ascontiguousarray(x, dtype=np.float32)
+    if m := _rust_mels():
+        out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
+        m.musicnn_mels(x, out, streaming=streaming)
+        return out
+    if streaming:
+        raise RuntimeError("streaming mel frames need track_analyzer_dsp 0.3.0 or newer")
     e = es()
     mel = e.TensorflowInputMusiCNN()
-    frames = np.array([mel(fr) for fr in e.FrameGenerator(audio, frameSize=512, hopSize=256, startFromZero=False)],
-                      dtype=np.float32)
+    return np.array([mel(fr) for fr in e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)],
+                    dtype=np.float32).reshape(-1, 96)
+
+
+def _maest_patches(audio: np.ndarray) -> np.ndarray:
+    frames = musicnn_mels(audio)
     frames = (frames - MAEST_MEL_MEAN) / (2 * MAEST_MEL_STD)
     n = max(0, (len(frames) - MAEST_PATCH) // MAEST_PATCH_HOP + 1)
     return np.stack([frames[i * MAEST_PATCH_HOP: i * MAEST_PATCH_HOP + MAEST_PATCH] for i in range(n)]) if n else \
@@ -1259,10 +1281,55 @@ def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     return stereo, mono44, mono16, float(sr)
 
 
+EFFNET_INPUT, EFFNET_OUTPUT = "serving_default_melspectrogram", "PartitionedCall:1"
+EFFNET_PATCH, EFFNET_PATCH_HOP, EFFNET_BATCH = 128, 62, 64
+
+
+def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
+    """Discogs-EffNet's embeddings (patches, 1280), as TensorflowPredictEffnetDiscogs gives them (its defaults:
+    patches of 128 mel frames every 62, the last incomplete one dropped, batches of 64 with lastBatchMode "same").
+    Like padSignal, the audio is zero-padded so that the last batch is full, and the padding patches' outputs are
+    dropped; the arithmetic of its patch count (float, with a double step) is copied as is. Checked identical to
+    TensorflowPredictEffnetDiscogs (docs/WINDOWS.md stage 3). No patch (under ~3 s): an empty array, as it gives.
+    Without the Rust module, TensorflowPredictEffnetDiscogs itself."""
+    from essentia import Pool
+
+    x = np.ascontiguousarray(mono16, dtype=np.float32)
+    if not _rust_mels():
+        return np.asarray(style_models()["embed"](x), dtype=np.float32)
+    f32 = np.float32
+    hops = f32((float(f32(len(x))) - 512 / 2.0) / float(f32(256)))
+    n_frames = 1 + math.ceil(hops)
+    patch_hops = f32((f32(n_frames) - f32(EFFNET_PATCH)) / f32(EFFNET_PATCH_HOP))
+    n_patches = 1 + math.floor(patch_hops)
+    n_batches = math.ceil(f32(n_patches) / f32(EFFNET_BATCH))
+    padding = n_batches * EFFNET_BATCH - n_patches
+    if padding:
+        x = np.concatenate([x, np.zeros(padding * EFFNET_PATCH_HOP * 256, dtype=np.float32)])
+    frames = musicnn_mels(x, streaming=True)
+    starts = range(0, len(frames) - EFFNET_PATCH + 1, EFFNET_PATCH_HOP)
+    if not len(starts):
+        return np.zeros((0,), dtype=np.float32)
+    view = np.lib.stride_tricks.sliding_window_view(frames, (EFFNET_PATCH, 96))[::EFFNET_PATCH_HOP, 0]
+    model = style_models()["embed"]
+    out = []
+    # whole batches only: an incomplete last one (when the estimate above is a patch off) is dropped, as
+    # VectorRealToTensor's lastBatchMode "discard" does; then the padding's patches come off the end
+    for b in range(0, len(starts) - EFFNET_BATCH + 1, EFFNET_BATCH):
+        pool = Pool()
+        pool.set(EFFNET_INPUT, np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :]))
+        y = np.asarray(model(pool)[EFFNET_OUTPUT], dtype=np.float32)
+        out.append(y.reshape(-1, y.shape[-1]))
+    if not out:
+        return np.zeros((0,), dtype=np.float32)
+    emb = np.concatenate(out)
+    return emb[: max(0, len(emb) - padding)] if padding > 0 else emb
+
+
 def run_style_model(mono16: np.ndarray):
     """Per-patch embeddings (n,1280) and style activations (n,400)."""
     m = style_models()
-    emb = np.asarray(m["embed"](mono16), dtype=np.float32)
+    emb = effnet_embeddings(mono16)
     acts = np.asarray(m["styles"](emb), dtype=np.float32)
     return emb, acts
 
