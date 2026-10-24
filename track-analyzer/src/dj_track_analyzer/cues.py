@@ -108,13 +108,7 @@ def _on_traktor_time(p: Path, x: np.ndarray, sr: int) -> np.ndarray:
 
 def _spectra(p: Path) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """10 ms frames: power in the 6 bands, 40 mel bands; the length in seconds; and the waveform overview."""
-    e = analysis.es()
-    try:
-        stereo, sr, nch, *_ = e.AudioLoader(filename=str(p))()
-    except RuntimeError as err:
-        if "more than 2 channels" not in str(err):
-            raise
-        stereo, sr, nch, *_ = analysis._load_downmixed(p)
+    stereo, sr, nch = analysis.decode(p)
     mono = analysis.mono_mix(stereo, nch)
     if sr != SR:
         mono = analysis.resample_medium(mono, sr, SR)
@@ -222,13 +216,7 @@ class WaveSource:
     loudest peak and band strengths against the whole track's loud level (as in _wave), so every zoom level matches."""
 
     def __init__(self, p: Path):
-        e = analysis.es()
-        try:
-            stereo, sr, nch, *_ = e.AudioLoader(filename=str(p))()
-        except RuntimeError as err:
-            if "more than 2 channels" not in str(err):
-                raise
-            stereo, sr, nch, *_ = analysis._load_downmixed(p)
+        stereo, sr, nch = analysis.decode(p)
         mono = analysis.mono_mix(stereo, nch)
         if sr != SR:
             mono = analysis.resample_medium(mono, sr, SR)

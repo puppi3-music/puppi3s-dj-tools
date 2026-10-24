@@ -86,6 +86,9 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
 - **Requirements.** Apple Silicon with macOS 11 or newer, an Intel Mac with macOS 14 or newer, or Linux on x86_64 (see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
 - **Faster loudness and resampling.** The install includes a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases) that does these two steps 5–7 times faster, with exactly Essentia's results. Nothing to set up; no Rust needed.
+- **Faster decoding (optional).** `uv sync --extra decode` adds PyAV (current FFmpeg), which reads audio files with
+  exactly Essentia's samples, 1.15x faster for MP3 and 2.4x for FLAC, using a third of the memory on long mixes. It needs
+  macOS 14 or newer on Apple Silicon. A plain `uv sync` (also run by `Start Track Analyzer.command`) removes it again.
 
 ### Linux
 

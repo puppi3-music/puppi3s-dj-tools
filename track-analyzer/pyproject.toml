@@ -16,6 +16,11 @@ dependencies = [
     "track-analyzer-dsp==0.2.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 
+[project.optional-dependencies]
+# Decoding with current FFmpeg, bit for bit as Essentia's AudioLoader and faster (analysis.decode). Opt-in until
+# Essentia goes (docs/WINDOWS.md): its Apple Silicon wheels need macOS 14. `uv sync --extra decode`
+decode = ["av==18.1.0; python_version >= '3.11'"]  # Python 3.10: Essentia decodes
+
 [project.scripts]
 dj-track-analyzer = "dj_track_analyzer.cli:main"
 
