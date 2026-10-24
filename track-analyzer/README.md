@@ -85,6 +85,7 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 - **Model server unreachable?** `setup` tries a few ways, then prints a download link for each file it couldn't get. Open them in a browser, drop the files into `data/models/`, and run `setup` again to confirm.
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
 - **Requirements.** Apple Silicon with macOS 11 or newer, an Intel Mac with macOS 14 or newer, or Linux on x86_64 (see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
+- **Faster loudness and resampling.** The install includes a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases) that does these two steps 5–7 times faster, with exactly Essentia's results. Nothing to set up; no Rust needed.
 
 ### Linux
 
@@ -699,6 +700,6 @@ dj-track-analyzer/
 ## Good to know
 
 - **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. Our key agreed with Traktor's on about 57% of tracks in testing (relative major/minor is a common mix-up); neither is ground truth, and Traktor's wins where it has one. Genres and colours are model predictions: read the scores as confidence.
-- **Files the analysis can't read.** Surround (5.1) files: make a stereo copy with `ffmpeg -i in.flac -ac 2 out.flac`.
-- **Licences.** Essentia is AGPL; the Discogs models are CC BY-NC-SA (non-commercial). Personal use is fine.
+- **Surround (5.1) files** are mixed down to stereo with ffmpeg, so install ffmpeg to analyse them (`brew install ffmpeg` on a Mac). Without it, those files fail with a message saying how to install it (the web page's Setup tab can install it too).
+- **Licences.** This project and Essentia are AGPL; the Discogs models are CC BY-NC-SA (non-commercial). The resampler in `dsp/` contains libsamplerate's filter table (BSD). Personal use is fine.
 - **Uninstall.** Delete this folder and `data`.

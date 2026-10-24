@@ -105,8 +105,8 @@ runtime alone.
 **Stage 5: key** (Rust; about 2,500 lines of C++, much of it profile tables, parameters and the frame cutter
 already ported for loudness: Blackman-Harris window, spectrum, spectral peaks, spectral whitening, HPCP, EDMA
 profile correlation). Simpler than BPM and shares its spectral code, so it goes first.
-Gate (proposed): key, scale and strength bit-identical on every track and every mix timeline segment; at
-minimum, key and scale identical with strength within 0.01, matching the BPM rule.
+Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
+0.01, matching the BPM rule; the aim is bit-identical.
 
 **Stage 6: BPM** (Rust; about 2,700 lines of C++ of its own on top of the shared spectral code: five onset
 functions (RMS, complex, mel flux, beat emphasis, information gain), five Degara trackers, TempoTapMaxAgreement,
