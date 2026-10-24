@@ -17,6 +17,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Decoding with current FFmpeg, bit for bit as Essentia's AudioLoader and faster (analysis.decode). Opt-in until
+# Essentia goes (docs/WINDOWS.md): its Apple Silicon wheels need macOS 14. `uv sync --extra decode`
+decode = ["av==18.1.0; python_version >= '3.11'"]  # Python 3.10: Essentia decodes
 # Vocals and synths in a loop (cues.loop_parts): Demucs separates the loop's audio into stems. PyTorch, about 600 MB.
 # `uv sync --extra stems`
 stems = ["demucs==4.0.1"]
