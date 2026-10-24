@@ -1,7 +1,8 @@
-"""Check the Rust module and PyAV decoding against Essentia, bit for bit. Run after any change to dsp/ or decode:
+"""Check the Rust module, PyAV decoding and the EffNet input against Essentia, bit for bit. Run after any change to dsp/ or decode:
 
     uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix,
-                                               # decoding test files in each format (made with the ffmpeg command)
+                                               # decoding test files in each format (made with the ffmpeg command),
+                                               # the models' mel frames, EffNet's patches and batches
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
     uv run python dsp/check.py --files-from mixes.txt   # files listed one per line (names with spaces are fine)
     uv run python dsp/check.py --collection --steps linear   # only the step you changed: much faster
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-STEPS = ("loudness", "mono", "resample", "linear", "decode")
+STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet")
 # Test files for decoding: (name, ffmpeg output options, rate, channels). AAC, Vorbis and Opus come out of
 # current FFmpeg's rewritten decoders about 1 in 10 million different (stage 0): printed, not counted.
 CODECS = [(f"{c}.wav", ["-c:a", c], sr, 2) for c in ("pcm_u8", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_f64le")
@@ -116,6 +117,55 @@ def test_files(e) -> int:
     return bad
 
 
+def _essentia_mels(e, x):
+    tf = e.TensorflowInputMusiCNN()
+    return np.array([tf(f) for f in e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)],
+                    np.float32).reshape(-1, 96)
+
+
+def _same_mels(e, dsp, x) -> bool:
+    """track_analyzer_dsp.musicnn_mels vs TensorflowInputMusiCNN on every FrameGenerator frame."""
+    x = np.ascontiguousarray(x, np.float32)
+    out = np.empty((dsp.musicnn_frame_count(len(x)), 96), np.float32)
+    return dsp.musicnn_mels(x, out) == len(out) and np.array_equal(out.view(np.uint32), _essentia_mels(e, x).view(np.uint32))
+
+
+_effnet = {}
+
+
+def _effnet_ref(e):
+    from dj_track_analyzer import analysis as a
+
+    if not _effnet:
+        _effnet["ref"] = e.TensorflowPredictEffnetDiscogs(graphFilename=str(a.MODELS_DIR / "discogs-effnet-bs64-1.pb"),
+                                                          output=a.EFFNET_OUTPUT)
+    return _effnet["ref"]
+
+
+def _same_effnet(e, x):
+    """analysis.effnet_embeddings (Rust mels, own patches and batches, plain TensorflowPredict) vs
+    TensorflowPredictEffnetDiscogs: True, False, or "noise". Essentia's streaming FrameCutter adds unseeded noise
+    (NoiseAdder, seeded from the clock) to frames below isSilent's cutoff; usually it vanishes in the mel's log, but on
+    some tracks it tips roundings, and Essentia's own output then changes from run to run (19 different results in
+    20 runs on one track), only in patches holding such frames. Ours is the noise-free result. "noise": every
+    differing patch holds a near-silent frame and differs by under 1e-5; anything else is a difference."""
+    from dj_track_analyzer import analysis as a
+
+    x = np.ascontiguousarray(x, np.float32)
+    mine = a.effnet_embeddings(x)
+    ref = np.asarray(_effnet_ref(e)(x), np.float32)
+    if mine.shape != ref.shape:
+        return False
+    d = np.abs(mine - ref).max(axis=1) if mine.ndim == 2 else np.abs(mine - ref)
+    if not d.any():
+        return True
+    frames = np.array(list(e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)), np.float32)
+    silent = np.flatnonzero((frames.astype(np.float64) ** 2).mean(axis=1) < 1e-10)
+    noisy = {k for f in silent for k in range(max(0, (f - a.EFFNET_PATCH) // a.EFFNET_PATCH_HOP), f // a.EFFNET_PATCH_HOP + 1)
+             if k * a.EFFNET_PATCH_HOP <= f < k * a.EFFNET_PATCH_HOP + a.EFFNET_PATCH}
+    bad = set(np.flatnonzero(d > 0).tolist())
+    return "noise" if bad <= noisy and d.max() < 1e-5 else False
+
 def _same_loudness(e, dsp, stereo, sr) -> bool:
     stereo = np.ascontiguousarray(stereo, np.float32)
     _m, short, integ, lra = e.LoudnessEBUR128(sampleRate=sr)(stereo)
@@ -156,6 +206,26 @@ def test_signals(steps) -> int:
                 if not _same_mono(e, st, nch):
                     bad += 1
                     print(f"mono mix DIFFERENT: {nch} channel(s), {sec} s")
+    if "mel" in steps:
+        for n in (1, 255, 256, 257, 511, 512, 513, 16000, 16000 * 30 + 77):
+            for scale in (1e-6, 1e-3, 0.3, 1.5):
+                if not _same_mels(e, dsp, (scale * rng.standard_normal(n)).astype(np.float32)):
+                    bad += 1
+                    print(f"mel DIFFERENT: {n} samples, scale {scale}")
+    if "effnet" in steps:  # lengths around patch (128 frames, every 62) and batch (64 patches) boundaries
+        for k in (-1, 0, 1, 2, 63, 64, 65):
+            for d in (-300, -1, 0, 1, 256, 300):
+                n = 256 * (128 + 62 * k) + d
+                if n > 0 and _same_effnet(e, (0.1 * rng.standard_normal(n)).astype(np.float32)) is False:
+                    bad += 1
+                    print(f"effnet DIFFERENT: {n} samples")
+        # a first frame quiet enough to count as silent but not zero: the streaming FrameCutter blanks it
+        x = (0.1 * rng.standard_normal(16000 * 5)).astype(np.float32)
+        x[:400] = 0
+        x[100:120] = 1e-5
+        if _same_effnet(e, x) is False:
+            bad += 1
+            print("effnet DIFFERENT: near-silent first frame")
     print(f"test signals: {'all identical' if not bad else f'{bad} different'}")
     if "decode" in steps:
         bad += test_files(e)
@@ -178,14 +248,25 @@ def _check_file(steps, path: str) -> str | None:
         out.append("loudness")
     if "mono" in steps and not _same_mono(e, stereo, nch):
         out.append("mono mix")
-    if not {"resample", "linear"} & set(steps):
+    if not {"resample", "linear", "mel", "effnet"} & set(steps):
         return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
     mono = e.MonoMixer()(stereo, nch)  # Essentia's, so each resample check sees the same input
     if "resample" in steps and sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
         out.append("resample")
     if "linear" in steps and not _same_resample(e, dsp, mono, sr, 16000, linear=True):
         out.append("linear resample")
-    return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
+    varies = None
+    if {"mel", "effnet"} & set(steps):
+        mono16 = np.asarray(e.Resample(inputSampleRate=sr, outputSampleRate=16000, quality=4)(mono), np.float32)
+        if "mel" in steps and not _same_mels(e, dsp, mono16):
+            out.append("mel")
+        if "effnet" in steps:
+            r = _same_effnet(e, mono16)
+            if r == "noise":
+                varies = f"effnet: differs only where Essentia adds random noise (near-silent frames; its own output varies from run to run there): {path}"
+            elif not r:
+                out.append("effnet")
+    return f"DIFFERENT ({', '.join(out)}): {path}" if out else varies
 
 
 def _is_long(path: str) -> bool:
@@ -201,7 +282,7 @@ def _is_long(path: str) -> bool:
 def files(paths: list[str], steps, workers: int, mix_workers: int) -> int:
     long = [p for p in paths if _is_long(p)]
     groups = [(f"tracks", [p for p in paths if p not in set(long)], workers, 25), ("mixes", long, mix_workers, 1)]
-    bad = done = 0
+    bad = done = varies = 0
     for name, group, n, every in groups:
         if not group:
             continue
@@ -211,10 +292,13 @@ def files(paths: list[str], steps, workers: int, mix_workers: int) -> int:
                 if msg:
                     print(msg, flush=True)
                     bad += msg.startswith("DIFFERENT")
+                    varies += msg.startswith("effnet: differs only where")
                 if i % every == 0 or i == len(group):
                     print(f"[{done + i}/{len(paths)}] files checked", flush=True)
         done += len(group)
-    print(f"files: {len(paths) - bad} of {len(paths)} identical")
+    print(f"files: {len(paths) - bad - varies} of {len(paths)} identical"
+          + (f", {varies} differ in EffNet only where Essentia's own output is random (near-silent frames)" if varies else "")
+          + (f", {bad} different" if bad else ""))
     return bad
 
 
