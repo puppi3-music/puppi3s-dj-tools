@@ -33,9 +33,9 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Resample to 44.1 kHz | `Resample(quality=1)`, libsamplerate 0.2.2 | Rust | **done**, bit-identical |
 | Mono mix | `MonoMixer` | Rust | bit-identical |
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
-| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | bit-identical, or no visible result changes (stage 2) |
+| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | bit-identical on MP3/WAV/AIFF/FLAC/ALAC (stage 0); else measured |
 | Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, linking the same FFTW 3.3.10 | bit-identical |
-| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.*`, or onnxruntime if it passes the same gate | see stage 4 |
+| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | bit-identical with TF 2.15 (stage 0) |
 | Key | `KeyExtractor(profileType="edma")` | Rust port, same FFTW | bit-identical |
 | BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, same FFTW | bit-identical; gate below |
 
@@ -48,31 +48,64 @@ until the last stage. `dsp/check.py` grows a check per stage and runs on test si
 collection and the mix recordings, comparing per track, never averages. A stage ships only when it passes. If
 it passes only within a tolerance, `CACHE_VERSION` is bumped and the collection re-analysed. Otherwise nothing
 changes for anyone. Compare on a Mac: the Rust code follows the Mac build's maths (see loudness below).
+Every stage also times the old and the new step on the same files (on mains power, warm file cache, first
+track dropped as warm-up) and adds a row to the speed table below. A stage that is slower says so there.
 
-**Stage 0: two probes before any code.** They decide whether the two outside pieces can match at all.
-- *Decoding.* Decode every test file with PyAV and with `AudioLoader` and compare sample for sample: length,
-  start (MP3 encoder delay) and every value. Essentia's FFmpeg is from 2015, and decoders have changed since
-  (the AAC decoder most). The test collection is 468 MP3s and 1 FLAC, so also make test files in the other
-  formats people use (M4A/AAC, AIFF, WAV 16/24/32-bit float, OGG, Opus) and check those. An earlier check found
-  `AudioLoader`'s MP3 samples equal to the ffmpeg CLI's (`traktor.audio_offset`), which is a good sign.
-- *Neural nets.* Run the same `.pb` graphs with Python `tensorflow` 2.15, fed Essentia's own mel frames, and
-  compare embeddings and scores to Essentia's on every track. Same TF version, so bit-identical is possible
-  but not certain: Google's build and Essentia's may pick different CPU kernels.
+**Speed, step by step** (M1 Pro, mains power; per step, not the whole analysis):
+
+| Step | Essentia | Replacement | Change | Measured on |
+|---|---|---|---|---|
+| Loudness | 1.4 s per track, 18.4 s per 65-min mix | Rust: 0.2 s, 2.5 s | 6.5–7.5x faster | 469 tracks, 3 mixes |
+| Resample to 44.1 kHz (48 kHz files) | 19.7 s per 65-min mix | Rust: 3.8 s | 5.1x faster | 34 files |
+| Decode | 78 ms per minute of audio (0.47 s per 6-min track, 4.6–5.4 s per mix) | PyAV: 88 ms | 12% slower (+0.04 s per track, +0.7 s per mix) | 10 tracks, 1 mix as FLAC and MP3 |
+| EffNet | 0.74 s per track (median) | TF 2.15: 0.76 s; onnxruntime: 0.72 s | same | 58 tracks |
+| Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
+| MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
+| Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
+
+The decode gap is probably the Python side of `av_decode` (one numpy array per frame, then a join and an int to
+float pass); stage 2 does that conversion in one pass (numpy into a preallocated array, or Rust) and measures again.
+
+**Stage 0: two probes before any code. Done (October 2026), both passed.**
+- *Decoding*: PyAV 18.1 (FFmpeg 8) against `AudioLoader`, sample for sample, on the whole test collection, 38
+  mix recordings and 39 made-up files in other formats. What `AudioLoader` really does, found on the way:
+  - **MP3 goes through FFmpeg's fixed-point decoder** (`mp3`, not `mp3float`): 16-bit samples, clipped at full
+    scale. Current FFmpeg's fixed-point decoder gives the same bits; its float decoder does not (not on the
+    16-bit grid, peaks above 1.0).
+  - **Mono files come out as left = signal, right = silence**, not copied to both channels. `MonoMixer` then
+    takes the left channel, but loudness measures a silent right channel: a mono file reads about 3 dB quieter
+    than the same audio as stereo. Keep it (results must not change); fixing it is a separate decision.
+  - AAC and Opus keep the encoder's priming samples (FFmpeg 2.8 didn't trim them): decode with
+    `flags2=+skip_manual`; Opus then also needs its end trimmed to Essentia's length (trimmed length + 312).
+  - A damaged packet is skipped, as FFmpeg does, and decoding goes on.
+
+  Results: **468 of the 469 collection tracks, all 38 mixes, and every WAV, AIFF, FLAC, ALAC and MP3 test file
+  (16/24/32-bit float, 48 kHz, mono) bit-identical**, with the same length and start. The exception is one MP3
+  with about 1 KB of junk after its cover art: FFmpeg 2.8 decodes one extra 1152-sample frame (26 ms) from it,
+  current FFmpeg skips it; every sample after that frame is identical. AAC, Vorbis and Opus: same length,
+  about half the values differ in the last bit (at most 3.6e-7, about -130 dB), from the rewritten decoders.
+  The 5.1 FLAC was left out (`AudioLoader` refuses it; it goes through the ffmpeg CLI already).
+- *Neural nets*: Python `tensorflow==2.15.0`, fed the exact tensors Essentia's TensorFlow got, on 59 tracks
+  (every 8th of the collection): **EffNet, all 10 heads (genre, 5 moods, approachability, engagement,
+  instruments, voice) and MAEST (predictions and embeddings) bit-identical**, about 267 million values. One
+  graph run per tensor, as the analyzer does. TF 2.15 has wheels for macOS arm64 (macOS 12+) and x86_64,
+  Linux x86_64 and aarch64, and Windows x86_64, for Python 3.9-3.11 only.
 
 **Stage 1: mono mix and the 16 kHz resample** (Rust, small). `MonoMixer` is
 `0.5*(L+R)`, rounded from double (mono files: the left channel), and libsamplerate's linear converter is a few
 lines. After this, `load_audio` only calls Essentia to decode.
 
-**Stage 2: decoding** with PyAV. Keep `AudioLoader`'s behaviour: always stereo (mono files duplicated),
-float32, the file's own rate. The >2-channel files already go through the ffmpeg CLI (`_load_downmixed`);
+**Stage 2: decoding** with PyAV. Copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
+file's own rate, MP3 through the fixed-point decoder, mono in the left channel only, AAC/Opus untrimmed,
+damaged packets skipped. The >2-channel files already go through the ffmpeg CLI (`_load_downmixed`);
 PyAV's libswresample can do the same downmix, checked against the CLI. Also covers the Rubber Band output that
 `stretch()` reads back.
 
-Current FFmpeg is the target even if stage 0 finds differences. A newer decoder isn't more accurate to the
+Current FFmpeg is the target even where stage 0 found differences (one MP3; AAC, Vorbis and Opus). A newer decoder isn't more accurate to the
 music: MP3 decoding is fixed by the standard, and versions differ by about one part in 10 million, far below
 hearing. But FFmpeg 2.8 has years of known decoder vulnerabilities and nobody maintains it. So:
-- Identical on every file: nothing to decide.
-- Different: run the full analysis with both decoders on the whole collection and the mixes, and compare per
+- Identical files (the whole test collection but one, all mixes): nothing to decide.
+- Different files: run the full analysis with both decoders on the whole collection and the mixes, and compare per
   track: BPM, key, genre, colour, hype, and cue/loop/waveform positions. If nothing a user would see changes,
   switch, bump `CACHE_VERSION` and re-analyse once. If something does, list those tracks and decide before
   anything ships.
@@ -91,10 +124,13 @@ The key and BPM ports reuse it.
 
 **Stage 4: neural nets.** With stages 1–3, the nets get bit-identical input, so any difference comes from the
 runtime alone.
-- First choice: Python `tensorflow` 2.15, the same version Essentia bundles. **Verify** it has wheels for every
-  platform and Python version we support (Windows CPU wheels exist for 2.15; check the Python range).
-- Then try onnxruntime (graphs converted with `tf2onnx`): far smaller, faster to load, lets several scan
-  threads share one model, and lifts the `numpy<2` pin. Adopt it only if it passes the same gate.
+- First choice: Python `tensorflow` 2.15, the same version Essentia bundles: bit-identical in stage 0. Costs:
+  Python stays at 3.10-3.11 (no 3.12), and Apple Silicon needs macOS 12 (Essentia's pinned build runs on 11).
+- onnxruntime 1.31 (graphs converted with `tf2onnx` 1.17, opset 17, CPU only) was tried on the same 59 tracks:
+  **not identical** (with or without its graph optimisations). EffNet differs by up to 5e-6, the heads by up to
+  4e-7, MAEST's predictions by up to 3e-6 and its embeddings by up to 5e-4 (fails the 1e-5 gate). Not faster
+  either: MAEST 17% slower. Not used. Revisit only if TF 2.15 has to go (Python 3.12+, macOS 11), and then
+  through the gate below with a re-analysis.
 - Gate: every embedding and score within 1e-5 of Essentia's, and every result built from them identical on every
   track: top genre, top-5 styles in order, moods and instruments as stored (3 decimals), colour prediction, hype.
   Bit-identical needs no rescan; within the gate means bumping `CACHE_VERSION` and re-analysing (models
@@ -123,13 +159,13 @@ works on Windows, and the rest of this file (Traktor, paths, launcher) is the Wi
 **What changes for users.** On macOS: nothing in the results; analysis gets faster (below). On Linux: the DSP
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
 from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
-every platform. The install loses TensorFlow's C library, FFmpeg 2.8 and Essentia (most of its size) if
-onnxruntime passes stage 4.
+every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8) for Python TensorFlow
+2.15 and PyAV: about the same size. Apple Silicon then needs macOS 12, and Python stays at 3.10-3.11.
 
 **Risks, biggest first.**
-1. *Decoder differences* (stage 0 shows them). Handled by measuring their effect per track (stage 2); the
-   real risk is the MP3 start moving against Traktor's timeline.
-2. *TF runtime bits* (stage 0). Fallback: accept the stage 4 tolerance gate and re-analyse once.
+1. *Decoder differences*: small after stage 0 (one MP3 in the test collection, plus AAC, Vorbis and Opus).
+   Measured per track in stage 2.
+2. *TF runtime bits*: none with TF 2.15 (stage 0). onnxruntime differs (stage 4) and isn't used.
 3. *FFTW build in CI* on four platforms with the same options as Essentia's. Fiddly, but stages 3, 5 and 6
    check it to the bit.
 4. *Size of the BPM port.* Large but mechanical; the check finds every slip.
@@ -155,8 +191,8 @@ BPM grows with the track's length (about 0.55 s per minute of audio), loudness a
 EffNet about 0.2 s per minute; MAEST is fixed. On a typical track the DSP (BPM, loudness, key) is about half of
 the analysis and the neural nets a little less. On a mix, decoding, resampling and loudness are two thirds.
 
-Rust doesn't make the neural nets faster: onnxruntime is already optimised C++, and Rust's `ort` crate only
-wraps it. The DSP is where Rust helps, and the rewrite needs new code for most of it anyway. Rust is
+Rust doesn't make the neural nets faster: TensorFlow is already optimised C++ (and onnxruntime, which Rust's
+`ort` crate wraps, was no faster here; stage 4). The DSP is where Rust helps, and the rewrite needs new code for most of it anyway. Rust is
 the natural language for that code: it runs as fast as C++, and PyO3 + maturin build one wheel per platform
 (Windows, macOS, Linux) from one source, in CI, without the build pains that rule out Essentia on Windows.
 
@@ -194,14 +230,14 @@ Don't use Rust for these:
 - **Resampling** with `rubato`: different filters from libsamplerate, so the models get different input.
   libsamplerate's own algorithm is copied instead (above).
 
-Wins that need no Rust, from moving to onnxruntime:
-- **MAEST in one batch.** The graph has batch size 1, so the 3 patches run one after another. A dynamic-batch
-  ONNX export runs them together, with the same maths.
+Wins that need no Rust, with Python TensorFlow (stage 4); each checked for identical results before use:
 - **One model copy per scan.** Each `scan` worker is a process holding its own models (1.5–2.5 GB with MAEST),
-  which is why the worker count is capped at 5. onnxruntime sessions can be shared by threads in one process
-  (inference runs outside the GIL), and Rust DSP code can run outside the GIL too. Then the models load once and
-  more tracks run at a time on the same RAM.
-- **Not** the Core ML or DirectML (GPU / Neural Engine) providers: they may compute in float16 and change the
+  which is why the worker count is capped at 5. A TensorFlow session can be shared by threads in one process
+  (`Session.run` releases the GIL), and the Rust DSP code runs outside the GIL too. Then the models load once
+  and more tracks run at a time on the same RAM. **Verify** the outputs stay bit-identical with runs in parallel.
+- **MAEST in one batch** isn't possible with this graph (batch size fixed at 1); the 3 patches stay one after
+  another. onnxruntime could re-export it with a free batch size, but it isn't identical (stage 4).
+- **Not** GPU / Neural Engine back ends (Metal, Core ML, DirectML): they may compute in float16 and change the
   scores.
 
 Rules, as for every speed-up here: results identical to before, or within float rounding and checked over the

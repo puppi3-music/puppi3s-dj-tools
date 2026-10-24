@@ -37,6 +37,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   --uv` (needs Rust; `uv sync` puts the release wheel back), then bump the version in dsp/Cargo.toml +
   dsp/pyproject.toml, tag `dsp-v<version>`, and update the version + index URL in pyproject.toml. Plan:
   docs/WINDOWS.md.
+  Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
+  decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
+  AAC/Opus untrimmed. Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
+  speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
   Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).

@@ -73,7 +73,7 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 - 💡 **Beatport-era genres** (Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass, Hard Groove) don't exist as Discogs styles. Possible via `train` with example folders, or a shared set of trained examples.
 
 ### Platforms
-- 🧪 **Windows.** Blocked by Essentia, which has no Windows build. The plan replaces it step by step on every platform, each step checked against Essentia track by track: [WINDOWS.md](WINDOWS.md). Loudness and resampling are done (identical results, 5–7x faster); decoding, the model input, key and BPM are next.
+- 🧪 **Windows.** Blocked by Essentia, which has no Windows build. The plan replaces it step by step on every platform, each step checked against Essentia track by track: [WINDOWS.md](WINDOWS.md). Loudness and resampling are done (identical results, 5–7x faster). Tests showed current FFmpeg and Python TensorFlow 2.15 give identical decoding and model results; decoding, the model input, key and BPM are next.
 
 ## Findings from testing
 
