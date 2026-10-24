@@ -43,7 +43,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   docs/WINDOWS.md.
   Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
   decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
-  AAC/Opus untrimmed. Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
+  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV when installed (`analysis.pyav()`), bit
+  for bit on 507/508 files (stage 2; the other: FFmpeg 2.8 decoded one MP3's LAME Info frame as 1152 samples of audio,
+  current FFmpeg doesn't, as `traktor.audio_offset` assumes); raw frame bytes converted ~1M samples at a time (per-frame
+  numpy was slower than Essentia), FLAC/ALAC frame threads; >2 channels via PyAV's resampler = `ffmpeg -ac 2` bits.
+  Opus length = sum of packet durations (FFmpeg 2.8's). Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
   speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
@@ -307,7 +311,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (view-only `source_bpm`/`native_color_position`; `hype` is in `KEEP_ON_RESCAN`).
 - NFC vs NFD paths create duplicate rows (`_drop_decomposed_duplicates`). Syncthing `*.sync-conflict-*` copies are
   skipped by `scan` (and earlier rows dropped). >2-channel files (Essentia's AudioLoader rejects them) are mixed down to
-  stereo by ffmpeg (`_load_downmixed`, float). Rows for files that are gone are dropped by every scan unless they're on
+  stereo by PyAV's resampler (`decode`), or by the ffmpeg command without PyAV (`_load_downmixed`, float; same bits). Rows for files that are gone are dropped by every scan unless they're on
   a drive that isn't mounted (/Volumes/<disk>; Linux /media, /run/media, /mnt via ismount). `nfc()` composes a
   path on macOS always, on Linux only if that spelling exists (ext4 compares bytes).
 - `scan` recomputes hype after analysing anything (it's a rank within the collection); `hype` is also kept on rescan.

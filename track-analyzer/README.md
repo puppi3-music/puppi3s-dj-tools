@@ -86,12 +86,15 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
 - **Requirements.** Apple Silicon with macOS 11 or newer, an Intel Mac with macOS 14 or newer, or Linux on x86_64 (see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
 - **Faster loudness and resampling.** The install includes a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases) that does these two steps 5–7 times faster, with exactly Essentia's results. Nothing to set up; no Rust needed.
+- **Faster decoding (optional).** `uv sync --extra decode` adds PyAV (current FFmpeg), which reads audio files with
+  exactly Essentia's samples, 1.15x faster for MP3 and 2.4x for FLAC, using a third of the memory on long mixes. It needs
+  macOS 14 or newer on Apple Silicon. A plain `uv sync` removes it again (`Start Puppi3's Track Analyzer.command` runs
+  `uv sync --inexact`, which keeps it).
 - **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
   which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
   "synth", "no bass" or "drums + bass only", and whether a loop has a kick comes from the drum stem (no bassline in the
   way, so it hears quiet and filtered kicks the full-mix measurement misses). It runs when you open a track (about 8 seconds on Apple Silicon, then cached), only
   on the loops. Male / female isn't detected: no model tried could tell them apart in club tracks.
-  A plain `uv sync` removes it again (`Start Puppi3's Track Analyzer.command` runs `uv sync --inexact`, which keeps it).
 
 ### Linux
 

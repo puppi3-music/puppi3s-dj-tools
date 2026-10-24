@@ -33,7 +33,7 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Resample to 44.1 kHz | `Resample(quality=1)`, libsamplerate 0.2.2 | Rust | **done**, bit-identical |
 | Mono mix | `MonoMixer` | Rust | bit-identical |
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
-| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | bit-identical on MP3/WAV/AIFF/FLAC/ALAC (stage 0); else measured |
+| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
 | Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, linking the same FFTW 3.3.10 | bit-identical |
 | Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | bit-identical with TF 2.15 (stage 0) |
 | Key | `KeyExtractor(profileType="edma")` | Rust port, same FFTW | bit-identical |
@@ -59,14 +59,15 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Resample to 44.1 kHz (48 kHz files) | 19.7 s per 65-min mix | Rust: 3.8 s | 5.1x faster | 34 files |
 | Mono mix | 0.010 s per 6-min track, 0.12 s per mix | numpy: 0.008 s, 0.09 s | 1.3x faster (tiny) | 10 tracks, 1 mix as FLAC and MP3 |
 | Resample to 16 kHz (models) | 0.055 s per 6-min track, 0.60 s per mix | Rust: 0.055 s, 0.61 s | same (one sequential walk) | same files |
-| Decode | 78 ms per minute of audio (0.47 s per 6-min track, 4.6–5.4 s per mix) | PyAV: 88 ms | 12% slower (+0.04 s per track, +0.7 s per mix) | 10 tracks, 1 mix as FLAC and MP3 |
+| Decode | 80 ms per minute of audio (0.47 s per 6-min track, 4.7–5.5 s per mix) | PyAV: 58 ms (0.42 s; 2.0 s FLAC mix, 4.8 s MP3 mix) | MP3 1.15x, FLAC 2.4x faster; mix peak memory 5.6 → 1.8 GB | 10 tracks, 1 mix as FLAC and MP3 |
 | EffNet | 0.74 s per track (median) | TF 2.15: 0.76 s; onnxruntime: 0.72 s | same | 58 tracks |
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
 
-The decode gap is probably the Python side of `av_decode` (one numpy array per frame, then a join and an int to
-float pass); stage 2 does that conversion in one pass (numpy into a preallocated array, or Rust) and measures again.
+Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
+and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
+array, and lets FLAC and ALAC decode on several threads (same bits). Now it's faster than Essentia on every file.
 
 **Stage 0: two probes before any code. Done (October 2026), both passed.**
 - *Decoding*: PyAV 18.1 (FFmpeg 8) against `AudioLoader`, sample for sample, on the whole test collection, 38
@@ -102,7 +103,27 @@ off (7e-15) in 62.9 million on a 65-minute 48 kHz mix. Bit-identical on the test
 tracks and 39 mix recordings (`dsp/check.py`). Same speed as Essentia (speed table). After this,
 `load_audio` only calls Essentia to decode.
 
-**Stage 2: decoding** with PyAV. Copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
+**Stage 2: decoding** with PyAV. **Done (October 2026)**: `analysis.decode` (PyAV 18.1, FFmpeg 8) when PyAV is
+installed, `AudioLoader` otherwise. PyAV is an opt-in extra (`uv sync --extra decode`) until stage 7, because its
+Apple Silicon wheels need macOS 14 (Python 3.11+; 3.10 keeps Essentia). `decode` is used by `load_audio`, the cue code, and to read `stretch()`'s
+Rubber Band output. `dsp/check.py --steps decode` checks it on test files made with the ffmpeg command (8/16/24/32-bit
+and float WAV, AIFF, FLAC up to 96 kHz, ALAC, MP3 with and without a Xing frame, mono, 5.1) and on every file given.
+- **507 of 508 files bit-identical**: every collection track but one, the 31 mix recordings, and the 5.1 FLAC (PyAV's
+  downmix gives the same bits as the `ffmpeg -ac 2` the Essentia path uses). Also every test file except AAC,
+  Vorbis and Opus (last-bit differences as in stage 0; FFmpeg's own Vorbis encoder's files also come out 768
+  samples shorter: current FFmpeg trims the end padding, the start lines up).
+- **The exception**, one MP3: FFmpeg 2.8 decodes the file's LAME Info header frame as 1152 samples of audio;
+  current FFmpeg (and the ffmpeg command) treats it as a header. Essentia's samples are PyAV's with 1152 in front,
+  bit for bit. So on this track Essentia's audio sat 26 ms late on Traktor's timeline (`traktor.audio_offset`
+  assumes the header frame isn't decoded, and was checked with the ffmpeg command's decode). Full analysis both
+  ways: BPM, key, top 3 genres in order, colour (position 4.34) the same; genre scores ±0.02, LUFS -9.6 → -9.7,
+  BPM confidence 2.52 → 2.49. Cue suggestions moved: the kick pulse (on-beat vs between beats) reads about +30 dB in
+  the intro where Essentia's read +21, and turns positive in the groove, so the grid now lines up with the kicks;
+  one cue added (bar 24), one dropped (bar 64), names changed. The analyses of AAC, Vorbis and Opus test files
+  (9 files) differ in at most one rounded value each.
+- Speed and memory: speed table above.
+
+What was planned for this stage: copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
 file's own rate, MP3 through the fixed-point decoder, mono in the left channel only, AAC/Opus untrimmed,
 damaged packets skipped. The >2-channel files already go through the ffmpeg CLI (`_load_downmixed`);
 PyAV's libswresample can do the same downmix, checked against the CLI. Also covers the Rubber Band output that
@@ -167,11 +188,11 @@ works on Windows, and the rest of this file (Traktor, paths, launcher) is the Wi
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
 from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
 every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8) for Python TensorFlow
-2.15 and PyAV: about the same size. Apple Silicon then needs macOS 12, and Python stays at 3.10-3.11.
+2.15 and PyAV: about the same size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
 
 **Risks, biggest first.**
-1. *Decoder differences*: small after stage 0 (one MP3 in the test collection, plus AAC, Vorbis and Opus).
-   Measured per track in stage 2.
+1. *Decoder differences*: one MP3 in the test collection (its header frame, now decoded as Traktor's timeline
+   assumes), plus last bits of AAC, Vorbis and Opus (stage 2).
 2. *TF runtime bits*: none with TF 2.15 (stage 0). onnxruntime differs (stage 4) and isn't used.
 3. *FFTW build in CI* on four platforms with the same options as Essentia's. Fiddly, but stages 3, 5 and 6
    check it to the bit.
