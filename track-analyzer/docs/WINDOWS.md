@@ -17,64 +17,122 @@ The plan is to **replace Essentia on every platform**, not only on Windows: two 
 a different BPM or key on different machines. The replacement can be built and checked on a Mac against
 Essentia before any Windows machine is involved.
 
-### What Essentia does here, and what replaces it
+### The plan: replace Essentia one piece at a time, without changing any result
 
-| Job | Essentia now | Replacement | Results |
+Loudness and resampling are already done this way (below): a Rust copy of Essentia's own code, bit-identical on
+the whole test collection. That changed the picture. A float32 algorithm ported operation for operation,
+including where Essentia's arm64 build fuses multiply-adds, gives Essentia's exact bits, so BPM and key can be
+ported **exactly**, not "close". Libraries that compute something similar (librosa, madmom, `samplerate`,
+`rubato`, `symphonia`) are ruled out: they change results.
+
+What Essentia bundles, and what each piece needs (versions read from the macOS wheel, `essentia/.dylibs`):
+
+| Job | Essentia now | Replacement | Accuracy target |
 |---|---|---|---|
-| Decode, mono, resample | `AudioLoader`, `MonoMixer`, `Resample` (analysis.py `load_audio`, cues.py, `cues.WaveSource`) | ffmpeg to f32 + `samplerate` (libsamplerate) | identical (check) |
-| Neural models | `TensorflowPredictEffnetDiscogs`, `TensorflowPredict2D`, `TensorflowPredict` (MAEST), `TensorflowInputMusiCNN` | onnxruntime + a numpy mel front end | identical (check) |
-| Loudness | `LoudnessEBUR128` | numpy EBU R128 or ffmpeg `ebur128` | within ~0.1 LU |
-| BPM | `RhythmExtractor2013(method="multifeature")` | port, or a different tracker | port: close; other: different |
-| Key | `KeyExtractor(profileType="edma")` | port, or a different detector | port: close; other: different |
+| Loudness | `LoudnessEBUR128` | Rust (`dsp/`) | **done**, bit-identical |
+| Resample to 44.1 kHz | `Resample(quality=1)`, libsamplerate 0.2.2 | Rust | **done**, bit-identical |
+| Mono mix | `MonoMixer` | Rust | bit-identical |
+| Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
+| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | bit-identical, or no visible result changes (stage 2) |
+| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, linking the same FFTW 3.3.10 | bit-identical |
+| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.*`, or onnxruntime if it passes the same gate | see stage 4 |
+| Key | `KeyExtractor(profileType="edma")` | Rust port, same FFTW | bit-identical |
+| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, same FFTW | bit-identical; gate below |
 
-**Decoding and resampling.** `AudioLoader` is FFmpeg underneath (the decoded samples were checked equal to the
-ffmpeg CLI's, see `traktor.audio_offset`), so ffmpeg to `pcm_f32le` gives the same audio. `Resample`'s `quality`
-is libsamplerate's converter type (1 = sinc medium, used for 44.1 kHz; 4 = linear, used for the models' 16 kHz,
-as Essentia's model docs do); the `samplerate` package wraps the same library. `MonoMixer` is (L+R)/2.
-Watch the MP3 start: the cue, waveform and loop code shift MP3s onto Traktor's timeline assuming Essentia's
-handling of the encoder delay. Check the replacement against the existing Remix Deck captures, to the sample.
-Speed: the same.
+Essentia is AGPL-3.0, and so is this repo, so porting its code line by line is fine. FFTW (GPL-2.0+) can be
+linked into an AGPL program too.
 
-**Neural models.** The `.pb` files are frozen TensorFlow graphs and don't depend on Essentia. Convert them with
-`tf2onnx` (Essentia's model site has `.onnx` versions of some, **verify** which) and run them with onnxruntime,
-which has wheels for Windows, macOS and Linux. Plain `tensorflow` has Windows CPU wheels too (**verify** for the
-pinned Python), but it is the heavier choice. What must be rewritten:
-- `TensorflowInputMusiCNN` (512/256 frames at 16 kHz, 96 mel bands, log compression): port its exact settings
-  from Essentia's source to numpy. EffNet and MAEST both read it.
-- `TensorflowPredictEffnetDiscogs`'s patching (128-frame patches; the `bs64` graph takes fixed batches of 64,
-  padded) and the output it returns. `_maest_patches` already does the same for MAEST and was checked
-  identical to Essentia's wrapper (max diff 2e-7): do the same check here, over the whole test collection.
-- The heads (`TensorflowPredict2D`) are plain matrix runs on the embeddings.
+**The rule for every stage.** Each replacement goes in behind the same switch as loudness and resampling: the
+Rust or Python copy is used when it's installed, Essentia otherwise. Essentia stays installed as the reference
+until the last stage. `dsp/check.py` grows a check per stage and runs on test signals, every track of the test
+collection and the mix recordings, comparing per track, never averages. A stage ships only when it passes. If
+it passes only within a tolerance, `CACHE_VERSION` is bumped and the collection re-analysed. Otherwise nothing
+changes for anyone. Compare on a Mac: the Rust code follows the Mac build's maths (see loudness below).
 
-If the embeddings match, nothing downstream changes. If they drift, the drift reaches genre, moods, instruments,
-the colour model, `my_genres.joblib`, hype and every cached embedding: retrain and rescan, so get the match first.
-Speed: onnxruntime is usually as fast as or faster than TF on CPU, loads in well under a second (no TF warm-up
-on the first track) and is a far smaller install. MAEST (a fixed 2.7 s, a third of a short track's analysis)
-may get faster. Measure.
+**Stage 0: two probes before any code.** They decide whether the two outside pieces can match at all.
+- *Decoding.* Decode every test file with PyAV and with `AudioLoader` and compare sample for sample: length,
+  start (MP3 encoder delay) and every value. Essentia's FFmpeg is from 2015, and decoders have changed since
+  (the AAC decoder most). The test collection is 468 MP3s and 1 FLAC, so also make test files in the other
+  formats people use (M4A/AAC, AIFF, WAV 16/24/32-bit float, OGG, Opus) and check those. An earlier check found
+  `AudioLoader`'s MP3 samples equal to the ffmpeg CLI's (`traktor.audio_offset`), which is a good sign.
+- *Neural nets.* Run the same `.pb` graphs with Python `tensorflow` 2.15, fed Essentia's own mel frames, and
+  compare embeddings and scores to Essentia's on every track. Same TF version, so bit-identical is possible
+  but not certain: Google's build and Essentia's may pick different CPU kernels.
 
-**Loudness.** EBU R128 is a standard; integrated loudness and LRA from any correct implementation agree within
-about 0.1 LU. Match Essentia's short-term window (3 s) and hop (0.1 s), since `energy_curve`, `energy_arc`, hype
-and the mix highlights read the short-term values. Speed: the same.
+**Stage 1: mono mix and the 16 kHz resample** (Rust, small). `MonoMixer` is
+`0.5*(L+R)`, rounded from double (mono files: the left channel), and libsamplerate's linear converter is a few
+lines. After this, `load_audio` only calls Essentia to decode.
 
-**BPM and key.** No library gives Essentia's numbers. Two ways:
-- **Port Essentia's algorithms** (numpy, or a small Rust/C extension for speed). `KeyExtractor` is moderate
-  (spectral peaks → HPCP → EDMA profile correlation); `RhythmExtractor2013` multifeature is large (five onset
-  functions, Degara tracking, TempoTapMaxAgreement). Expect close, not bit-exact. Pure numpy is several times
-  slower than Essentia's C++, and the rhythm runs again per timeline segment on mixes. Essentia is AGPL-3.0, so a
-  line-by-line port carries that licence.
-- **Use another library.** Results change; re-measure against Traktor on the test collection (today 96% of BPMs
-  within 1 BPM, key agreement 57%).
-  - librosa (`beat_track`, chroma key): fast, installs anywhere; expect more half/double-tempo errors and
-    weaker keys. Not good enough.
-  - madmom (RNN/DBN beats, CNN key): often as good as or better on electronic music, but several times slower
-    and barely maintained; awkward to install on Windows with current Python.
-  - beat_this (2024): strong beats, slow on CPU, needs PyTorch.
-  - libKeyFinder (key only, C++): built for DJ music; needs its own Windows build.
-  A new key detector changes the Camelot keys written to tags and Traktor, and `tracklist`'s key matching.
+**Stage 2: decoding** with PyAV. Keep `AudioLoader`'s behaviour: always stereo (mono files duplicated),
+float32, the file's own rate. The >2-channel files already go through the ffmpeg CLI (`_load_downmixed`);
+PyAV's libswresample can do the same downmix, checked against the CLI. Also covers the Rubber Band output that
+`stretch()` reads back.
 
-Whatever changes: bump `CACHE_VERSION` when the BPM, key or embeddings change, and re-analyse (10–15 min for the
-test collection, about 30 with `--rescan`). Dropping essentia-tensorflow and TensorFlow also removes most of
-the install size, and may lift the `numpy<2` and Python `<3.13` pins (**verify** the other dependencies).
+Current FFmpeg is the target even if stage 0 finds differences. A newer decoder isn't more accurate to the
+music: MP3 decoding is fixed by the standard, and versions differ by about one part in 10 million, far below
+hearing. But FFmpeg 2.8 has years of known decoder vulnerabilities and nobody maintains it. So:
+- Identical on every file: nothing to decide.
+- Different: run the full analysis with both decoders on the whole collection and the mixes, and compare per
+  track: BPM, key, genre, colour, hype, and cue/loop/waveform positions. If nothing a user would see changes,
+  switch, bump `CACHE_VERSION` and re-analyse once. If something does, list those tracks and decide before
+  anything ships.
+- Watch the MP3 start and end above all. Newer FFmpeg trims the encoder delay and padding more exactly, which
+  moves the audio by up to about a thousand samples. The reference there is Traktor, not FFmpeg: the cue, loop
+  and waveform code lines MP3s up with Traktor's timeline (`traktor.audio_offset`), measured with Essentia's
+  decoding. If the start moves, re-measure that alignment against the Remix Deck captures, to the sample.
+Building FFmpeg 2.8's decoders ourselves is the last resort, not the fallback.
+
+**Stage 3: the mel front end** (Rust). `TensorflowInputMusiCNN` (512-sample frames, hop 256 at 16 kHz, 96 mel
+bands, log compression) for EffNet and MAEST, plus EffNet's 128-frame patches and 64-patch batches
+(`TensorflowPredictEffnetDiscogs`). The FFT is the hard part: Essentia uses FFTW with `FFTW_ESTIMATE` plans,
+and only the same FFTW code gives the same bits. The `dsp/` crate builds FFTW 3.3.10 from source in its
+build script (CMake, single precision, the same SIMD options as Essentia's build) on all four CI platforms.
+The key and BPM ports reuse it.
+
+**Stage 4: neural nets.** With stages 1–3, the nets get bit-identical input, so any difference comes from the
+runtime alone.
+- First choice: Python `tensorflow` 2.15, the same version Essentia bundles. **Verify** it has wheels for every
+  platform and Python version we support (Windows CPU wheels exist for 2.15; check the Python range).
+- Then try onnxruntime (graphs converted with `tf2onnx`): far smaller, faster to load, lets several scan
+  threads share one model, and lifts the `numpy<2` pin. Adopt it only if it passes the same gate.
+- Gate: every embedding and score within 1e-5 of Essentia's, and every result built from them identical on every
+  track: top genre, top-5 styles in order, moods and instruments as stored (3 decimals), colour prediction, hype.
+  Bit-identical needs no rescan; within the gate means bumping `CACHE_VERSION` and re-analysing (models
+  retrained on the new numbers if the colour or genre models change).
+- On a different CPU (Windows and Linux on x86_64) the nets' last bits differ from the Mac's whatever runtime
+  is used. That's already true of Essentia on Linux today. The DSP stages don't have this problem.
+
+**Stage 5: key** (Rust; about 2,500 lines of C++, much of it profile tables, parameters and the frame cutter
+already ported for loudness: Blackman-Harris window, spectrum, spectral peaks, spectral whitening, HPCP, EDMA
+profile correlation). Simpler than BPM and shares its spectral code, so it goes first.
+Gate (proposed): key, scale and strength bit-identical on every track and every mix timeline segment; at
+minimum, key and scale identical with strength within 0.01, matching the BPM rule.
+
+**Stage 6: BPM** (Rust; about 2,700 lines of C++ of its own on top of the shared spectral code: five onset
+functions (RMS, complex, mel flux, beat emphasis, information gain), five Degara trackers, TempoTapMaxAgreement,
+BPM from the beat intervals). Gate (decided): the whole-number BPM equals Essentia's on every track and every
+mix segment, and confidence is within 0.01; the aim is bit-identical beats. Once it matches, run the five onset
+functions on separate threads, kept only if the output stays identical.
+
+**Stage 7: drop Essentia.** `track-analyzer-dsp` (prebuilt wheels) becomes a required dependency;
+`essentia-tensorflow` moves to an optional dependency group used only by `dsp/check.py` on macOS and Linux;
+`es()` and every fallback go. Before merging, run the end-to-end check from the loudness work: `analyze_file`'s
+full output byte-identical with and without Essentia, on the whole collection and the mixes. Then `uv sync`
+works on Windows, and the rest of this file (Traktor, paths, launcher) is the Windows work.
+
+**What changes for users.** On macOS: nothing in the results; analysis gets faster (below). On Linux: the DSP
+numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
+from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
+every platform. The install loses TensorFlow's C library, FFmpeg 2.8 and Essentia (most of its size) if
+onnxruntime passes stage 4.
+
+**Risks, biggest first.**
+1. *Decoder differences* (stage 0 shows them). Handled by measuring their effect per track (stage 2); the
+   real risk is the MP3 start moving against Traktor's timeline.
+2. *TF runtime bits* (stage 0). Fallback: accept the stage 4 tolerance gate and re-analyse once.
+3. *FFTW build in CI* on four platforms with the same options as Essentia's. Fiddly, but stages 3, 5 and 6
+   check it to the bit.
+4. *Size of the BPM port.* Large but mechanical; the check finds every slip.
 
 ### Rust for the parts that get rewritten
 
@@ -148,11 +206,9 @@ Wins that need no Rust, from moving to onnxruntime:
 
 Rules, as for every speed-up here: results identical to before, or within float rounding and checked over the
 whole test collection (BPM and key exactly equal per track; LUFS and scores within float tolerance). A
-different summation order can tip a peak pick in rare cases, so compare per track, not averages. The cost: anyone
-who runs from the repo needs the Rust toolchain unless prebuilt wheels are published. `pyproject.toml` builds
-`dsp/` from source for now; `.github/workflows/dsp-wheels.yml` builds wheels for macOS (arm64, x86_64), Linux
-x86_64 and Windows x86_64, and attaches them to a release on a `dsp-v*` tag. Point `uv` at those before
-anyone else needs to install it.
+different summation order can tip a peak pick in rare cases, so compare per track, not averages. Nobody needs
+Rust to install: `.github/workflows/dsp-wheels.yml` builds wheels for macOS (arm64, x86_64), Linux x86_64 and
+Windows x86_64 and attaches them to a release on a `dsp-v*` tag; `pyproject.toml` installs those (the `dsp` index).
 
 ## Traktor
 
@@ -232,10 +288,10 @@ The Local API itself (localhost:48624) is the same.
 
 ## Order of work
 
-1. **Replace Essentia, on the Mac.** Decoding, resampling, loudness and the neural models first, each checked
-   against Essentia over the whole test collection (embeddings to float precision, MP3 offsets to the sample,
-   LUFS within 0.1). Then decide BPM and key: port (in Rust, see above), or compare a library against today's
-   96% / 57%. Ship it on macOS and Linux before Windows, so there is one engine everywhere.
+1. **Replace Essentia, on the Mac**, in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
+   front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
+   collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
+   everywhere.
 2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows.
 3. On a Windows machine with Traktor: copy `collection.nml` and `Traktor Settings.tsi` and note the `LOCATION`,
    `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files.

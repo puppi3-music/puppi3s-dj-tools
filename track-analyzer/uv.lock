@@ -177,6 +177,7 @@ dependencies = [
     { name = "numpy" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
+    { name = "track-analyzer-dsp", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin'" },
 ]
 
 [package.metadata]
@@ -188,6 +189,7 @@ requires-dist = [
     { name = "mutagen", specifier = ">=1.47" },
     { name = "numpy", specifier = "<2" },
     { name = "scikit-learn", specifier = ">=1.3" },
+    { name = "track-analyzer-dsp", marker = "(platform_machine == 'x86_64' and sys_platform == 'linux') or (platform_machine == 'AMD64' and sys_platform == 'win32') or sys_platform == 'darwin'", specifier = "==0.1.0", index = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/expanded_assets/dsp-v0.1.0" },
 ]
 
 [[package]]
@@ -1023,6 +1025,27 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/00/dc/6c58154c1c65f758ea979e7139cb76993a9cfc662d14e9be3c4a667cfb77/threadpoolctl-3.7.0.tar.gz", hash = "sha256:61348cfb77d53b9242e0017029244b559b810c142ced65b4e21eeca1843959a7", size = 31961, upload-time = "2026-09-15T15:46:20.263Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/3f/f88a53f60a472b46f4023f56d204dd7de33d34c5d2acbfa0d70a674e639e/threadpoolctl-3.7.0-py3-none-any.whl", hash = "sha256:cd8b60b5641b45c67bbf73c64c843235fc2d8a480c87389f52f5dbee893b86be", size = 26362, upload-time = "2026-09-15T15:46:19.168Z" },
+]
+
+[[package]]
+name = "track-analyzer-dsp"
+version = "0.1.0"
+source = { registry = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/expanded_assets/dsp-v0.1.0" }
+wheels = [
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp310-cp310-macosx_11_0_arm64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp310-cp310-macosx_11_0_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp310-cp310-manylinux_2_28_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp310-cp310-win_amd64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp311-cp311-macosx_11_0_arm64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp311-cp311-macosx_11_0_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp311-cp311-manylinux_2_28_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp311-cp311-win_amd64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp312-cp312-macosx_11_0_arm64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp312-cp312-macosx_11_0_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp312-cp312-manylinux_2_28_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-cp312-cp312-win_amd64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-pp311-pypy311_pp73-manylinux_2_28_x86_64.whl" },
+    { url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/download/dsp-v0.1.0/track_analyzer_dsp-0.1.0-pp312-pypy312_pp80-manylinux_2_28_x86_64.whl" },
 ]
 
 [[package]]

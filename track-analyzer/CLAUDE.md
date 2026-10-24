@@ -31,8 +31,12 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   in the coefficients and `b*x - a*y` to match the arm64 build) and `resample_sinc_medium` (= Resample quality 1,
   libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
   `analysis.resample_medium`). A step goes in only after a bitwise check against Essentia over the whole
-  collection + 48 kHz mixes: `uv run python dsp/check.py --collection --files <mixes>`. uv builds it from source (`[tool.uv.sources]`, needs Rust);
-  CI wheels: `.github/workflows/dsp-wheels.yml`. Plan: docs/WINDOWS.md.
+  collection + 48 kHz mixes: `uv run python dsp/check.py --collection --files <mixes>`.
+  uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
+  `dsp` index in pyproject.toml). After changing dsp/: `cd dsp && VIRTUAL_ENV=../.venv maturin develop --release
+  --uv` (needs Rust; `uv sync` puts the release wheel back), then bump the version in dsp/Cargo.toml +
+  dsp/pyproject.toml, tag `dsp-v<version>`, and update the version + index URL in pyproject.toml. Plan:
+  docs/WINDOWS.md.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
   Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).
