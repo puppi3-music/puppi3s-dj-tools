@@ -1,6 +1,6 @@
 # DJ Track Analyzer
 
-Local music analysis for a DJ's Mac: BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon), plus an MCP server so a local LLM can search your collection. Fully offline, no length limit, free.
+Local music analysis for a DJ's Mac (or Linux computer): BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon), plus an MCP server so a local LLM can search your collection. Fully offline, no length limit, free.
 
 > **Already installed?** Day-to-day use is in **[docs/GUIDE.html](docs/GUIDE.html)** (`open docs/GUIDE.html`): what to run for each task, how to read the output, how to undo. This README is the full reference.
 
@@ -41,7 +41,9 @@ Every command runs from the project folder and starts with `uv run dj-track-anal
 
 ## 1. Install (one time)
 
-### The easy way: no Terminal
+### The easy way: no Terminal (Mac)
+
+On Linux, see [Linux](#linux) below: the same launcher runs from a terminal.
 
 1. Download or clone this project and open its folder in Finder.
 2. Double-click **`Start Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
@@ -60,7 +62,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 #    then close and reopen Terminal
 
 # 2. Go to the project folder (wherever you cloned or unpacked it)
-cd ~/dj-track-analyzer
+cd ~/puppi3s-dj-tools/track-analyzer
 
 # 3. Install everything: Python 3.11 + Essentia, about 400 MB
 uv sync
@@ -86,7 +88,7 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 ### Linux
 
-Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection (`traktor`, colours, cue points, `tempo load`, `hype --traktor`, `--tracklist`) don't apply.
+Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. Without Traktor, scans use the analyzer's own BPM and key.
 
 Install the same way, from a terminal: `./"Start Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
@@ -135,9 +137,9 @@ suggestion into `/tmp/clip-previews/<analysis name>/` so you can watch and choos
 how much moves on screen in each and ranks them by the audio and the movement together (files start with that
 rank, e.g. `#1 clip-1 7m37s.mp4`): the audio can't see a stretch where the DJ stands still. On a test set the
 audio's second pick was one of the stillest stretches of the whole video and dropped to fourth. Then `--pick 1 4` (suggestion numbers, or your own ranges like `20:30-21:10`) makes those clips at
-full quality next to the video, named by suggestion number (`<video>-clip-1.mp4`, `-clip-4.mp4`; own ranges as `-clip-20m30s-21m10s.mp4`) (1440p30 H.264; hardware encoder on a Mac;
+full quality next to the video, named by suggestion number (`<video>-clip-1.mp4`, `-clip-4.mp4`; own ranges as `-clip-20m30s-21m10s.mp4`) (1440p30 H.264; hardware encoder on a Mac, software elsewhere;
 `--height`, `--bitrate 16M`, `--out`). The JSON must come from `analyze` with `--highlights` and `--offset`.
-Needs ffmpeg (`brew install ffmpeg`). Existing clips are never overwritten without `--force`; `--dry-run` lists them.
+Needs ffmpeg (`brew install ffmpeg`; Linux: `sudo apt install ffmpeg`). Existing clips are never overwritten without `--force`; `--dry-run` lists them.
 
 On a test mix of 22 house and melodic techno tracks, all sped up 12-20% with stems layered, 12 keys matched
 Traktor's and 1 was one step away. Without the tracklist the mix was called Psytrance (0.59); with it, Trance,
@@ -183,7 +185,7 @@ uv run dj-track-analyzer scan --traktor ~/Music/Incoming   # both
 uv run dj-track-analyzer web
 ```
 
-Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Track Analyzer.command` does the same). Eight tabs:
+Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Track Analyzer.command` on a Mac does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts.
 - **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it.
@@ -194,9 +196,9 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Track Ana
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
-The library menu switches between your normal library and a tempo view. Browsing changes nothing; the page only writes when you press a button that says so (holds, cue approvals, saved samples, and the writers on the Setup tab), and anything that changes your files or Traktor shows a preview first. Hype comes from the last scan, and `colors explain` leaves out tracks that haven't had the deep listening pass yet. The page runs only on this Mac. Stop it with Ctrl-C.
+The library menu switches between your normal library and a tempo view. Browsing changes nothing; the page only writes when you press a button that says so (holds, cue approvals, saved samples, and the writers on the Setup tab), and anything that changes your files or Traktor shows a preview first. Hype comes from the last scan, and `colors explain` leaves out tracks that haven't had the deep listening pass yet. The page runs only on this computer. Stop it with Ctrl-C.
 
-**Setup tab: everything without the Terminal.** A checklist from a fresh install to everything in Traktor: download the models, scan (your Traktor collection, a folder, or both), score hype, learn your colours and cue points, install ffmpeg and rubberband with Homebrew (without Homebrew, on Linux for example, it shows the command to run), scan a tempo view. It shows what's done (models, how many Traktor tracks aren't scanned yet, files changed on disk since the scan, trained models with their dates) and what each step needs (for example 30 coloured tracks for the colour model). A button starts the step's command in the background, one at a time: a progress bar and the live log show on the page and in a bar at the top of every tab, and **Stop** works like Ctrl-C (scans keep what's done). The command is shown, so you can run the same thing in the Terminal later. Stopping the web page stops a running step too.
+**Setup tab: everything without a terminal.** A checklist from a fresh install to everything in Traktor: download the models, scan (your Traktor collection, a folder, or both), score hype, learn your colours and cue points, install ffmpeg and rubberband with Homebrew (without Homebrew, on Linux for example, it shows the command to run), scan a tempo view. It shows what's done (models, how many Traktor tracks aren't scanned yet, files changed on disk since the scan, trained models with their dates) and what each step needs (for example 30 coloured tracks for the colour model). A button starts the step's command in the background, one at a time: a progress bar and the live log show on the page and in a bar at the top of every tab, and **Stop** works like Ctrl-C (scans keep what's done). The command is shown, so you can run the same thing in a terminal later. Stopping the web page stops a running step too.
 
 The writers are there too, each with **Preview…** first (the command's `--dry-run`: counts and examples of what would change), then **Write it**, then **Undo**:
 
@@ -210,9 +212,9 @@ The writers are there too, each with **Preview…** first (the command's `--dry-
 | Load into Traktor (tempo view) | `tempo load` (`--lexicon` when ticked; also on the Tempo view tab) | `tempo native` |
 | Undo the last change to Traktor | `traktor --undo` (refuses if Traktor saved since; no `--force` from the page) | |
 
-The Traktor writers refuse while Traktor is open, exactly as in the Terminal; the preview says so and offers **Check again**. The Hype tab has the Comment 2 button as well.
+The Traktor writers refuse while Traktor is open, exactly as in a terminal; the preview says so and offers **Check again**. The Hype tab has the Comment 2 button as well.
 
-**Hold a track's genre or colour.** In **Tracks**, tick tracks (the header box ticks every track shown) and choose **Hold genre** or **Hold colour**, or use the switches in a track's panel. A held genre or colour stays as it is in your files, Traktor and Lexicon: `tag`, `scan --write-tags`, `traktor` (also with `--overwrite-colors`), `colors review --apply` and `tempo load` skip it and count it as `genre_held` / `colour_held`. Holding writes nothing at the time; it only changes the analyzer's own list. Release a track the same way. The colour hold is the same list as `colors review`'s "keep always". From the Terminal:
+**Hold a track's genre or colour.** In **Tracks**, tick tracks (the header box ticks every track shown) and choose **Hold genre** or **Hold colour**, or use the switches in a track's panel. A held genre or colour stays as it is in your files, Traktor and Lexicon: `tag`, `scan --write-tags`, `traktor` (also with `--overwrite-colors`), `colors review --apply` and `tempo load` skip it and count it as `genre_held` / `colour_held`. Holding writes nothing at the time; it only changes the analyzer's own list. Release a track the same way. The colour hold is the same list as `colors review`'s "keep always". From a terminal:
 
 ```bash
 uv run dj-track-analyzer hold                                # list held tracks
@@ -228,11 +230,11 @@ uv run dj-track-analyzer cues scan             # listen to the other tracks with
 uv run dj-track-analyzer cues show "Title"     # suggestions for one track, next to yours
 ```
 
-**Loop ideas.** Each track gets up to 5 loops (L1-L5, in your most common loop length): the two most like where you put your own loops, then the stretches that loop most cleanly anywhere in the track (bars that sound alike at a steady level, starting on the 4-bar grid, at least 8 bars apart), each described by its sound (Peak groove, Lighter groove, No kick: pads / melody, very steady). On the test collection the DJ's own loop was within 4 bars of one of the five ideas 70% of the time (one suggestion alone: 37%). Each has a pad that plays it looped, a tick box to approve it as a loop cue, and **Save sample**: a WAV of exactly that loop (gapless, sample-identical to the track: source sample rate, the source's bit depth for lossless files, 32-bit float for MP3s, whose loud masters decode above full scale) in Traktor's sample folder, into a subfolder you pick (default `Track Analyzer loops`). Every loop gets the same tiny fades at its two ends that Traktor puts on its own captured samples (64 samples, about 1.5 ms): Traktor reads a little past the end of a looping sample, and a loop cut from a loud groove would click there. Otherwise the samples are the track's own, cut on Traktor's timeline (see **Listen**), so they start exactly on Traktor's beat. **smooth loop point** (off by default) fades the loop's last 5 ms into the audio just before its start, the way samplers do, so a sound ringing over the end isn't cut off with a click; it changes the loop pads too, so you can hear it before saving, and leaves every other sample exact (saved as "…, smooth"). A loop that's already saved (same track, start, length and smoothing, in any sample folder, found by the note each sample carries) isn't saved twice: it shows **✓ saved in** its folder instead. Files are never overwritten. **Open folder** and, after saving, **Show in Finder** (Explorer on Windows) take you to them. Needs ffmpeg.
+**Loop ideas.** Each track gets up to 5 loops (L1-L5, in your most common loop length): the two most like where you put your own loops, then the stretches that loop most cleanly anywhere in the track (bars that sound alike at a steady level, starting on the 4-bar grid, at least 8 bars apart), each described by its sound (Peak groove, Lighter groove, No kick: pads / melody, very steady). On the test collection the DJ's own loop was within 4 bars of one of the five ideas 70% of the time (one suggestion alone: 37%). Each has a pad that plays it looped, a tick box to approve it as a loop cue, and **Save sample**: a WAV of exactly that loop (gapless, sample-identical to the track: source sample rate, the source's bit depth for lossless files, 32-bit float for MP3s, whose loud masters decode above full scale) in Traktor's sample folder, into a subfolder you pick (default `Track Analyzer loops`). Every loop gets the same tiny fades at its two ends that Traktor puts on its own captured samples (64 samples, about 1.5 ms): Traktor reads a little past the end of a looping sample, and a loop cut from a loud groove would click there. Otherwise the samples are the track's own, cut on Traktor's timeline (see **Listen**), so they start exactly on Traktor's beat. **smooth loop point** (off by default) fades the loop's last 5 ms into the audio just before its start, the way samplers do, so a sound ringing over the end isn't cut off with a click; it changes the loop pads too, so you can hear it before saving, and leaves every other sample exact (saved as "…, smooth"). A loop that's already saved (same track, start, length and smoothing, in any sample folder, found by the note each sample carries) isn't saved twice: it shows **✓ saved in** its folder instead. Files are never overwritten. **Open folder** and, after saving, **Show in Finder** (**Show in file manager** on Linux) take you to them. Needs ffmpeg.
 
-**Listen.** Above the waveform is a small deck: ▶ Play, your hot cues 1-8 and every suggestion as pads (click to jump there and play; loops play looped), and a ▶ next to each item in the approve list (corrections get ▶ yours and ▶ proposed, to hear which bar the phrase starts on); while it plays it turns into ⏸, which stops it. Click the waveform to jump; Space plays/pauses, 1-8 hit your cues, ←/→ jump a bar, shift+←/→ a phrase (8 bars). Only files in your scanned library can be played, and only on this Mac; a snapshot file has no audio. Everything in the page runs on Traktor's timeline: most MP3s start with a header frame and encoder padding that other decoders skip and Traktor plays (about 51 ms), so the player, the waveform and the cue measurements shift those files to match Traktor's beat grid exactly (checked against Traktor's own captures). The first play of such a track takes a few seconds while a matching copy is prepared.
+**Listen.** Above the waveform is a small deck: ▶ Play, your hot cues 1-8 and every suggestion as pads (click to jump there and play; loops play looped), and a ▶ next to each item in the approve list (corrections get ▶ yours and ▶ proposed, to hear which bar the phrase starts on); while it plays it turns into ⏸, which stops it. Click the waveform to jump; Space plays/pauses, 1-8 hit your cues, ←/→ jump a bar, shift+←/→ a phrase (8 bars). Only files in your scanned library can be played, and only on this computer; a snapshot file has no audio. Everything in the page runs on Traktor's timeline: most MP3s start with a header frame and encoder padding that other decoders skip and Traktor plays (about 51 ms), so the player, the waveform and the cue measurements shift those files to match Traktor's beat grid exactly (checked against Traktor's own captures). The first play of such a track takes a few seconds while a matching copy is prepared.
 
-**Approve and write them.** Under the waveform, tick the suggested cues and loop you want, and any proposed correction of your own cues (a yellow arrow: one of your cues the model would put 1-2 bars away, or onto the downbeat; judged by a model that never saw that track's cues, since some off-grid cues are on purpose). **Approve ticked** only remembers your choice. Then quit Traktor and press **Write to Traktor…** (in the track's panel or at the top of the Tracks tab): it lists every new and moved cue across all approved tracks, and anything that won't fit, before writing anything, refuses while Traktor is open, makes a backup, and offers **Undo** afterwards (which also brings your approvals back). The same from the Terminal:
+**Approve and write them.** Under the waveform, tick the suggested cues and loop you want, and any proposed correction of your own cues (a yellow arrow: one of your cues the model would put 1-2 bars away, or onto the downbeat; judged by a model that never saw that track's cues, since some off-grid cues are on purpose). **Approve ticked** only remembers your choice. Then quit Traktor and press **Write to Traktor…** (in the track's panel or at the top of the Tracks tab): it lists every new and moved cue across all approved tracks, and anything that won't fit, before writing anything, refuses while Traktor is open, makes a backup, and offers **Undo** afterwards (which also brings your approvals back). The same from a terminal:
 
 ```bash
 uv run dj-track-analyzer cues apply --dry-run   # what would be added / moved
@@ -245,7 +247,7 @@ New cues go only into free hot-cue slots (cue points in 1-7 in time order, the l
 
 `train` reports how often its suggestions land on the bars you cued, for tracks it never saw (cross-validated). On a test collection of about 470 tracks: 61% of suggested cues were on a bar the DJ cued, and 64% of their cues were found, against 29% / 35% for a cue every 16 bars. The loop landed within 4 bars of theirs 36% of the time. Needs at least 30 tracks with 3+ of your own cue points; train again after cueing more.
 
-**Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From the Terminal: `uv run dj-track-analyzer web --export set.html`.
+**Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From a terminal: `uv run dj-track-analyzer web --export set.html`.
 
 The Mixes and Files tabs read `logs/`. Save a mix's analysis there with `analyze <mix> --tracklist --json-only > logs/<name>.json`, or drop a JSON file onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
 
@@ -551,15 +553,15 @@ In LM Studio open the **Program** tab in the right sidebar, choose **Install →
 }
 ```
 
-- `which uv` in Terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
+- On Linux the paths start with `/home/YOUR_NAME/` instead. `which uv` in a terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
 - Use a model that's good at tool calling, such as Qwen3, Mistral Small or gpt-oss.
 
 ### Open WebUI
 
-Start the server in HTTP mode and leave the Terminal window open:
+Start the server in HTTP mode and leave the terminal window open:
 
 ```bash
-uv run dj-track-analyzer serve --http                      # Open WebUI on this Mac
+uv run dj-track-analyzer serve --http                      # Open WebUI on this computer
 uv run dj-track-analyzer serve --http --host 0.0.0.0       # Open WebUI in Docker or on another machine
 ```
 
@@ -567,11 +569,11 @@ uv run dj-track-analyzer serve --http --host 0.0.0.0       # Open WebUI in Docke
 
 | Open WebUI runs… | URL |
 |---|---|
-| on the Mac itself | `http://127.0.0.1:8765/mcp` |
-| in Docker on the Mac | `http://host.docker.internal:8765/mcp` |
-| on a NAS / another machine | `http://<your-mac's-LAN-IP>:8765/mcp` |
+| on the same computer | `http://127.0.0.1:8765/mcp` |
+| in Docker on that computer | `http://host.docker.internal:8765/mcp` |
+| on a NAS / another machine | `http://<this computer's LAN IP>:8765/mcp` |
 
-> **Note** The HTTP server has no password: only use `0.0.0.0` on your home network and never port-forward it. File paths are paths **on the Mac**, so a NAS can only analyse files the Mac can see (e.g. a share mounted at `/Volumes/music/`).
+> **Note** The HTTP server has no password: only use `0.0.0.0` on your home network and never port-forward it. File paths are paths **on the computer running the analyzer**, so a NAS can only analyse files that computer can see (e.g. a share mounted at `/Volumes/music/` on a Mac).
 
 ### What to ask
 
@@ -585,7 +587,7 @@ uv run dj-track-analyzer serve --http --host 0.0.0.0       # Open WebUI in Docke
 >
 > Break down the mix at ~/Music/Mixes/acid-set.mp3: where does the tempo change?
 
-Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as Pathname**.
+Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as Pathname**. On Linux, copy the file in the file manager and paste it as text, or drag it into a terminal window.
 
 ### Tools the LLM gets
 
