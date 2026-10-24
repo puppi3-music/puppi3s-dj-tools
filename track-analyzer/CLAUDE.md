@@ -32,7 +32,14 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
   `analysis.resample_medium`) and `resample_linear` (= Resample quality 4, the models' 16 kHz input via
   `analysis.resample_linear`; needs FMA in `x0 + t*(x1 - x0)`: the plain form was 1 sample off in 62.9M on a mix,
-  though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). A step goes in only
+  though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). `musicnn_mels` (= TensorflowInputMusiCNN per
+  FrameGenerator frame; `analysis.musicnn_mels`, MAEST's patches; `streaming=True` = the streaming FrameCutter's
+  frames, whose silentFrames="noise" blanks a silent first frame) and `analysis.effnet_embeddings` (EffNet's
+  padding/patches/batches as TensorflowPredictEffnetDiscogs, graph via plain TensorflowPredict). Its 512-point FFT is
+  FFTW 3.3.10's plan with the codelets ported (`dsp/tools/gen_fftw_codelets.py`: Essentia's FFTW runs the PLAIN
+  codelet variant and gcc -O3 fuses mul+add across statements, modelled with mul_add; checked by calling the
+  wheel's local `_r2cf_16` etc. via ctypes). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
+  it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
   after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
   release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
