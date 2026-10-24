@@ -129,6 +129,22 @@ def es():
     return _es
 
 
+_dsp = False
+
+
+def dsp():
+    """The Rust module (dsp/) or None. Its functions give Essentia's results bit for bit, faster; checked
+    over the test collection (docs/WINDOWS.md). Without it Essentia does the same work."""
+    global _dsp
+    if _dsp is False:
+        try:
+            import track_analyzer_dsp as m
+        except ImportError:
+            m = None
+        _dsp = m
+    return _dsp
+
+
 def models_present() -> bool:
     return all((MODELS_DIR / name).exists() for name in MODEL_FILES)
 
@@ -1072,6 +1088,16 @@ def _load_downmixed(p: Path):
         return es().AudioLoader(filename=str(out))()
 
 
+def resample_medium(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
+    """Essentia's Resample(quality=1) (libsamplerate's medium sinc), bit for bit; the Rust copy (~5x faster) if
+    installed. Checked on 48 kHz mixes and on 8-192 kHz test signals (docs/WINDOWS.md)."""
+    if m := dsp():
+        x = np.ascontiguousarray(mono, dtype=np.float32)
+        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+        return out[: m.resample_sinc_medium(x, out, sr, out_sr)]
+    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=1)(mono)
+
+
 def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     """Decode once; return stereo (native rate), mono 44.1k, mono 16k, rate.
     tempo: (track's BPM, BPM to play it at) to hear it sped up / slowed down with key lock."""
@@ -1085,7 +1111,7 @@ def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     if tempo:
         stereo = stretch(stereo, sr, *tempo)
     mono = e.MonoMixer()(stereo, nch)
-    mono44 = mono if sr == 44100 else e.Resample(inputSampleRate=sr, outputSampleRate=44100, quality=1)(mono)
+    mono44 = mono if sr == 44100 else resample_medium(mono, sr, 44100)
     mono16 = e.Resample(inputSampleRate=sr, outputSampleRate=16000, quality=4)(mono)  # matches Essentia model docs
     return stereo, mono44, mono16, float(sr)
 
@@ -1125,6 +1151,9 @@ def key_of(mono44: np.ndarray):
 
 
 def loudness(stereo: np.ndarray, sr: float):
+    if m := dsp():  # Essentia's LoudnessEBUR128, bit for bit, ~7x faster
+        short, integrated, lra = m.loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
+        return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
     _mom, short, integrated, lra = es().LoudnessEBUR128(sampleRate=sr)(stereo)
     return np.asarray(short, dtype=np.float32), float(integrated), float(lra)
 

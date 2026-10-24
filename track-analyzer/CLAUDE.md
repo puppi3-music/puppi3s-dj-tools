@@ -26,6 +26,13 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   folders), `install_hint()` (brew on a Mac, apt on Linux), `rubberband()` (refuses < 3.0: the R3 engine).
   `color_model()` aliases `sys.modules["colors"]` because bundles trained before the package move pickled
   `colors.BlockWeights` under that name.
+- `dsp/`: Rust (PyO3 + maturin) module `track_analyzer_dsp`, replacing Essentia steps bit for bit, faster
+  (`analysis.dsp()`; Essentia when it isn't installed). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
+  in the coefficients and `b*x - a*y` to match the arm64 build) and `resample_sinc_medium` (= Resample quality 1,
+  libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
+  `analysis.resample_medium`). A step goes in only after a bitwise check against Essentia over the whole
+  collection + 48 kHz mixes: `uv run python dsp/check.py --collection --files <mixes>`. uv builds it from source (`[tool.uv.sources]`, needs Rust);
+  CI wheels: `.github/workflows/dsp-wheels.yml`. Plan: docs/WINDOWS.md.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
   Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).
