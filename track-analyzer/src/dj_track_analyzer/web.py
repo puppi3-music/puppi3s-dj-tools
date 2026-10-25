@@ -13,6 +13,7 @@ import re
 import sys
 import threading
 import time
+from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -53,14 +54,25 @@ def library(lib: str):
     """Point collection.DB and the analysis cache at a library for one request, then put them back."""
     from . import tempo
 
-    saved = (collection.DB, collection.DEFAULT_CSV, analysis.CACHE_DB, analysis.CACHE_VERSION)
-    with _lock:
+    with _lock:  # saved inside the lock: saved while another request had a view in place, it would stay for good
+        saved = (collection.DB, collection.DEFAULT_CSV, analysis.CACHE_DB, analysis.CACHE_VERSION)
         try:
             if lib and lib != "native":
                 tempo.view_db(float(lib.removeprefix("at-"))).close()
             yield
         finally:
             collection.DB, collection.DEFAULT_CSV, analysis.CACHE_DB, analysis.CACHE_VERSION = saved
+
+
+def colours(lib: str) -> dict[str, str]:
+    """Your colour per track as this library shows it: in a tempo view, the colour `tempo load` gives it there.
+    Call inside library(lib)."""
+    from . import tempo
+
+    con = collection.db()
+    if lib and lib != "native":
+        return tempo.view_colours(con)
+    return dict(con.execute("SELECT path, traktor_color FROM tracks WHERE traktor_color IS NOT NULL").fetchall())
 
 
 def tracks(lib: str = "native") -> dict:
@@ -70,6 +82,16 @@ def tracks(lib: str = "native") -> dict:
         cols = [c for c in TRACK_COLS + ["source_bpm", "native_color_position"] if c in have]
         rows = [{k: r[k] for k in cols if r[k] is not None} for r in
                 con.execute(f"SELECT {', '.join(cols)} FROM tracks ORDER BY artist, title")]
+        if lib and lib != "native":  # the view's stored copy of your colour is from its scan, and unshifted
+            from . import tempo
+
+            vc = tempo.view_colours(con)
+            with tempo.native_db() as n:
+                yours = dict(n.execute("SELECT path, traktor_color FROM tracks WHERE traktor_color IS NOT NULL").fetchall())
+            for r in rows:
+                r.pop("traktor_color", None)
+                if r["path"] in vc:
+                    r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
     from . import cues
 
@@ -97,7 +119,12 @@ def tracks(lib: str = "native") -> dict:
 
 def stats(lib: str = "native") -> dict:
     with library(lib):
-        return collection.summary()
+        out = collection.summary()
+        if lib and lib != "native":  # count the view's colours (yours shifted, else predicted), as the Tracks tab shows them
+            vc = colours(lib)
+            n = Counter(vc.get(p) or c for p, c in collection.db().execute("SELECT path, color FROM tracks"))
+            out["colours"] = {c: n[c] for c in COLOR_NAMES if n[c]}
+        return out
 
 
 def suggest(lib: str, path: str, tolerance: float = 4.0, same_genre: bool = True, limit: int = 30) -> dict:
@@ -109,7 +136,7 @@ def hype(lib: str = "native", **filters) -> dict:
     from . import hype as h
 
     with library(lib):
-        return h.find(rescore=False, **filters)
+        return h.find(rescore=False, colours=colours(lib), **filters)
 
 
 def colour_review(limit: int = 200) -> dict:
