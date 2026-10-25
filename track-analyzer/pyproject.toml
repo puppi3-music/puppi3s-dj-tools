@@ -16,6 +16,11 @@ dependencies = [
     "track-analyzer-dsp==0.2.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 
+[project.optional-dependencies]
+# Vocals and synths in a loop (cues.loop_parts): Demucs separates the loop's audio into stems. PyTorch, about 600 MB.
+# `uv sync --extra stems`
+stems = ["demucs==4.0.1"]
+
 [project.scripts]
 dj-track-analyzer = "dj_track_analyzer.cli:main"
 

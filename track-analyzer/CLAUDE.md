@@ -103,11 +103,18 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   after 20 s; `web.serve` stops a running job on exit. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
-  installs uv if missing, `uv sync`, `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers.
+  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers.
 - `cues.py`: `cues train|scan|show`. Traktor's grid (AutoGrid CUE_V2 TYPE 4 START ms + TEMPO BPM; `grids()`,
   read-only; your cues = TYPE 0 cue / 5 loop, LEN ms) → bars. Per bar (cache.db `bars`, keyed path+grid, valid
-  while mutagen length is within 0.25 s): 6 band dB, 40 mel dB (2048 FFT, 10 ms hop, 44.1k mono), kick pulse
-  (30-100 Hz on-beat vs mid-beat) and off-beat hat pulse. `features()`: bar level, after−before over 1-16 bars,
+  while mutagen length is within 0.25 s): 6 band dB, 40 mel dB (2048 FFT, 10 ms hop, 44.1k mono), kick body
+  (100-250 Hz, first 3/16 of each beat vs 5/16-15/16; bars-3), kick pulse (30-100 Hz on-beat vs mid-beat) and off-beat
+  hat pulse. `kick_on` = (30-100 pulse > half the track's p80, OR kick body > `KICK_BODY_DB` (4)) AND 30-100 Hz level within
+  `KICK_SUB_DB` (15) of the track's p90: below 100 Hz trance kicks' long tails and rolling / off-beat basslines fill
+  the gaps (pulse went negative, to -11 dB, in drops), so the 30-100 test alone read the loud half of 108 of 447
+  tracks as kick-free; with the body 15. Without sub-bass both pulses fire on noise or synths (an echoing synth in a
+  breakdown read as kick, its sub 17-53 dB down): sub-less bars read as kick 37% → 0%. OR a bare kick (DJ intro, no
+  bassline yet): both pulses > `KICK_BARE_DB` (10), sub within 30 dB, 2 of 3 bars (806 bars, 70 tracks). Kick body is NOT a
+  model feature (tried: cue F1 0.633 vs 0.635, loop exact 7.5% vs 8.2%). `features()`: bar level, after−before over 1-16 bars,
   Foote novelty (2-16) on mel cosine SSM, loopability (similarity / level spread of the next 2-8 bars), phrase
   position (mod 2..32 from the grid marker's bar). Two HistGradientBoosting models (cue bar, loop start bar),
   GroupKFold(5) by track; picks: threshold 0.25, ≤7, ≥4 bars apart; loop = argmax, length = your most common.
@@ -115,8 +122,12 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   against truth: test cues are named "Cue N"). `_one_path_each`: a startup-disk track is listed as
   /Users/… and /Volumes/<disk>/Users/…, both exist. cache.db `wave` (path + WAVE_VERSION, same length check): 1500 slices x [peak, rms, low, mid, high] uint8, made in the same decode as the bars (`_wave`); the panel draws it on a canvas (base64 in /api/cues). Zoomed in, /api/wave cuts finer slices from a `cues.WaveSource` (decoded audio + cumulative 10 ms band powers, last WAVE_KEEP=2 tracks, ≈65 MB each; peaks / band levels scaled against the whole track so zoom levels match): the whole track at 100/s, or t0/t1/n for the visible stretch at device-pixel resolution, down to single samples; min zoom one beat. Web: /api/cues + waveform in the track panel. Approval (cue by cue, named,
   loop in slot 8, empty slots + corrections of their own slips): collection.db `cue_plan` {path, grid key, add[],
-  move[]} via POST /api/cues/approve; `cues apply [--dry-run]` (Traktor closed, refuses with a tempo view loaded,
-  `traktor._save` backup → `traktor --undo`): adds into free HOTCUE slots (cues 0-6 in time order, loop prefers 7),
+  move[], remove[]} via POST /api/cues/approve (`clean_plan`; POST /api/cues/slots = `web.slot_preview`, the slot each
+  ticked new cue gets, before approving); `cues apply [--dry-run]` (Traktor closed, refuses with a tempo view loaded,
+  `traktor._save` backup → `traktor --undo`): deletions first (`remove`: any cue, loop or fade/load marker
+  still where it was, CUE_V2 dropped by `_drop_tag`, its slot left free, nothing renumbered; ✕ on a pad or the page's
+  Delete your cues group), then adds into free HOTCUE slots (cues 0-6, loop prefers 7; a "hand" cue, set at the playhead
+  with C, is only refused on the same spot, not within a bar),
   skipped within a bar of an existing cue or another added one (`resolve()`, shared by `apply` and the
   page's `preview()`, so what the page shows as approved is what gets written; hot-cue slots counted over all
   CUE_V2 incl. fade/load, `grids()["all_cues"]`); moves set START of the CUE_V2 with that HOTCUE
@@ -127,19 +138,30 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `web.write_cues` (= `cues.apply`, SystemExit → 400 message; the dialog previews first) saves the plans it used in
   `data/cues-last-written.json` with the backup name; POST /api/cues/undo → `traktor.undo()` (no force) and puts those
   plans back if the restored backup is that one. POST /api/samples/reveal → `web._show` (open -R / explorer /select /
-  xdg-open), only inside `sample_root()`. ▶ buttons (`button.mini[data-t]`) show ⏸ while `DECK.active` is theirs. Corrections (`corrections()`): own cue whose best bar within ±2 scores ≥ threshold and ≥0.2 more,
+  xdg-open), only inside `sample_root()`. ▶ buttons (`button.mini[data-t]`) show ⏸ while `DECK.active` is theirs. Hand-picked moves: `alternatives()` in suggest() lists, per own cue point, the bars either side, nearby bars (±4) scoring ≥ threshold/2, every suggestion and its own downbeat when >1/20 beat off; the page shows one row per cue with a target `<select>` (a cue's corrections are among its options; cues without one stay hidden in `#byhand` until a suggestion's "move my cue here…" menu `button.useas` picks them; a page-made menu, since an open <select> reports no hover). With a free hot-cue slot (`free_slots`), suggestions offered as corrections are also listed as new cues, and `more_cues` (suggest(): the six best other bars, ≥2 bars from your cues, ≥4 from the picks, no score floor) sits folded under New cues; neither is ticked by Tick all new cues (`data-more`), `resolve()` renumbers your hot cue points to keep time order when they already were in it (6 of 447 tracks weren't; loops etc. keep their slots): returns renumbers, `preview()` gives such cues `was_hotcue` (identity for move keys on the page), `apply()` sets HOTCUE, a new cue's `select.slot` sends `slot` (0-7; set_plan keeps it): `resolve()` puts it there, moving the cue points from that slot up into the next free one (never past another kind), and then skips the time-order renumbering, and any approved move of a cue settles its corrections. Corrections (`corrections()`): own cue whose best bar within ±2 scores ≥ threshold and ≥0.2 more,
   scored with the bundle's `oof` (cross-validated probabilities per trained track and grid; tracks not in
   training use the live model; grid changed → none). Web deck: /api/audio streams a file (Starlette FileResponse, Range) only if its path is in the native
   collection.db; the page's `DECK` (one Audio element, preload auto set on the first jump); loops play gapless in Web
-  Audio from /api/loop (`web._render_loop`: ffmpeg decode via `_cut`, edge fades and optional smoothing in numpy, f32 WAV; falls back to decoding the whole track). Save sample: POST /api/samples/save → `web.save_loop`: ffmpeg cut
+  Audio from /api/loop (`web._render_loop`: ffmpeg decode via `_cut`, edge fades and optional smoothing in numpy, f32 WAV; falls back to decoding the whole track). Tempo view
+  player (`deck_stretched`, /api/audio?bpm=, /api/loop?bpm=, /api/deck/stretch to start it): R3 from `source_bpm` (the
+  view scan's) to the view's BPM, `stretch_parallel` (15 s pieces, 8 threads, 4 s lead-in, 30 ms equal-power
+  crossfade: phases don't line up at the joins), Traktor's offset scaled in front, cached as FLAC with deck_audio's.
+  Save sample: POST /api/samples/save → `web.save_loop`: ffmpeg cut
   into Traktor's Browser.Dir.Loops/<subfolder> (only existing subfolders or `Track Analyzer loops`), WAV codec by
   `_wav_codec` (lossless: source bit depth; lossy: pcm_f32le, since a test MP3 decoded to 1.049 peak and 24-bit
   clipped 128 samples per loop); identical to the decoded source apart from the edge fades (below); never overwrites (" (2)"); collection.db `saved_sample` (file, src_name, start, len, smooth, format) skips a loop saved before (±2 ms, any subfolder; samples not in it are read once per run from their ffprobe comment "Loop from <name> at <s> s, <len> s", files named "* from bar *.wav"), shown via /api/cues `saved_samples` drives the playhead over the zoomable canvas (`box._wave`). Web: per-track correction counts (`web.correction_counts`) start counting in a
   background thread at `serve()` (one track per `library()` lock; predictions under `threadpool_limits(1)`, 16 vs ~100
   ms, identical) and are saved in `data/cue-corrections.json`, keyed by the model's and collection.nml's mtimes.
-  Loop ideas (`loop_ideas`, `_idea`): the 2 best by the loop model, then the best `loopability()` (mean timbre
+  Loop ideas (`loop_ideas`, `_idea`, up to 6): the 2 best by the loop model, 2 peak loops (best loopability within
+  1.5 dB of the loudest bar, kick on, outside the first/last 15%; then without the kick: kick_on still misses it
+  under a full drop on ~3% of tracks; then anywhere; then loudest), then the best `loopability()` (mean timbre
   cosine of the L bars − level std/6) on the grid chosen in train among 1/2/4 bars by recall of the user's loops
-  (4: 70% within 4 bars, 19% exact, vs one loop 37% / 10%; bars-2); ≥8 bars apart; kinds from kick_on and level.
+  (measured without the peak loops, n=5: 1 bar, 70% within 4 bars, 18% exact, vs one loop 34% / 8%; bars-3); ≥8 bars
+  apart; kinds from kick_on and level. Loop parts (`loop_parts`, optional `stems` extra = Demucs htdemucs): each idea ±4 s
+  separated (one model, a lock, mps/cuda/cpu), per-beat stem levels against the loop and the drum stem's 30-150 Hz
+  kick cached in cache.db `parts` (PARTS_VERSION), so thresholds (PART_DB, PART_BG_DB, KICK_STEM_DB) change without
+  separating again; suggest() reads only the cache (`parts_pending`), the page then calls /api/cues/parts (~8 s). The
+  drum stem's kick overrides kick_on in the kind. No male/female: no head or pitch test told them apart.
   The suggested loop never starts within a bar of a suggested
   cue (the user's never do), in suggest() and in the CV loop score.
 - Holds (`collection.held/set_hold/hold_matching`, `hold` command): tables `genre_keep` / `color_keep` (= the

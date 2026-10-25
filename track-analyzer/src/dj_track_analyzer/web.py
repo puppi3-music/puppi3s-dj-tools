@@ -102,8 +102,9 @@ def tracks(lib: str = "native") -> dict:
     except SystemExit:  # no Traktor collection found
         g = {}
     for r in rows:
-        if r["path"] in approved:
-            r["cues_approved"] = True
+        if r["path"] in approved:  # what's approved, not written yet: {add, move, remove} counts
+            pl = approved[r["path"]]["plan"]
+            r["cues_approved"] = {k: len(pl.get(k, [])) for k in ("add", "move", "remove")}
         if fixes and fixes.get(r["path"]):
             r["corrections"] = fixes[r["path"]]
         if r["path"] in g:  # how many cue points / loops you set in Traktor
@@ -348,9 +349,12 @@ def track_cues(path: str) -> dict:
     d = cue_grids().get(path)
     if not d:
         raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
-    out = {"path": path, "yours": d["cues"], "grid_ms": d["grid_ms"], "bpm": d["bpm"],
+    out = {"path": path, "yours": d["cues"], "marks": d.get("marks", []), "grid_ms": d["grid_ms"], "bpm": d["bpm"],
            "free_slots": 8 - len({c["hotcue"] for c in d["all_cues"]} - {-1}), "file_manager": FILE_MANAGER}
     pl = cues.plans().get(path)
+    if pl:  # a slot you approved deleting counts as free
+        out["free_slots"] += len({r["hotcue"] for r in pl["plan"].get("remove", []) if r["hotcue"] >= 0
+                                  and any(cues.same_cue(c, r) for c in d["all_cues"])})
     if pl:
         changed = not cues.same_grid(pl["grid"], d["bpm"], d["grid_ms"])
         out["approved"] = {**pl["plan"], "at": pl["at"], "grid_changed": changed}
@@ -366,6 +370,33 @@ def track_cues(path: str) -> dict:
         except SystemExit as e:
             out["note"] = str(e.code or e)
     return out
+
+
+def slot_preview(path: str, plan: dict) -> dict:
+    """The hot-cue slot each ticked new cue would get, before approving: resolve() on the ticked plan, as apply
+    would write it. {new: [{ms, slot}], moved_up: [{was, to}] (your cues renumbered), skipped: [reasons]}."""
+    from . import cues
+
+    d = cue_grids().get(path)
+    if not d:
+        raise ValueError("Traktor has no beat grid for this track")
+    _moves, adds, renum, skipped, _removes = cues.resolve(d["all_cues"], cues.clean_plan(plan), d["bpm"])
+    return {"new": [{"ms": a["ms"], "slot": s} for a, s in adds],
+            "moved_up": [{"was": r["hotcue"], "to": r["to"]} for r in renum], "skipped": skipped}
+
+
+def loop_parts(path: str) -> dict:
+    """The track's loop ideas with what plays in each (vocals, synth...): separated now if not cached (~8 s)."""
+    from . import cues
+
+    d = cue_grids().get(path)
+    if not d:
+        raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+    with library("native"):
+        ideas = cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]
+        if cues.parts_available():
+            cues.loop_parts(Path(path), ideas, d["bpm"])
+        return {"loop_ideas": cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]}
 
 
 _wave_src: dict = {}  # path -> cues.WaveSource, the decoded audio of the last WAVE_KEEP tracks zoomed into
@@ -416,6 +447,109 @@ def deck_audio(path: str) -> Path:
         else:
             out.touch()
     return out
+
+
+def source_bpm(path: str, bpm: float) -> float:
+    """The tempo a tempo view stretches this track from: what its scan used (data/at-<bpm>/collection.db), or for a
+    track the view hasn't scanned yet, the same rule (Traktor's BPM, else ours, whole)."""
+    import sqlite3
+
+    from . import tempo
+
+    db = tempo.view_home(bpm) / "collection.db"
+    if db.exists():
+        with sqlite3.connect(db) as con:
+            row = con.execute("SELECT source_bpm FROM tracks WHERE path=? AND source_bpm > 0", (path,)).fetchone()
+        if row:
+            return float(row[0])
+    with sqlite3.connect(collection.NATIVE_DB) as con:
+        row = con.execute("SELECT COALESCE(traktor_bpm, bpm) FROM tracks WHERE path=?", (path,)).fetchone()
+    if not row or not row[0]:
+        raise ValueError("this track has no BPM to stretch from")
+    return float(analysis.round_bpm(row[0]))
+
+
+STRETCH_CHUNK, STRETCH_PRE, STRETCH_POST, STRETCH_FADE = 15.0, 4.0, 1.0, 0.03  # seconds of the track
+STRETCH_WORKERS = 8  # 4-min track: 15 s pieces 8 at once 5.5 s; one piece per core 9 s (long pieces slow down side by side)
+
+
+def stretch_parallel(stereo, sr: float, src: float, bpm: float):
+    """analysis.stretch in STRETCH_CHUNK pieces, STRETCH_WORKERS at once, for listening: ≈6 s for a 4-min track instead of
+    ≈30 (one Rubber Band can't use more cores). Each piece starts STRETCH_PRE early, so the stretcher has settled by its
+    own start (as Mixxx's real-time stretching does after a jump), and runs STRETCH_POST past its end for a STRETCH_FADE
+    crossfade into the next. Sounds like the whole-track stretch the view's scan uses; the samples differ, as two runs
+    of a phase vocoder from different starting points do."""
+    import os
+    from concurrent.futures import ThreadPoolExecutor
+
+    import numpy as np
+
+    k, n = src / bpm, len(stereo)
+    workers = min(STRETCH_WORKERS, os.cpu_count() or 1)
+    pre, post, fade = (int(x * sr) for x in (STRETCH_PRE, STRETCH_POST, STRETCH_FADE))
+    step = int(STRETCH_CHUNK * sr)
+    starts = list(range(0, n, step))
+
+    def piece(s):
+        a = max(0, s - pre)
+        return analysis.stretch(stereo[a:min(n, s + step + post)], sr, src, bpm)[round((s - a) * k):]
+
+    with ThreadPoolExecutor(workers) as ex:  # threads: each waits on its own Rubber Band process
+        parts = list(ex.map(piece, starts))
+    out = np.zeros((round(n * k), stereo.shape[1]), np.float32)
+    # equal power: two pieces' phases don't line up (correlation ≈ 0.06 at the joins), so a fade whose gains sum to 1
+    # dips there (to -7.6 dB in 10 ms on a test track); this one stays within how much two stretches differ anyway
+    x = np.linspace(0, np.pi / 2, fade, dtype=np.float32)[:, None]
+    fade_in, fade_out = np.sin(x), np.cos(x)
+    for i, (s, y) in enumerate(zip(starts, parts)):
+        t = round(s * k)
+        y = y[:max(0, min(len(out), round((s + step) * k) + fade) - t)].copy()
+        if i:
+            m = min(fade, len(y))
+            out[t:t + m] *= fade_out[:m]
+            y[:m] *= fade_in[:m]
+        out[t:t + len(y)] += y
+    return out
+
+
+def deck_stretched(path: str, bpm: float) -> tuple[Path, float]:
+    """The player's audio at a tempo view's BPM: (the file, its time / Traktor's time). Rubber Band R3 on the decoded
+    audio as the view's scan does, in parallel pieces (stretch_parallel), with Traktor's offset in front
+    (traktor.audio_offset, scaled), so stretched time = Traktor time × the ratio. ≈3 s once, kept like deck_audio."""
+    import hashlib
+    import subprocess
+
+    import numpy as np
+
+    p = playable(path)
+    if not 60 <= bpm <= 250:
+        raise ValueError("BPM out of range")
+    src = source_bpm(path, bpm)
+    ratio = src / bpm
+    off = traktor.audio_offset(p)
+    st = p.stat()
+    key = f"{p}|{st.st_size}|{st.st_mtime}|{off}|{src:g}>{bpm:g}|rb3-par{STRETCH_CHUNK:g}-ep"
+    out = DECK_AUDIO / (hashlib.sha1(key.encode()).hexdigest() + ".flac")
+    with _deck_locks.setdefault(out.name, threading.Lock()):
+        if not out.exists():
+            analysis.rubberband()  # installed and new enough, with how to install it if not
+            stereo, sr, _nch = analysis.decode(p)
+            y = stretch_parallel(stereo, sr, src, bpm)
+            if off:
+                y = np.concatenate([np.zeros((round(off * ratio), y.shape[1]), np.float32), y])
+            DECK_AUDIO.mkdir(parents=True, exist_ok=True)
+            tmp = out.with_suffix(".tmp.flac")
+            res = subprocess.run([_ffmpeg(), "-v", "error", "-y", "-f", "f32le", "-ar", str(int(sr)), "-ac", str(y.shape[1]),
+                                  "-i", "pipe:0", "-c:a", "flac", "-compression_level", "0", "-sample_fmt", "s32", str(tmp)],
+                                 input=np.ascontiguousarray(y, np.float32).tobytes(), capture_output=True, timeout=300)
+            if res.returncode or not tmp.exists():
+                raise ValueError(f"ffmpeg couldn't save the stretched audio: {res.stderr.decode(errors='replace')[:200]}")
+            tmp.replace(out)
+            for old in sorted(DECK_AUDIO.glob("*.flac"), key=lambda f: f.stat().st_mtime, reverse=True)[DECK_KEEP:]:
+                old.unlink(missing_ok=True)
+        else:
+            out.touch()
+    return out, ratio
 
 
 def wave_detail(path: str, t0: float | None = None, t1: float | None = None, n: int | None = None) -> dict:
@@ -502,12 +636,16 @@ def _render_loop(src: Path, start: float, length: float, smooth: bool, out_args:
                           input=y.astype(np.float32).tobytes(), capture_output=True, timeout=timeout)
 
 
-def loop_clip(path: str, start: float, length: float, smooth: bool = False) -> bytes:
+def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm: float | None = None) -> bytes:
     """Just the loop, cut sample-accurately by ffmpeg as float WAV (~0.15 s for 4 bars), so the page can loop it
-    gaplessly without decoding the whole track first."""
+    gaplessly without decoding the whole track first. bpm: from the track stretched to a tempo view's BPM
+    (start and length stay in Traktor's time)."""
     p = playable(path)
     if not (0 <= start < 3600 and 0 < length <= 120):
         raise ValueError("start / length out of range")
+    if bpm:
+        p, ratio = deck_stretched(path, bpm)  # Traktor's offset is already in front
+        start, length = start * ratio, length * ratio
     out = _render_loop(p, start, length, smooth, ["-f", "wav", "-acodec", "pcm_f32le", "-"], timeout=30)
     if out.returncode or not out.stdout:
         raise ValueError(f"ffmpeg couldn't cut the loop: {out.stderr.decode(errors='replace')[:200]}")
@@ -817,8 +955,10 @@ def build_app(log_dirs: list[Path]):
 
     async def audio(request: Request):
         try:
-            p = await run_in_threadpool(deck_audio, request.query_params.get("path", ""))
-        except ValueError as e:
+            q = request.query_params
+            p = await run_in_threadpool(lambda: deck_stretched(q["path"], float(q["bpm"]))[0] if q.get("bpm")
+                                        else deck_audio(q.get("path", "")))
+        except (ValueError, KeyError, SystemExit) as e:
             return JSONResponse({"error": str(e)}, status_code=404)
         return FileResponse(p)  # supports Range requests, so jumping around doesn't load the whole file
 
@@ -828,8 +968,8 @@ def build_app(log_dirs: list[Path]):
         q = request.query_params
         try:
             data = await run_in_threadpool(loop_clip, q.get("path", ""), float(q.get("start", "nan")), float(q.get("len", "nan")),
-                                           q.get("smooth") == "1")
-        except ValueError as e:
+                                           q.get("smooth") == "1", float(q["bpm"]) if q.get("bpm") else None)
+        except (ValueError, SystemExit) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
@@ -907,11 +1047,14 @@ def build_app(log_dirs: list[Path]):
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
         Route("/api/cues", respond(lambda q: track_cues(q["path"]))),
+        Route("/api/cues/parts", respond(lambda q: loop_parts(q["path"]))),
         Route("/api/wave", respond(lambda q: wave_detail(q["path"], num(q, "t0"), num(q, "t1"), int(num(q, "n", 1000))))),
         Route("/api/audio", audio),
         Route("/api/loop", loop_endpoint),
+        Route("/api/deck/stretch", respond(lambda q: {"ratio": deck_stretched(q["path"], float(q["bpm"]))[1]})),
         Route("/api/hold", hold_endpoint, methods=["POST"]),
         Route("/api/cues/approve", approve_endpoint, methods=["POST"]),
+        Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),
         Route("/api/cues/rescan", post(lambda b: rescan_track(str(b["path"]))), methods=["POST"]),
         Route("/api/cues/write", post(lambda b: write_cues(bool(b.get("dry_run", True)))), methods=["POST"]),
