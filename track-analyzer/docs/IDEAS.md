@@ -64,6 +64,12 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 - 💡 **Gaps in the collection.** Colours, keys or BPM ranges with few tracks.
 - 💡 **Artist profiles.** Each artist's typical colour and sound.
 - 💡 **Navidrome playlists** by mood or colour, for listening outside DJing.
+- 💡 **Real-time stretching in the page's player**, as Mixxx does: stretch from the playhead as it plays, so a jump or
+  the tempo toggle never waits and nothing is stored. Today the player stretches the whole track first, in parallel
+  15 s pieces (≈6 s for a 4-min track, started when it opens, then kept). Two ways: (1) the server streams Rubber Band's real-time output (`-R`, same spectrum
+  as an offline stretch in a test) from each jump, with the player playing a stream instead of a file (pads, loops,
+  jumps, bar readout all reworked); (2) a WebAssembly build of Rubber Band in the page (check one has the R3 engine,
+  and that its GPL licence fits).
 
 ### Recording and practice
 - 💡 **Analyse mix recordings** (skipped by `scan` today): timeline of genre, energy and colour through the mix.

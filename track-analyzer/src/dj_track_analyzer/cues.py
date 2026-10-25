@@ -26,8 +26,16 @@ MODEL = HOME / "my_cues.joblib"
 SR, N, HOP = 44100, 2048, 441  # 10 ms hop
 BANDS = [(30, 100), (100, 250), (250, 800), (800, 2500), (2500, 6000), (6000, 16000)]
 N_MELS = 40
-BARS_VERSION = "bars-2"  # 2: measured on Traktor's timeline (traktor.audio_offset)
+BARS_VERSION = "bars-3"  # 2: measured on Traktor's timeline (traktor.audio_offset); 3: + kick pulse at 100-250 Hz
+KICK_BODY_DB = 4.0  # a 100-250 Hz pulse this strong is a kick, whatever the bass does below 100 Hz
+KICK_SUB_DB = 15.0  # ... if the bar has sub-bass: 30-100 Hz within this of the track's loud level (its 90th percentile)
+KICK_BARE_DB = 10.0  # or both pulses this strong (a kick with no bassline under it, as in a DJ intro) ...
+KICK_BARE_SUB_DB = 30.0  # ... with 30-100 Hz within this of the loud level, for two bars running
 WAVE_VERSION = "wave-2"
+PARTS_VERSION = "parts-3"  # what plays in a loop idea (loop_parts); 2: + the kick, from the drum stem; 3: per-beat levels
+PART_DB = -20.0  # a stem this close to the loop's level (per beat) plays there; without it the stem sits at -40 to -65 dB
+PART_BG_DB = -33.0  # ... and a synth down to this is in the background (Soft's pad: -25 dB; no synth: -38 to -45)
+KICK_STEM_DB = -25.0  # the drum stem's 30-150 Hz on the beat this close to the loop's level, and pulsing: a kick
 WAVE_SLICES = 1500  # waveform overview resolution (fewer for short files: at least 0.1 s per slice)
 WS = (1, 2, 4, 8, 16)  # context windows, bars
 MIN_CUES = 3  # tracks with fewer of your own cues aren't used for learning
@@ -40,7 +48,8 @@ CUE_TYPES = {"0": "cue", "1": "fade-in", "2": "fade-out", "3": "load", "4": "gri
 
 def grids(nml: str | None = None) -> dict[str, dict]:
     """{file path: {bpm, grid_ms, cues: [{ms, type, bars, hotcue, name}]}} for every track Traktor has a beat
-    grid for. Cues are your own (cue points and loops); the AutoGrid marker is grid_ms."""
+    grid for. Cues are your own (cue points and loops); marks your fade-in, fade-out and load markers (for the
+    page only); the AutoGrid marker is grid_ms."""
     text = traktor.find_collection(nml).read_text(encoding="utf-8")
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     out = {}
@@ -63,7 +72,10 @@ def grids(nml: str | None = None) -> dict[str, dict]:
                       for c in cues if c.get("TYPE") in ("0", "5")), key=lambda c: c["ms"])
         every = [{"ms": float(c["START"]), "type": CUE_TYPES.get(c.get("TYPE"), c.get("TYPE")), "hotcue": int(c.get("HOTCUE", -1))}
                  for c in cues if c.get("TYPE") != "4"]  # fade / load markers can take hot-cue slots too
-        d = {"bpm": bpm, "grid_ms": float(g[0]["START"]), "cues": own, "all_cues": every}
+        marks = sorted(({"ms": float(c["START"]), "type": CUE_TYPES[c["TYPE"]], "bars": None,
+                         "hotcue": int(c.get("HOTCUE", -1)), "name": c.get("NAME")}
+                        for c in cues if c.get("TYPE") in ("1", "2", "3")), key=lambda c: c["ms"])  # shown, never learned from
+        d = {"bpm": bpm, "grid_ms": float(g[0]["START"]), "cues": own, "all_cues": every, "marks": marks}
         for p in traktor.location_paths(traktor.attrs(loc.group(0))):
             out[p] = d
     return out
@@ -157,8 +169,10 @@ def _wave(x: np.ndarray, bands: np.ndarray, n: int | None = None) -> np.ndarray:
 
 
 def _bars_from_spectra(bands, mels, dur: float, bpm: float, grid_ms: float):
-    """Bar start times (s) on Traktor's grid and per bar: 6 band levels, 40 mel levels (dB), kick pulse,
-    off-beat hat pulse (dB, on-beat vs between beats)."""
+    """Bar start times (s) on Traktor's grid and per bar: 6 band levels, 40 mel levels (dB), the kick's body at
+    100-250 Hz (its first 3/16 of the beat vs the rest), kick pulse (30-100 Hz) and off-beat hat pulse (dB, on-beat
+    vs between beats). Below 100 Hz a trance kick's long tail and a rolling or off-beat bassline fill the gaps between
+    beats, so the 30-100 Hz pulse misses the kick under a full drop on about a quarter of tracks; 100-250 Hz doesn't."""
     beat, g0 = 60 / bpm, grid_ms / 1000
     bar = 4 * beat
     k0 = -int(g0 // bar)  # whole bars before the grid marker
@@ -166,18 +180,22 @@ def _bars_from_spectra(bands, mels, dur: float, bpm: float, grid_ms: float):
     starts = starts[(starts >= 0) & (starts + bar <= dur)]
     nfr = len(bands)
     fr = lambda t: min(nfr - 1, max(0, int(round(t / (HOP / SR)))))  # noqa: E731
-    F = np.zeros((len(starts), len(BANDS) + N_MELS + 2), np.float32)
+    fc = lambda t: fr(t - N / 2 / SR)  # noqa: E731  # the frame centred on t
+    F = np.zeros((len(starts), len(BANDS) + N_MELS + 3), np.float32)
     for i, s in enumerate(starts):
         a, b = fr(s), fr(s + bar)
-        on, off, hon, hoff = [], [], [], []
+        on, off, hon, hoff, bon, boff = [], [], [], [], [], []
         for j in range(4):
             t = s + j * beat
+            bon.append(bands[fc(t):fc(t + 3 / 16 * beat), 1].mean())
+            boff.append(bands[fc(t + 5 / 16 * beat):fc(t + 15 / 16 * beat), 1].mean())
             on.append(bands[fr(t):fr(t + 0.06), 0].mean())
             off.append(bands[fr(t + 0.25 * beat):fr(t + 0.75 * beat), 0].mean())
             hon.append(bands[fr(t + 0.45 * beat):fr(t + 0.55 * beat), 5].mean())
             hoff.append(bands[fr(t - 0.05 * beat):fr(t + 0.05 * beat), 5].mean())
         F[i, :len(BANDS)] = _db(bands[a:b].mean(0))
         F[i, len(BANDS):len(BANDS) + N_MELS] = _db(mels[a:b].mean(0))
+        F[i, -3] = _db(np.mean(bon)) - _db(np.mean(boff))
         F[i, -2] = _db(np.mean(on)) - _db(np.mean(off))
         F[i, -1] = _db(np.mean(hon)) - _db(np.mean(hoff))
     return starts, F
@@ -363,7 +381,7 @@ def features(starts: np.ndarray, F: np.ndarray, grid_ms: float) -> tuple[np.ndar
     """One row per bar: the bar's own sound, how it changes from before to after (1-16 bars), timbre novelty,
     how well the next bars repeat (loopability), and where the bar sits in the phrase pattern."""
     nb = len(starts)
-    B, M, kick, hat = F[:, :6], F[:, 6:6 + N_MELS], F[:, -2], F[:, -1]
+    B, M, body, kick, hat = F[:, :6], F[:, 6:6 + N_MELS], F[:, -3], F[:, -2], F[:, -1]
     loud = _db((10 ** (B / 10)).sum(1))
     base = np.column_stack([B - loud.max(), loud - loud.max(), kick, hat])
     Mz = (M - M.mean(0)) / (M.std(0) + 1e-6)
@@ -396,12 +414,25 @@ def features(starts: np.ndarray, F: np.ndarray, grid_ms: float) -> tuple[np.ndar
     zero = int(np.argmin(np.abs(starts - grid_ms / 1000)))  # the grid marker's bar
     pos = np.column_stack([((idx - zero) % m == 0) for m in (2, 4, 8, 16, 32)] + [idx / nb, idx, nb - idx, idx - zero])
     X = np.column_stack([base] + nov + ctx + loop + [pos]).astype(np.float32)
-    return X, {"loud": loud - loud.max(), "kick": kick}
+    return X, {"loud": loud - loud.max(), "kick": kick, "kick_on": kick_on(kick, body, B[:, 0]),
+               "bass_on": B[:, 0] - np.percentile(B[:, 0], 90) > -KICK_SUB_DB}
 
 
-def kick_on(kick: np.ndarray) -> np.ndarray:
-    """Bars where the kick plays: its pulse at least half of the track's usual strong pulse."""
-    return kick > max(np.percentile(kick, 80), 2.0) * 0.5
+def kick_on(kick: np.ndarray, body: np.ndarray, low: np.ndarray) -> np.ndarray:
+    """Bars where the kick plays: its 30-100 Hz pulse at least half of the track's usual strong pulse, or its body
+    (100-250 Hz) pulsing clearly; either only with sub-bass in the bar (`low`: 30-100 Hz level, dB), since in a
+    breakdown without it both pulses come from noise or an echoing synth. On a ~450-track collection the loud half
+    of a track read as kick-free on 108 tracks with the first test alone, 15 with all three; bars without sub-bass
+    read as kick 30% of the time with the first test alone, 0% now. A bare kick before the bassline comes in (a DJ
+    intro) has little sub-bass but pulses hard in both bands, which an echo or noise doesn't (in one at a time), so
+    both pulses at KICK_BARE_DB for two bars running count too: 806 bars on 70 tracks, 42 of them intros; the five
+    mid-track cue names it changed were all right by ear (London's on Fire, Crush, Paper Walls, WE ARE FREE, The Less I
+    Know the Better)."""
+    rel = low - np.percentile(low, 90)
+    with_sub = ((kick > max(np.percentile(kick, 80), 2.0) * 0.5) | (body > KICK_BODY_DB)) & (rel > -KICK_SUB_DB)
+    bare = (kick > KICK_BARE_DB) & (body > KICK_BARE_DB) & (rel > -KICK_BARE_SUB_DB)
+    bare &= np.convolve(bare, [1, 1, 1], "same") >= 2  # with a neighbour: a lone hit isn't a beat
+    return with_sub | bare
 
 
 def labels(starts: np.ndarray, bpm: float, cues: list[dict]) -> tuple[np.ndarray, np.ndarray, list[float]]:
@@ -474,7 +505,7 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
             continue
         X, info = features(hit[0], hit[1], d["grid_ms"])
         yc, yl, lens = labels(hit[0], d["bpm"], d["cues"])
-        rows.append((p, X, yc, yl, lens, d["grid_ms"], hit[0], d["bpm"], hit[1], info["kick"]))
+        rows.append((p, X, yc, yl, lens, d["grid_ms"], hit[0], d["bpm"], hit[1], info["kick_on"]))
     progress(f"Learning from {len(rows)} tracks: {sum(r[2].sum() for r in rows)} cue points, "
              f"{sum(r[3].sum() for r in rows)} loops")
     X = np.vstack([r[1] for r in rows])
@@ -516,9 +547,9 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
     for align in (1, 2, 4):  # which grid the clean-loop ideas start on: chosen by how often they find your loops
         found = Counter()
         for i in with_loop:  # your loop among the (up to 5) loop ideas, made without seeing this track's cues
-            zero = int(np.argmin(np.abs(rows[i][6] - rows[i][5] / 1000)))
+            zero = int(np.argmin(np.abs(rows[i][6] - rows[i][5] / 1000)))  # without the peak ideas, as measured first
             idx = [k for k, _w in loop_ideas(Pl[off[i]:off[i + 1]], rows[i][8], rows[i][9], cue_pt[i][0], loop_bars,
-                                             zero=zero, align=align)]
+                                             n=5, peak=0, zero=zero, align=align)]
             truth = np.flatnonzero(rows[i][3])
             dist = min((abs(int(t) - k) for t in truth for k in idx), default=99)
             found["exact"] += dist == 0
@@ -586,10 +617,12 @@ def loopability(F: np.ndarray, L: int) -> np.ndarray:
     return out
 
 
-def loop_ideas(pl: np.ndarray, F: np.ndarray, kick: np.ndarray, picks: list[int], L: int, n: int = 5,
-               like_yours: int = 2, zero: int = 0, align: int = 1) -> list[tuple[int, str]]:
-    """Up to n loop starts: the `like_yours` best by the loop model (where you put your loops), then the ones that
-    loop most cleanly anywhere in the track. Never on a suggested cue point, at least 8 bars apart."""
+def loop_ideas(pl: np.ndarray, F: np.ndarray, on: np.ndarray, picks: list[int], L: int, n: int = 6,
+               like_yours: int = 2, peak: int = 2, zero: int = 0, align: int = 1) -> list[tuple[int, str]]:
+    """Up to n loop starts: the `like_yours` best by the loop model (where you put your loops), then `peak` that
+    loop most cleanly at full energy (kick on, within 1.5 dB of the loudest bar, as _idea's "Peak groove"; the
+    loudest kick loops if too few are), then the ones that loop most cleanly anywhere in the track. Never on a
+    suggested cue point, at least 8 bars apart."""
     nb = len(pl)
     ok = np.ones(nb, bool)
     ok[max(0, nb - L + 1):] = False
@@ -607,33 +640,185 @@ def loop_ideas(pl: np.ndarray, F: np.ndarray, kick: np.ndarray, picks: list[int]
     take(np.argsort(-np.where(ok, pl, -1)), like_yours, "like your loops")
     lp = loopability(F, L)
     lp[(np.arange(nb) - zero) % align != 0] = -np.inf  # clean loops start on the align-bar grid from the grid marker
+    if peak:
+        loud = _db((10 ** (F[:, :6] / 10)).sum(1))
+        level, kicks = np.full(nb, -np.inf), np.zeros(nb, bool)
+        for i in range(nb - L + 1):
+            level[i] = loud[i:i + L].mean() - loud.max()
+            kicks[i] = on[i:i + L].mean() > 0.5
+        fits, upto = np.isfinite(lp), len(out) + peak
+        body = fits.copy()  # not in the DJ intro / outro: drums mastered loud, but not the peak
+        body[:int(nb * 0.15)] = body[int(nb * 0.85):] = False
+        # in the body before anywhere; with the kick before without (kick_on still misses it on ~4% of tracks)
+        for where, kick_needed in ((body, True), (body, False), (fits, True), (fits, False)):
+            take([i for i in np.argsort(-lp) if where[i] and (kicks[i] or not kick_needed) and level[i] > -1.5],
+                 upto, "peak energy, loops cleanly")
+        take([i for i in np.argsort(-level) if fits[i]], upto, "peak energy")
     take(np.argsort(-lp), n, "loops cleanly")
     return out
 
 
-def _idea(i: int, why: str, starts, F, kick, L: int, bpm: float, lp: np.ndarray, pl: np.ndarray) -> dict:
-    on = kick_on(kick)
+def _idea(i: int, why: str, starts, F, on: np.ndarray, L: int, bpm: float, lp: np.ndarray, pl: np.ndarray) -> dict:
     loud = _db((10 ** (F[:, :6] / 10)).sum(1))
     level = float(loud[i:i + L].mean() - loud.max())
     k = on[i:i + L].mean() > 0.5
-    kind = ("Peak groove" if level > -1.5 else "Lighter groove") if k else "No kick: pads / melody"
     fin = lp[np.isfinite(lp)]
     steady = bool(len(fin) and lp[i] >= np.percentile(fin, 90))
     return {"bar": i, "ms": round(float(starts[i]) * 1000, 3), "time": _clock(starts[i]), "bars": L,
-            "len_ms": round(L * 4 * 60000 / bpm, 3), "kind": kind + (" · very steady" if steady else ""),
-            "why": why, "score": round(float(pl[i]), 2)}
+            "len_ms": round(L * 4 * 60000 / bpm, 3), "kind": _kind(level, k, steady), "level_db": round(level, 2),
+            "steady": steady, "why": why, "score": round(float(pl[i]), 2)}
+
+
+def _kind(level: float, kick: bool, steady: bool) -> str:
+    kind = ("Peak groove" if level > -1.5 else "Lighter groove") if kick else "No kick: pads / melody"
+    return kind + (" · very steady" if steady else "")
 
 
 def _clock(s: float) -> str:
     return f"{int(s // 60)}:{s % 60:04.1f}"
 
 
-def _name(i: int, first: bool, loud: np.ndarray, kick: np.ndarray, nb: int) -> str:
+# ----------------------------------------------------------------------------
+# What plays in a loop: Demucs (the optional `stems` extra) splits the loop's audio into drums, bass, other (synths,
+# keys, pads) and vocals. Only the loops, with 4 s either side for context (Demucs works in 7.8 s chunks anyway), so a
+# track's six loop ideas take ~8 s on Apple Silicon. On the instrument tagger's "voice" and the voice/instrumental head,
+# Pjanoo's synth lead was a voice half the track; its separated vocals stay at -62 dB. Neither those heads, the gender
+# head nor the vocal stem's pitch told male from female on 8 known singers, so no gender. Checked by ear: vocals in
+# Blackberries' intro (0:03.8), vocal bits in Beautiful People (0:13.3) and Time's a Fantasy (1:09.8).
+# ----------------------------------------------------------------------------
+
+PARTS = {"drums": "drums", "bass": "bass", "other": "synth", "vocals": "vocals"}
+_sep: dict = {}
+
+
+def parts_available() -> bool:
+    import importlib.util
+
+    return importlib.util.find_spec("demucs") is not None
+
+
+def _separator():
+    """(Demucs htdemucs, device, lock), loaded once."""
+    if "model" not in _sep:
+        import threading
+
+        import torch
+        from demucs.pretrained import get_model
+
+        dev = "mps" if torch.backends.mps.is_available() else "cuda" if torch.cuda.is_available() else "cpu"
+        m = get_model("htdemucs")
+        m.eval()
+        _sep.update(model=m.to(dev), device=dev, lock=threading.Lock())
+    return _sep["model"], _sep["device"], _sep["lock"]
+
+
+def _parts_key(p: Path, ms: float, len_ms: float) -> str:
+    return hashlib.sha1(f"{p}|{ms:.0f}|{len_ms:.0f}|{PARTS_VERSION}".encode()).hexdigest()
+
+
+def _parts_shares(m: dict) -> dict:
+    """From a loop's per-beat measurements (levels in dB against the loop, per stem; the drum stem's 30-150 Hz on the
+    beat and its pulse), the share of beats where each part plays."""
+    on = lambda xs, t: round(float(np.mean(np.asarray(xs) > t)), 3)  # noqa: E731
+    sh = {k: on(v, PART_DB) for k, v in m["db"].items()}
+    sh["synth_bg"] = on(m["db"]["synth"], PART_BG_DB)
+    sh["kick"] = round(float(np.mean((np.asarray(m["kick_db"]) > KICK_STEM_DB) & (np.asarray(m["kick_pulse"]) > 0))), 3)
+    return sh
+
+
+def _parts_label(sh: dict) -> str:
+    """What the loop has, from each part's share of beats: vocals through it or only bits, synth (and "no bass" with
+    them when there's no bassline, for layering over another track's), else which of drums and bass ("drums only",
+    "drums + bass only")."""
+    tags = []
+    if sh["vocals"] >= 0.5:
+        tags.append("vocals")
+    elif sh["vocals"] >= 0.125:  # 2 of 16 beats: a word or a vocal shot
+        tags.append("vocal bits")
+    if sh["synth"] >= 0.5:
+        tags.append("synth")
+    elif sh["synth_bg"] >= 0.5:
+        tags.append("background synth")
+    if tags and sh["bass"] < 0.5:
+        tags.append("no bass")
+    rest = [k for k in ("drums", "bass") if sh[k] >= 0.5]
+    if not tags and rest:
+        tags.append(" + ".join(rest) + " only")
+    return " · ".join(tags)
+
+
+def loop_parts(p: Path, ideas: list[dict], bpm: float, compute: bool = True) -> list[dict | None]:
+    """For each loop idea ({ms, len_ms}, on Traktor's timeline): {drums, bass, synth, vocals: share of its beats where
+    that stem plays (within PART_DB of the loop), synth_bg (within PART_BG_DB), kick: share of beats with a kick in the
+    drum stem, label (_parts_label)}; None where not cached and compute is False. The per-beat levels are cached, so
+    the thresholds can change without separating again. The kick is measured on the drum
+    stem, where no bassline fills the gaps between beats: on 4 loops that kick_on (the full mix) read as kick-free,
+    it heard a kick, and all 4 had one by ear."""
+    with _bars_db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS parts (k TEXT PRIMARY KEY, path TEXT, data TEXT)")
+        got = {}
+        for l in ideas:
+            row = con.execute("SELECT data FROM parts WHERE k=?", (_parts_key(p, l["ms"], l["len_ms"]),)).fetchone()
+            if row:
+                got[l["ms"]] = json.loads(row[0])
+    todo = [l for l in ideas if l["ms"] not in got]
+    if todo and compute:
+        import julius
+        import torch
+        from demucs.apply import apply_model
+        from scipy.signal import butter, sosfilt
+
+        model, dev, lock = _separator()
+        stereo, sr, _nch = analysis.decode(p)
+        x = np.ascontiguousarray(np.asarray(stereo, np.float32).T)
+        off = traktor.audio_offset(p) / sr  # Traktor time = decoded time + off
+        db = lambda y: 10 * np.log10(np.mean(y ** 2) + 1e-12)  # noqa: E731
+        for l in todo:
+            a = l["ms"] / 1000 - off
+            b = a + l["len_ms"] / 1000
+            a0, b0 = max(0.0, a - 4), min(x.shape[1] / sr, b + 4)
+            seg = torch.from_numpy(x[:, int(a0 * sr):int(b0 * sr)].copy())
+            if sr != model.samplerate:
+                seg = julius.resample_frac(seg, int(sr), model.samplerate)
+            ref = seg.mean(0)
+            mu, sd = ref.mean(), ref.std() + 1e-8
+            with lock, torch.no_grad():  # as the demucs command does: normalized, shifts=1, overlap 0.25
+                st = apply_model(model, ((seg - mu) / sd)[None].to(dev), device=dev, shifts=1, split=True,
+                                 overlap=0.25)[0].cpu() * sd + mu
+            k0 = int((a - a0) * model.samplerate)
+            st = st[:, :, k0:k0 + int((b - a) * model.samplerate)].mean(1).numpy()  # (stems, samples), mono
+            mix = st.sum(0)
+            nb = max(1, int(round((b - a) * bpm / 60)))
+            hop = len(mix) // nb
+            beats = range(nb)
+            mixb = [db(mix[k * hop:(k + 1) * hop]) for k in beats]
+            m = {"db": {PARTS[src]: [round(db(st[j, k * hop:(k + 1) * hop]) - mixb[k], 1) for k in beats]
+                        for j, src in enumerate(model.sources)}}
+            low = sosfilt(butter(4, [30, 150], "bandpass", fs=model.samplerate, output="sos"),
+                          st[model.sources.index("drums")])
+            hit = int(0.06 * model.samplerate)  # the kick's first 60 ms, against the middle of the beat
+            m["kick_db"] = [round(db(low[k * hop:k * hop + hit]) - mixb[k], 1) for k in beats]
+            m["kick_pulse"] = [round(db(low[k * hop:k * hop + hit]) - db(low[k * hop + int(0.3 * hop):k * hop + int(0.75 * hop)]), 1)
+                               for k in beats]
+            got[l["ms"]] = m
+            with _bars_db() as con:
+                con.execute("INSERT OR REPLACE INTO parts VALUES (?,?,?)",
+                            (_parts_key(p, l["ms"], l["len_ms"]), str(p), json.dumps(m)))
+    out = []
+    for l in ideas:
+        sh = _parts_shares(got[l["ms"]]) if l["ms"] in got else None
+        out.append({**sh, "label": _parts_label(sh)} if sh else None)
+    return out
+
+
+def _name(i: int, first: bool, loud: np.ndarray, on: np.ndarray, nb: int, bass: np.ndarray) -> str:
     """What happens at bar i: the kick over the next 8 bars against the 16 before (so a 2-bar fill isn't a
-    breakdown), and the level over 4 bars either side."""
-    on = kick_on(kick)
+    breakdown), the same for the sub-bass (`bass`: bars with it), and the level over 4 bars either side. Bass in: the
+    bassline arrives over a kick already playing, where you'd swap basslines in a mix."""
     k_bef = on[max(0, i - 16):i].mean() > 0.5 if i else False
     k_aft = on[i:min(nb, i + 8)].mean() > 0.5
+    b_bef = bass[max(0, i - 16):i].mean() > 0.5 if i else False
+    b_aft = bass[i:min(nb, i + 8)].mean() > 0.5
     b, a = slice(max(0, i - 4), i), slice(i, min(nb, i + 4))
     l_bef = loud[b].mean() if i else -60.0
     l_aft = loud[a].mean()
@@ -643,6 +828,8 @@ def _name(i: int, first: bool, loud: np.ndarray, kick: np.ndarray, nb: int) -> s
         return "Breakdown"
     if not k_bef and k_aft:
         return "Drop" if l_aft > -4 else "Kick in"
+    if k_bef and k_aft and not b_bef and b_aft:
+        return "Bass in"
     if i > nb * 0.7 and l_aft < l_bef - 2:
         return "Outro"
     if l_aft > l_bef + 2:
@@ -681,6 +868,32 @@ def corrections(starts: np.ndarray, bpm: float, own: list[dict], p: np.ndarray, 
     return out
 
 
+def alternatives(starts: np.ndarray, bpm: float, mine: list[tuple[dict, int, float]], cues: list[dict], p: np.ndarray,
+                 zero: int, floor: float, window: int = 4) -> list[dict]:
+    """Where each of your cue points could go instead, for choosing by hand: the bar before and after, the bars up to
+    `window` away that score at least `floor`, every suggested cue, and its own bar's downbeat when it's off it;
+    never onto a bar another of your cues is on."""
+    taken = {i for _c, i, _d in mine}
+    by_bar = {q["bar"]: q for q in cues}
+    out = []
+    for c, i, dist in mine:
+        if c["type"] != "cue":
+            continue
+        near = {j for j in range(max(0, i - window), min(len(starts), i + window + 1)) if p[j] >= floor or abs(j - i) == 1}
+        off = abs(starts[i] - c["ms"] / 1000) / (60 / bpm) > 0.05  # more than 1/20 beat off its bar's downbeat
+        opts = []
+        for j in sorted((near | set(by_bar) | ({i} if off else set())) - (taken - {i})):
+            if j == i and not off:
+                continue  # already there
+            q = by_bar.get(j)
+            opts.append({"to_ms": round(float(starts[j]) * 1000, 3), "to_bar": j - zero + 1, "to_time": _clock(starts[j]),
+                         "score": round(float(p[j]), 2), "phrase_grid": (j - zero) % 8 == 0, **({"name": q["name"]} if q else {})})
+        if opts:  # none only when the bars either side hold your other cues
+            out.append({"hotcue": c["hotcue"], "name": c["name"], "from_ms": c["ms"], "from_bar": i - zero + 1,
+                        "score_here": round(float(p[i]) if dist <= 1.01 else 0.0, 2), "options": opts})
+    return out
+
+
 def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = False,
             own: list[dict] | None = None) -> dict:
     """Suggested cue points (named by what happens there) and a mix loop for one track, plus the per-bar
@@ -703,8 +916,17 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
     own = own or []
     mine = _own_bars(starts, bpm, own)
     cues = [{"bar": i, "ms": round(float(starts[i]) * 1000, 3), "time": _clock(starts[i]),
-             "name": _name(i, n == 0, info["loud"], info["kick"], nb), "score": round(float(pc[i]), 2)}
+             "name": _name(i, n == 0, info["loud"], info["kick_on"], nb, info["bass_on"]), "score": round(float(pc[i]), 2)}
             for n, i in enumerate(picks)]
+    held, more = {i for _c, i, _d in mine}, []
+    for i in map(int, np.argsort(-pc)):  # the six next-best bars, for a free slot when every pick is at one of your cues
+        if len(more) >= 6:
+            break
+        if all(abs(i - j) >= 2 for j in held) and all(abs(i - j) >= 4 for j in picks + more):
+            more.append(i)
+    first = min([*picks, *held, *more], default=-1)
+    more = [{"bar": i, "ms": round(float(starts[i]) * 1000, 3), "time": _clock(starts[i]),
+             "name": _name(i, i == first, info["loud"], info["kick_on"], nb, info["bass_on"]), "score": round(float(pc[i]), 2)} for i in sorted(more)]
     moved_by_suggestion = []
     for q in cues:  # next to one of your cues, a suggestion is agreement (same bar) or a correction (1-2 bars)
         c, j, dist = min(mine, key=lambda m: abs(m[1] - q["bar"]), default=(None, None, None))
@@ -736,13 +958,21 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
                       "from_bar": j - zero_ + 1, "to_bar": q["bar"] - zero_ + 1, "to_time": q["time"],
                       "score_here": round(float(sc[j]) if dist <= 1.01 else 0.0, 2), "score_there": round(float(sc[q["bar"]]), 2),
                       "phrase_grid": (q["bar"] - zero_) % 8 == 0, "suggested_as": q["name"]})
+    alts = alternatives(starts, bpm, mine, cues, fair if fair is not None else pc, zero_, b["threshold"] / 2)
     loop, ideas = None, []
     if pl_all is not None:
         L = b["loop_bars"]
         lp = loopability(F, L)
         zero = int(np.argmin(np.abs(starts - grid_ms / 1000)))
-        ideas = [_idea(i, why, starts, F, info["kick"], L, bpm, lp, pl_all)
-                 for i, why in loop_ideas(pl_all, F, info["kick"], picks, L, zero=zero, align=b.get("loop_align", 1))]
+        ideas = [_idea(i, why, starts, F, info["kick_on"], L, bpm, lp, pl_all)
+                 for i, why in loop_ideas(pl_all, F, info["kick_on"], picks, L, zero=zero, align=b.get("loop_align", 1))]
+        parts = loop_parts(Path(path), ideas, bpm, compute=False) if ideas else []
+        for l, pt in zip(ideas, parts):
+            if pt:
+                l["parts"] = pt
+                l["kind"] = _kind(l["level_db"], pt["kick"] >= 0.5, l["steady"])  # the drum stem's kick over kick_on's
+                if pt["label"]:
+                    l["kind"] += " · " + pt["label"]
         loop = ideas[0] if ideas else None  # the one most like yours
     zero = int(np.argmin(np.abs(starts - grid_ms / 1000)))
     w = wave_get(Path(path))
@@ -753,8 +983,9 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
         for f in fixes:
             if any(_same_fix(f, g) for g in ign):
                 f["ignored"] = True
-    return {"loop_ideas": ideas, "corrections": fixes, "wave": wave, "bpm": bpm, "bar_seconds": round(4 * 60 / bpm, 4), "first_bar_s": round(float(starts[0]), 4),
-            "grid_bar": zero, "bars": nb, "cues": cues, "loop": loop,
+    return {"loop_ideas": ideas, "parts_pending": bool(ideas) and parts_available() and any("parts" not in l for l in ideas),
+            "corrections": fixes, "alternatives": alts, "wave": wave, "bpm": bpm, "bar_seconds": round(4 * 60 / bpm, 4), "first_bar_s": round(float(starts[0]), 4),
+            "grid_bar": zero, "bars": nb, "cues": cues, "more_cues": more, "loop": loop,
             "loudness": [round(float(x), 1) for x in info["loud"]],
             "kick": [round(float(x), 1) for x in info["kick"]],
             "trained_at": b["trained_at"]}
@@ -824,11 +1055,12 @@ def _same_fix(f: dict, g: dict) -> bool:
 
 
 def pending_corrections(path: str, fixes: list[dict]) -> list[dict]:
-    """Corrections neither ignored nor already approved."""
+    """Corrections neither ignored nor already approved (an approved move of that cue to any bar settles them)."""
     ign = ignored(path)
     pl = plans().get(path)
     moves = pl["plan"]["move"] if pl else []
-    return [f for f in fixes if not any(_same_fix(f, g) for g in ign) and not any(_same_fix(f, m) for m in moves)]
+    return [f for f in fixes if not any(_same_fix(f, g) for g in ign)
+            and not any(f["hotcue"] == m["hotcue"] and abs(f["from_ms"] - m["from_ms"]) < 1 for m in moves)]
 
 
 def forget_track(path: str) -> None:
@@ -839,35 +1071,62 @@ def forget_track(path: str) -> None:
 
 
 def plans() -> dict[str, dict]:
-    """{path: {grid, plan: {add: [...], move: [...]}, at}}: what you approved and `cues apply` will write."""
+    """{path: {grid, plan: {add: [...], move: [...], remove: [...]}, at}}: what you approved and `cues apply` will write."""
     with _plan_db() as con:
         return {r[0]: {"grid": r[1], "plan": json.loads(r[2]), "at": r[3]} for r in con.execute("SELECT * FROM cue_plan")}
 
 
+def clean_plan(plan: dict | None) -> dict:
+    """An approval from the page, as it's saved: only the fields resolve() and apply use."""
+    add, move, remove = (plan or {}).get("add", []), (plan or {}).get("move", []), (plan or {}).get("remove", [])
+    return {"add": [{"ms": float(a["ms"]), "name": str(a["name"])[:40], "type": "loop" if a.get("type") == "loop" else "cue",
+                     "len_ms": float(a.get("len_ms") or 0), **({"hand": True} if a.get("hand") else {}),
+                     **({"slot": int(a["slot"])} if a.get("slot") is not None and 0 <= int(a["slot"]) <= 7 else {})} for a in add],
+            "move": [{"from_ms": float(m["from_ms"]), "to_ms": float(m["to_ms"]), "hotcue": int(m["hotcue"]),
+                      "name": str(m.get("name") or "")} for m in move],
+            "remove": [{"ms": float(r["ms"]), "hotcue": int(r["hotcue"]), "type": str(r["type"]), "name": str(r.get("name") or "")}
+                       for r in remove if str(r.get("type")) in CUE_TYPES.values() and r.get("type") != "grid"]}
+
+
 def set_plan(path: str, bpm: float, grid_ms: float, plan: dict | None) -> dict:
     """Save (or with None / an empty plan, clear) your approval for one track. Writes nothing to Traktor."""
-    add, move = (plan or {}).get("add", []), (plan or {}).get("move", [])
+    add, move, remove = (plan or {}).get("add", []), (plan or {}).get("move", []), (plan or {}).get("remove", [])
     with _plan_db() as con:
-        if not add and not move:
+        if not add and not move and not remove:
             con.execute("DELETE FROM cue_plan WHERE path=?", (path,))
             return {"approved": 0}
-        clean = {"add": [{"ms": float(a["ms"]), "name": str(a["name"])[:40], "type": "loop" if a.get("type") == "loop" else "cue",
-                          "len_ms": float(a.get("len_ms") or 0)} for a in add],
-                 "move": [{"from_ms": float(m["from_ms"]), "to_ms": float(m["to_ms"]), "hotcue": int(m["hotcue"]),
-                           "name": str(m.get("name") or "")} for m in move]}
+        clean = clean_plan(plan)
         con.execute("INSERT OR REPLACE INTO cue_plan VALUES (?,?,?,?)",
                     (path, _grid_key(bpm, grid_ms), json.dumps(clean), time.strftime("%Y-%m-%d %H:%M")))
-    return {"approved": len(add) + len(move)}
+    return {"approved": len(add) + len(move) + len(remove)}
 
 
-def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list[tuple[dict, int]], list[str]]:
+def same_cue(a: dict, b: dict) -> bool:
+    """The same cue of yours: its slot, kind and place (to the millisecond)."""
+    return a["hotcue"] == b["hotcue"] and a["type"] == b["type"] and abs(a["ms"] - b["ms"]) < 1
+
+
+def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list[tuple[dict, int]], list[dict], list[str], list[dict]]:
     """What an approval does to a track's cues, the same for the preview in the web page and for `apply`:
-    (moves that still apply, [(cue to add, hot-cue slot)], reasons for what's skipped). every = all the track's
-    cues except the grid marker: {ms, type, hotcue}. Moves need your cue still where it was; new cues go into free
-    slots (cue points 1-7 in time order, a loop slot 8 first), never within a bar of a cue or another new one."""
-    cues = [dict(c) for c in every]
+    (moves that still apply, [(cue to add, hot-cue slot)], renumbered cues, reasons for what's skipped). every = all
+    the track's cues except the grid marker: {ms, type, hotcue}. Moves need your cue still where it was; new cues go
+    into free slots (cue points 1-7, a loop slot 8 first), never within a bar of a cue or another new one (one you set
+    by hand, "hand": only never on the same spot, since you put it there on purpose). When your
+    hot cue points were numbered in time order, they stay so: a new one between 3 and 4 becomes 4 and your 4, 5, 6
+    become 5, 6, 7 ([{hotcue, ms (after any move), to}]); loops and other kinds keep their slots. A new cue with a
+    "slot" (0-7) you chose goes there: if a cue point holds it, that one and the ones after it move up a slot into the
+    next free one (never past a loop or another kind); with a slot chosen, the rest isn't put in time order.
+    Deleted cues (the 5th item: those still where they were) go first: their slot is left free, nothing renumbered."""
     bar_ms = 4 * 60000 / bpm
-    moves, adds, skipped = [], [], []
+    moves, skipped, removes = [], [], []
+    for r in plan.get("remove", []):
+        if any(same_cue(c, r) for c in every):
+            removes.append(r)
+        else:
+            skipped.append(f"{'cue ' + str(r['hotcue'] + 1) if r['hotcue'] >= 0 else r['type']} at {_clock(r['ms'] / 1000)} "
+                           "isn't where it was; not deleted")
+    every = [c for c in every if not any(same_cue(c, r) for r in removes)]
+    cues = [dict(c, h0=c["hotcue"]) for c in every]
     for mv in plan.get("move", []):
         hit = next((c for c in cues if c["hotcue"] == mv["hotcue"] and abs(c["ms"] - mv["from_ms"]) < 1), None)
         if hit is None:
@@ -875,34 +1134,61 @@ def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list
             continue
         hit["ms"] = mv["to_ms"]
         moves.append(mv)
-    used = {c["hotcue"] for c in cues} - {-1}
     starts = [c["ms"] for c in cues if c["type"] in ("cue", "loop")]
-    added: list[float] = []
-    for a in sorted(plan.get("add", []), key=lambda a: (a["type"] == "loop", a["ms"])):
-        if any(abs(a["ms"] - s) < bar_ms for s in starts):
-            skipped.append(f"one of your cues is already within a bar of {_clock(a['ms'] / 1000)}")
+    held = [c for c in cues if c["hotcue"] >= 0]  # your hot cues and, as they're placed, the new ones
+    new: list[dict] = []
+    picked = any(a.get("slot") is not None for a in plan.get("add", []))
+    for a in sorted(plan.get("add", []), key=lambda a: (a.get("slot") is None, a["type"] == "loop", a["ms"])):
+        near = 1 if a.get("hand") else bar_ms
+        if any(abs(a["ms"] - s) < near for s in starts):
+            skipped.append(f"one of your cues is already {'at' if a.get('hand') else 'within a bar of'} {_clock(a['ms'] / 1000)}")
             continue
-        if any(abs(a["ms"] - s) < bar_ms for s in added):
-            skipped.append(f"{a['name']} at {_clock(a['ms'] / 1000)} is within a bar of another approved cue")
+        if any(abs(a["ms"] - n["ms"]) < near for n in new):
+            skipped.append(f"{a['name']} at {_clock(a['ms'] / 1000)} is {'at the same spot as' if a.get('hand') else 'within a bar of'} another approved cue")
             continue
-        prefer = [7] + list(range(7)) if a["type"] == "loop" else list(range(7)) + [7]
-        slot = next((s for s in prefer if s not in used), None)
-        if slot is None:
-            skipped.append(f"no free hot-cue slot for {a['name']} at {_clock(a['ms'] / 1000)}")
-            continue
-        used.add(slot)
-        added.append(a["ms"])
-        adds.append((a, slot))
-    return moves, adds, skipped
+        at = {c["hotcue"]: c for c in held}
+        if a.get("slot") is not None:
+            slot, chain = a["slot"], []
+            while slot + len(chain) in at:
+                chain.append(at[slot + len(chain)])
+            if slot + len(chain) > 7 or any(c["type"] != "cue" for c in chain):
+                skipped.append(f"no room to put {a['name']} at {_clock(a['ms'] / 1000)} in slot {slot + 1}: the slots after it "
+                               "are full or hold a loop" if chain else f"slot {slot + 1} isn't a hot-cue slot")
+                continue
+            for c in chain:
+                c["hotcue"] += 1
+        else:
+            prefer = [7] + list(range(7)) if a["type"] == "loop" else list(range(7)) + [7]
+            slot = next((s for s in prefer if s not in at), None)
+            if slot is None:
+                skipped.append(f"no free hot-cue slot for {a['name']} at {_clock(a['ms'] / 1000)}")
+                continue
+        n = {"ms": a["ms"], "type": a["type"], "hotcue": slot, "add": a}
+        new.append(n)
+        held.append(n)
+    pts = sorted((c for c in every if c["type"] == "cue" and c["hotcue"] >= 0), key=lambda c: c["ms"])
+    in_order = [c["hotcue"] for c in pts] == sorted(c["hotcue"] for c in pts)
+    if in_order and not picked and any(n["type"] == "cue" for n in new):  # yours were in time order: keep them so
+        mine = sorted((c for c in held if c["type"] == "cue"), key=lambda c: c["ms"])
+        for c, slot in zip(mine, sorted(c["hotcue"] for c in mine)):
+            c["hotcue"] = slot
+    renum = [{"hotcue": c["h0"], "ms": c["ms"], "to": c["hotcue"]} for c in cues if c["hotcue"] != c["h0"]]
+    return moves, [(n["add"], n["hotcue"]) for n in new], renum, skipped, removes
 
 
 def preview(d: dict, plan: dict) -> dict:
-    """Your cues as they'll be once the approval is written: moved ones at their new place, new ones in their slot."""
-    moves, adds, skipped = resolve(d["all_cues"], plan, d["bpm"])
+    """Your cues and markers as they'll be once the approval is written: moved ones at their new place, new ones in
+    their slot, deleted ones still listed (status "deleted") so the page can show what goes."""
+    moves, adds, renum, skipped, removes = resolve(d["all_cues"], plan, d["bpm"])
     out = []
-    for c in d["cues"]:
+    for c in d["cues"] + d.get("marks", []):
+        if any(same_cue(c, r) for r in removes):
+            out.append({**c, "status": "deleted"})
+            continue
         mv = next((m for m in moves if m["hotcue"] == c["hotcue"] and abs(m["from_ms"] - c["ms"]) < 1), None)
-        out.append({**c, "ms": mv["to_ms"], "status": "moved", "from_ms": c["ms"]} if mv else {**c, "status": "yours"})
+        y = {**c, "ms": mv["to_ms"], "status": "moved", "from_ms": c["ms"]} if mv else {**c, "status": "yours"}
+        rn = next((r for r in renum if r["hotcue"] == c["hotcue"] and abs(r["ms"] - y["ms"]) < 1), None)
+        out.append({**y, "hotcue": rn["to"], "was_hotcue": c["hotcue"]} if rn else y)  # was_hotcue: which cue it is
     beat_ms = 60000 / d["bpm"]
     for a, slot in adds:
         out.append({"ms": a["ms"], "type": a["type"], "bars": round(a["len_ms"] / beat_ms / 4, 2) if a["type"] == "loop" else None,
@@ -910,6 +1196,7 @@ def preview(d: dict, plan: dict) -> dict:
     placed = [a["ms"] for a, _s in adds]
     left_out = [a["ms"] for a in plan.get("add", []) if not any(abs(a["ms"] - m) < 1 for m in placed)]
     left_out += [m["from_ms"] for m in plan.get("move", []) if m not in moves]
+    left_out += [r["ms"] for r in plan.get("remove", []) if r not in removes]
     return {"cues": sorted(out, key=lambda c: c["ms"]), "skipped": skipped, "skipped_ms": left_out}
 
 
@@ -918,9 +1205,23 @@ def _cue_tag(name: str, kind: str, ms: float, len_ms: float, slot: int) -> str:
             f'LEN="{len_ms:.6f}" REPEATS="-1" HOTCUE="{slot}"></CUE_V2>\n')
 
 
+def _drop_tag(entry: str, hit: re.Match) -> str:
+    """The entry without one CUE_V2: self-closing or with its </CUE_V2>, and its line."""
+    a, b = hit.start(), hit.end()
+    if not hit.group(0).endswith("/>"):
+        b = entry.index("</CUE_V2>", b) + len("</CUE_V2>")
+    while a > 0 and entry[a - 1] in " \t":
+        a -= 1
+    if entry.startswith("\r\n", b):
+        b += 2
+    elif entry.startswith("\n", b):
+        b += 1
+    return entry[:a] + entry[b:]
+
+
 def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     """Write the approved cues into collection.nml: new ones into free hot-cue slots (cue points in slots 1-7 in
-    time order, the loop in slot 8 when free), corrections by moving your cue. A track whose beat grid changed
+    time order, the loop in slot 8 when free), corrections by moving your cue, deleted ones taken out. A track whose beat grid changed
     since you approved, or whose cue was moved since, is left alone. Backup + `traktor --undo`."""
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
@@ -931,7 +1232,8 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     if not todo:
         raise SystemExit("Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
     text = path.read_text(encoding="utf-8")
-    stats = {"collection": str(path), "tracks": 0, "cues_added": 0, "cues_moved": 0, "skipped": []}
+    stats = {"collection": str(path), "tracks": 0, "cues_added": 0, "cues_moved": 0, "cues_renumbered": 0, "cues_deleted": 0,
+             "skipped": []}
     examples, done = [], set()
 
     def fix_entry(m: re.Match) -> str:
@@ -952,8 +1254,18 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
         old = entry
         every = [{"ms": float(t["START"]), "type": CUE_TYPES.get(t.get("TYPE"), t.get("TYPE")), "hotcue": int(t.get("HOTCUE", -1))}
                  for t in (traktor.attrs(c.group(0)) for c in cue_tags) if t.get("TYPE") != "4"]
-        moves, adds, skipped = resolve(every, plan["plan"], bpm)
+        moves, adds, renum, skipped, removes = resolve(every, plan["plan"], bpm)
         stats["skipped"] += [f"{name}: {why}" for why in skipped]
+        code = {v: k for k, v in CUE_TYPES.items()}
+        for r in removes:  # first: a renumbered cue may take the slot it frees
+            hit = next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)
+                       if traktor.attrs(c.group(0)).get("HOTCUE", "-1") == str(r["hotcue"])
+                       and traktor.attrs(c.group(0)).get("TYPE") == code[r["type"]]
+                       and abs(float(traktor.attrs(c.group(0)).get("START", -1e9)) - r["ms"]) < 1)
+            entry = _drop_tag(entry, hit)
+            stats["cues_deleted"] += 1
+            what = f"cue {r['hotcue'] + 1}" if r["hotcue"] >= 0 else r["type"]
+            examples.append(f"{name}: − {what}{' ' + r['name'] if r['name'] else ''} at {_clock(r['ms'] / 1000)} deleted")
         for mv in moves:
             hit = next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)
                        if traktor.attrs(c.group(0)).get("HOTCUE") == str(mv["hotcue"])
@@ -961,6 +1273,13 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
             entry = entry[:hit.start()] + traktor.set_attr(hit.group(0), "START", f"{mv['to_ms']:.6f}") + entry[hit.end():]
             stats["cues_moved"] += 1
             examples.append(f"{name}: cue {mv['hotcue'] + 1} {_clock(mv['from_ms'] / 1000)} → {_clock(mv['to_ms'] / 1000)}")
+        hits = [(r, next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)  # found all first: the slots swap among themselves
+                         if traktor.attrs(c.group(0)).get("HOTCUE") == str(r["hotcue"])
+                         and abs(float(traktor.attrs(c.group(0)).get("START", -1e9)) - r["ms"]) < 1)) for r in renum]
+        for r, hit in sorted(hits, key=lambda x: -x[1].start()):  # from the end, so earlier offsets still hold
+            entry = entry[:hit.start()] + traktor.set_attr(hit.group(0), "HOTCUE", str(r["to"])) + entry[hit.end():]
+            stats["cues_renumbered"] += 1
+            examples.append(f"{name}: cue {r['hotcue'] + 1} → slot {r['to'] + 1} (keeps them in time order)")
         new = ""
         for a_, slot in adds:
             new += _cue_tag(a_["name"], a_["type"], a_["ms"], a_["len_ms"], slot)

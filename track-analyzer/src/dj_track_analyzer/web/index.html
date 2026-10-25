@@ -136,10 +136,20 @@ td.cb, th.cb { width: 28px; padding-right: 0; }
 .playhead.ov { top: 170px; height: 32px; box-shadow: none; }
 .deck { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
 .deck .time { font-family: var(--mono); font-size: 13px; min-width: 210px; }
+.deck .vol { display: inline-flex; align-items: center; gap: 6px; }
+.deck .vol input { width: 90px; accent-color: var(--accent); }
 .pads { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 8px; font-size: 12px; }
 .pads button { padding: 3px 8px; font-size: 12px; }
 .pads button.mine { background: #fff; color: #111; border-color: #fff; font-weight: 700; min-width: 28px; }
 .pads button.mine.new { background: #4cd17a; border-color: #4cd17a; }
+.pads button.mine.pend { background: transparent; color: #4cd17a; border: 1px dashed #4cd17a; }
+.pads button.mine.del { background: transparent; color: #ff786e; border: 1px dashed #ff786e; text-decoration: line-through; }
+.pads .pad { position: relative; display: inline-flex; }
+.pads .padx { position: absolute; top: -6px; right: -6px; width: 15px; height: 15px; padding: 0; font-size: 9px; line-height: 13px; border-radius: 50%;
+  border: 1px solid #555; background: #1b1b1f; color: #ddd; opacity: 0; }
+.pads .pad:hover .padx, .pads .padx:focus-visible, .pads .mine.del + .padx { opacity: 1; }
+.pads .padx:hover { color: #ff786e; border-color: #ff786e; }
+.pads button.mine.pend.nofit, .pads button.mine.new.nofit { color: #ff786e; border-color: #ff786e; }
 .pads button.sug { border-color: #6fb4ff; }
 .pads button.lp { border-color: #f08a24; }
 .pads button.on { background: #f08a24; color: #111; }
@@ -154,6 +164,20 @@ label.approved { background: color-mix(in srgb, var(--good) 10%, transparent); b
 .fixbox { border-left: 3px solid #ffd23f; background: color-mix(in srgb, #ffd23f 9%, transparent); border-radius: 0 8px 8px 0; padding: 8px 10px; }
 .fixbox .fix { display: flex; gap: 8px; align-items: flex-start; padding: 5px 0; border-bottom: 1px solid color-mix(in srgb, #ffd23f 25%, transparent); }
 .fixbox .fix:last-child { border-bottom: 0; }
+#approve button.useas { font-size: 12px; padding: 1px 6px; margin-left: 4px; }
+.usemenu { position: fixed; z-index: 60; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 4px; font-size: 12px; max-height: 50vh; overflow-y: auto; }
+.usemenu div { padding: 4px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.usemenu div:hover, .usemenu div.on { background: var(--accent-soft); }
+.fixbox select.target { font-size: 12px; padding: 1px 4px; max-width: 100%; }
+#approve select.slot { font-size: 12px; padding: 1px 4px; }
+#approve label.add { display: flex; align-items: flex-start; gap: 6px; margin: 3px 0; padding: 4px 6px; }
+#approve label.add input { margin-top: 3px; }
+#approve label.add > span > div:first-child > .mini { margin: 0 6px 0 0; }
+#approve label.del { display: flex; align-items: center; gap: 6px; margin: 3px 0; padding: 3px 6px; }
+#approve label.del .mini { margin: 0 6px 0 0; }
+#approve label.add .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 3px; }
+#approve label.add .ctl:empty { display: none; }
 .fixbox .move { font-weight: 650; font-size: 14px; }
 .fixbox .why { font-size: 12px; color: var(--text-2); }
 button.mini { padding: 0 6px; font-size: 11px; margin-left: 6px; line-height: 18px; }
@@ -230,6 +254,19 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 .progress div { height: 100%; background: var(--accent); transition: width .4s; }
 .progress.indet div { width: 30%; animation: indet 1.4s infinite linear; }
 @keyframes indet { from { margin-left: -30%; } to { margin-left: 100%; } }
+/* loop ideas while Demucs listens to them: a spinner by the note, and the buttons' orange edges breathe */
+.parts-wait { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
+.parts-wait::before { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--line-strong);
+  border-top-color: var(--c-orange); animation: spin .8s linear infinite; }
+.parts-wait.failed::before { display: none; }
+.parts-wait[hidden] { display: none; }
+#dk-play.waiting { display: inline-flex; align-items: center; justify-content: center; gap: 6px; cursor: progress; }
+#dk-play.waiting::before { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35);
+  border-top-color: #fff; animation: spin .8s linear infinite; }
+#loop-pads.listening button.lp { animation: breathe 1.6s ease-in-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 50% { border-color: var(--line); } }
+@media (prefers-reduced-motion: reduce) { .parts-wait::before, #loop-pads.listening button.lp, #dk-play.waiting::before { animation: none; } }
 pre.log { max-height: 280px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.45; background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px 10px; margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; }
 .steps { display: grid; }
@@ -529,7 +566,7 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues of yours</option><option value="some">Has your cues</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option></select>
+      <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues set</option><option value="some">Has cues set</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option></select>
     </div>
     <div id="selbar"></div>
     <div class="card" style="padding:0"><div id="ttable"></div></div>`;
@@ -572,12 +609,12 @@ async function pageTracks(main, open) {
       <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${head.map(([k, h, r]) => `<th class="sort ${r ? "r" : ""} ${S.trackSort.key === k ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${h}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(t => `<tr class="click ${SEL.has(t.path) ? "sel" : ""}" data-path="${esc(t.path)}">
         ${SNAP ? "" : `<td class="cb"><input type="checkbox" data-sel ${SEL.has(t.path) ? "checked" : ""}></td>`}
-        <td>${colour(colourOf(t), !t.traktor_color)}${t.held_colour ? lock("Colour") : ""}</td><td>${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? "No cue points or loops of yours in Traktor" : "Not in Traktor's collection (or no beat grid)"}">no cues</span>` : ""}</td>
+        <td>${colour(colourOf(t), !t.traktor_color)}${t.held_colour ? lock("Colour") : ""}</td><td>${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? "No cue points or loops set in Traktor" : "Not in Traktor's collection (or no beat grid)"}">no cues</span>` : ""}</td>
         <td class="r num" ${t.source_bpm ? `data-tip="own tempo ${Math.round(t.source_bpm)} BPM"` : ""}>${fmt(t.mix_bpm)}</td>
         <td ${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="Traktor ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : ""}>${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}</td>
         <td>${esc(t.my_genre || t.genre || "–")}${t.held_genre ? lock("Genre") : ""}${t.genre_2 ? `<div class="dim small">${esc(t.genre_2)}</div>` : ""}${t.error && !t.error.startsWith("tags:") ? `<div class="chip bad" data-tip="${esc(t.error)}">error</div>` : ""}</td>
         <td class="r">${hypeBadge(t.hype)}</td>
-        <td class="r num" data-tip="${t.own_cues ? `${t.own_cues} cues of yours` : "none of yours"}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? " · approved, not written yet" : ""}">${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">approved</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}</td>
+        <td class="r num" data-tip="${t.own_cues ? `${t.own_cues} cue${t.own_cues > 1 ? "s" : ""} set in Traktor` : "no cues set in Traktor"}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? ` · approved, not written yet: ${approvedText(t.cues_approved, true)}` : ""}">${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">${approvedText(t.cues_approved)}</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}</td>
         <td class="r num">${fmt(t.lufs, 1)}</td><td class="r num">${mmss(t.duration_sec)}</td></tr>`).join("")}</tbody></table></div>`;
     $("#ttable .tablewrap").scrollTop = scroll;
     $("#ttable thead").onclick = e => { const k = e.target.dataset?.k; if (!k) return; S.trackSort = { key: k, dir: S.trackSort.key === k ? -S.trackSort.dir : 1 }; draw(); };
@@ -599,8 +636,21 @@ async function pageTracks(main, open) {
 }
 
 // ---------- track drawer ----------
-function closeDrawer() { deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); }
+function closeDrawer() { deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
+// the track open in the panel, highlighted in every track list: one style rule, so it holds through any redraw
+function markOpen(path) {
+  let st = document.getElementById("open-row");
+  if (!st) { st = document.createElement("style"); st.id = "open-row"; document.head.appendChild(st); }
+  const sel = path ? `tr[data-path="${CSS.escape(path)}"]` : null;
+  st.textContent = sel ? `${sel} td { background: color-mix(in srgb, var(--accent) 24%, var(--surface, transparent)); } ${sel} td:first-child { box-shadow: inset 3px 0 0 var(--accent); }` : "";
+  if (sel) document.querySelector(sel)?.scrollIntoView({ block: "nearest" });
+}
 addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+addEventListener("pointerdown", e => {  // a click outside the panel closes it; a track row opens that track instead
+  if (!$("#drawer").classList.contains("open") || !e.target.isConnected) return;
+  if (e.target.closest("#drawer, tr[data-path], dialog, .usemenu")) return;
+  closeDrawer();
+});
 function scaleView(t) {
   const pos = t.color_position, yours = t.traktor_color ? COLOURS.indexOf(t.traktor_color) + 1 : null;
   const at = p => `left:${(p - 0.5) / 7 * 100}%`;
@@ -612,6 +662,7 @@ async function openTrack(path) {
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
   const all = await getTracks(), t = all.find(x => x.path === path);
   if (!t) return;
+  markOpen(path);
   const d = $("#drawer"), body = $("#drawer-body");
   const moods = ["aggressive", "happy", "party", "relaxed", "sad"].filter(m => t["mood_" + m] != null).map(m => ({ label: m, value: t["mood_" + m] }));
   const genreScores = [[t.genre, t.genre_score], [t.genre_2, t.genre_2_score], [t.genre_3, t.genre_3_score]].filter(g => g[0]).map(([g, s]) => ({ label: g, value: s }));
@@ -653,7 +704,7 @@ async function openTrack(path) {
   d.dataset.path = t.path;
   d.classList.add("open"); d.setAttribute("aria-hidden", "false"); if (!keepScroll) d.scrollTop = 0;
   if (t.type !== "track") return;
-  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); } } })
+  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
     .catch(e => { const b = $("#cuebox"); if (b) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
   const load = async () => {
     const box = $("#sugg");
@@ -670,99 +721,215 @@ async function openTrack(path) {
   $("#sg-same").onchange = load; $("#sg-tol").onchange = load; load();
 }
 
+// The loop-idea buttons; each says what plays in it once Demucs has listened (parts: vocals, synth, drums + bass only)
+function loopPads(c) {
+  if (!(c.loop_ideas || []).length) return "";
+  const parts = l => l.parts ? ` · drums ${Math.round(l.parts.drums * 100)}%, bass ${Math.round(l.parts.bass * 100)}%, synth ${Math.round(l.parts.synth * 100)}%, vocals ${Math.round(l.parts.vocals * 100)}% of its beats` : "";
+  const wait = c.parts_pending && !SNAP;
+  return `<div class="pads${wait ? " listening" : ""}" id="loop-pads"><span class="small muted">Loop ideas:</span>${c.loop_ideas.map((l, k) =>
+    `<button class="lp" data-t="${l.ms / 1000}" data-loop="${l.len_ms / 1000}" data-tip="L${k + 1}: ${esc(l.kind)} · ${l.bars} bars from bar ${barLabel(c, l.bar).n} · ${esc(l.why)}${parts(l)}. Plays looped, gapless.">L${k + 1} · ${esc(l.kind.split(" · ")[0])}${l.parts?.label ? " · " + esc(l.parts.label.replaceAll(" · ", ", ")) : ""} · ${barLabel(c, l.bar).n}</button>`).join("")}${wait ? `<span class="small dim parts-wait" id="parts-wait" data-tip="Separating each loop into drums, bass, synths and vocals: about 8 seconds, once per track">Listening for vocals, synths and kicks…</span>` : ""}</div>`;
+}
+
+// What plays in each loop idea, separated on the server (~8 s the first time per track); updates the buttons in place
+function loadParts(c, b, path) {
+  if (!c.parts_pending || SNAP) return;
+  api("cues/parts", { path }).then(r => {
+    if (!b.isConnected || $("#drawer")?.dataset.path !== path) return;
+    c.loop_ideas = r.loop_ideas; c.parts_pending = false;
+    const row = b.querySelector("#loop-pads"); if (row) row.outerHTML = loopPads(c);
+  }).catch(e => { const w = b.querySelector("#parts-wait"); if (w) { w.classList.add("failed"); w.textContent = `Couldn't listen for vocals: ${e.message}`; }
+    b.querySelector("#loop-pads")?.classList.remove("listening"); });
+}
+
+// your cue pads; with cues ticked in the approve panel (pend), those too, dashed, and yours at the slots they'd move to
+const pendSlot = (y, p) => {  // the slot one of your (or an approved) cue ends up in once the ticked ones are approved, when that changes
+  if (!p?.slots || y.hotcue < 0 || !["yours", "moved", "new"].includes(y.status)) return undefined;
+  const to = y.status === "new" ? p.slots.new.find(g => Math.abs(g.ms - y.ms) < 1)?.slot ?? -1 : (h => p.slots.up.get(h) ?? h)(y.was_hotcue ?? y.hotcue);  // -1: approved, but pushed out by the ticked ones
+  return to !== y.hotcue ? to : undefined;
+};
+const yourPads = (c, pend) => [...myCues(c).map(y => { const to = pendSlot(y, pend); return to === -1 ? { ...y, hotcue: -1, nofit: true } : to != null ? { ...y, hotcue: to, was_hotcue: y.was_hotcue ?? y.hotcue, renum: true } : y; }),
+    ...(pend?.adds || []).map(a => ({ ...a, status: "pending", bars: a.type === "loop" && a.len_ms ? a.len_ms / 1000 / c.bar_seconds : 0, hotcue: a.nofit || a.hotcue == null ? -1 : a.hotcue }))].sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms)
+      .map(y => { const del = isDel(y, pend), x = SNAP || y.status === "new" || y.status === "pending" ? ""
+        : `<button class="padx" type="button" data-del="${esc(delKey(y))}" data-tip="${del ? "Keep it: untick its deletion" : "Delete this from Traktor (ticks it under Delete your cues; written when you approve and write)"}">${del ? "↺" : "✕"}</button>`;
+        return `<span class="pad">` + `<button class="mine${del ? " del" : y.status === "new" ? " new" + (y.nofit ? " nofit" : "") : y.status === "pending" ? " pend" + (y.nofit ? " nofit" : "") : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${del ? `Marked for deletion: ${y.status === "deleted" ? "approved, " : ""}not deleted in Traktor yet · ` : ""}${y.status === "pending" ? (y.nofit ? `Ticked ${esc(y.name || y.type)}: no free slot, won't be written` : `Ticked ${esc(y.name || y.type)}, not approved yet`) : y.status === "new" ? (y.nofit ? `Approved ${esc(y.name || y.type)}, but with the ticked cues there's no slot left for it` : `Approved ${esc(y.name || y.type)}, not written yet`) : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""}${y.was_hotcue != null ? ` (was slot ${y.was_hotcue + 1}, renumbered to keep them in time order${y.renum ? " once the ticked cues are approved" : ""})` : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.nofit ? "✕" : y.hotcue >= 0 ? y.hotcue + 1 : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>${x}</span>`; }).join("") || `<span class="dim small">none</span>`;
 function renderCues(c) {
   if (!c.bars) return `<div class="dim small">${esc(c.note || "No suggestions yet.")}</div>` + ((c.yours || []).length ? cueTable(c, []) : "");
   if (!c.wave) return `<div class="dim small">No waveform for this track yet: run <span class="mono">cues scan</span>.</div>` + cueTable(c, c.cues);
   const deck = SNAP ? "" : `<div class="deck"><button class="primary" id="dk-play" style="min-width:84px">▶ Play</button><span class="time" id="dk-time">0:00.0</span>
+      <label class="vol small" data-tip="Playback volume (here only: not the track or Traktor)">Vol <input type="range" id="dk-vol" min="0" max="100" step="1" value="${Math.round(deckVolume() * 100)}"></label>
+      ${deckViewBpm() ? `<label class="inline small" data-tip="Hear the track as the ${deckViewBpm()} BPM tempo view does: stretched with key lock by Rubber Band, the same way its scan heard it. A few seconds the first time for a track, started when you open it"><input type="checkbox" id="dk-stretch" ${deckBpm() ? "checked" : ""}> at ${deckViewBpm()} BPM</label><span class="small dim parts-wait" id="dk-stretching" hidden data-tip="Rubber Band stretches the track in pieces on every core: a few seconds, once per track (the last few are kept)">Stretching to ${deckViewBpm()} BPM…</span>` : ""}
       <label class="inline small"><input type="checkbox" id="dk-follow" checked> follow when zoomed</label>
+      <button id="dk-cue" data-tip="Set a cue where the playhead is, on the nearest beat (C): it's ticked under New cues; Approve ticked keeps it, Write to Traktor writes it">+ Cue</button>
       <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from Traktor (Traktor saves them when it quits)">Rescan track</button>
-      <span class="small dim">Space play/pause · 1–8 your cues · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</span></div>
-    <div class="pads"><span class="small muted">${c.approved_view ? "Yours, with approved:" : "Yours:"}</span>${myCues(c).slice().sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms)
-      .map(y => `<button class="mine${y.status === "new" ? " new" : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${y.status === "new" ? `Approved ${esc(y.name || y.type)}, not written yet` : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + y.type}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.hotcue >= 0 ? y.hotcue + 1 : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>`).join("") || `<span class="dim small">none</span>`}
+      <span class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</span></div>
+    <div class="pads"><span class="small muted">${c.approved_view ? "Yours, with approved:" : "Yours:"}</span><span id="your-pads" style="display:contents">${yourPads(c, null)}</span>
       <span class="small muted" style="margin-left:8px">Suggested:</span>${c.cues.filter(q => !sugHidden(c, q)).map(q => `<button class="sug" data-t="${q.ms / 1000}">${esc(q.name)} · ${barLabel(c, q.bar).n}</button>`).join("")}
-      </div>${(c.loop_ideas || []).length ? `<div class="pads"><span class="small muted">Loop ideas:</span>${c.loop_ideas.map((l, k) =>
-        `<button class="lp" data-t="${l.ms / 1000}" data-loop="${l.len_ms / 1000}" data-tip="L${k + 1}: ${esc(l.kind)} · ${l.bars} bars from bar ${barLabel(c, l.bar).n} · ${esc(l.why)}. Plays looped, gapless.">L${k + 1} · ${esc(l.kind.split(" · ")[0])} · ${barLabel(c, l.bar).n}</button>`).join("")}</div>` : ""}`;
+      </div>${loopPads(c)}`;
   return `${deck}<div class="filters" style="margin:0 0 6px"><button data-zoom="in" data-tip="Zoom in, down to a single beat (or pinch / ctrl+scroll on the waveform, double-click)">+</button><button data-zoom="out" data-tip="Zoom out (shift+double-click)">−</button><button data-zoom="fit">Fit</button>
     <span class="small muted" id="wavezoom"></span><span class="small dim">drag or scroll sideways to move</span></div>
     <div class="wavewrap"><div class="wavehl" id="wavehl"></div><div class="playhead" id="ph"></div><div class="playhead ov" id="phov"></div><canvas id="wave" aria-label="Waveform with your cues (white, top) and suggested cues (blue, bottom)"></canvas></div>
-    <div class="legend"><span><i style="background:#fff"></i>your cues (numbered, top)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
-    <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span>colour: <b style="color:#ff5a4f">lows</b> · <b style="color:#5fe36b">mids</b> · <b style="color:#5aa8ff">highs</b> · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>
+    <div class="legend"><span><i style="background:#fff"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
+    <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span><i style="background:#ffd23f"></i>your cue moved (ticked or approved; grey = where it was)</span><span>colour: <b style="color:#ff5a4f">lows</b> · <b style="color:#5fe36b">mids</b> · <b style="color:#5aa8ff">highs</b> · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>
     ${SNAP ? cueTable(c, c.cues) : approveBox(c)}<div class="note">Suggestions are learned from the cues you set yourself (trained ${esc(c.trained_at || "")}).</div>`;
 }
 // your cues as they'll be in Traktor: with an approval, moved ones at their new place and new ones in their slot
-const myCues = c => c.approved_view ? c.approved_view.cues : (c.yours || []).map(y => ({ ...y, status: "yours" }));
+// plus your fade-in, fade-out and load markers (never moved or added by an approval)
+const myCues = c => (c.approved_view ? c.approved_view.cues.slice()  // the approval's view lists your markers too (deleted ones as "deleted")
+  : [...(c.yours || []), ...(c.marks || [])].map(y => ({ ...y, status: "yours" }))).sort((a, b) => a.ms - b.ms);
+// a cue of yours as it is in Traktor now (before any approved move or renumbering): what a deletion names
+const origOf = y => ({ hotcue: y.was_hotcue ?? y.hotcue, type: y.type, ms: y.status === "moved" ? y.from_ms : y.ms });
+const sameCue = (a, b) => a.hotcue === b.hotcue && a.type === b.type && Math.abs(a.ms - b.ms) < 1;
+const delKey = y => { const o = origOf(y); return `r${o.hotcue}:${o.type}:${o.ms}`; };
+// marked for deletion: ticked in the approve panel (pend), or without the panel, approved
+const isDel = (y, pend) => y.status !== "new" && y.status !== "pending" && (pend ? pend.removes.some(r => sameCue(r, origOf(y))) : y.status === "deleted");
+// your cues as the waveform draws them: the approve panel's ticked moves (box._moves, even before Approve) win
+const moveKey = (hotcue, ms) => `${hotcue}:${Math.round(ms)}`;
+function shownCues(c, box) {
+  const mv = box._movesPath === c.path ? box._moves : null, pend = box._pending?.path === c.path ? box._pending : null;
+  return myCues(c).map(y => ({ ...y, del: isDel(y, pend) })).map(y => {
+    if (!mv || y.status === "new") return y;
+    const orig = y.status === "moved" ? y.from_ms : y.ms, k = moveKey(y.was_hotcue ?? y.hotcue, orig);
+    if (!mv.has(k)) return y;
+    const to = mv.get(k);
+    return to == null || Math.abs(to - orig) < 1 ? { ...y, ms: orig, status: "yours" } : { ...y, ms: to, from_ms: orig, status: "moved" };
+  });
+}
+const pickedMove = (box, f) => box._movesPath === box._view?.path && box._moves?.get(moveKey(f.hotcue, f.from_ms)) != null;
+const CUE_KIND = { cue: "Cue", loop: "Loop", "fade-in": "Fade in", "fade-out": "Fade out", load: "Load" };
+const cueKind = y => y.type === "loop" && y.bars ? `Loop ${y.bars} bar${y.bars === 1 ? "" : "s"}` : CUE_KIND[y.type] || y.type;
 const isApprovedAdd = (c, ms) => !!c.approved_view && c.approved_view.cues.some(y => y.status === "new" && Math.abs(y.ms - ms) < 1);
-const isApprovedMove = (c, f) => !!c.approved_view && c.approved_view.cues.some(y => y.status === "moved" && y.hotcue === f.hotcue && Math.abs(y.from_ms - f.from_ms) < 1);
+const isApprovedMove = (c, f) => !!c.approved_view && c.approved_view.cues.some(y => y.status === "moved" && (y.was_hotcue ?? y.hotcue) === f.hotcue && Math.abs(y.from_ms - f.from_ms) < 1);
 const sameFix = (f, g) => f.hotcue === g.hotcue && Math.abs(f.from_ms - g.from_ms) < 1 && Math.abs(f.to_ms - g.to_ms) < 1;
 const fixSettled = (c, f) => f.ignored || isApprovedMove(c, f);  // approved or ignored: no longer a pending correction
 const sugHidden = (c, q) => isApprovedAdd(c, q.ms) || (q.moves != null && (c.corrections || []).some(f => f.hotcue === q.moves && Math.abs(f.to_ms - q.ms) < 1 && fixSettled(c, f)));
+const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+// the track list's approved chip: "+3 approved", "+2 · 1 moved · −1 approved"; long: in words, for its tip
+function approvedText(n, long = false) {
+  if (n === true) n = { add: 0, move: 0, remove: 0 };  // an older server: no counts
+  const pl = (k, w) => `${k} ${w}${k > 1 ? "s" : ""}`;
+  if (long) return [n.add && pl(n.add, "new cue"), n.move && pl(n.move, "move"), n.remove && pl(n.remove, "deletion")].filter(Boolean).join(", ") || "nothing";
+  return ([n.add && `+${n.add}`, n.move && `${n.move} moved`, n.remove && `−${n.remove}`].filter(Boolean).join(" · ") || "") + " approved";
+}
 function barLabel(c, bar) {  // bar: index into the track's bars; bar 1 = Traktor's grid marker
   const n = bar - c.grid_bar + 1, ph = Math.floor((n - 1) / 8) + 1, inph = ((n - 1) % 8 + 8) % 8 + 1;
   return { n, text: `bar ${n}`, phrase: n < 1 ? "before the grid marker" : inph === 1 ? `first bar of phrase ${ph} (8-bar grid)` : `bar ${inph} of phrase ${ph}` };
 }
 function approveItems(c) {
   const items = [];
-  c.cues.forEach(q => {
-    if (q.moves != null) return;  // offered below as a correction of your cue
+  const free = c.free_slots > 0;
+  (c.cues || []).forEach(q => {  // none when the track isn't measured yet (the panel shows c.note)
+    if (q.moves != null && !free) return;  // offered below as a correction of your cue; with a free slot, also as a new cue
     const note = q.matches != null ? `✓ matches your cue ${q.matches + 1}` : q.at_your_loop ? "your loop is here" : "";
-    items.push({ key: "a" + q.ms, kind: "add", label: `${q.time} · bar ${barLabel(c, q.bar).n} · <b>${esc(q.name)}</b>`, disabled: note, data: { ms: q.ms, name: q.name, type: "cue", len_ms: 0 } });
+    const also = q.moves != null ? ` <span class="dim small">· or move your cue ${q.moves + 1} here (correction)</span>` : "";
+    items.push({ key: "a" + q.ms, kind: "add", also: q.moves != null, label: `${q.time} · bar ${barLabel(c, q.bar).n} · <b>${esc(q.name)}</b>${also}`, disabled: note, data: { ms: q.ms, name: q.name, type: "cue", len_ms: 0 } });
   });
+  if (free) (c.more_cues || []).forEach(q => items.push({ key: "a" + q.ms, kind: "add", extra: true,  // the next-best bars, for a free slot
+    label: `${q.time} · bar ${barLabel(c, q.bar).n} · <b>${esc(q.name)}</b> <span class="dim small">· scores ${q.score}</span>`, disabled: "", data: { ms: q.ms, name: q.name, type: "cue", len_ms: 0 } }));
   (c.loop_ideas || []).forEach((l, k) => items.push({ key: "l" + l.ms, kind: "add",
     label: `${l.time} · bar ${barLabel(c, l.bar).n} · <b>Loop ${l.bars} bars</b> <span class="dim small">L${k + 1} · ${esc(l.kind)} · ${esc(l.why)}${k === 0 ? " · slot 8 when free" : ""}</span>`,
     sample: { bar: barLabel(c, l.bar).n, kind: `L${k + 1} ${l.kind.split(" · ")[0]}` },
+    asCue: { ms: l.ms, name: (k => k.charAt(0).toUpperCase() + k.slice(1))(l.kind.split(" · ")[0] || "Loop").slice(0, 40), type: "cue", len_ms: 0 },  // "as cue point": a hot cue at its start
     data: { ms: l.ms, name: `Loop ${l.bars}`, type: "loop", len_ms: l.len_ms } }));
-  (c.corrections || []).forEach(f => items.push({ key: `m${f.hotcue}:${f.from_ms}`, kind: "move", fix: f, ignored: !!f.ignored,
-    label: `<span class="move">Cue ${f.hotcue + 1}: ${f.from_bar === f.to_bar ? `onto the downbeat of bar ${f.to_bar}` : `bar ${f.from_bar} → bar ${f.to_bar}`}</span>
-      <span class="small">${f.from_bar === f.to_bar ? "" : ` · ${Math.abs(f.to_bar - f.from_bar)} bar${Math.abs(f.to_bar - f.from_bar) > 1 ? "s" : ""} ${f.to_bar > f.from_bar ? "later" : "earlier"}`} · ${f.to_time}</span>
-      ${f.phrase_grid ? ` <span class="chip good">on the 8-bar phrase grid</span>` : ""}
-      <div class="why">Scores ${f.score_here} at your spot, ${f.score_there} there${f.suggested_as ? ` · the model also suggests ${esc(f.suggested_as)} there` : ""}. Listen to both before ticking: some off-grid cues are on purpose.</div>`,
-    tip: `The model (which never saw your cues on this track) scores bar ${f.to_bar} ${f.score_there} and your spot ${f.score_here}. About half of your off-grid cues are on purpose, so only tick it if it was a slip.`,
-    data: { from_ms: f.from_ms, to_ms: f.to_ms, hotcue: f.hotcue, name: f.name } }));
+  (c.alternatives || []).forEach(y => {  // each of your cues: move it to a bar you choose (the model's pick first)
+    const same = (a, b) => a.hotcue === b.hotcue && Math.abs(a.from_ms - b.from_ms) < 1;
+    const fx = (c.corrections || []).filter(f => same(f, y)), pend = fx.filter(f => !f.ignored);
+    const mv = (c.approved?.move || []).find(m => same(m, y));
+    const opts = y.options.slice(), barOf = ms => Math.round((ms / 1000 - c.first_bar_s) / c.bar_seconds) - c.grid_bar + 1;
+    const addOpt = ms => { if (!opts.some(o => Math.abs(o.to_ms - ms) < 1)) opts.push({ to_ms: ms, to_bar: barOf(ms), to_time: clock(ms / 1000), score: null }); };
+    fx.forEach(f => addOpt(f.to_ms)); if (mv) addOpt(mv.to_ms);
+    opts.sort((a, b) => a.to_ms - b.to_ms);
+    const proposed = o => fx.some(f => Math.abs(f.to_ms - o.to_ms) < 1);
+    const best = opts.reduce((a, o) => (o.score ?? -1) > (a.score ?? -1) ? o : a, opts[0]);
+    const chosen = mv ? mv.to_ms : (pend[0] || fx[0] || best).to_ms, key = `m${y.hotcue}:${y.from_ms}`;
+    const optLabel = o => { const d = o.to_bar - y.from_bar;
+      return `${d ? `bar ${o.to_bar} (${d > 0 ? "+" : ""}${d})` : `bar ${o.to_bar}, onto the downbeat`} · ${o.to_time}${o.score != null ? ` · scores ${o.score}` : ""}${o.name ? ` · suggested: ${o.name}` : ""}${o.phrase_grid ? " · on the 8-bar grid" : ""}${proposed(o) ? " · ★ proposed" : ""}`; };
+    const select = `<select class="target" data-target="${esc(key)}">${opts.map(o => `<option value="${o.to_ms}" ${Math.abs(o.to_ms - chosen) < 1 ? "selected" : ""}>${esc(optLabel(o))}</option>`).join("")}</select>`;
+    const label = `<span class="move">Cue ${y.hotcue + 1}${y.name ? ` <span class="small dim">${esc(y.name)}</span>` : ""}: bar ${y.from_bar} →</span> ${select}
+      <div class="why">${pend.length ? `Scores ${y.score_here} at your spot; ★ = what the model proposes.` : `Scores ${y.score_here} at your spot.`} Pick any bar the model found (a higher score is more like where you put cues) and listen before ticking: some off-grid cues are on purpose.</div>`;
+    items.push({ key, kind: "move", cue: y, opts, fixes: fx, ignored: !pend.length && fx.length > 0, group: pend.length ? "fix" : fx.length ? "ignored" : "other",
+      label, tip: `The model never saw your cues on this track. About half of your off-grid cues are on purpose, so only tick a move if it was a slip.`,
+      data: { from_ms: y.from_ms, to_ms: chosen, hotcue: y.hotcue, name: y.name } });
+  });
+  [...(c.yours || []), ...(c.marks || [])].sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms).forEach(y => {  // delete any of yours
+    const what = y.hotcue >= 0 ? `${y.type === "cue" ? "Cue" : cueKind(y)} ${y.type === "cue" ? y.hotcue + 1 : `(slot ${y.hotcue + 1})`}` : cueKind(y);
+    items.push({ key: delKey({ ...y, status: "yours" }), kind: "remove",
+      label: `<b>${esc(what)}</b>${y.name && !/^(Cue|n\.n\.)\s*\d*$/.test(y.name) ? ` <span class="small dim">${esc(y.name)}</span>` : ""} · ${clock(y.ms / 1000)} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}`,
+      data: { ms: y.ms, hotcue: y.hotcue, type: y.type, name: y.name || "", len_ms: y.type === "loop" && y.bars ? y.bars * c.bar_seconds * 1000 : 0 } });
+  });
+  // cues you set by hand (+ Cue), and approved cues the lists above no longer offer
+  const known = ms => items.some(i => i.kind === "add" && (Math.abs(i.data.ms - ms) < 1 || (i.asCue && Math.abs(i.asCue.ms - ms) < 1)));
+  const hand = [...(c.approved?.add || []).filter(a => a.type === "cue"), ...(HAND.get(c.path) || [])];
+  hand.filter((h, k) => !known(h.ms) && !(c.yours || []).some(y => Math.abs(y.ms - h.ms) < 1) && hand.findIndex(g => Math.abs(g.ms - h.ms) < 1) === k).sort((a, b) => a.ms - b.ms).forEach(h => {
+    const k = Math.round((h.ms - c.grid_ms) / (60000 / c.bpm)), n = Math.floor(k / 4) + 1, beat = ((k % 4) + 4) % 4 + 1;
+    items.push({ key: "h" + h.ms, kind: "add", hand: true, disabled: "",
+      label: `${clock(h.ms / 1000)} · bar ${n}${beat > 1 ? ` beat ${beat}` : ""} · <b>Cue set by hand</b>`,
+      data: { ms: h.ms, name: h.name || "Cue", type: "cue", len_ms: 0, hand: true } });
+  });
   return items;
 }
 function approveBox(c) {
   const items = approveItems(c), ap = c.approved;
-  const isOn = it => !!ap && (it.kind === "add" ? ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1) : ap.move.some(m => m.hotcue === it.data.hotcue && Math.abs(m.from_ms - it.data.from_ms) < 1));
+  const isOn = it => !!ap && (it.kind === "add" ? ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1) : it.kind === "remove" ? (ap.remove || []).some(r => sameCue(r, it.data))
+    : ap.move.some(m => m.hotcue === it.data.hotcue && Math.abs(m.from_ms - it.data.from_ms) < 1));
   if (!items.length) return cueTable(c, c.cues);
   const approvedOk = it => isOn(it) && !(ap && ap.grid_changed) && !(c.approved_view?.skipped_ms || []).some(m => Math.abs(m - (it.kind === "move" ? it.data.from_ms : it.data.ms)) < 1);
   const approved = items.filter(approvedOk), pending = items.filter(it => !approvedOk(it));
-  const fixes = pending.filter(i => i.kind === "move" && !i.ignored), ignoredFixes = pending.filter(i => i.kind === "move" && i.ignored),
-    cues_ = pending.filter(i => i.kind === "add" && i.data.type === "cue"),
-    loops = pending.filter(i => i.kind === "add" && i.data.type === "loop"), newCues = cues_.filter(i => !i.disabled).length;
+  const fixes = pending.filter(i => i.group === "fix"), ignoredFixes = pending.filter(i => i.group === "ignored"), others = pending.filter(i => i.group === "other"),
+    cues_ = pending.filter(i => i.kind === "add" && i.data.type === "cue" && !i.extra), more = pending.filter(i => i.extra),
+    loops = pending.filter(i => i.kind === "add" && i.data.type === "loop"), newCues = cues_.filter(i => !i.disabled).length,
+    dels = pending.filter(i => i.kind === "remove");
+  const held = new Map([...(c.yours || []), ...(c.marks || [])].filter(y => y.hotcue >= 0).map(y => [y.hotcue, y]));  // slot → your cue
   const row = it => {
     const dim = it.disabled && !it.disabled.startsWith("✓") ? "opacity:.5;" : "";
     const tipAttr = it.tip ? `data-tip="${esc(it.tip)}"` : it.disabled ? `data-tip="${esc(it.disabled)}"` : "";
-    const play = it.kind === "move"
-      ? `<div style="margin-top:3px"><button class="mini" data-t="${it.data.from_ms / 1000}" data-tip="Play from your cue">▶ yours</button><button class="mini" data-t="${it.data.to_ms / 1000}" data-tip="Play from the proposed bar">▶ proposed</button></div>`
+    const play = it.kind === "remove" ? `<button class="mini" data-t="${it.data.ms / 1000}" ${it.data.len_ms ? `data-loop="${it.data.len_ms / 1000}"` : ""} data-tip="Play from it">▶</button>`
+      : it.kind === "move"
+      ? `<div style="margin-top:3px"><button class="mini" data-t="${it.data.from_ms / 1000}" data-tip="Play from your cue">▶ yours</button><button class="mini" data-t="${it.data.to_ms / 1000}" data-there="${esc(it.key)}" data-tip="Play from the bar picked in the list">▶ there</button></div>`
       : `<button class="mini" data-t="${it.data.ms / 1000}" ${it.data.type === "loop" ? `data-loop="${it.data.len_ms / 1000}"` : ""} data-tip="Play from here">▶</button>`;
     const had = it.sample && (c.saved_samples || []).find(x => Math.abs(x.start - it.data.ms / 1000) < 0.002 && Math.abs(x.len - it.data.len_ms / 1000) < 0.002 && !!x.smooth === smoothLoops());
     const save = !it.sample || SNAP ? "" : had ? `<span class="small" style="color:var(--good)" data-saved="${esc(it.key)}"> ✓ saved in ${esc(had.folder)} ${showBtn(had.file, c.file_manager)}</span>`
       : `<button class="mini" type="button" data-save="${esc(it.key)}" data-tip="Save this loop as a WAV sample (exact samples, gapless) in the folder chosen above">Save sample</button><span class="small" style="color:var(--good)" data-saved="${esc(it.key)}"></span>`;
-    const ign = it.kind === "move" && !SNAP && !isOn(it) ? `<button class="mini" type="button" data-ignore="${esc(it.key)}" data-tip="${it.ignored ? "Show this correction again" : "Your cue is right: hide this correction (it comes back only if the cue moves)"}">${it.ignored ? "Restore" : "Ignore"}</button>` : "";
+    const ign = it.kind === "move" && it.fixes.length && !SNAP && !isOn(it) ? `<button class="mini" type="button" data-ignore="${esc(it.key)}" data-tip="${it.ignored ? "Show this correction again" : "Your cue is right: hide this correction (it comes back only if the cue moves). You can still pick another bar for it"}">${it.ignored ? "Restore" : "Ignore"}</button>` : "";
+    const mine = it.kind === "add" && it.data.type === "cue" && !SNAP ? items.filter(m => m.kind === "move" && m.opts.some(o => Math.abs(o.to_ms - it.data.ms) < 1)) : [];
+    const useAs = mine.length ? ` <button type="button" class="useas" data-useas="${it.data.ms}" data-add="${esc(it.key)}" data-mine="${esc(mine.map(m => m.key).join(" "))}" data-tip="Move one of your cues here instead of adding a new one (point at one in the list to see it on the waveform)">move my cue here… ▾</button>` : "";
+    const mySlot = it.kind === "add" && ap ? ap.add.find(a => Math.abs(a.ms - it.data.ms) < 1)?.slot : undefined;
+    const slot = it.kind === "add" && !it.disabled && !SNAP && c.free_slots > 0 ? ` <select class="slot" data-slot="${esc(it.key)}" data-tip="Which hot-cue slot it goes in. Auto: a free one, keeping your cues in time order when they are. A slot your cue holds: that cue and the ones after it move up one">
+      <option value="">slot: auto</option>${[0, 1, 2, 3, 4, 5, 6, 7].map(n => { const y = held.get(n);
+        return `<option value="${n}" ${mySlot === n ? "selected" : ""} ${y && y.type !== "cue" ? "disabled" : ""}>slot ${n + 1}${!y ? " · free" : y.type === "cue" ? ` · yours move up` : ` · your ${cueKind(y).toLowerCase()}`}</option>`; }).join("")}</select>` : "";
+    const asCue = it.asCue && ap?.add.some(a => Math.abs(a.ms - it.data.ms) < 1 && a.type === "cue");
+    const as = it.asCue && !SNAP ? `<select class="as" data-as="${esc(it.key)}" data-tip="Write it as a loop, or as a plain hot cue at the loop's start (it then goes in the cue slots 1–7 with your other cues, in time order)">
+      <option value="loop" ${asCue ? "" : "selected"}>as loop</option><option value="cue" ${asCue ? "selected" : ""}>as cue point</option></select>` : "";
+    const nm = it.hand && !SNAP ? `<input class="nm" data-nm="${esc(it.key)}" value="${esc(it.data.name)}" maxlength="40" placeholder="name" style="width:130px;font-size:12px;padding:1px 4px" data-tip="Its name in Traktor (saved when you press Approve ticked)">${isOn(it) ? "" : ` <button class="mini" type="button" data-unhand="${it.data.ms}" data-tip="Remove this hand-set cue">✕</button>`}` : "";
     const note = it.disabled ? ` <span class="small" style="color:${it.disabled.startsWith("✓") ? "var(--good)" : "var(--text-3)"}">· ${esc(it.disabled)}</span>` : "";
-    const from = it.kind === "move" ? it.data.from_ms : it.data.ms;
+    const from = it.kind === "move" ? it.data.from_ms : it.data.ms;  // a deletion: its place (data.ms)
     const left = isOn(it) && (c.approved_view?.skipped_ms || []).some(m => Math.abs(m - from) < 1);  // approved but won't fit
     const done = isOn(it) && !(ap && ap.grid_changed) && !left;
-    return `<label class="${it.kind === "move" ? "fix" : "inline"}${done ? " approved" : ""}" style="${it.kind === "move" ? "" : "display:flex;margin:3px 0;"}${dim}" ${tipAttr}>
-      <input type="checkbox" data-key="${esc(it.key)}" ${isOn(it) ? "checked" : ""} ${it.disabled ? "disabled" : ""}> <span>${done ? `<span class="chip good" style="margin-right:6px">✓ approved</span>` : left ? `<span class="chip warn" style="margin-right:6px" data-tip="Approved, but it won't be written: see the note above">won't fit</span>` : ""}${it.label}${play}${save}${ign}${note}</span></label>`;
+    const chip = done ? `<span class="chip good" style="margin-right:6px">✓ approved</span>` : left ? `<span class="chip warn" style="margin-right:6px" data-tip="Approved, but it won't be written: see the note above">won't fit</span>` : "";
+    const body = it.kind === "remove" ? `${play}${chip}<span style="color:#ff786e">Delete</span> ${it.label}`
+      : it.kind === "move" ? `${chip}${it.label}${play}${ign}${note}`  // a new cue or loop: ▶ and its name, then the rest of its controls on a line of their own
+      : `<div>${play}${chip}${it.label}${note}</div><div class="ctl">${nm}${as}${slot}${useAs}${save}</div>`;
+    return `<label class="${it.kind === "move" ? "fix" : it.kind === "remove" ? "del" : "add"}${done ? " approved" : ""}" style="${dim}" ${tipAttr}>
+      <input type="checkbox" data-key="${esc(it.key)}" ${it.extra || it.also ? "data-more" : ""} ${isOn(it) ? "checked" : ""} ${it.disabled ? "disabled" : ""}> <span>${body}</span></label>`;
   };
   const summary = [fixes.length && `<b style="color:#c99700">${fixes.length} correction${fixes.length > 1 ? "s" : ""} to your cues</b>`,
     `${newCues} new cue${newCues === 1 ? "" : "s"}`, loops.length && `${loops.length} loop idea${loops.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
   return `<div class="section" style="margin-top:12px"><h3>Approve for Traktor</h3>
-    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : " · shown above as your cues (green = new, → = moved)"}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
+    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
     <div class="small muted">${summary}</div>
     <div id="approve">
       ${approved.length ? `<div class="apgroup"><h4 style="color:var(--good)">✓ Approved · not in Traktor yet <span class="small muted" style="font-weight:400">· untick and press Approve ticked to take one back</span></h4>${approved.map(row).join("")}</div>` : ""}
-      ${fixes.length ? `<div class="apgroup"><h4>Corrections to your cues <button class="mini" id="ap-fixall" type="button">Tick all corrections</button></h4><div class="fixbox">${fixes.map(row).join("")}</div></div>` : ""}
-      ${ignoredFixes.length ? `<details class="apgroup"><summary class="small muted">${ignoredFixes.length} ignored correction${ignoredFixes.length > 1 ? "s" : ""} · show</summary>${ignoredFixes.map(row).join("")}</details>` : ""}
-      ${cues_.length ? `<div class="apgroup"><h4>New cues <span class="small muted" style="font-weight:400">· ${c.free_slots > 0 ? `${c.free_slots} free hot-cue slot${c.free_slots > 1 ? "s" : ""}` : `<b style="color:var(--warn)">all 8 hot-cue slots are used</b>: free one in Traktor first, or use a correction to move a cue`}</span></h4>${cues_.map(row).join("")}</div>` : ""}
+      ${fixes.length ? `<div class="apgroup"><h4>Corrections to your cues <button class="mini" id="ap-fixall" type="button">Tick all corrections</button></h4><div class="fixbox" id="fixes">${fixes.map(row).join("")}</div></div>` : ""}
+      ${ignoredFixes.length ? `<details class="apgroup"><summary class="small muted">${ignoredFixes.length} ignored correction${ignoredFixes.length > 1 ? "s" : ""} · show</summary><div class="fixbox">${ignoredFixes.map(row).join("")}</div></details>` : ""}
+      ${others.length ? `<div class="apgroup" id="byhand" hidden><h4>Your cues moved by hand</h4><div class="fixbox">${others.map(it => `<div data-hand="${esc(it.key)}" hidden>${row(it)}</div>`).join("")}</div></div>` : ""}
+      ${cues_.length || more.length ? `<div class="apgroup"><h4>New cues <span class="small muted" style="font-weight:400">· ${c.free_slots > 0 ? `${c.free_slots} free hot-cue slot${c.free_slots > 1 ? "s" : ""}` : `<b style="color:var(--warn)">all 8 hot-cue slots are used</b>: free one in Traktor first, or use a correction to move a cue`}</span></h4>${cues_.map(row).join("")}${more.length ? `<details class="apgroup"${newCues ? "" : " open"}><summary class="small muted">${more.length} more place${more.length > 1 ? "s" : ""} for a new cue (lower scores than the picks above)</summary>${more.map(row).join("")}</details>` : ""}</div>` : ""}
       ${loops.length ? `<div class="apgroup"><h4>Loops ${SNAP ? "" : `<span class="small muted" style="font-weight:400">· save as WAV sample to <select id="smp-folder" style="font-size:12px;padding:1px 4px"></select> <button class="mini" type="button" id="smp-open" data-tip="Open this folder">Open folder</button></span>`}
         <label class="inline small" style="font-weight:400;margin-left:8px" data-tip="Fade the loop's last 5 ms into the audio just before its start, so a sound ringing over the end isn't cut off with a click. Changes the loop pads and saved samples; off = the track's exact samples"><input type="checkbox" id="smooth-loops" ${smoothLoops() ? "checked" : ""}> smooth loop point</label></h4>${loops.map(row).join("")}</div>` : ""}
+      ${dels.length ? `<details class="apgroup" id="delbox"><summary class="small muted">Delete your cues · ${dels.length} · or press ✕ next to a pad above</summary><div class="small dim" style="margin:2px 0 4px">Its slot is left free; your other cues keep their numbers.</div>${dels.map(row).join("")}</details>` : ""}
     </div>
     <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>
       ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write to Traktor…</button>`}<span class="small muted" id="ap-msg"></span></div>
     <div class="note">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
-      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction.</div></div>
+      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div></div>
     ${cueTable(c, c.cues)}`;
 }
 async function postJSON(url, body) {
@@ -783,19 +950,20 @@ async function writeToTraktor(onDone) {
   async function preview() {
     show(`<div class="muted">Checking what would change…</div>`, "");
     let d; try { d = await postJSON("/api/cues/write", { dry_run: true }); } catch (e) { return show(`<div class="err">${esc(e.message)}</div>`, ""); }
-    const what = [d.cues_added && `<b>${d.cues_added}</b> new cue${d.cues_added > 1 ? "s" : ""}`, d.cues_moved && `<b>${d.cues_moved}</b> correction${d.cues_moved > 1 ? "s" : ""}`].filter(Boolean).join(" and ");
+    const what = [d.cues_added && `<b>${d.cues_added}</b> new cue${d.cues_added > 1 ? "s" : ""}`, d.cues_moved && `<b>${d.cues_moved}</b> correction${d.cues_moved > 1 ? "s" : ""}`, d.cues_renumbered && `<b>${d.cues_renumbered}</b> cue${d.cues_renumbered > 1 ? "s" : ""} renumbered to stay in time order`,
+      d.cues_deleted && `<b>${d.cues_deleted}</b> deleted`].filter(Boolean).join(" and ");
     const running = d.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Quit Traktor first: it saves its collection when it closes and would undo these changes. Then press Check again.</div>` : "";
     show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : "Nothing to write: everything approved is already in Traktor or can't be placed."}</div>`}
       ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in Traktor):</div>${list(d.skipped)}` : ""}
       ${running}
-      <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction.</div>`,
+      <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
       d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to Traktor</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
       e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
       let r; try { r = await postJSON("/api/cues/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = "Write to Traktor"; return fail(err); }
       S.tracks = {};
-      show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.cues_added} new cue${r.cues_added === 1 ? "" : "s"}, ${r.cues_moved} correction${r.cues_moved === 1 ? "" : "s"} on ${r.tracks} track${r.tracks === 1 ? "" : "s"}.</div>
+      show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.cues_added} new cue${r.cues_added === 1 ? "" : "s"}, ${r.cues_moved} correction${r.cues_moved === 1 ? "" : "s"}${r.cues_renumbered ? `, ${r.cues_renumbered} renumbered` : ""}${r.cues_deleted ? `, ${r.cues_deleted} deleted` : ""} on ${r.tracks} track${r.tracks === 1 ? "" : "s"}.</div>
         <div class="note">Open Traktor: the cues are there. Backup: <span class="mono">${esc(r.backup || "")}</span><br>Undo works until Traktor saves the collection again (it does when it quits).</div>`,
         `<button data-undo>Undo</button>`);
       dlg.querySelector("[data-undo]").onclick = async ev => {
@@ -821,10 +989,12 @@ function bindApprove(c, box, t) {
   const send = postJSON;
   const refresh = async (d, msgText) => {  // draw the panel again and update the track list's counts
     for (const list of Object.values(S.tracks)) for (const x of list) if (x.path === t.path) {
-      if ("approved" in d) { if (d.approved) x.cues_approved = true; else delete x.cues_approved; }
       if ("corrections" in d) { if (d.corrections) x.corrections = d.corrections; else delete x.corrections; }
     }
-    const fresh = await api("cues", { path: t.path }); box.innerHTML = renderCues(fresh); drawWave(fresh, box); bindApprove(fresh, box, t); deckAttach(fresh, box);
+    const fresh = await api("cues", { path: t.path });
+    for (const list of Object.values(S.tracks)) for (const x of list) if (x.path === t.path) {  // the list's approved chip
+      const ap = fresh.approved; if (ap) x.cues_approved = { add: ap.add.length, move: ap.move.length, remove: (ap.remove || []).length }; else delete x.cues_approved;
+    } box.innerHTML = renderCues(fresh); drawWave(fresh, box); bindApprove(fresh, box, t); deckAttach(fresh, box);
     const msg = box.querySelector("#ap-msg"); if (msg && msgText) msg.textContent = msgText;
     if (S.page === "tracks") S.redrawTracks?.();
   };
@@ -832,7 +1002,7 @@ function bindApprove(c, box, t) {
   box.querySelectorAll("[data-ignore]").forEach(b => b.addEventListener("click", async e => {
     e.preventDefault(); e.stopPropagation();
     const it = items.find(i => i.key === b.dataset.ignore);
-    try { const d = await send("/api/cues/ignore", { path: t.path, fix: it.fix, on: !it.ignored }); await refresh(d, it.ignored ? "Correction restored" : "Correction ignored"); }
+    try { let d; for (const fix of it.fixes) d = await send("/api/cues/ignore", { path: t.path, fix, on: !it.ignored }); await refresh(d, it.ignored ? "Correction restored" : "Correction ignored"); }
     catch (err) { b.textContent = err.message; }
   }));
   box.querySelector("#dk-rescan")?.addEventListener("click", async e => {
@@ -841,11 +1011,179 @@ function bindApprove(c, box, t) {
     catch (err) { b.disabled = false; b.textContent = err.message; }
   });
   const go = async plan => { try { await save(plan); } catch (e) { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; } };
+  const asData = i => i.hand ? { ...i.data, name: (box.querySelector(`input[data-nm="${CSS.escape(i.key)}"]`)?.value || "").trim() || "Cue" }  // a hand-set cue: its name as typed
+    : i.asCue && box.querySelector(`select[data-as="${CSS.escape(i.key)}"]`)?.value === "cue" ? i.asCue : i.data;  // loop idea: as loop or as cue point
   const ticked = () => { const on = new Set([...box.querySelectorAll("#approve input:checked")].map(i => i.dataset.key)); const sel = items.filter(it => on.has(it.key));
-    return { add: sel.filter(i => i.kind === "add").map(i => i.data), move: sel.filter(i => i.kind === "move").map(i => i.data) }; };
+    const target = i => { const s = box.querySelector(`select[data-target="${CSS.escape(i.key)}"]`); return s ? { ...i.data, to_ms: +s.value } : i.data; };
+    const slot = i => { const v = box.querySelector(`select[data-slot="${CSS.escape(i.key)}"]`)?.value, d = asData(i); return v ? { ...d, slot: +v } : d; };
+    return { add: sel.filter(i => i.kind === "add").map(slot), move: sel.filter(i => i.kind === "move").map(target),
+      remove: sel.filter(i => i.kind === "remove").map(i => i.data) }; };
+  const useAs = (s, k) => {  // a suggestion → one of your cues: show that cue's move, set to here
+    const hand = box.querySelector(`[data-hand="${CSS.escape(k)}"]`);
+    if (hand) { hand.hidden = false; box.querySelector("#byhand").hidden = false; }
+    const tgt = box.querySelector(`select[data-target="${CSS.escape(k)}"]`); if (!tgt) return;
+    tgt.closest("details")?.setAttribute("open", "");
+    const o = [...tgt.options].find(o => Math.abs(+o.value - +s.dataset.useas) < 1); if (o) tgt.value = o.value;
+    tgt.dispatchEvent(new Event("change"));
+    const add = box.querySelector(`#approve input[data-key="${CSS.escape(s.dataset.add)}"]`); if (add) add.checked = false;  // moved there, not added
+    tgt.closest("label")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  };
+  box.querySelectorAll("select[data-target]").forEach(s => s.addEventListener("change", () => {  // picking a bar ticks the move
+    const k = CSS.escape(s.dataset.target), cb = box.querySelector(`#approve input[data-key="${k}"]`), pl = box.querySelector(`[data-there="${k}"]`);
+    if (cb) cb.checked = true;
+    if (pl) pl.dataset.t = +s.value / 1000;
+  }));
   box.querySelector("#ap-save")?.addEventListener("click", () => go(ticked()));
+  const syncMoves = () => {  // every move in the panel, ticked (its picked bar) or not (null): the waveform draws them
+    box._moves = new Map(items.filter(i => i.kind === "move").map(i => {
+      const cb = box.querySelector(`#approve input[data-key="${CSS.escape(i.key)}"]`), s = box.querySelector(`select[data-target="${CSS.escape(i.key)}"]`);
+      return [moveKey(i.data.hotcue, i.data.from_ms), cb?.checked ? (s ? +s.value : i.data.to_ms) : null];
+    }));
+    box._movesPath = c.path;
+    box._wave?.redraw();
+  };
+  box.querySelector("#approve")?.addEventListener("change", syncMoves);
+  let slotAsk = 0;
+  const showSlots = () => {  // "auto" names its slot: the server's resolve() on what's ticked, the same as apply writes it
+    const sels = [...box.querySelectorAll("#approve select.slot")];
+    const plan = ticked(), n = ++slotAsk, label = (s, text) => { s.options[0].textContent = text; };
+    // the waveform draws the ticked new cues as pending (dashed), numbered once the server says which slot
+    const pend = plan.add.filter(a => !isApprovedAdd(c, a.ms));
+    box._pending = PEND = { path: c.path, adds: pend.map(a => ({ ...a, hotcue: a.slot ?? null })), removes: plan.remove, slots: null };
+    const pads = () => { const y = box.querySelector("#your-pads"); if (y) y.innerHTML = yourPads(c, box._pending); box._wave?.redraw(); };
+    pads();
+    if (!plan.add.length || SNAP) return sels.forEach(s => label(s, "slot: auto"));
+    send("/api/cues/slots", { path: t.path, plan }).then(r => {
+      if (n !== slotAsk || !box.isConnected) return;
+      if (box._pending?.adds.length) {
+        box._pending.adds.forEach(a => { const got = r.new.find(g => Math.abs(g.ms - a.ms) < 1); a.hotcue = got ? got.slot : -1; a.nofit = !got; });
+        box._pending.slots = { new: r.new, up: new Map(r.moved_up.map(m => [m.was, m.to])) };  // every cue's slot after this, approved ones too
+        pads();
+      }
+      sels.forEach(s => {
+        const it = items.find(i => i.key === s.dataset.slot), cb = box.querySelector(`#approve input[data-key="${CSS.escape(s.dataset.slot)}"]`);
+        if (!it || !cb?.checked) return label(s, "slot: auto");
+        const got = r.new.find(a => Math.abs(a.ms - it.data.ms) < 1);
+        label(s, got ? `slot ${got.slot + 1} (auto)` : "auto: won't fit");
+      });
+    }).catch(() => {});
+  };
+  box.querySelector("#approve")?.addEventListener("change", showSlots);
+  showSlots();
+  box.querySelector("#your-pads")?.addEventListener("click", e => {  // a pad's ✕: tick (or untick) its deletion in the panel
+    const b = e.target.closest("[data-del]"); if (!b) return;
+    e.preventDefault(); e.stopPropagation();
+    const cb = box.querySelector(`#approve input[data-key="${CSS.escape(b.dataset.del)}"]`); if (!cb) return;
+    cb.checked = !cb.checked;
+    if (cb.checked) { const d = cb.closest("details"); if (d) d.open = true; }
+    cb.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const redraw = after => {  // draw the panel again from c, keeping what's ticked, picked, typed and open, and the scroll
+    const q = sel => [...box.querySelectorAll(sel)];
+    const ticks = new Map(q("#approve input[data-key]").map(i => [i.dataset.key, i.checked]));
+    const vals = q("#approve [data-target], #approve [data-slot], #approve [data-as], #approve [data-nm]").map(e => [e.dataset.target ?? e.dataset.slot ?? e.dataset.as ?? e.dataset.nm, e.className, e.value]);
+    const open = q("#approve details").map(d => d.open), scroll = [];
+    for (let e = box; e; e = e.parentElement) scroll.push([e, e.scrollTop]);
+    box.innerHTML = renderCues(c); drawWave(c, box); bindApprove(c, box, t); deckAttach(c, box);
+    q("#approve input[data-key]").forEach(i => { if (ticks.has(i.dataset.key)) i.checked = ticks.get(i.dataset.key); });
+    vals.forEach(([k, cls, v]) => { const e = q(`#approve .${cls.split(" ")[0]}`).find(e => (e.dataset.target ?? e.dataset.slot ?? e.dataset.as ?? e.dataset.nm) === k); if (e) e.value = v; });
+    const ds = q("#approve details"); if (ds.length === open.length) ds.forEach((d, k) => { d.open = open[k]; });
+    scroll.forEach(([e, y]) => { e.scrollTop = y; });
+    after?.();
+    box.querySelector("#approve")?.dispatchEvent(new Event("change"));  // the pads, waveform and slot labels follow the ticks
+  };
+  box.querySelector("#dk-cue")?.addEventListener("click", () => {  // + Cue: a cue of yours at the playhead, on the nearest beat of Traktor's grid, ticked
+    const beat = 60000 / c.bpm, ms = +(c.grid_ms + Math.round((deckTime() * 1000 - c.grid_ms) / beat) * beat).toFixed(3), msg = m => { const e = box.querySelector("#ap-msg"); if (e) e.textContent = m; };
+    if (ms < 0) return;
+    const y = myCues(c).find(y => y.status !== "deleted" && Math.abs(y.ms - ms) < 1);
+    if (y) return msg(`Your ${cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " " + (y.hotcue + 1) : ""} is already on this beat`);
+    const tick = () => { const cb = box.querySelector(`#approve input[data-key="h${ms}"]`) || items.map(i => i.kind === "add" && Math.abs(i.data.ms - ms) < 1 && box.querySelector(`#approve input[data-key="${CSS.escape(i.key)}"]`)).find(Boolean);
+      if (!cb || cb.disabled) return;
+      cb.checked = true; cb.closest("details")?.setAttribute("open", ""); cb.closest("label")?.scrollIntoView({ block: "nearest" });
+      msg(`Cue set at ${clock(ms / 1000)}: ticked under New cues, press Approve ticked to keep it`); };
+    if (!items.some(i => i.kind === "add" && Math.abs(i.data.ms - ms) < 1)) { HAND.set(c.path, [...(HAND.get(c.path) || []), { ms, name: "Cue" }]); redraw(tick); }
+    else { tick(); box.querySelector("#approve")?.dispatchEvent(new Event("change")); }  // a suggestion is already on this beat: tick that one
+  });
+  box.querySelectorAll("[data-unhand]").forEach(b => b.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    HAND.set(c.path, (HAND.get(c.path) || []).filter(h => Math.abs(h.ms - +b.dataset.unhand) >= 1)); redraw();
+  }));
+  box.querySelectorAll("#approve select.as").forEach(s => s.addEventListener("change", () => {  // loop or cue point: ticks it; approved already, saved now
+    const cb = box.querySelector(`#approve input[data-key="${CSS.escape(s.dataset.as)}"]`); if (cb) cb.checked = true;
+    const it = items.find(i => i.key === s.dataset.as), ap = c.approved;
+    if (!it || !ap || ap.grid_changed || !ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1)) return;
+    const add = ap.add.map(a => Math.abs(a.ms - it.data.ms) >= 1 ? a : { ...asData(it), ...(a.slot != null ? { slot: a.slot } : {}) });
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: ${it.data.name} → ${s.value === "cue" ? "as a cue point" : "as a loop"}`))
+      .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
+  }));
+  box.querySelectorAll("#approve select.slot").forEach(s => s.addEventListener("change", () => {  // picking a slot ticks the cue
+    const cb = box.querySelector(`#approve input[data-key="${CSS.escape(s.dataset.slot)}"]`); if (cb && s.value) cb.checked = true;
+    const it = items.find(i => i.key === s.dataset.slot), ap = c.approved;  // already approved: save the new slot now, so the pads and waveform show it
+    if (!it || !ap || ap.grid_changed || !ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1)) return;
+    const add = ap.add.map(a => { if (Math.abs(a.ms - it.data.ms) >= 1) return a; const { slot: _, ...rest } = a; return s.value ? { ...rest, slot: +s.value } : rest; });
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: ${it.data.name || "the cue"} → ${s.value ? `slot ${+s.value + 1}` : "slot auto"}`))
+      .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
+  }));
+  syncMoves();
+  box._hover = [];  // the panel was just drawn again: nothing under the mouse yet
+  box.querySelectorAll(".pads").forEach(p => {  // so do the pads (your cues, suggestions, loop ideas): a bar, or the loop's length
+    let on = null;
+    p.addEventListener("mouseover", e => {
+      const b = e.target.closest("button[data-t]");
+      if (b === on) return;
+      on = b; box._hover = b ? [[+b.dataset.t, +b.dataset.t + (+b.dataset.loop || c.bar_seconds)]] : [];
+      box._hoverPath = c.path; box._wave?.redraw();
+    });
+    p.addEventListener("mouseleave", () => { on = null; box._hover = []; box._wave?.redraw(); });
+  });
+  const ap = box.querySelector("#approve");
+  if (ap) {  // hovering a row lights up where it is on the waveform (a move: where the cue is and where it would go)
+    let at = null;
+    const show = key => {
+      if (key === at) return;
+      at = key;
+      const it = key && items.find(i => i.key === key), bar = c.bar_seconds;
+      if (!it) box._hover = [];
+      else if (it.kind === "add") box._hover = [[it.data.ms / 1000, it.data.ms / 1000 + (it.data.len_ms ? it.data.len_ms / 1000 : bar)]];
+      else {
+        const s = box.querySelector(`select[data-target="${CSS.escape(key)}"]`), to = (s ? +s.value : it.data.to_ms) / 1000;
+        box._hover = [[it.data.from_ms / 1000, it.data.from_ms / 1000 + bar], [to, to + bar]];
+      }
+      box._hoverPath = c.path; box._wave?.redraw();
+    };
+    ap.addEventListener("mouseover", e => show(e.target.closest("label")?.querySelector("input[data-key]")?.dataset.key || null));
+    ap.addEventListener("mouseleave", () => show(null));
+    ap.addEventListener("change", () => { const k = at; at = null; show(k); });  // a new bar picked while hovering
+    // "move my cue here…": a menu of its own, since an open <select> tells the page nothing about the option under the mouse
+    const light = spans => { at = undefined; box._hover = spans; box._hoverPath = c.path; box._wave?.redraw(); };
+    document.querySelectorAll(".usemenu").forEach(m => m.remove());
+    let menu = null;
+    const close = () => { if (!menu) return; menu.remove(); menu = null; light([]); removeEventListener("keydown", esc_); document.removeEventListener("mousedown", out); removeEventListener("scroll", scr, true); };
+    const scr = e => { if (menu && !menu.contains(e.target)) close(); };  // it stays put while the page moves
+    const esc_ = e => { if (e.key === "Escape") close(); };
+    const out = e => { if (menu && !menu.contains(e.target) && !e.target.closest("button.useas")) close(); };
+    box.querySelectorAll("button.useas").forEach(b => b.addEventListener("click", e => {
+      e.preventDefault(); e.stopPropagation();
+      const was = menu?._for === b; close(); if (was) return;
+      const here = +b.dataset.useas / 1000, bar = c.bar_seconds;
+      menu = document.createElement("div"); menu.className = "usemenu"; menu._for = b;
+      menu.innerHTML = b.dataset.mine.split(" ").map(k => items.find(i => i.key === k)).filter(Boolean).map(m =>
+        `<div data-k="${esc(m.key)}">Cue ${m.cue.hotcue + 1}${m.cue.name ? ` (${esc(m.cue.name)})` : ""} · bar ${m.cue.from_bar}</div>`).join("");
+      document.body.append(menu);
+      const r = b.getBoundingClientRect(), h = menu.offsetHeight;
+      menu.style.left = `${Math.min(r.left, innerWidth - menu.offsetWidth - 8)}px`;
+      menu.style.top = `${r.bottom + 2 + h > innerHeight ? Math.max(8, r.top - 2 - h) : r.bottom + 2}px`;
+      menu.addEventListener("mouseover", e => {  // that cue where it is now, and here
+        const k = e.target.closest("[data-k]")?.dataset.k, m = k && items.find(i => i.key === k); if (!m) return;
+        light([[m.data.from_ms / 1000, m.data.from_ms / 1000 + bar], [here, here + bar]]);
+      });
+      menu.addEventListener("mouseleave", () => light([]));
+      menu.addEventListener("click", e => { const k = e.target.closest("[data-k]")?.dataset.k; if (!k) return; close(); useAs(b, k); });
+      addEventListener("keydown", esc_); document.addEventListener("mousedown", out); addEventListener("scroll", scr, true);
+    }));
+  }
   box.querySelector("#ap-write")?.addEventListener("click", () => writeToTraktor(async () => { S.tracks = {}; await refresh({}, ""); if (S.page === "tracks") S.reloadTracks?.(); }));
-  box.querySelector("#ap-all")?.addEventListener("click", () => box.querySelectorAll('#approve input[data-key^="a"]:not(:disabled)').forEach(i => { i.checked = true; }));
+  box.querySelector("#ap-all")?.addEventListener("click", () => box.querySelectorAll('#approve input[data-key^="a"]:not(:disabled):not([data-more])').forEach(i => { i.checked = true; }) || showSlots());
   const sel = box.querySelector("#smp-folder");
   if (sel) {
     (S.sampleFolders ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
@@ -883,17 +1221,59 @@ function bindApprove(c, box, t) {
     if (DECK.src && DECK.loop) deckLoop(DECK.loop[0], DECK.loop[1]);  // hear the change straight away
     await refresh({}, S.smoothLoops ? "Loop points smoothed" : "Exact loop points");
   });
-  box.querySelector("#ap-fixall")?.addEventListener("click", e => { e.preventDefault(); box.querySelectorAll('#approve input[data-key^="m"]').forEach(i => { i.checked = true; }); });
+  box.querySelector("#ap-fixall")?.addEventListener("click", e => { e.preventDefault(); box.querySelectorAll('#fixes input[data-key^="m"]').forEach(i => { i.checked = true; }); syncMoves(); });
   box.querySelector("#ap-clear")?.addEventListener("click", () => go(null));
 }
 // ---------- deck: play the track and jump around like on a Traktor deck ----------
 const DECK = { audio: new Audio(), path: null, c: null, box: null, loop: null, raf: 0, loaded: false,
   ctx: null, buf: null, bufPath: null, src: null, wa: null };  // Web Audio, for gapless loops
 DECK.audio.preload = "none";
+function deckViewBpm() {  // the tempo view the player can stretch to: the one shown, else the first scanned
+  const views = (S.libs?.libraries || []).filter(l => l.bpm);
+  return (S.lib !== "native" && views.find(l => l.id === S.lib)?.bpm) || views[0]?.bpm || null;
+}
+const deckBpm = () => (S.deckStretch ?? S.lib !== "native") ? deckViewBpm() : null;  // on by default in a tempo view
+const DECK_RATIOS = new Map(), DECK_PENDING = new Set();  // "path|bpm" -> stretched time / Traktor time, once the server has the stretched file
+function deckRatio(bpm) {
+  if (!bpm) return Promise.resolve(1);
+  const key = `${DECK.path}|${bpm}`;
+  if (!DECK_RATIOS.has(key)) {
+    DECK_PENDING.add(key);  // deckUi shows the spinner while it's in here
+    DECK_RATIOS.set(key, api("deck/stretch", { path: DECK.path, bpm }).then(r => r.ratio)
+      .catch(e => { DECK_RATIOS.delete(key); throw e; }).finally(() => { DECK_PENDING.delete(key); deckUi(); }));
+    deckUi();
+  }
+  return DECK_RATIOS.get(key);
+}
+function deckPrefetch() {  // stretch as soon as a track opens, so it's usually ready by the first play
+  const bpm = deckBpm();
+  const path = DECK.path;
+  if (bpm && path) deckRatio(bpm).then(() => { if (DECK.path === path && !DECK.loaded && !DECK.src && !DECK.preparing) deckMsg(`Ready at ${bpm} BPM`); },
+    () => {});  // a failure shows when you press play
+}
+function deckVolume() {  // 0–1, remembered between visits
+  if (DECK.vol === undefined) { let v = NaN; try { v = parseFloat(localStorage.getItem("ta-volume")); } catch (e) {} DECK.vol = v >= 0 && v <= 1 ? v : 1; }
+  return DECK.vol;
+}
+function deckSetVolume(v) {
+  DECK.vol = v; DECK.audio.volume = v;
+  if (DECK.gain) DECK.gain.gain.value = v;
+  try { localStorage.setItem("ta-volume", String(v)); } catch (e) {}
+}
+DECK.audio.volume = deckVolume();
 function deckAttach(c, box) {
-  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; }
+  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; DECK.ready = null; }
   DECK.c = c; DECK.box = box;
   box.querySelector("#dk-play")?.addEventListener("click", deckToggle);
+  box.querySelector("#dk-vol")?.addEventListener("input", e => deckSetVolume(+e.target.value / 100));
+  box.querySelector("#dk-stretch")?.addEventListener("change", e => {  // carry on from the same beat at the other tempo
+    S.deckStretch = e.target.checked; deckPrefetch();
+    const playing = deckPlaying() || DECK.waiting, t = deckTime(), loop = DECK.loop, active = DECK.active;
+    if (DECK.src) deckStopLoop(); else DECK.audio.pause();
+    if (playing) { deckSeek(loop ? loop[0] : t, true, loop); DECK.active = active; }
+    else if (DECK.loaded) deckSeek(t, false);
+    deckUi();
+  });
   if (box._deckBound) { deckUi(); return; }
   box._deckBound = true;
   box.addEventListener("click", e => {  // pads and ▶ buttons: jump there and play (a loop plays looped)
@@ -901,7 +1281,7 @@ function deckAttach(c, box) {
     e.preventDefault(); e.stopPropagation();
     const t = +b.dataset.t, len = b.dataset.loop ? +b.dataset.loop : 0, id = `${t}|${len}`;
     if (b.classList.contains("mini") && DECK.active === id && deckPlaying()) {  // its ⏸: stop
-      if (DECK.src) { const at = deckStopLoop(); deckSrc(); DECK.audio.currentTime = at; } else DECK.audio.pause();
+      if (DECK.src) deckSeek(deckStopLoop(), false); else DECK.audio.pause();
       DECK.active = null; deckUi(); return;
     }
     deckSeek(t, true, len ? [t, t + len] : null);
@@ -909,15 +1289,24 @@ function deckAttach(c, box) {
   });
   deckUi();
 }
-function deckSrc() {  // the file loads only once you play or jump: opening a track loads nothing
-  if (!DECK.loaded && DECK.path) {
-    DECK.audio.preload = "auto"; DECK.audio.src = `/api/audio?path=${encodeURIComponent(DECK.path)}`; DECK.loaded = true;
+function deckReady() {  // the file loads only once you play or jump: opening a track loads nothing. Resolves false if
+  // it couldn't, or another track or tempo was asked for meanwhile
+  const bpm = deckBpm(), path = DECK.path;
+  if (!path) return Promise.resolve(false);
+  if (DECK.ready && DECK.readyBpm === bpm) return DECK.ready;
+  DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.loaded = false; DECK.readyBpm = bpm;
+  DECK.ready = deckRatio(bpm).then(k => {
+    if (DECK.path !== path || DECK.readyBpm !== bpm) return false;
+    DECK.k = k; DECK.bpm = bpm;  // Traktor time t is t × k in this file
+    DECK.audio.preload = "auto"; DECK.audio.src = `/api/audio?path=${encodeURIComponent(path)}${bpm ? `&bpm=${bpm}` : ""}`; DECK.loaded = true;
     DECK.preparing = true; deckMsg("Preparing audio… (the first time for a track takes a few seconds)");
-  }
+    return true;
+  }, err => { if (DECK.readyBpm === bpm) DECK.ready = null; deckMsg(`Couldn't stretch: ${err.message}`); return false; });
+  return DECK.ready;
 }
-function deckTime() {  // where playback is now, looping or not
-  if (DECK.src) { const len = DECK.wa.b - DECK.wa.a; return DECK.wa.a + ((DECK.ctx.currentTime - DECK.wa.t0) % len); }
-  return DECK.audio.currentTime || 0;
+function deckTime() {  // where playback is now, looping or not, in Traktor's time (the track's own tempo)
+  if (DECK.src) { const w = DECK.wa, len = w.b - w.a; return w.a + (((DECK.ctx.currentTime - w.t0) / w.k) % len); }
+  return (DECK.audio.currentTime || 0) / (DECK.loaded ? DECK.k : 1);
 }
 const deckPlaying = () => !!DECK.src || !DECK.audio.paused;
 function deckStopLoop() {
@@ -932,24 +1321,26 @@ async function deckLoop(a, b) {
   // The <audio> element can only jump back once per screen refresh, which leaves a gap. Web Audio loops on the
   // exact sample: the server cuts just the loop out of the file (~0.15 s), and it plays over and over.
   DECK.audio.pause(); deckStopLoop();
-  DECK.loop = [a, b];
-  const smooth = smoothLoops(), want = DECK.path, key = `${want}|${a}|${b}|${smooth}`;
+  DECK.loop = [a, b]; DECK.asked = (DECK.asked || 0) + 1; DECK.waiting = true; deckUi();
+  const smooth = smoothLoops(), want = DECK.path, bpm = deckBpm(), key = `${want}|${a}|${b}|${smooth}|${bpm}`;
   try {
-    DECK.ctx = DECK.ctx || new AudioContext();
+    const k = await deckRatio(bpm);  // stretched loops are cut from the stretched track, so it's made first
+    if (DECK.path !== want || !DECK.loop || DECK.loop[0] !== a) return;
+    if (!DECK.ctx) { DECK.ctx = new AudioContext(); DECK.gain = DECK.ctx.createGain(); DECK.gain.gain.value = deckVolume(); DECK.gain.connect(DECK.ctx.destination); }
     if (DECK.ctx.state === "suspended") await DECK.ctx.resume();
     let buf = LOOP_CLIPS.get(key), whole = false;
     if (!buf) {
       try {
-        const r = await fetch(`/api/loop?path=${encodeURIComponent(want)}&start=${a}&len=${b - a}${smooth ? "&smooth=1" : ""}`);
+        const r = await fetch(`/api/loop?path=${encodeURIComponent(want)}&start=${a}&len=${b - a}${smooth ? "&smooth=1" : ""}${bpm ? `&bpm=${bpm}` : ""}`);
         if (!r.ok) throw new Error((await r.json()).error);
         buf = await DECK.ctx.decodeAudioData(await r.arrayBuffer());
         LOOP_CLIPS.set(key, buf);
         if (LOOP_CLIPS.size > 12) LOOP_CLIPS.delete(LOOP_CLIPS.keys().next().value);
       } catch (e) {  // no ffmpeg or a cut that failed: decode the whole track instead (slower, same loop)
         deckMsg("Preparing a gapless loop…");
-        if (DECK.bufPath !== want) {
-          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}`)).arrayBuffer();
-          DECK.buf = await DECK.ctx.decodeAudioData(data); DECK.bufPath = want;
+        if (DECK.bufPath !== `${want}|${bpm}`) {
+          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`)).arrayBuffer();
+          DECK.buf = await DECK.ctx.decodeAudioData(data); DECK.bufPath = `${want}|${bpm}`;
         }
         buf = DECK.buf; whole = true;
       }
@@ -957,26 +1348,44 @@ async function deckLoop(a, b) {
     if (DECK.path !== want || !DECK.loop || DECK.loop[0] !== a) return;  // another jump or track meanwhile
     const src = DECK.ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
-    if (whole) { src.loopStart = a; src.loopEnd = b; src.connect(DECK.ctx.destination); src.start(0, a); }
-    else { src.connect(DECK.ctx.destination); src.start(0, 0); }  // the clip is exactly the loop
-    DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b };
+    if (whole) { src.loopStart = a * k; src.loopEnd = b * k; src.connect(DECK.gain); src.start(0, a * k); }
+    else { src.connect(DECK.gain); src.start(0, 0); }  // the clip is exactly the loop
+    DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b, k, bpm }; DECK.waiting = false;
     deckTick();
-  } catch (err) { DECK.loop = null; deckMsg(`Couldn't loop: ${err.message}`); }
+  } catch (err) { DECK.loop = null; DECK.waiting = false; deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
 }
 function deckSeek(t, play = true, loop = null) {
   if (!DECK.path) return;
   DECK.active = null;
   if (loop) { deckLoop(loop[0], loop[1]); return; }
-  deckStopLoop();
-  deckSrc(); DECK.loop = null;
-  const go = () => { DECK.audio.currentTime = Math.max(0, t); if (play) DECK.audio.play().catch(err => deckMsg(err.message)); deckTick(); };
-  if (DECK.audio.readyState >= 1) go(); else DECK.audio.addEventListener("loadedmetadata", go, { once: true });
+  deckStopLoop(); DECK.loop = null;
+  const want = DECK.path, ask = DECK.asked = (DECK.asked || 0) + 1;  // a later jump or a cancel wins
+  DECK.waiting = play && !(DECK.loaded && DECK.audio.readyState >= 3 && DECK.readyBpm === deckBpm()); deckUi();
+  deckReady().then(ok => {
+    if (DECK.asked !== ask || DECK.path !== want || DECK.src) return;  // a loop or another jump meanwhile
+    if (!ok) { DECK.waiting = false; deckUi(); return; }
+    const go = () => {
+      if (DECK.asked !== ask) return;
+      DECK.audio.currentTime = Math.max(0, t) * DECK.k;
+      if (play) DECK.audio.play().catch(err => { DECK.waiting = false; deckMsg(err.message); deckUi(); });
+      deckTick();
+    };
+    if (DECK.audio.readyState >= 1) go(); else DECK.audio.addEventListener("loadedmetadata", go, { once: true });
+  });
 }
 function deckToggle() {
   if (!DECK.path) return;
-  if (DECK.src) { const t = deckStopLoop(); deckSrc(); DECK.audio.currentTime = t; deckUi(); return; }  // pause leaves the loop
-  deckSrc();
-  if (DECK.audio.paused) DECK.audio.play().catch(err => deckMsg(err.message)); else DECK.audio.pause();
+  if (DECK.waiting) {  // pressed again before the sound started: cancel
+    DECK.waiting = false; DECK.asked = (DECK.asked || 0) + 1; DECK.loop = null; DECK.active = null; DECK.audio.pause(); deckUi(); return;
+  }
+  if (DECK.src) { deckSeek(deckStopLoop(), false); deckUi(); return; }  // pause leaves the loop
+  if (!DECK.audio.paused) { DECK.audio.pause(); return; }
+  if (DECK.loaded && DECK.readyBpm === deckBpm()) {
+    DECK.waiting = DECK.audio.readyState < 3; deckUi();
+    DECK.audio.play().catch(err => { DECK.waiting = false; deckMsg(err.message); deckUi(); });
+    return;
+  }
+  deckSeek(deckTime(), true);
 }
 function deckMsg(m) { const el = DECK.box?.querySelector("#dk-time"); if (el) el.textContent = m; }
 function deckTick() {
@@ -985,18 +1394,27 @@ function deckTick() {
   step();
 }
 DECK.audio.addEventListener("play", deckTick);
+DECK.audio.addEventListener("playing", () => { DECK.waiting = false; deckUi(); });  // sound is coming out
 DECK.audio.addEventListener("pause", () => deckUi());
 DECK.audio.addEventListener("canplay", () => { if (DECK.preparing) { DECK.preparing = false; deckUi(); } });
 DECK.audio.addEventListener("ended", () => { DECK.active = null; deckUi(); });
-DECK.audio.addEventListener("error", () => { DECK.preparing = false; if (DECK.loaded) deckMsg("This browser can't play this file"); });
+DECK.audio.addEventListener("error", () => { DECK.preparing = false; DECK.waiting = false; if (DECK.loaded) deckMsg("This browser can't play this file"); });
 function deckUi() {
   const c = DECK.c, box = DECK.box;
   if (!c || !box || !box.isConnected) return;
   const t = deckTime();
-  const btn = box.querySelector("#dk-play"); if (btn) btn.textContent = deckPlaying() ? "⏸ Pause" : "▶ Play";
+  const btn = box.querySelector("#dk-play");
+  if (btn) {  // pressed, no sound yet (stretching, loading): say so on the button itself
+    const txt = DECK.waiting ? "Starting…" : deckPlaying() ? "⏸ Pause" : "▶ Play";
+    if (btn.textContent !== txt) btn.textContent = txt;
+    btn.classList.toggle("waiting", !!DECK.waiting);
+    btn.dataset.tip = DECK.waiting ? "Getting the audio ready; it starts by itself. Click to cancel" : "";
+  }
+  const stretching = DECK_PENDING.has(`${DECK.path}|${deckBpm()}`), sw = box.querySelector("#dk-stretching");
+  if (sw) sw.hidden = !stretching;
   const bi = Math.floor((t - c.first_bar_s + 1e-6) / c.bar_seconds), bl = barLabel(c, bi), bt = Math.floor((t - c.first_bar_s - bi * c.bar_seconds) / (c.bar_seconds / 4) + 1e-6) + 1;
   const tm = box.querySelector("#dk-time");
-  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) tm.textContent = `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}`;
+  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) tm.textContent = `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`;
   box.querySelectorAll("button.mini[data-t]").forEach(b => {
     b.dataset.label ??= b.textContent;
     const on = deckPlaying() && DECK.active === `${+b.dataset.t}|${b.dataset.loop ? +b.dataset.loop : 0}`;
@@ -1019,15 +1437,22 @@ document.addEventListener("keydown", e => {
   const c = DECK.c, t = deckTime();
   if (e.code === "Space") { e.preventDefault(); deckToggle(); }
   else if (/^Digit[1-8]$/.test(e.code)) {
-    const y = myCues(c).find(y => y.hotcue === +e.code.slice(5) - 1);
+    const n = +e.code.slice(5) - 1, p = PEND?.path === c.path ? PEND : null;  // with cues ticked: the slots as the pads show them
+    const a = p?.adds.find(a => !a.nofit && a.hotcue === n);
+    const y = a ? { ms: a.ms, type: a.type, bars: a.type === "loop" && a.len_ms ? a.len_ms / 1000 / c.bar_seconds : 0 }
+      : myCues(c).find(y => y.status !== "deleted" && (pendSlot(y, p) ?? y.hotcue) === n);
     if (y) { e.preventDefault(); deckSeek(y.ms / 1000, true, y.type === "loop" && y.bars ? [y.ms / 1000, y.ms / 1000 + y.bars * c.bar_seconds] : null); }
+  } else if (e.code === "KeyC" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    const b = $("#dk-cue"); if (b) { e.preventDefault(); b.click(); }
   } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
     e.preventDefault();
     const d = (e.code === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 8 : 1) * c.bar_seconds;
-    deckSeek(Math.max(0, t + d), deckPlaying(), null);
+    deckSeek(Math.max(0, t + d), deckPlaying() || !!DECK.waiting, null);
   }
 });
 
+const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
+let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
 const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
 function decodeWave(w) {
   const raw = atob(w.data), a = new Uint8Array(raw.length);
@@ -1115,6 +1540,13 @@ function drawWave(c, box) {
     const data = fine || (st.detail && span < dur * 0.6 ? st.detail : over);
     columns(g, data, st.v0, st.v1, TOP, BOT, W, 1);
     const vis = x => x > -40 && x < W + 40;
+    const hov = box._hoverPath === c.path ? box._hover || [] : [];
+    for (const [a, b] of hov) {  // the approve-panel row under the mouse: its span (a loop) or bar (a cue), lit up
+      const x0 = X(a), x1 = Math.max(x0 + 3, X(b));
+      if (!vis(x0) && !vis(x1) && !(x0 < 0 && x1 > W)) continue;
+      g.fillStyle = "rgba(91,158,240,.30)"; g.fillRect(x0, TOP, x1 - x0, BOT - TOP);
+      g.fillStyle = "#5b9ef0"; g.fillRect(x0, TOP, x1 - x0, 3); g.fillRect(x0, BOT - 3, x1 - x0, 3); g.fillRect(Math.round(x0) - 1, TOP, 3, BOT - TOP);
+    }
     (c.loop_ideas || []).forEach((l, k) => {  // loop ideas on top of the waveform: L1 solid edges, the others lighter, numbered
       const lx = X(l.ms / 1000), lw = Math.max(3, X(l.ms / 1000 + l.len_ms / 1000) - lx);
       if (!vis(lx) && !vis(lx + lw)) return;
@@ -1123,21 +1555,77 @@ function drawWave(c, box) {
       g.font = "bold 10px system-ui, sans-serif"; g.textAlign = "left"; g.fillStyle = "#ffb067"; g.fillText(`L${k + 1}`, lx + 2, TOP + 14);
     });
     g.font = "11px system-ui, sans-serif"; g.textAlign = "center";
-    for (const y of myCues(c)) {  // your cues: white lines, slot numbers on top; approved new ones green
-      if (y.status === "moved") {  // a faint ghost where it was
-        const gx = Math.round(X(y.from_ms / 1000));
-        if (vis(gx)) { g.setLineDash([3, 3]); g.strokeStyle = "rgba(255,255,255,.35)"; g.beginPath(); g.moveTo(gx + 0.5, TOP); g.lineTo(gx + 0.5, BOT); g.stroke(); g.setLineDash([]); }
+    const pend = box._pending?.path === c.path ? box._pending : null;  // ticked in the approve panel, not approved yet
+    for (const y of pend?.adds || []) {  // pending new cues: dashed green line, an outlined slot number ("?" until known, "✕" won't fit)
+      const x = Math.round(X(y.ms / 1000));
+      if (!vis(x)) continue;
+      const col = y.nofit ? "rgba(255,120,110,.95)" : "rgba(76,209,122,.95)";
+      g.setLineDash([4, 3]); g.strokeStyle = col; g.lineWidth = zoomed() ? 2 : 1;
+      g.beginPath(); g.moveTo(x + 0.5, 19); g.lineTo(x + 0.5, BOT); g.stroke();
+      if (y.type === "loop" && y.len_ms) {
+        const x1 = X((y.ms + y.len_ms) / 1000);
+        g.fillStyle = "rgba(76,209,122,.08)"; g.fillRect(x, TOP, Math.max(2, x1 - x), BOT - TOP);
+        g.beginPath(); g.moveTo(x, TOP + 1.5); g.lineTo(x1, TOP + 1.5); g.moveTo(x, BOT - 1.5); g.lineTo(x1, BOT - 1.5); g.moveTo(Math.round(x1) + 0.5, TOP); g.lineTo(Math.round(x1) + 0.5, BOT); g.stroke();
+      }
+      g.setLineDash([]); g.lineWidth = 1.5;
+      g.fillStyle = "#0c0c0e"; g.fillRect(x - 7, 3, 14, 15); g.strokeRect(x - 6.5, 3.5, 13, 14); g.lineWidth = 1;
+      g.fillStyle = col; g.fillText(y.nofit ? "✕" : y.hotcue == null ? "?" : y.hotcue >= 0 ? String(y.hotcue + 1) : "•", x, 14);
+      g.textAlign = "left"; g.font = "10px system-ui, sans-serif"; g.fillText(y.nofit ? "won't fit" : "new", x + 9, 14);
+      g.textAlign = "center"; g.font = "11px system-ui, sans-serif";
+    }
+    for (const y of shownCues(c, box)) {  // your cues: white lines, slot numbers on top; approved new ones green, moved ones yellow
+      if (y.del) {  // marked for deletion: red dashed line, its number outlined and struck through
+        const x = Math.round(X(y.ms / 1000));
+        if (!vis(x)) continue;
+        g.setLineDash([4, 3]); g.strokeStyle = "rgba(255,120,110,.9)"; g.beginPath(); g.moveTo(x + 0.5, 19); g.lineTo(x + 0.5, BOT); g.stroke(); g.setLineDash([]);
+        g.fillStyle = "#0c0c0e"; g.fillRect(x - 7, 3, 14, 15); g.lineWidth = 1.5; g.strokeRect(x - 6.5, 3.5, 13, 14); g.lineWidth = 1;
+        g.fillStyle = "#ff786e"; g.fillText(y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "•", x, 14); g.fillRect(x - 6, 10, 12, 1.5);
+        g.textAlign = "left"; g.font = "10px system-ui, sans-serif"; g.fillText(y.type === "cue" ? "delete" : `delete ${cueKind(y).toLowerCase()}`, x + 9, 14);
+        g.textAlign = "center"; g.font = "11px system-ui, sans-serif";
+        continue;
+      }
+      if (y.status === "moved") {  // greyed out where it was, with a dotted arrow to where it goes
+        const gx = Math.round(X(y.from_ms / 1000)), nx = Math.round(X(y.ms / 1000));
+        g.setLineDash([3, 3]); g.strokeStyle = "rgba(160,160,160,.6)";
+        if (vis(gx)) {
+          g.beginPath(); g.moveTo(gx + 0.5, TOP); g.lineTo(gx + 0.5, BOT); g.stroke();
+          g.fillStyle = "rgba(130,130,130,.75)"; g.fillRect(gx - 7, 3, 14, 15); g.fillStyle = "#2a2a2e"; g.fillText(y.hotcue >= 0 ? String(y.hotcue + 1) : "•", gx, 14);
+        }
+        if (vis(gx) || vis(nx)) { g.strokeStyle = "rgba(255,210,63,.8)"; g.beginPath(); g.moveTo(gx, TOP + 6); g.lineTo(nx, TOP + 6); g.stroke(); }
+        g.setLineDash([]);
       }
       const x = Math.round(X(y.ms / 1000));
       if (!vis(x)) continue;
-      const col = y.status === "new" ? "#4cd17a" : "#fff";
-      g.fillStyle = y.status === "new" ? "rgba(76,209,122,.95)" : "rgba(255,255,255,.9)"; g.fillRect(x, TOP, zoomed() ? 2 : 1, BOT - TOP);
-      if (y.type === "loop" && y.bars) { g.fillStyle = "rgba(255,255,255,.35)"; g.fillRect(x, TOP, X(y.ms / 1000 + y.bars * c.bar_seconds) - x, 5); }
-      const label = y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "•";
+      const col = y.status === "new" ? "#4cd17a" : y.status === "moved" ? "#ffd23f" : "#fff";
+      g.fillStyle = y.status === "new" ? "rgba(76,209,122,.95)" : y.status === "moved" ? "rgba(255,210,63,.95)" : "rgba(255,255,255,.9)"; g.fillRect(x, TOP, zoomed() ? 2 : 1, BOT - TOP);
+      if (y.type === "loop" && y.bars) {  // the loop's whole span, like Traktor: shaded, edged, its end marked
+        const x1 = X(y.ms / 1000 + y.bars * c.bar_seconds), lw = Math.max(2, x1 - x);
+        g.fillStyle = y.status === "new" ? "rgba(76,209,122,.14)" : "rgba(255,255,255,.12)"; g.fillRect(x, TOP, lw, BOT - TOP);
+        g.fillStyle = y.status === "new" ? "rgba(76,209,122,.8)" : "rgba(255,255,255,.7)"; g.fillRect(x, TOP, lw, 3); g.fillRect(x, BOT - 3, lw, 3);
+        g.setLineDash([3, 3]); g.strokeStyle = g.fillStyle; g.beginPath(); g.moveTo(Math.round(x1) + 0.5, TOP); g.lineTo(Math.round(x1) + 0.5, BOT); g.stroke(); g.setLineDash([]);
+      }
+      if (y.type === "fade-in" || y.type === "fade-out") {  // a ramp after the line: rising for a fade-in, falling for a fade-out
+        const w = 26, up = y.type === "fade-in";
+        g.fillStyle = "rgba(255,255,255,.22)"; g.beginPath(); g.moveTo(x, BOT); g.lineTo(x + w, BOT);
+        if (up) g.lineTo(x + w, TOP + 22); else g.lineTo(x, TOP + 22);
+        g.fill();
+      }
+      const label = y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "•", to = pendSlot(y, pend);
       g.fillStyle = col; g.fillRect(x - 7, 3, 14, 15); g.fillStyle = "#0c0c0e"; g.fillText(label, x, 14);
-      if (y.status === "moved") { g.fillStyle = "#4cd17a"; g.beginPath(); g.arc(x + 7, 4, 3, 0, 7); g.fill(); }
+      let kx = x + 9;
+      if (to === -1) {  // approved, but the ticked cues leave no slot for it
+        g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif"; g.fillStyle = "#ff786e"; g.fillText("won't fit", kx, 14);
+        kx += g.measureText("won't fit").width + 5; g.textAlign = "center"; g.font = "11px system-ui, sans-serif";
+      } else if (to != null) {  // a ticked new cue before it pushes this one up a slot: "3 →4"
+        g.textAlign = "left"; g.font = "bold 10px system-ui, sans-serif"; g.fillStyle = "#4cd17a"; g.fillText(`→${to + 1}`, kx, 14);
+        kx += g.measureText(`→${to + 1}`).width + 5; g.textAlign = "center"; g.font = "11px system-ui, sans-serif";
+      }
+      if (y.type !== "cue") {  // what it is, next to the number
+        g.textAlign = "left"; g.font = "10px system-ui, sans-serif"; g.fillStyle = col; g.fillText(cueKind(y), kx, 14);
+        g.textAlign = "center"; g.font = "11px system-ui, sans-serif";
+      }
     }
-    for (const f of (c.corrections || []).filter(f => !fixSettled(c, f))) {  // proposed corrections: yellow arrows from your cue to the bar the model prefers
+    for (const f of (c.corrections || []).filter(f => !fixSettled(c, f) && !pickedMove(box, f))) {  // proposed corrections: yellow arrows from your cue to the bar the model prefers
       const x0 = X(f.from_ms / 1000), x1 = X(f.to_ms / 1000);
       if (!vis(x0) && !vis(x1)) continue;
       g.strokeStyle = g.fillStyle = "#ffd23f"; g.lineWidth = 2;
@@ -1154,16 +1642,25 @@ function drawWave(c, box) {
     });
     // overview of the whole track with the visible part framed; click or drag it to move
     columns(g, over, 0, dur, OV0, OV1, W, 0.75);
+    for (const [a, b] of hov) { g.fillStyle = "rgba(91,158,240,.55)"; g.fillRect(a / dur * W - 1, OV0, Math.max(3, (b - a) / dur * W), OV1 - OV0); }
     const OX = t => t / dur * W;  // every cue on the overview too: yours white + number, suggested blue, loop orange, corrections yellow
     for (const l of c.loop_ideas || []) { g.fillStyle = "#f08a24"; g.fillRect(OX(l.ms / 1000), OV0, Math.max(3, OX(l.len_ms / 1000)), 4); }
     for (const q of c.cues.filter(q => !sugHidden(c, q))) { g.fillStyle = "rgba(111,180,255,.95)"; g.fillRect(Math.round(OX(q.ms / 1000)), OV0 + (OV1 - OV0) / 2, 2, (OV1 - OV0) / 2); }
-    for (const f of (c.corrections || []).filter(f => !fixSettled(c, f))) { g.fillStyle = "#ffd23f"; g.fillRect(Math.round(OX(f.to_ms / 1000)), OV0, 2, OV1 - OV0); }
+    for (const f of (c.corrections || []).filter(f => !fixSettled(c, f) && !pickedMove(box, f))) { g.fillStyle = "#ffd23f"; g.fillRect(Math.round(OX(f.to_ms / 1000)), OV0, 2, OV1 - OV0); }
     g.font = "bold 9px system-ui, sans-serif"; g.textAlign = "left";
-    for (const y of myCues(c)) {
-      const x = Math.round(OX(y.ms / 1000)), col = y.status === "new" ? "#4cd17a" : "#fff";
+    for (const y of shownCues(c, box)) {
+      if (y.del) { const x = Math.round(OX(y.ms / 1000)) + 0.5; g.setLineDash([2, 2]); g.strokeStyle = "#ff786e"; g.beginPath(); g.moveTo(x, OV0); g.lineTo(x, OV1); g.stroke(); g.setLineDash([]); continue; }
+      if (y.status === "moved") { g.fillStyle = "rgba(160,160,160,.7)"; g.fillRect(Math.round(OX(y.from_ms / 1000)), OV0, 1, OV1 - OV0); }
+      const x = Math.round(OX(y.ms / 1000)), col = y.status === "new" ? "#4cd17a" : y.status === "moved" ? "#ffd23f" : "#fff";
       g.fillStyle = col; g.fillRect(x, OV0, 1, OV1 - OV0);
+      if (y.type === "loop" && y.bars) g.fillRect(x, OV1 - 3, Math.max(3, OX(y.bars * c.bar_seconds)), 3);
       const label = y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "";
       if (label) { g.fillStyle = col; g.fillRect(x + 1, OV0, 9, 10); g.fillStyle = "#0c0c0e"; g.fillText(label, x + 3, OV0 + 8); }
+    }
+    for (const y of pend?.adds || []) {  // pending new cues on the overview: dashed, outlined number
+      const x = Math.round(OX(y.ms / 1000)) + 0.5, col = y.nofit ? "rgba(255,120,110,.95)" : "#4cd17a";
+      g.setLineDash([2, 2]); g.strokeStyle = col; g.beginPath(); g.moveTo(x, OV0); g.lineTo(x, OV1); g.stroke(); g.setLineDash([]);
+      if (y.hotcue != null && y.hotcue >= 0) { g.strokeRect(x + 1, OV0 + 0.5, 9, 10); g.fillStyle = col; g.fillText(String(y.hotcue + 1), x + 3, OV0 + 8); }
     }
     if (zoomed()) {
       const a = st.v0 / dur * W, z = st.v1 / dur * W;
@@ -1192,10 +1689,10 @@ function drawWave(c, box) {
     drag = { x: e.clientX, v0: st.v0, v1: st.v1, moved: false };
   };
   cv.onmouseup = e => {  // a click (not a drag) on the waveform jumps there, like Traktor
-    if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !DECK.loaded, null);
+    if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting || !DECK.loaded, null);
   };
   window.addEventListener("mouseup", () => { drag = null; cv.style.cursor = ""; });
-  const marks = [...myCues(c).map(y => ({ t: y.ms / 1000, s: `${y.status === "new" ? "approved (not written yet): " : y.status === "moved" ? "your cue, approved to move here: " : ""}your ${y.type === "loop" ? `loop${y.bars ? ` (${y.bars} bars)` : ""}` : "cue"}${y.hotcue >= 0 ? " " + (y.hotcue + 1) : ""}` })),
+  const marks = [...myCues(c).map(y => ({ t: y.ms / 1000, s: `${y.status === "new" ? "approved (not written yet): " : y.status === "moved" ? "your cue, approved to move here: " : ""}your ${cueKind(y).toLowerCase()}${y.hotcue >= 0 ? ` (slot ${y.hotcue + 1})` : ""}` })),
     ...c.cues.map(q => ({ t: q.ms / 1000, s: `suggested: ${q.name}` })), ...(c.loop_ideas || []).map((l, k) => ({ t: l.ms / 1000, s: `loop idea L${k + 1}: ${l.kind} (${l.bars} bars, ${l.why})` })),
     ...(c.corrections || []).filter(f => !fixSettled(c, f)).map(f => ({ t: f.to_ms / 1000, s: `proposed: move your cue ${f.hotcue + 1} here` }))];
   cv.onmousemove = e => {
@@ -1224,13 +1721,13 @@ function drawWave(c, box) {
     const z = b.dataset.zoom, mid = (st.v0 + st.v1) / 2;
     if (z === "fit") setView(0, dur); else zoomAt(mid, z === "in" ? 0.5 : 2);
   });
-  box._wave = { X: t => X(t), W: () => W, st, setView: (a, b) => setView(a, b), zoomed, dur };
+  box._wave = { X: t => X(t), W: () => W, st, setView: (a, b) => setView(a, b), zoomed, dur, redraw: () => render() };
   const r0 = render;
   render = () => { r0(); deckUi(); };  // keep the playhead in place when the view changes
   setView(st.v0, st.v1);
 }
 function cueTable(c, sugg) {
-  const yours = myCues(c).map(y => ({ when: y.ms / 1000, what: (y.status === "new" ? "✓ approved: " : y.status === "moved" ? "✓ moved: " : "") + `${y.type === "loop" ? `Loop${y.bars ? ` ${y.bars} bars` : ""}` : "Cue"}${y.hotcue >= 0 ? ` ${y.hotcue + 1}` : ""}`, who: "yours" }));
+  const yours = myCues(c).map(y => ({ when: y.ms / 1000, what: (y.status === "new" ? "✓ approved: " : y.status === "moved" ? "✓ moved: " : "") + `${cueKind(y)}${y.hotcue >= 0 ? ` · slot ${y.hotcue + 1}` : ""}`, who: "yours" }));
   const ours = sugg.map(q => ({ when: q.ms / 1000, what: q.name, who: "suggested" }));
   (c.loop_ideas || []).forEach((l, k) => ours.push({ when: l.ms / 1000, what: `Loop idea L${k + 1}: ${l.bars} bars · ${l.kind}`, who: "suggested" }));
   const rows = [...yours, ...ours].sort((a, b) => a.when - b.when);

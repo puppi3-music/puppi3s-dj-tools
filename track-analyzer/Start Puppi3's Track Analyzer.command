@@ -38,7 +38,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "Getting Python and the analyzer ready (the first time takes a few minutes)…"
-uv sync || fail "Couldn't install the analyzer's Python packages."
+uv sync --inexact || fail "Couldn't install the analyzer's Python packages."
 
 echo
 echo "Starting Puppi3's Track Analyzer. The page opens in your browser."
