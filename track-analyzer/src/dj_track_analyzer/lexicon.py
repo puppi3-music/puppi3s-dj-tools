@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import collection
 from . import traktor
-from .analysis import COLOR_NAMES, HOME
+from .analysis import COLOR_NAMES, HOME, fmt_time, log
 
 API = "http://localhost:48624/v1"
 STATE = HOME / "tempo-loaded-lexicon.json"
@@ -70,6 +70,18 @@ def _call(method: str, path: str, body: dict | None = None, query: str = "") -> 
             raise LexiconError("Can't reach Lexicon's Local API on localhost:48624. Open Lexicon and turn on "
                                f"Settings → Integrations → Local API. ({e})")
     raise LexiconError(f"Lexicon stayed busy for {method} {path}")
+
+
+def _each(items: list, label) -> object:
+    """Yields the items, logging "[i/n  ~m:ss left] what" about twice a second: the web page's progress bar
+    reads it (jobs.PROGRESS), and each line names the track being changed."""
+    t0 = last = time.time()
+    for i, x in enumerate(items, 1):
+        yield x
+        now = time.time()
+        if now - last >= 0.5 or i == len(items):
+            last = now
+            log(f"[{i}/{len(items)}  ~{fmt_time((len(items) - i) * (now - t0) / i)} left] {label(x)}")
 
 
 def tracks() -> list[dict]:
@@ -152,6 +164,7 @@ def build(bpm: float, view_db: sqlite3.Connection, shifted_colour) -> tuple[dict
     stats = {"lexicon_tracks": 0, "in_view": 0, "genres_set": 0, "colours_moved": 0, "colours_same": 0,
              "hype_set": 0, "energy_set": 0, "not_in_view": 0, "genre_held": 0, "colour_held": 0}
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
+    log("Lexicon: reading your tracks…")
     for t in tracks():
         stats["lexicon_tracks"] += 1
         r = next((view[p] for p in _paths(t.get("location")) if p in view), None)
@@ -199,14 +212,18 @@ def load(bpm: float, folder: str, view_db: sqlite3.Connection, shifted_colour, d
     known = {g.lower(): g for g in traktor.known_genres()}
     lists = [known[g.lower()] for g in genres if g.lower() in known]
     stats["smartlists"] = f"{folder} ({len(lists)} genres)"
+    log(f"Lexicon: {len(changes)} of {stats['in_view']} tracks get the view's values")
     if dry_run:
         return stats
+    log("Lexicon: backing up its library…")
     stats["backup"] = backup("before-tempo-view")
     # Remember before writing, so an interrupted load can still be switched back.
     state = {"bpm": bpm, "loaded_at": time.strftime("%Y-%m-%d %H:%M"), "folder_id": None, "tracks": changes}
     STATE.write_text(json.dumps(state, ensure_ascii=False))
-    for tid, ch in changes.items():
+    log(f"Lexicon: changing {len(changes)} tracks, one at a time…")
+    for tid, ch in _each(list(changes.items()), lambda x: x[1]["title"][:60]):
         _edit(int(tid), {f: v[1] for f, v in ch.items() if f in FIELDS})
+    log(f"Lexicon: adding the smartlist folder {folder} ({len(lists)} genres)…")
     folder_id = _call("POST", "/playlist", {"name": folder, "type": "1"})["data"]["id"]
     state["folder_id"] = folder_id
     STATE.write_text(json.dumps(state, ensure_ascii=False))
@@ -223,12 +240,15 @@ def unload(dry_run: bool = False) -> dict:
     st = loaded()
     if not st:
         raise SystemExit("No tempo view is loaded in Lexicon.")
+    log("Lexicon: reading your tracks…")
     now = {str(t["id"]): t for t in tracks()}
     stats = {"bpm": st["bpm"], "restored": 0, "kept_your_changes": 0, "gone_from_lexicon": 0}
     if not dry_run:
+        log("Lexicon: backing up its library…")
         stats["backup"] = backup("before-tempo-native")
+        log(f"Lexicon: putting your values back on {len(st['tracks'])} tracks, one at a time…")
     kept = []
-    for tid, ch in st["tracks"].items():
+    for tid, ch in (st["tracks"].items() if dry_run else _each(list(st["tracks"].items()), lambda x: x[1]["title"][:60])):
         t = now.get(tid)
         if t is None:
             stats["gone_from_lexicon"] += 1
@@ -253,6 +273,7 @@ def unload(dry_run: bool = False) -> dict:
     if fid is not None:
         stats["smartlists"] = "folder removed"
         if not dry_run:
+            log("Lexicon: removing the smartlist folder…")
             try:
                 _call("DELETE", "/playlists", {"ids": [fid]})
             except LexiconError as e:

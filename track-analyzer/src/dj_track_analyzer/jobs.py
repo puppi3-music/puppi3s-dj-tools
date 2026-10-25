@@ -21,7 +21,7 @@ from .analysis import HOME, log
 
 BREW = analysis.find_tool("brew")
 ERROR_MARK = "\x1eTRACK-ANALYZER-ERROR "  # the child's last line when it stops with a message (SystemExit)
-PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)\s+~(.+?) left\]")  # "[12/470  ~31m left] …" from scan, tempo scan, cues, colours
+PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)\s+~(.+?) left\]")  # "[12/470  ~31m left] …" from scan, tempo scan, cues, colours, Lexicon loads
 KEEP_LINES = 3000
 
 
