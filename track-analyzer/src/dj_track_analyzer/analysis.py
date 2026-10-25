@@ -1149,7 +1149,7 @@ def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
     with the right one silent, damaged packets skipped. More than 2 channels: FFmpeg's standard downmix, as
     `ffmpeg -ac 2` gives it (_load_downmixed). Frames are gathered as raw bytes and converted in chunks into one
     array: per-frame numpy work made it slower than Essentia, this is faster."""
-    with av.open(str(p)) as c:
+    with av.open(str(p), metadata_errors="replace") as c:  # tags unused; Traktor writes binary into WAV INFO tags
         s = c.streams.audio[0]
         name = s.codec_context.name
         if name in ("mp3", "mp3float"):
