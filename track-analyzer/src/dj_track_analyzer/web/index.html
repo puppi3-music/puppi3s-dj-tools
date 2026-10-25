@@ -620,7 +620,7 @@ async function openTrack(path) {
     <dl class="facts">
       <dt>BPM</dt><dd>${fmt(t.mix_bpm)}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
       <dt>Key</dt><dd>${esc(t.mix_camelot || "–")} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
-      <dt>Colour</dt><dd>${colour(colourOf(t), !t.traktor_color)}${t.traktor_color && t.color ? ` <span class="dim small">model: ${esc(t.color)}${t.color_confidence != null ? `, confidence ${pct(t.color_confidence)}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
+      <dt>Colour</dt><dd>${colour(colourOf(t), !t.traktor_color)}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small">model: ${esc(t.color)}${t.color_confidence != null ? `, confidence ${pct(t.color_confidence)}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Hype</dt><dd>${hypeBadge(t.hype)} <span class="dim small">1-10 within your collection</span></dd>
       <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>

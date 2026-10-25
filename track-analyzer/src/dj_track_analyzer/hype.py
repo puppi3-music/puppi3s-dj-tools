@@ -92,8 +92,10 @@ def _traktor_info(nml: str | None) -> dict[str, dict]:
 
 def find(nml: str | None = None, least: bool = False, colour: str | None = None, bpm: float | None = None,
          bpm_tolerance_pct: float = 4.0, key: str | None = None, gems: bool = False, limit: int = 25,
-         progress=log, rescore: bool = True) -> dict:
-    """rescore=False uses the hype stored by the last scan instead of recomputing it (writes nothing)."""
+         progress=log, rescore: bool = True, colours: dict[str, str] | None = None) -> dict:
+    """rescore=False uses the hype stored by the last scan instead of recomputing it (writes nothing).
+    colours: your colour per path, used before Traktor's (the web page passes the library's own, so a tempo view
+    shows its colours, and the normal library its own even while a view is loaded in Traktor)."""
     con = collection.db()
     hype = compute(con, progress) if rescore else dict(
         con.execute("SELECT path, hype FROM tracks WHERE hype IS NOT NULL").fetchall())
@@ -105,7 +107,8 @@ def find(nml: str | None = None, least: bool = False, colour: str | None = None,
     picked = []
     for p, h in hype.items():
         r, t = rows[p], tk.get(p, {})
-        col = t.get("colour") or r["traktor_color"] or r["color"]
+        mine = colours.get(p) if colours is not None else t.get("colour") or r["traktor_color"]
+        col = mine or r["color"]
         if colour and (col or "").lower() != colour.strip().lower():
             continue
         if bpm and not (r["bpm"] and abs(r["bpm"] - bpm) <= bpm * bpm_tolerance_pct / 100):
@@ -116,7 +119,7 @@ def find(nml: str | None = None, least: bool = False, colour: str | None = None,
             continue
         picked.append({"hype": h, "artist": r["artist"], "title": r["title"] or r["filename"],
                        "bpm": analysis.round_bpm(r["bpm"]), "camelot": r["camelot"],
-                       "colour": col, "colour_is_yours": bool(t.get("colour") or r["traktor_color"]),
+                       "colour": col, "colour_is_yours": bool(mine),
                        "stars": t.get("stars"), "plays": t.get("plays"), "path": p})
     if gems:  # the most underrated first: hype high, stars and plays low
         picked.sort(key=lambda d: (-d["hype"], d["stars"] or 0, d["plays"] or 0))

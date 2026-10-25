@@ -88,7 +88,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   vanilla-JS page (no CDN). Reads through the CLI's own functions (`collection.summary/mix_suggestions`,
   `hype.find(rescore=False)`, `colors.review/kept`, `colors.explain(extract=False)`, `tempo.report/status`).
   `web.library()` swaps collection.DB + cache globals per request under a lock (tempo.view_db sets them) and
-  restores them. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
+  restores them (the saved globals are read inside the lock, or a view's stayed for good). In a view the Tracks tab,
+  Overview colours and hype show `tempo.view_colours` (your colour from the NATIVE db + the model's shift, as `tempo
+  load` writes it; held stays yours; `web.colours`, `hype.find(colours=)`), not the view db's unshifted copy. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
   tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Writes: POST /api/hold, cue/sample endpoints (all JSON
   body + Origin check against CSRF, `from_this_page`), and jobs (below). `--export` / /export = snapshot: page + `window.SNAPSHOT` (every tab's data,
   hype in 3 orders filtered client-side as hype.find does, default-rule mix suggestions per track, mix JSONs only).

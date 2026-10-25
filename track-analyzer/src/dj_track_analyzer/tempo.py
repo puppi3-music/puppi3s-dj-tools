@@ -371,6 +371,22 @@ def shifted_colour(yours: int | None, view_pos: float | None, native_pos: float 
     return int(np.clip(round(yours + (view_pos - native_pos)), 1, len(COLOR_NAMES)))
 
 
+def view_colours(con: sqlite3.Connection) -> dict[str, str]:
+    """Each coloured track's colour in a view, as `load` puts it in Traktor: your colour (read from the normal
+    library now, not the copy the view scan took) moved by the model's shift; a held colour stays yours."""
+    with native_db() as n:
+        yours = {r[0]: r[1] for r in n.execute("SELECT path, traktor_color FROM tracks WHERE traktor_color IS NOT NULL")}
+    held = collection.held("colour")
+    out = {}
+    for r in con.execute("SELECT path, color_position, native_color_position FROM tracks"):
+        y = yours.get(r["path"])
+        if y is None:
+            continue
+        at = None if r["path"] in held else shifted_colour(_colour_index(y), r["color_position"], r["native_color_position"])
+        out[r["path"]] = COLOR_NAMES[at - 1] if at else y
+    return out
+
+
 def compare_rows(bpm: float, con: sqlite3.Connection | None = None) -> list[dict]:
     con = con or view_db(bpm)
     native = native_rows()
