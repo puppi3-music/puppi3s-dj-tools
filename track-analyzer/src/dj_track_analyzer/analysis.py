@@ -1,5 +1,5 @@
 """
-Core analysis for DJ Track Analyzer: configuration, Essentia models, the analysis cache, analyze_file()
+Core analysis for Puppi3's Track Analyzer: configuration, Essentia models, the analysis cache, analyze_file()
 and custom genre training. The command line is in cli.py, the MCP server in mcp_server.py.
 
 Runs entirely on your machine with Essentia:

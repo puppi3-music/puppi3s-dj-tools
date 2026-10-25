@@ -369,7 +369,7 @@ def main() -> None:
             out = collection.holds_list()
         print(json.dumps(out, indent=2, ensure_ascii=False))
     elif args.cmd == "serve" and args.http:
-        log(f"Track Analyzer MCP on http://{args.host}:{args.port}/mcp")
+        log(f"Puppi3's Track Analyzer MCP on http://{args.host}:{args.port}/mcp")
         build_mcp().run(transport="streamable-http", host=args.host, port=args.port)
     else:  # default: stdio for LM Studio / Claude Desktop
         protect_stdout()

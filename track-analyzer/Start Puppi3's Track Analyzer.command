@@ -1,8 +1,8 @@
 #!/bin/bash
-# Double-click this in Finder to start Track Analyzer: the first time it installs what it needs (uv, Python and the
+# Double-click this in Finder to start Puppi3's Track Analyzer: the first time it installs what it needs (uv, Python and the
 # analyzer, about 400 MB), then it opens the web page, where the Setup tab takes it from there.
 # Keep this window open while you use the page; close it (or press Ctrl-C) to stop.
-# On Linux, run it from a terminal: ./"Start Track Analyzer.command"
+# On Linux, run it from a terminal: ./"Start Puppi3's Track Analyzer.command"
 
 cd "$(dirname "$0")" || exit 1
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
@@ -21,7 +21,7 @@ fail() {
 }
 
 if curl -fs -o /dev/null "${URL}api/libraries" 2>/dev/null; then
-  echo "Track Analyzer is already running: opening the page."
+  echo "Puppi3's Track Analyzer is already running: opening the page."
   open_page "$URL"
   exit 0
 fi
@@ -41,7 +41,7 @@ echo "Getting Python and the analyzer ready (the first time takes a few minutes)
 uv sync || fail "Couldn't install the analyzer's Python packages."
 
 echo
-echo "Starting Track Analyzer. The page opens in your browser."
+echo "Starting Puppi3's Track Analyzer. The page opens in your browser."
 echo "Keep this window open while you use it; close it (or press Ctrl-C) to stop."
 echo
 exec uv run dj-track-analyzer web

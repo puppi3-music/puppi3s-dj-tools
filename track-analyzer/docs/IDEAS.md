@@ -1,4 +1,4 @@
-# Track Analyzer: features and ideas
+# Puppi3's Track Analyzer: features and ideas
 
 What the app does today, ideas for what it could do next, and approaches that were tried and didn't help (so nobody retries them blindly). Suggestions welcome.
 
