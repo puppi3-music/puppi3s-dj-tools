@@ -231,6 +231,8 @@ def scan(bpm: float = DEFAULT_BPM, workers: int | None = None, rescan: bool = Fa
             workers = max(1, min(5, (os.cpu_count() or 4) // 2))
         workers = max(1, min(workers, len(todo)))
         log(f"Using {workers} worker{'s' if workers > 1 else ''}. Ctrl-C stops safely; run the same command to resume.\n")
+        # Longest first: a long track started last would leave the other workers idle at the end
+        todo.sort(key=lambda p: -(native[p]["duration_sec"] or 0))
         jobs = [(p, src[p], bpm, native[p]["bpm"]) for p in todo]
         pool = None
         try:
@@ -646,6 +648,7 @@ def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False
     if st:
         raise SystemExit(f"The {st['bpm']:g} BPM view is already loaded ({st['collection']}). "
                          "Switch back first: uv run dj-track-analyzer tempo native")
+    log(f"Traktor: putting the {bpm:g} BPM view's genres, colours and hype into {path.name}…")
     text = path.read_text(encoding="utf-8")
     new_text, remembered, stats = build_view(text, bpm, path)
     if tag_warning:
@@ -735,6 +738,8 @@ def load_with_lexicon(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run:
         raise SystemExit(f"Traktor has the {st['bpm']:g} BPM view loaded. Use --bpm {st['bpm']:g}, or switch "
                          "back first: uv run dj-track-analyzer tempo native")
     out = {"traktor": f"{bpm:g} BPM view already loaded, left as is" if st else load(bpm, nml, dry_run, force)}
+    if not dry_run:
+        log("Traktor: done")
     out["lexicon"] = lexicon.load(bpm, folder_name(bpm), view_db(bpm), shifted_colour, dry_run)
     return out
 
@@ -743,6 +748,8 @@ def unload_with_lexicon(nml: str | None = None, dry_run: bool = False) -> dict:
     from . import lexicon
 
     lexicon.tracks()
+    if loaded():
+        log("Traktor: putting your own genres, colours and hype back…")
     return {"traktor": unload(nml, dry_run) if loaded() else "already normal",
             "lexicon": lexicon.unload(dry_run) if lexicon.loaded() else "already normal"}
 
