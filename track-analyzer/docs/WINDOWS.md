@@ -361,9 +361,10 @@ several places assume `/`:
   then SIGTERM. Windows has neither. Start with `creationflags=CREATE_NEW_PROCESS_GROUP` and send
   `CTRL_BREAK_EVENT`; the scans' safe stop listens for SIGINT, so they'd need a SIGBREAK handler too.
 - **Installing tools.** The Setup tab installs ffmpeg and rubberband with Homebrew; without it, it shows
-  `analysis.install_hint()`. Add a Windows hint (`winget install ffmpeg`; Rubber Band has Windows builds at
-  breakfastquay.com/rubberband, needs 3.0+ for the R3 engine) or run winget from `_tool_install`.
-  `analysis.find_tool()` looks in Homebrew folders; add the winget install location.
+  `analysis.install_hint()`. **Done:** the Windows hint (`winget install Gyan.FFmpeg`; Rubber Band's Windows build
+  from breakfastquay.com/rubberband, 3.0+ for the R3 engine, on PATH), and `analysis.find_tool()` also looks in
+  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). Still open: running winget from `_tool_install`.
+  Every ffprobe call goes through `find_tool` (the page's player and loops, `traktor.audio_offset`), except `clips.py`.
 - **Show in Explorer** (`web._show`) already uses `explorer /select,` on Windows.
 
 ## Launcher

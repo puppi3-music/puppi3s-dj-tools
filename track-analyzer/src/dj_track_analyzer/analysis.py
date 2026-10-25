@@ -1042,21 +1042,28 @@ def cache_put(p: Path, duration: float, emb: np.ndarray, styles: np.ndarray) -> 
 # ----------------------------------------------------------------------------
 
 
-TOOL_DIRS = "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"  # Homebrew's, when PATH lacks them
+TOOL_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"]  # Homebrew's, when PATH lacks them
+if sys.platform == "win32":  # winget's command links (a new PATH entry reaches only programs started after the install)
+    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links")]
 APT_NAMES = {"rubberband": "rubberband-cli"}  # Debian/Ubuntu packages named differently from the command
 
 
 def find_tool(name: str) -> str | None:
-    """ffmpeg / ffprobe / rubberband / brew: on PATH or in Homebrew's folders."""
+    """ffmpeg / ffprobe / rubberband / brew: on PATH or in Homebrew's (on Windows, winget's) folders."""
     import shutil
 
-    return shutil.which(name) or shutil.which(name, path=TOOL_DIRS)
+    return shutil.which(name) or shutil.which(name, path=os.pathsep.join(TOOL_DIRS))
 
 
 def install_hint(name: str) -> str:
     """How to install ffmpeg or rubberband on this system."""
     if sys.platform == "darwin":
         return f"brew install {name}"
+    if sys.platform == "win32":
+        if name == "rubberband":
+            return ("download the Windows build (3.0 or newer) from breakfastquay.com/rubberband and put the folder "
+                    "with rubberband.exe on your PATH")
+        return "winget install Gyan.FFmpeg"
     return f"sudo apt install {APT_NAMES.get(name, name)} (or your distribution's package manager)"
 
 
