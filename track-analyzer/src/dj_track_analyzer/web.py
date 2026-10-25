@@ -914,7 +914,7 @@ def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = No
 
     dirs = [Path(d).expanduser().resolve() for d in (logs or [])] or [LOGS]
     url = f"http://{host}:{port}/"
-    log(f"Track Analyzer web page on {url}  (Ctrl-C to stop)")
+    log(f"Puppi3's Track Analyzer web page on {url}  (Ctrl-C to stop)")
     correction_counts()  # start counting proposed cue corrections now, before the page asks
     if open_browser:
         import webbrowser

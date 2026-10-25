@@ -772,7 +772,7 @@ def undo(nml: str | None = None, force: bool = False) -> dict:
     backups = sorted(b for b in path.parent.glob(BACKUP_PREFIX + "*")
                      if not b.name.endswith(".restored") and not b.name.endswith(WRITTEN_SUFFIX))
     if not backups:
-        raise SystemExit(f"No Track Analyzer backups next to {path}")
+        raise SystemExit(f"No Puppi3's Track Analyzer backups next to {path}")
     latest = backups[-1]
     mark = _written(latest)
     if not force:
@@ -781,7 +781,7 @@ def undo(nml: str | None = None, force: bool = False) -> dict:
                              "(that backup is from an older version). Restoring would lose anything Traktor saved "
                              "since then. Run again with --force to restore anyway.")
         if mark.read_text().strip() != _sha1(path):
-            raise SystemExit(f"{path.name} has changed since Track Analyzer wrote it (Traktor saved plays, cues or "
+            raise SystemExit(f"{path.name} has changed since Puppi3's Track Analyzer wrote it (Traktor saved plays, cues or "
                              f"edits). Restoring {latest.name} would lose those. Run again with --force to restore "
                              "anyway.")
     shutil.copy2(latest, path)

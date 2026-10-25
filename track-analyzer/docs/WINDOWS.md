@@ -1,6 +1,6 @@
 # Windows: what a port would take
 
-Track Analyzer runs on macOS and Linux (x86_64). It does not run on Windows yet. These notes list what stands
+Puppi3's Track Analyzer runs on macOS and Linux (x86_64). It does not run on Windows yet. These notes list what stands
 in the way, found by reading the code (October 2026); nothing here has been tried on a Windows machine. Items
 marked **verify** are guesses about Traktor, Lexicon or a library on Windows that need a real install to confirm.
 
@@ -316,7 +316,7 @@ several places assume `/`:
 
 ## Launcher
 
-`Start Track Analyzer.command` is bash. Add a `Start Track Analyzer.bat` (or `.ps1`) that installs uv
+`Start Puppi3's Track Analyzer.command` is bash. Add a `Start Puppi3's Track Analyzer.bat` (or `.ps1`) that installs uv
 (`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`), runs `uv sync` and `uv run dj-track-analyzer web`,
 and sets `PYTHONUTF8=1`.
 
@@ -362,7 +362,7 @@ nothing in "The blocker" is needed. It is not harder for Traktor than native: th
   so its tracks are kept (safe, but confusing). A helper that mounts every drive letter before a scan would hide this.
 - **Setup.** Turning on WSL needs admin rights and a reboot, sometimes virtualization in the BIOS; some work PCs
   block it. Ubuntu 24.04 or newer (22.04's Rubber Band is older than 3.0). The launcher is a `.bat` calling
-  `wsl -- ./"Start Track Analyzer.command"`, and errors show in a Linux terminal.
+  `wsl -- ./"Start Puppi3's Track Analyzer.command"`, and errors show in a Linux terminal.
 - **Resources.** WSL2 gets half the RAM by default (`.wslconfig` changes it): tight on 8 GB with Traktor open.
   The distro's disk image grows to several GB and doesn't shrink on its own.
 - **MCP.** Claude Desktop on Windows would start the server as `wsl.exe -- uv run …`; works, one more layer to fail.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Track Analyzer</title>
+<title>Puppi3's Track Analyzer</title>
 <style>
 :root {
   color-scheme: light;
@@ -271,7 +271,7 @@ dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--su
 <body>
 <header>
   <div class="bar-top">
-    <div class="brand">Track Analyzer <span id="mode"></span></div>
+    <div class="brand">Puppi3's Track Analyzer <span id="mode"></span></div>
     <nav id="nav">
       <a href="#overview">Overview</a><a href="#tracks">Tracks</a><a href="#hype">Hype</a><a href="#colours">Colours</a>
       <a href="#tempo">Tempo view</a><a href="#mixes">Mixes</a><a href="#files">Files</a><a href="#setup">Setup</a>
@@ -374,7 +374,7 @@ async function api(path, params = {}) {
   for (let attempt = 0; ; attempt++) {
     try { r = await fetch(`/api/${path}${q.toString() ? "?" + q : ""}`); break; }
     catch (e) { // no answer at all: the server is restarting, or was stopped
-      if (attempt >= 2) throw new Error("Can't reach the Track Analyzer server. Start it again: double-click Start Track Analyzer.command (on a Mac), or run `uv run dj-track-analyzer web` in a terminal.");
+      if (attempt >= 2) throw new Error("Can't reach the Puppi3's Track Analyzer server. Start it again: double-click Start Puppi3's Track Analyzer.command (on a Mac), or run `uv run dj-track-analyzer web` in a terminal.");
       await new Promise(ok => setTimeout(ok, 600 * (attempt + 1)));
     }
   }

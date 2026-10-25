@@ -1,4 +1,4 @@
-# DJ Track Analyzer: context for Claude
+# Puppi3's Track Analyzer: context for Claude
 
 Local music-analysis tool for DJs: BPM, key/Camelot, subgenre, mood, a learned Traktor colour scale and a hype
 score, synced into Traktor Pro 4 (optionally Lexicon), plus an MCP server for local LLMs (LM Studio, Open WebUI).
@@ -100,7 +100,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   get `--dry-run` for the preview; `UNDO` maps writer → undo action. Stop = SIGINT to the group (scans save), SIGTERM
   after 20 s; `web.serve` stops a running job on exit. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
-  /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Track Analyzer.command` (repo folder):
+  /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
   installs uv if missing, `uv sync`, `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers.
 - `cues.py`: `cues train|scan|show`. Traktor's grid (AutoGrid CUE_V2 TYPE 4 START ms + TEMPO BPM; `grids()`,
   read-only; your cues = TYPE 0 cue / 5 loop, LEN ms) → bars. Per bar (cache.db `bars`, keyed path+grid, valid
