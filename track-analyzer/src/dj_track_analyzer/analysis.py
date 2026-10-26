@@ -913,7 +913,8 @@ def _audio_length(p: Path) -> float | None:
 
 
 # {path: target BPM / source BPM} while a tempo view is in use (tempo.use_view): its cache stores the
-# stretched audio's length, so the file's own length must be scaled to compare.
+# stretched audio's length, so the file's own length must be scaled to compare. Applied only while the
+# view's cache is the one being read: base_cache() and web.library() leave it filled.
 STRETCH: dict[str, float] = {}
 
 
@@ -928,7 +929,8 @@ def _recover_key(con: sqlite3.Connection, p: Path, key: str) -> bool:
     length = _audio_length(p)
     if length is None:
         return False
-    length /= STRETCH.get(str(p), 1.0)
+    if "|tempo-" in CACHE_VERSION:  # a view's cache; STRETCH stays filled while the native one is read (base_cache)
+        length /= STRETCH.get(str(p), 1.0)
     for old, duration in rows:
         if duration is not None and abs(duration - length) < 0.25:  # decoders agree within ~0.05 s
             con.execute("UPDATE OR REPLACE emb SET k=? WHERE k=?", (key, old))

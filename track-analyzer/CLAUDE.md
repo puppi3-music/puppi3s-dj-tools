@@ -256,8 +256,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   extra `source_bpm`, `native_color_position`; `traktor_bpm` = target, so BPM_SQL gives the target). A changed source
   BPM drops that track's view cache. Models + colour model shared, never retrained on the view.
 - The view's cache stores the STRETCHED duration: `analysis.STRETCH` {path: bpm/source_bpm} (filled by
-  `tempo.view_db`) scales the expected length for `_recover_key`; `tempo scan` only updates size/mtime for files
-  whose cache recovers instead of re-stretching them.
+  `tempo.view_db`, replaced per view) scales the expected length for `_recover_key`, only while CACHE_VERSION is a
+  view's (`|tempo-`): `base_cache()` and `web.library()` leave STRETCH filled, and dividing the native duration by it
+  made native recovery fail (psy gate and native colour position silently skipped). `tempo scan` only updates
+  size/mtime for files whose cache recovers instead of re-stretching them.
 - Psy gate: sped up, the models hear Psy-Trance 0.6-0.9 in house that scores 0.0-0.1 at its own tempo (a tempo
   shortcut, not the BPM rules). In a view Psy-Trance/Goa are capped at 1.5 × the track's own-tempo psy
   (`tempo.view_genres`, in the scan loop and `tempo refresh`).
