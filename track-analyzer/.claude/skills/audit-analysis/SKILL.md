@@ -19,7 +19,7 @@ each model's JSON), `calibration` (EffNet vs MAEST score scale), `bpm` (colour s
 input alone), `cache` (tracks missing cached MAEST etc.), `timing` (seconds per stage). Pass names
 to run only some. Compare with the baselines below; a change is a finding.
 
-Baselines (2026-10-22, 471 tracks; rules/calibration/bpm re-checked 2026-10-25, unchanged):
+Baselines (2026-10-22, 471 tracks; all checks re-run 2026-10-25 after the windows-port merge, unchanged):
 - rules: all valid; MAEST-only: Neo Trance, Hard Beat, Doomcore, J-Core, UK Funky, Footwork.
 - calibration: MAEST runs ~1.3x EffNet (top score 0.55 vs 0.42); MAEST-only styles are scaled by the per-track ratio (fixed 2026-10-22).
 - bpm: BPM input → 145 moves the colour by −0.15 on average (sd 0.19, −1.48 … +0.22) with the model trained 2026-10-22 14:39 (the older model: −0.30, sd 0.10). This is the model's sensitivity; since 2026-10-22 the view feeds it the native BPM, so this number should no longer show up in view shifts.
@@ -54,7 +54,7 @@ Baselines (2026-10-22, 471 tracks; rules/calibration/bpm re-checked 2026-10-25, 
 
 **Data hygiene**
 - NFC vs NFD paths, `/Volumes/Macintosh HD` vs `/Users`, Syncthing conflict copies, 6-channel files.
-- Stale rows: `emb` keeps old keys after tag edits (845 rows / 487 paths), and `traktor_color` is only cleared by `colors train/apply`.
+- Stale rows: `scan` prunes unreachable `emb`/`deep` rows (`prune_cache`, also conflict copies and decomposed spellings; on a copy 849 → 479 emb rows = 469 tracks + 10 analysed recordings, 2026-10-25, before the next real scan; a count well above that again is a finding), and `traktor_color` is only cleared by `colors train/apply`.
 
 **Efficiency**
 - Work done on audio that a later step overrides (the tempo view measures BPM on stretched audio, then sets it to 145).

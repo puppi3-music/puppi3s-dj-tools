@@ -309,6 +309,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Tag writes change file size/mtime → cache keys are re-keyed (`_rekey_cache`) so analysis isn't lost. For edits
   by Traktor, other taggers or file sync, a key miss falls back to the same path + `ver` = CACHE_VERSION + duration
   within 0.25 s of mutagen's audio length (`_recover_key`; mutagen vs decoded differ ≤ 0.05 s in practice).
+  `analysis.prune_cache` (start of `scan` / `tempo scan`, before workers) drops emb/deep rows nothing can reach:
+  other versions, gone-for-good files, older keys once the current key has a row, Syncthing conflict copies
+  (`never_read` = `collection.sync_conflict`) and decomposed spellings of a path whose composed one has rows; a file
+  whose current key has no row keeps its old ones for recovery. Recordings run through `analyze` keep theirs
+  (2026-10-25: 383 native rows → 469 tracks + 10 recordings, 14 at-145, all 469 tracks still hit).
 - `refine_bpm` (line fit through the beat grid) was REMOVED: off-grid beats in breakdowns were counted as beats and
   pushed tempos up to 5 BPM high. Vs Traktor on 80 tracks: raw 96% within 1 BPM, with the fit 50%. A robust
   re-anchored fit was no better.
