@@ -230,6 +230,15 @@ details.help[open] > summary { margin-bottom: 4px; }
 .facts dt { color: var(--text-2); }
 .facts dd { margin: 0; }
 .section { margin-top: 18px; }
+details.fold { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+details.fold > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; padding: 2px 0; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; color: var(--text-2); font-size: 11px; width: 10px; transition: transform .12s; }
+details.fold[open] > summary::before { transform: rotate(90deg); }
+details.fold > summary .hint { font-weight: 400; font-size: 12px; color: var(--text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+details.fold[open] > summary { margin-bottom: 8px; }
+details.fold .sub { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 10px 0 4px; }
+details.fold .sub:first-child { margin-top: 0; }
 .scale { display: grid; grid-template-columns: repeat(7, 1fr); position: relative; height: 26px; border-radius: 6px; overflow: hidden; }
 .scale div { height: 100%; }
 .scale-marks { position: relative; height: 34px; margin-top: 2px; }
@@ -845,6 +854,9 @@ async function loadGrid(t, g) {
   try { g ??= await api("grid", { path: t.path }); } catch (e) { box.className = "small dim"; box.textContent = e.message; return; }
   if ($("#drawer").dataset.path !== t.path) return;
   gridStop();  // approved, taken back or written: the section is drawn again, and its play button with it
+  const state = $("#gridstate");
+  if (state) state.innerHTML = g.approved != null ? `<span class="chip good">fix approved</span>` : g.state === "drift" ? `<span class="chip warn">BPM drifts</span>`
+    : g.state === "on" ? "on the kicks" : g.state === "unclear" ? "couldn't tell" : `<span class="chip warn">kick ${g.offset_ms > 0 ? "+" : ""}${(+g.offset_ms).toFixed(0)} ms</span>`;
   box.className = ""; box.innerHTML = renderGrid(g) + gridWaveHTML(g);
   const shift = () => +($("#gr-shift")?.value || 0), msg = m => { const e = $("#gr-msg"); if (e) e.textContent = m; };
   gridWave(t.path, g, box, shift);
@@ -976,27 +988,30 @@ async function openTrack(path) {
       <dt>Hype</dt><dd>${hypeBadge(t.hype)} <span class="dim small">1-10 within your collection</span></dd>
       <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
-      ${t.my_genre ? `<dt>Your genre</dt><dd>${esc(t.my_genre)} <span class="dim small">${pct(t.my_genre_confidence)}</span></dd>` : ""}
-      ${t.tag_genre ? `<dt>Genre tag</dt><dd>${esc(t.tag_genre)}</dd>` : ""}
-      ${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}
-      <dt>File</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd>
       ${t.error ? `<dt>Note</dt><dd class="small">${esc(t.error)}</dd>` : ""}
     </dl>
-    ${t.type === "track" ? `<div class="section"><h3>Hold</h3><div class="holds">
+    ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
+    ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
+    ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
+      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
+    ${genreScores.length || t.styles || t.my_genre || t.tag_genre ? fold("genre", "Genre and style", `
+      ${genreScores.length ? `<div class="sub">Genres</div>${bars(genreScores, { max: Math.max(...genreScores.map(g => g.value || 0), 0.01) })}` : ""}
+      ${t.styles ? `<div class="sub">Discogs styles</div>${bars(parseScores(t.styles))}` : ""}
+      ${t.my_genre || t.tag_genre ? `<dl class="facts">${t.my_genre ? `<dt>Your genre</dt><dd>${esc(t.my_genre)} <span class="dim small">${pct(t.my_genre_confidence)}</span></dd>` : ""}${t.tag_genre ? `<dt>Genre tag</dt><dd>${esc(t.tag_genre)}</dd>` : ""}</dl>` : ""}`,
+      hint(genreScores[0]?.label)) : ""}
+    ${moods.length || t.instruments ? fold("mood", "Mood and instruments", `
+      ${moods.length ? `<div class="sub">Mood</div>${bars(moods, { max: 1, fmtVal: v => pct(v) })}` : ""}
+      ${t.instruments ? `<div class="sub">Instruments <span class="dim">(compare tracks, not absolute)</span></div>${bars(parseScores(t.instruments), { max: 1 })}` : ""}`,
+      hint(moods.length ? moods.reduce((a, b) => b.value > a.value ? b : a).label : "")) : ""}
+    ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}`, hint(colourOf(t))) : ""}
+    ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
       <div class="note">A held genre or colour stays as it is in your files, Traktor and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
-      <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div></div>` : ""}
-    ${pos(t)}
-    ${genreScores.length ? `<div class="section"><h3>Genres</h3>${bars(genreScores, { max: Math.max(...genreScores.map(g => g.value || 0), 0.01) })}</div>` : ""}
-    ${t.styles ? `<div class="section"><h3>Discogs styles</h3>${bars(parseScores(t.styles))}</div>` : ""}
-    ${moods.length ? `<div class="section"><h3>Mood</h3>${bars(moods, { max: 1, fmtVal: v => pct(v) })}</div>` : ""}
-    ${t.instruments ? `<div class="section"><h3>Instruments <span class="dim small">(compare tracks, not absolute)</span></h3>${bars(parseScores(t.instruments), { max: 1 })}</div>` : ""}
-    ${t.type === "track" && !SNAP ? `<div class="section" id="gridsec"><h3>Beat grid</h3><div id="gridbox" class="loading small">Checking where the kicks land…</div></div>` : ""}
-    ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
-    ${t.type === "track" ? `<div class="section"><h3>Mixes well with</h3><div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
-      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div></div>` : ""}`;
-  function pos(t) { return t.color_position != null || t.traktor_color ? `<div class="section"><h3>Colour scale <span class="dim small">Red = hardest … Magenta = prettiest</span></h3>${scaleView(t)}</div>` : ""; }
+      <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
+      hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
+    ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
+      hint(t.path.split("/").pop()))}`;
   $("#dr-close").onclick = closeDrawer;
   $("#dr-wide").onclick = () => {
     const wide = !drawerWide();
@@ -1116,6 +1131,12 @@ const sameFix = (f, g) => f.hotcue === g.hotcue && Math.abs(f.from_ms - g.from_m
 const fixSettled = (c, f) => f.ignored || isApprovedMove(c, f);  // approved or ignored: no longer a pending correction
 const sugHidden = (c, q) => isApprovedAdd(c, q.ms) || (q.moves != null && (c.corrections || []).some(f => f.hotcue === q.moves && Math.abs(f.to_ms - q.ms) < 1 && fixSettled(c, f)));
 // a folded help text in the track panel; stays open or shut across the panel's redraws
+// the track panel's folding sections: open or closed as you last left them, from track to track
+const FOLD_DEFAULT = { mixes: true };
+const foldOpen = key => { if (!S.folds) { try { S.folds = JSON.parse(localStorage.getItem("ta-folds") || "{}"); } catch (e) { S.folds = {}; } } return S.folds[key] ?? FOLD_DEFAULT[key] ?? false; };
+const hint = text => text ? `<span class="hint">${esc(text)}</span>` : "";
+const fold = (key, title, html, summaryExtra = "") => `<details class="fold" data-fold="${key}" ${foldOpen(key) ? "open" : ""}><summary>${title}${summaryExtra}</summary>${html}</details>`;
+document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (!k) return; foldOpen(k); S.folds[k] = e.target.open; try { localStorage.setItem("ta-folds", JSON.stringify(S.folds)); } catch (err) {} }, true);
 const helpFold = (key, title, html) => `<details class="help" data-help="${key}" ${S.helpOpen?.[key] ? "open" : ""}><summary>${title}</summary>${html}</details>`;
 document.addEventListener("toggle", e => { const k = e.target.dataset?.help; if (k) (S.helpOpen ??= {})[k] = e.target.open; }, true);  // toggle doesn't bubble
 const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
