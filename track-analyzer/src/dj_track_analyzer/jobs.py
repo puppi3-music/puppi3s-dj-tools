@@ -284,6 +284,22 @@ def _traktor_side(nml: Path) -> dict:
     return data
 
 
+_new_cache: dict = {"key": None, "data": None}
+
+
+def _new_labels(nml: Path) -> tuple:
+    """(colours, cues): what retraining your own model would learn that it hasn't (colors/cues.new_labels), or None
+    each with a starter or an older model. Read again when the collection, a model or the database changes."""
+    from . import colors, cues
+
+    mt = lambda p: p.stat().st_mtime if p.exists() else None  # noqa: E731
+    key = (str(nml), mt(nml), mt(analysis.COLOR_MODEL), mt(cues.MODEL), mt(collection.NATIVE_DB))
+    if _new_cache["key"] != key:
+        _nml, tk_colours, _n = colors.read_traktor_colors(str(nml))
+        _new_cache.update(key=key, data=(colors.new_labels(tk_colours), cues.new_labels(cues.grids(str(nml)))))
+    return _new_cache["data"]
+
+
 def _changed(path: str, size, mtime) -> bool:
     """A scanned file that's different on disk now (edited by another tagger, Traktor or a sync): `tag` skips it
     until it's scanned again. A file that's gone doesn't count."""
@@ -342,6 +358,10 @@ def setup_status() -> dict:
     if st["traktor"].get("collection"):
         from . import cues, gridfix
 
+        try:
+            st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(st["traktor"]["collection"]))
+        except (SystemExit, OSError) as e:  # e.g. a tempo view is loaded: its colours aren't yours
+            log(f"New-labels count skipped: {e}")
         try:
             g = cues.grids()
             res = gridfix.results(g=g)

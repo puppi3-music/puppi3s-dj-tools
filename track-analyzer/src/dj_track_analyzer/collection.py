@@ -117,6 +117,43 @@ def hold_matching(kind: str, text: str, on: bool = True) -> dict:
     return {"held" if on else "released": sorted(Path(p).name for p in values), "kind": kind}
 
 
+# Colours the app guessed into Traktor (`traktor` / `colors apply` filling in or overwriting a colour) that nobody has
+# checked yet. `colors train` leaves such a track out while Traktor still has that colour: changing it in Traktor or
+# accepting it (`accept_guesses`, the Tracks tab) makes it yours. Recolours you said yes to (`colors review --apply`)
+# are never guesses. In the normal library's database, as the holds.
+def _guess_db() -> sqlite3.Connection:
+    con = sqlite3.connect(NATIVE_DB)
+    con.execute("CREATE TABLE IF NOT EXISTS color_guess (path TEXT PRIMARY KEY, color INTEGER, at TEXT)")
+    return con
+
+
+def add_guesses(guesses: dict[str, int]) -> None:
+    """Remember colours just written into Traktor without anyone checking them: {path: COLOR 1-7}."""
+    if not guesses:
+        return
+    now = time.strftime("%Y-%m-%d %H:%M")
+    with _guess_db() as con:
+        con.executemany("INSERT OR REPLACE INTO color_guess VALUES (?, ?, ?)", [(p, c, now) for p, c in guesses.items()])
+
+
+def unchecked_guesses(traktor_colors: dict[str, int]) -> dict[str, int]:
+    """The guesses Traktor still has, given {path: COLOR} as read from it now. One you changed since is yours."""
+    if not NATIVE_DB.exists():
+        return {}
+    with _guess_db() as con:
+        return {p: c for p, c in con.execute("SELECT path, color FROM color_guess") if traktor_colors.get(p) == c}
+
+
+def accept_guesses(paths) -> int:
+    """These tracks' colours are right (you checked them): they count as yours from now on."""
+    paths = list(paths)
+    if not paths or not NATIVE_DB.exists():
+        return 0
+    with _guess_db() as con:
+        con.executemany("DELETE FROM color_guess WHERE path=?", [(p,) for p in paths])
+        return con.total_changes
+
+
 def db() -> sqlite3.Connection:
     HOME.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB)

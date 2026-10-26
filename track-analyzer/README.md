@@ -409,6 +409,7 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `colors review` | The tracks whose sound disagrees most with your colour, judged by a model that never saw that track's colour | can stay open |
 | `colors review --apply` | Recolour only the clearest disagreements | **closed** (except `--dry-run`) |
 | `colors explain` | What each colour means in your collection (below) | can stay open |
+| `colors guessed` | The colours `apply` / `traktor` wrote that nobody has checked yet (below) | can stay open |
 
 | Option | Works with | What it does | Default |
 |---|---|---|---|
@@ -419,12 +420,15 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `--kept` | `review` | List the tracks on your keep-always list | off |
 | `--keep TEXT` | `review --kept` | Put the coloured tracks whose path contains TEXT on the keep-always list (10 matches at most) | — |
 | `--forget TEXT` | `review --kept` | Take tracks whose path contains TEXT off the keep-always list | — |
+| `--accept TEXT` | `guessed` | These guessed colours are right: the tracks whose path contains TEXT (10 at most), or `all` | — |
 | `--workers N` | `train`, `explain`, `apply` | Parallel workers for the deep listening pass | half your cores, max 5 |
 | `--no-deep` | `train` | Skip the MAEST/mood/instrument features (faster, less accurate) | off |
 | `--json` | `explain` | Raw numbers instead of tables | off |
 | `--nml <path>` | all | Another collection | newest Traktor folder |
 
 `review --apply` asks about each track first (yes / no / keep always / all the rest / cancel). **Keep always** (`k`) keeps your colour and puts the track on a keep-always list, so `review --apply` never suggests it again; plain `review` still lists it, marked `kept`. See the list with `colors review --kept`, add tracks with `--keep "<part of the name>"`, and put one back in play with `--forget "<part of the name>"`. The list lives in the analyzer's database, not in Traktor. `--yes` skips the questions, and they're skipped anyway when the input isn't a terminal. It skips tracks you've recoloured since training. `apply` and `review --apply` make the same backup as `traktor`, so **undo** is `traktor --undo` (Traktor closed).
+
+**What training learns from.** Every colour you set or accepted, whoever suggested it. A recolour you said yes to in `review --apply` counts as yours. A colour `apply` or `traktor` filled in (or replaced, with `--overwrite-colors`) is the model's own guess that nobody looked at, so `train` leaves it out: learning from its own guesses would only make the model surer of its mistakes. It counts once you change it in Traktor, or accept it: `colors guessed --accept "<part of the name>"` (or `all`), or on the Tracks tab (**All checks → Colour guessed by the app, not checked yet**; select tracks and press **Guessed colours are right**, or **It's right** in a track's panel). The Setup tab shows how many colours and cued tracks are new or changed since you trained your own models, so you know when **Train again** has something to learn (counted from the first training after this update).
 
 **`colors explain`** (first run adds about 10 minutes of analysis) shows, per colour: approachability, moods, instruments, vocals, drop height, intro length, breakdowns, BPM, loudness, key, length, median plays and share of purchased tracks, each with its correlation with your scale. Then your playlists sorted hard → pretty, how often each colour is played in the first, middle and last third of your sets (from Traktor's History), and how consistent each artist's colours are.
 
