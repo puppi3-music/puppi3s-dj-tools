@@ -151,11 +151,11 @@ tr.sel td { background: var(--accent-soft); }
 .holds { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; }
 button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 td.cb, th.cb { width: 28px; padding-right: 0; }
-.wavewrap { position: relative; background: #0c0c0e; border-radius: 8px; padding: 0; overflow: hidden; }
+.wavewrap { position: relative; background: #0c0c0e; border-radius: 8px; padding: 0; overflow: hidden; contain: layout paint; }
 .wavewrap canvas { display: block; width: 100%; height: 206px; cursor: crosshair; }
 .gridwave { position: relative; background: #0c0c0e; border-radius: 8px; overflow: hidden; margin-top: 8px; }
 .gridwave canvas { display: block; width: 100%; height: 150px; }
-.playhead { position: absolute; top: 22px; height: 110px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.8);
+.playhead { position: absolute; left: 0; top: 22px; height: 110px; width: 2px; margin-left: -1px; will-change: transform; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.8);
   pointer-events: none; display: none; }
 .playhead.ov { top: 170px; height: 32px; box-shadow: none; }
 .deck { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -1778,6 +1778,7 @@ function deckToggle() {
   }
   deckSeek(deckTime(), true);
 }
+const setText = (el, s) => { if (el.textContent !== s) el.textContent = s; };
 function deckMsg(m) { const el = DECK.box?.querySelector("#dk-time"); if (el) el.textContent = m; }
 function deckTick() {
   cancelAnimationFrame(DECK.raf);
@@ -1799,13 +1800,14 @@ function deckUi() {
     const txt = DECK.waiting ? "Starting…" : deckPlaying() ? "⏸ Pause" : "▶ Play";
     if (btn.textContent !== txt) btn.textContent = txt;
     btn.classList.toggle("waiting", !!DECK.waiting);
-    btn.dataset.tip = DECK.waiting ? "Getting the audio ready; it starts by itself. Click to cancel" : "";
+    const tip = DECK.waiting ? "Getting the audio ready; it starts by itself. Click to cancel" : "";
+    if (btn.dataset.tip !== tip) btn.dataset.tip = tip;  // this runs every frame while playing: write only what changed
   }
   const stretching = DECK_PENDING.has(`${DECK.path}|${deckBpm()}`), sw = box.querySelector("#dk-stretching");
   if (sw) sw.hidden = !stretching;
   const bi = Math.floor((t - c.first_bar_s + 1e-6) / c.bar_seconds), bl = barLabel(c, bi), bt = Math.floor((t - c.first_bar_s - bi * c.bar_seconds) / (c.bar_seconds / 4) + 1e-6) + 1;
   const tm = box.querySelector("#dk-time");
-  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) tm.textContent = `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`;
+  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) setText(tm, `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`);
   box.querySelectorAll("button.mini[data-t]").forEach(b => {
     b.dataset.label ??= b.textContent;
     const on = deckPlaying() && DECK.active === `${+b.dataset.t}|${b.dataset.loop ? +b.dataset.loop : 0}`;
@@ -1816,12 +1818,13 @@ function deckUi() {
   box.querySelectorAll(".pads [data-loop]").forEach(b => b.classList.toggle("on", !!DECK.loop && Math.abs(+b.dataset.t - DECK.loop[0]) < 0.01));
   const w = box._wave, ph = box.querySelector("#ph"), pho = box.querySelector("#phov");
   if (!w || !ph) return;
-  if (!DECK.loaded && !DECK.src && t === 0) { ph.style.display = pho.style.display = "none"; return; }
+  const show = (el, on) => { const d = on ? "block" : "none"; if (el.style.display !== d) el.style.display = d; };
+  if (!DECK.loaded && !DECK.src && t === 0) { show(ph, false); show(pho, false); return; }
   const W = w.W(), span = w.st.v1 - w.st.v0;
   if (deckPlaying() && box.querySelector("#dk-follow")?.checked && w.zoomed() && (t < w.st.v0 || t > w.st.v0 + span * 0.85)) w.setView(t - span * 0.15, t + span * 0.85);
   const x = w.X(t);
-  ph.style.display = x >= 0 && x <= W ? "block" : "none"; ph.style.left = x + "px";
-  pho.style.display = "block"; pho.style.left = (t / w.dur * W) + "px";
+  show(ph, x >= 0 && x <= W); ph.style.transform = `translateX(${x}px)`;  // a transform moves it without a layout
+  show(pho, true); pho.style.transform = `translateX(${t / w.dur * W}px)`;
 }
 document.addEventListener("keydown", e => {
   if (!DECK.path || !$("#drawer").classList.contains("open") || e.target.closest("input, textarea, select") || overlayOpen()) return;
@@ -1912,7 +1915,7 @@ function drawWave(c, box) {
   let render = function () {
     const dpr = window.devicePixelRatio || 1;
     W = cv.clientWidth; const H = cv.clientHeight;
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
     bh.style.display = "none";  // the view moved: the hovered beat line is lit again on the next mouse move
     const span = st.v1 - st.v0; X = t => (t - st.v0) / span * W;
@@ -2093,6 +2096,12 @@ function drawWave(c, box) {
   };
   WAVE_UP?.abort(); WAVE_UP = new AbortController();  // drawWave runs on every redraw: drop the last one's listener
   window.addEventListener("mouseup", () => { drag = null; cv.style.cursor = ""; }, { signal: WAVE_UP.signal });
+  // page zoom or a resize: draw again at the new size and pixel ratio, once per frame at most
+  let sized = 0;
+  const resized = () => { if (!sized) sized = requestAnimationFrame(() => { sized = 0; if (cv.isConnected) { render(); refine(); } }); };
+  const ro = new ResizeObserver(resized); ro.observe(cv);
+  window.addEventListener("resize", resized, { signal: WAVE_UP.signal });  // zoom changes devicePixelRatio, maybe not the CSS width
+  WAVE_UP.signal.addEventListener("abort", () => ro.disconnect());
   const marks = [...myCues(c).map(y => ({ t: y.ms / 1000, s: `${y.status === "new" ? "approved (not written yet): " : y.status === "moved" ? "your cue, approved to move here: " : ""}your ${cueKind(y).toLowerCase()}${y.hotcue >= 0 ? ` (slot ${y.hotcue + 1})` : ""}` })),
     ...c.cues.map(q => ({ t: q.ms / 1000, s: `suggested: ${q.name}` })), ...(c.loop_ideas || []).map((l, k) => ({ t: l.ms / 1000, s: `loop idea L${k + 1}: ${l.kind} (${l.bars} bars, ${l.why})` })),
     ...(c.corrections || []).filter(f => !fixSettled(c, f)).map(f => ({ t: f.to_ms / 1000, s: `proposed: move your cue ${f.hotcue + 1} here` }))];
