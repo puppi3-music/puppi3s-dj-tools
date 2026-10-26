@@ -210,6 +210,7 @@ button.mini { padding: 0 6px; font-size: 11px; margin-left: 6px; line-height: 18
 button.mini.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .wavehl { position: absolute; top: 22px; height: 108px; background: rgba(255,255,255,.16); border-left: 1px solid rgba(255,255,255,.6);
   pointer-events: none; display: none; }
+.wavebeat { position: absolute; top: 22px; height: 110px; width: 1px; background: rgba(255,255,255,.55); pointer-events: none; display: none; }  /* the beat line under the mouse */
 .cuestrip svg { width: 100%; height: auto; display: block; overflow: visible; }
 .cuestrip .lbl { font: 11px system-ui, sans-serif; fill: var(--text-2); }
 .hype { display: inline-block; min-width: 26px; text-align: center; border-radius: 6px; font-weight: 650; font-variant-numeric: tabular-nums; padding: 0 4px; }
@@ -1126,7 +1127,7 @@ function renderCues(c) {
       </div>${loopPads(c)}`;
   return `${deck}<div class="filters" style="margin:0 0 6px"><button data-zoom="in" data-tip="Zoom in, down to a single beat (or pinch / ctrl+scroll on the waveform, double-click)">+</button><button data-zoom="out" data-tip="Zoom out (shift+double-click)">−</button><button data-zoom="fit">Fit</button>
     <span class="small muted" id="wavezoom"></span><span class="small dim">drag or scroll sideways to move</span></div>
-    <div class="wavewrap"><div class="wavehl" id="wavehl"></div><div class="playhead" id="ph"></div><div class="playhead ov" id="phov"></div><canvas id="wave" aria-label="Waveform with your cues (white, top) and suggested cues (blue, bottom)"></canvas></div>
+    <div class="wavewrap"><div class="wavehl" id="wavehl"></div><div class="wavebeat" id="wavebeat"></div><div class="playhead" id="ph"></div><div class="playhead ov" id="phov"></div><canvas id="wave" aria-label="Waveform with your cues (white, top) and suggested cues (blue, bottom)"></canvas></div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${SNAP ? "" : helpFold("keys", "Keys", `<div class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</div>`)}
     ${helpFold("legend", "Legend", `<div class="legend" style="margin-top:0"><span><i style="background:var(--text)"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
     <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span><i style="background:#ffd23f"></i>your cue moved (ticked or approved; grey = where it was)</span><span>colour: <i style="background:#ff5a4f"></i>lows · <i style="background:#5fe36b"></i>mids · <i style="background:#5aa8ff"></i>highs · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>`)}</div>
@@ -1875,7 +1876,7 @@ function drawWave(c, box) {
   const over = decodeWave(c.wave), dur = over.sec, beat = c.bar_seconds / 4;
   const kept = box._view && box._view.path === c.path ? box._view : null;  // keep the zoom across re-renders
   const st = box._view = { path: c.path, v0: kept ? kept.v0 : 0, v1: kept ? kept.v1 : dur, detail: WAVE_DETAIL.get(c.path) || null, fine: null, loading: false };
-  const minSpan = beat, hl = box.querySelector("#wavehl"), zl = box.querySelector("#wavezoom");
+  const minSpan = beat, hl = box.querySelector("#wavehl"), bh = box.querySelector("#wavebeat"), zl = box.querySelector("#wavezoom");
   const barT = b => c.first_bar_s + b * c.bar_seconds, barAt = t => Math.round((t - c.first_bar_s) / c.bar_seconds);
   const TOP = 22, BOT = 132, MID = (TOP + BOT) / 2, HALF = (BOT - TOP) / 2, OV0 = 170, OV1 = 202;
   let W = 0, X = t => t;
@@ -1913,26 +1914,31 @@ function drawWave(c, box) {
     W = cv.clientWidth; const H = cv.clientHeight;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    bh.style.display = "none";  // the view moved: the hovered beat line is lit again on the next mouse move
     const span = st.v1 - st.v0; X = t => (t - st.v0) / span * W;
     const pxBar = W * c.bar_seconds / span, pxBeat = pxBar / 4;
     // grid: beats when there's room, bars, 8-bar phrases, 32-bar lines; bar numbers as dense as fits
     const step = [1, 2, 4, 8, 16, 32, 64].find(k => pxBar * k >= 30) || 64;
     g.font = "10px system-ui, sans-serif"; g.textAlign = "left";
     const b0 = Math.max(0, Math.floor((st.v0 - c.first_bar_s) / c.bar_seconds) - 1), b1 = Math.min(c.bars, Math.ceil((st.v1 - c.first_bar_s) / c.bar_seconds) + 1);
+    const onTop = [];  // [x, width, alpha]: the grid again, faintly, on top of the waveform (its core is opaque)
     for (let b = b0; b <= b1; b++) {
       const x = Math.round(X(barT(b))), n = b - c.grid_bar + 1, in4 = (n - 1) % 4 === 0, in8 = (n - 1) % 8 === 0, in32 = (n - 1) % 32 === 0;
       if (pxBeat > 80) for (let k = 1; k < 16; k++) if (k % 4) { g.fillStyle = "rgba(255,255,255,.04)"; g.fillRect(Math.round(X(barT(b) + k * beat / 4)), TOP, 1, BOT - TOP); }  // 16ths, very close in
-      if (pxBeat > 8) for (let k = 1; k < 4; k++) { g.fillStyle = "rgba(255,255,255,.07)"; g.fillRect(Math.round(X(barT(b) + k * beat)), TOP, 1, BOT - TOP); }
+      if (pxBeat > 6) for (let k = 1; k < 4; k++) { const bx = Math.round(X(barT(b) + k * beat)); g.fillStyle = "rgba(255,255,255,.07)"; g.fillRect(bx, TOP, 1, BOT - TOP); onTop.push([bx, 1, .14]); }
       // beat < bar < every 4 bars (as in Traktor) < 8-bar phrase < 32 bars
       if (in32 || in8 || (in4 && pxBar * 4 >= 8) || pxBar > 4) {
+        const w = in32 || (in8 && pxBar > 12) ? 2 : 1;
         g.fillStyle = in32 ? "rgba(255,255,255,.6)" : in8 ? "rgba(255,255,255,.42)" : in4 ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.1)";
-        g.fillRect(x, TOP, in32 || (in8 && pxBar > 12) ? 2 : 1, BOT - TOP);
+        g.fillRect(x, TOP, w, BOT - TOP);
+        onTop.push([x, w, in32 ? .4 : in8 ? .32 : in4 ? .24 : .18]);
       }
       if (n >= 1 && (n - 1) % step === 0) { g.fillStyle = in8 ? "rgba(255,255,255,.7)" : "rgba(255,255,255,.45)"; g.fillText(String(n), x + 2, BOT - 3); }
     }
     const fine = covers(st.fine, st.v0, st.v1) && st.fine.n / st.fine.sec > 100 ? st.fine : null;
     const data = fine || (st.detail && span < dur * 0.6 ? st.detail : over);
     waveColumns(g, data, st.v0, st.v1, TOP, BOT, W, 1);
+    for (const [x, w, a] of onTop) { g.fillStyle = `rgba(255,255,255,${a})`; g.fillRect(x, TOP, w, BOT - TOP); }
     const vis = x => x > -40 && x < W + 40;
     const hov = box._hoverPath === c.path ? box._hover || [] : [];
     for (const [a, b] of hov) {  // the approve-panel row under the mouse: its span (a loop) or bar (a cue), lit up
@@ -2108,10 +2114,14 @@ function drawWave(c, box) {
       const bt = Math.floor((t - barT(bi)) / beat) + 1;
       lines = [`${bl.text}${zoomed() ? `, beat ${bt}` : ""} · ${mmss(t)}`, bl.phrase];
     }
+    // the beat line under the mouse (within 4 px), a little brighter, where beat lines are drawn
+    const lineT = c.first_bar_s + Math.round((timeAt(x) - c.first_bar_s) / beat) * beat, lx = Math.round(X(lineT));
+    const lit = !drag?.moved && W * beat / (st.v1 - st.v0) > 6 && Math.abs(lx - x) <= 4;
+    bh.style.display = lit ? "block" : "none"; if (lit) bh.style.left = lx + "px";
     hl.style.left = X(barT(bi)) + "px"; hl.style.width = Math.max(2, X(barT(bi) + c.bar_seconds) - X(barT(bi))) + "px"; hl.style.display = "block";
     tip.textContent = lines.join("\n"); tip.style.display = "block";
   };
-  cv.onmouseleave = () => { tip.style.display = "none"; hl.style.display = "none"; };
+  cv.onmouseleave = () => { tip.style.display = "none"; hl.style.display = "none"; bh.style.display = "none"; };
   box.querySelectorAll("[data-zoom]").forEach(b => b.onclick = () => {
     const z = b.dataset.zoom, mid = (st.v0 + st.v1) / 2;
     if (z === "fit") setView(0, dur); else zoomAt(mid, z === "in" ? 0.5 : 2);
