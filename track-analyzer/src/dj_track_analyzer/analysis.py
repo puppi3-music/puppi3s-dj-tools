@@ -1047,10 +1047,13 @@ def rubberband() -> str:
 
 def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float) -> np.ndarray:
     """Change the tempo from src_bpm to target_bpm keeping the pitch (like Traktor's key lock), with
-    Rubber Band's R3 engine. Traktor uses its own stretcher (élastique), so this sounds close, not identical."""
+    Rubber Band's R3 engine. Traktor uses its own stretcher (élastique), so this sounds close, not identical.
+    At the track's own BPM the audio comes back as it is: R3 at ratio 1 isn't a passthrough (up to -55 dBFS off)."""
     import subprocess
     import tempfile
 
+    if src_bpm == target_bpm:
+        return stereo
     exe = rubberband()
     with tempfile.TemporaryDirectory(prefix="track-analyzer-") as tmp:
         src, out = Path(tmp) / "in.wav", Path(tmp) / "out.wav"

@@ -237,6 +237,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
   genre_bpm=target)`. Source BPM = Traktor's, else ours. BPM is set to the target, not measured on stretched audio.
+  A track already at the view's BPM isn't stretched (`stretch` returns the audio as is; R3 at ratio 1 is up to
+  -55 dBFS off), so its view analysis equals its own (11 tracks over the 135/145 views, colour shift 0.0).
   The colour model gets OUR BPM measured at the track's own tempo (`analyze_file(own_bpm=…)`, `refresh_predictions(own_bpm=…)`),
   as the native position does, so the shift is the tempo's alone (with Traktor's BPM, tracks 1-2 BPM apart shifted ~+0.13 extra on a test collection).
 - Separate data in `data/at-<bpm>/` (cache.db with CACHE_VERSION + "|tempo-<bpm>", collection.db with
