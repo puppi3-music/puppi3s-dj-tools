@@ -380,12 +380,16 @@ def ignored() -> dict[str, dict]:
         return {r[0]: {"bpm": r[1], "grid_ms": r[2]} for r in con.execute("SELECT * FROM grid_ignore")}
 
 
-def set_ignore(path: str, bpm: float, grid_ms: float, on: bool) -> None:
-    """The grid is right as it is (kept while the grid is unchanged)."""
+def set_ignore(path: str, bpm: float, grid_ms: float, on: bool, reading: dict | None = None) -> None:
+    """The grid is right as it is (kept while the grid is unchanged). reading: the check's result, for the log."""
+    from . import collection
+
     with _plan_db() as con:
         con.execute("DELETE FROM grid_ignore WHERE path=?", (path,))
         if on:
             con.execute("INSERT INTO grid_ignore VALUES (?,?,?,?)", (path, bpm, grid_ms, time.strftime("%Y-%m-%d %H:%M")))
+    r = {k: reading.get(k) for k in ("state", "offset_ms", "drift_ms", "stretches")} if reading else {}
+    collection.log_feedback("grid_ignore", [(path, {"bpm": bpm, "grid_ms": grid_ms, "on": on, **r})])
 
 
 def same(a: dict, bpm: float, grid_ms: float) -> bool:
@@ -477,6 +481,10 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
                 _shift_cue_rows(con, p, shift, bpm, new_grid)
         with _plan_db() as con:
             con.executemany("DELETE FROM grid_plan WHERE path=?", [(p,) for p in done])
+        from . import collection
+
+        collection.log_feedback("grid_written", [(p, {"bpm": todo[p]["bpm"], "grid_ms": todo[p]["grid_ms"], "shift_ms": shift})
+                                                 for p, (shift, _bpm, _g) in done.items()])
         out["undo"] = "uv run dj-track-analyzer traktor --undo"
     return out
 

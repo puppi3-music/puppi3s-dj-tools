@@ -1165,6 +1165,32 @@ def set_ignore(path: str, hotcue: int, from_ms: float, to_ms: float, on: bool = 
                     (path, hotcue, from_ms, to_ms))
         if on:
             con.execute("INSERT INTO cue_ignore VALUES (?,?,?,?,?)", (path, hotcue, from_ms, to_ms, time.strftime("%Y-%m-%d %H:%M")))
+    from . import collection
+
+    collection.log_feedback("cue_ignore", [(path, {"hotcue": hotcue, "from_ms": from_ms, "to_ms": to_ms, "on": on})])
+
+
+def _unticked(todo: dict, g: dict) -> list[tuple[str, dict]]:
+    """For each track about to be written: the suggested cue points and loop you didn't tick (not within half a bar
+    of a cue you approved or already have), with the free hot-cue slots (none free: not much of a no)."""
+    b, out = model(), []
+    for p, pl in todo.items():
+        d = g.get(p)
+        if not d or not same_grid(pl["grid"], d["bpm"], d["grid_ms"]):
+            continue
+        try:
+            s = suggest(p, d["bpm"], d["grid_ms"], own=d["cues"])
+        except (SystemExit, OSError):
+            continue
+        half = 2 * 60000 / d["bpm"]
+        taken = [a["ms"] for a in pl["plan"].get("add", [])] + [c["ms"] for c in d["cues"]]
+        sug = s["cues"] + ([dict(s["loop"], type="loop")] if s.get("loop") else [])
+        left = [{"ms": c["ms"], "type": c.get("type", "cue"), "name": c.get("name"), "score": c.get("score")}
+                for c in sug if all(abs(c["ms"] - t) >= half for t in taken)]
+        out.append((p, {"grid": pl["grid"], "free_slots": 8 - len({c["hotcue"] for c in d["all_cues"]} - {-1}),
+                        "starter": bool(b and b.get("starter")), "unticked": left,
+                        "ticked": len(pl["plan"].get("add", []))}))
+    return out
 
 
 def _same_fix(f: dict, g: dict) -> bool:
@@ -1420,10 +1446,19 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
     stats["not_in_collection"] = len(todo) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
     stats["changes"] = examples
+    unticked = []
+    if not dry_run and done:  # what you left unticked, from the cues as they are before this write
+        try:
+            unticked = _unticked({p: todo[p] for p in done}, grids(str(path)))
+        except Exception as err:  # never in the way of the write
+            log(f"Unticked suggestions not recorded: {err}")
     out = traktor._save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
     if not dry_run and out.get("changed"):
         with _plan_db() as con:  # written: these approvals are done
             con.executemany("DELETE FROM cue_plan WHERE path=?", [(p,) for p in done])
+        from . import collection
+
+        collection.log_feedback("cue_unticked", unticked)
         out["undo"] = "uv run dj-track-analyzer traktor --undo"
     return out
 

@@ -947,7 +947,8 @@ def ignore_grid(path: str, on: bool) -> dict:
     d = cue_grids().get(path)
     if not d:
         raise ValueError("Traktor has no beat grid for this track")
-    gridfix.set_ignore(path, d["bpm"], d["grid_ms"], on)
+    reading = gridfix.check_one(Path(path), d["bpm"], d["grid_ms"]) if on else None  # cached: the panel showed it
+    gridfix.set_ignore(path, d["bpm"], d["grid_ms"], on, reading)
     if on:
         gridfix.set_plan(path, d["bpm"], d["grid_ms"], None)
     return grid_info(path)

@@ -89,7 +89,9 @@ def set_hold(kind: str, values: dict[str, str | None], on: bool = True) -> int:
             con.executemany(f"INSERT OR IGNORE INTO {table} VALUES (?, ?, ?)", [(p, v, now) for p, v in values.items()])
         else:
             con.executemany(f"DELETE FROM {table} WHERE path=?", [(p,) for p in values])
-        return con.total_changes
+        n = con.total_changes
+    log_feedback("hold", [(p, {"what": kind, "on": on, "value": v}) for p, v in values.items()])
+    return n
 
 
 def holds_list() -> dict:
@@ -115,6 +117,56 @@ def hold_matching(kind: str, text: str, on: bool = True) -> dict:
         raise SystemExit(f'"{text}" matches {len(values)} tracks; use more of the name.')
     set_hold(kind, values, on)
     return {"held" if on else "released": sorted(Path(p).name for p in values), "kind": kind}
+
+
+# Every no or ignore you give the app's suggestions, plus the grid fixes you write (which leave no trace once
+# written), kept for good so a later experiment can test whether learning from them helps. Append-only; the
+# latest row per track and kind is your current answer. Kinds (data): colour_no / colour_keep (review --apply:
+# yours, model), hold (what, on), cue_ignore (hotcue, from_ms, to_ms, on), cue_unticked (at write: grid, free
+# slots, starter, the suggestions you didn't tick), grid_ignore (bpm, grid_ms, on, the check's reading),
+# grid_written (bpm, grid_ms, shift_ms).
+def _plain(o):  # numpy numbers and arrays in a reading
+    return o.tolist() if hasattr(o, "tolist") else str(o)
+
+
+def _feedback_table(con) -> None:
+    """Make the log; the first time, with the answers given before it existed (holds, ignored corrections and
+    grids, at the time you gave them), so they count too."""
+    if con.execute("SELECT 1 FROM sqlite_master WHERE name='feedback'").fetchone():
+        return
+    con.execute("CREATE TABLE feedback (at TEXT, kind TEXT, path TEXT, data TEXT)")
+    have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    rows = []
+    for kind, (table, col) in HOLDS.items():
+        if table in have:
+            rows += [(at, "hold", p, json.dumps({"what": kind, "on": True, "value": v}, ensure_ascii=False))
+                     for p, v, at in con.execute(f"SELECT path, {col}, at FROM {table}")]
+    if "cue_ignore" in have:
+        rows += [(at, "cue_ignore", p, json.dumps({"hotcue": h, "from_ms": f, "to_ms": t, "on": True}))
+                 for p, h, f, t, at in con.execute("SELECT path, hotcue, from_ms, to_ms, at FROM cue_ignore")]
+    if "grid_ignore" in have:
+        rows += [(at, "grid_ignore", p, json.dumps({"bpm": b, "grid_ms": g, "on": True}))
+                 for p, b, g, at in con.execute("SELECT path, bpm, grid_ms, at FROM grid_ignore")]
+    con.executemany("INSERT INTO feedback VALUES (?, ?, ?, ?)", rows)
+
+
+def log_feedback(kind: str, items: list[tuple[str, dict]]) -> None:
+    if not items:
+        return
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    with sqlite3.connect(NATIVE_DB) as con:
+        _feedback_table(con)
+        con.executemany("INSERT INTO feedback VALUES (?, ?, ?, ?)",
+                        [(now, kind, p, json.dumps(d, ensure_ascii=False, default=_plain)) for p, d in items])
+
+
+def feedback_counts() -> dict[str, int]:
+    """Tracks with each kind of answer (latest row per track and kind)."""
+    if not NATIVE_DB.exists():
+        return {}
+    with sqlite3.connect(NATIVE_DB) as con:
+        _feedback_table(con)
+        return dict(con.execute("SELECT kind, COUNT(DISTINCT path) FROM feedback GROUP BY kind").fetchall())
 
 
 # Colours the app guessed into Traktor (`traktor` / `colors apply` filling in or overwriting a colour) that nobody has
