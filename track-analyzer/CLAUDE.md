@@ -103,7 +103,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Overview colours and hype show `tempo.view_colours` (your colour from the NATIVE db + the model's shift, as `tempo
   load` writes it; held stays yours; `web.colours`, `hype.find(colours=)`), not the view db's unshifted copy. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
   tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Writes: POST /api/hold, cue/sample endpoints (all JSON
-  body + Origin check against CSRF, `from_this_page`), and jobs (below). `--export` / /export = snapshot: page + `window.SNAPSHOT` (every tab's data,
+  body + Origin check against CSRF, `from_this_page`), and jobs (below). Host header must be 127.0.0.1/localhost
+  (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0): against DNS rebinding, which passes the Origin check.
+  Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's
+  `readJSON` copes with a non-JSON answer. `tempo_report` refuses a BPM without a view (`tempo.report` would create
+  an empty data/at-<bpm>). The `/audit-web` skill checks all of this live, plus phone width and light/dark. `--export` / /export = snapshot: page + `window.SNAPSHOT` (every tab's data,
   hype in 3 orders filtered client-side as hype.find does, default-rule mix suggestions per track, mix JSONs only).
 - `jobs.py`: the web page's Setup tab. `setup_status()` (models, tools, Traktor counts cached per NML mtime, scanned /
   not-scanned / changed-on-disk-since-scan, models' mtimes, tempo views, last `traktor --undo` backup) and a one-at-a-time
