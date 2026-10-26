@@ -188,6 +188,12 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   drum stem's kick overrides kick_on in the kind. No male/female: no head or pitch test told them apart.
   The suggested loop never starts within a bar of a suggested
   cue (the user's never do), in suggest() and in the CV loop score.
+  Loop length (`train_lengths`, bundle `length_model`, only kept if CV by track beats always-the-most-common): per loop
+  start, `length_features` = loopability at 1/2/4/8 bars + how closely the next L bars repeat the L + BPM →
+  HistGradientBoosting over `LOOP_LENGTHS` (1/2/4/8; 16-bar loops too few). Test collection 2026-10-26: 438 loops,
+  53.7% vs 45.2% always 4 (8 bars found 28/74, 1 bar 1/25); track metadata (BPM, genre, colour, hype) didn't predict
+  it. Ideas are still chosen at `loop_bars`; suggest() adds `suggested_bars`, the page's length menu (1-16, what fits)
+  preselects it.
 - Holds (`collection.held/set_hold/hold_matching`, `hold` command): tables `genre_keep` / `color_keep` (= the
   colour "keep always" list) in the NATIVE collection.db (`collection.NATIVE_DB`, also while a view is in use).
   Skipped by `_wanted` (tag, scan --write-tags), `traktor.sync` (genre and colour, even --overwrite-colors),

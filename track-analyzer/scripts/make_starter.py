@@ -21,7 +21,7 @@ sys.modules.setdefault("colors", colors)  # see analysis.color_model()
 
 COLOUR_KEEP = ["model", "calibrator", "kind", "feature_set", "name", "instruments", "trained_at", "tracks", "counts",
                "metrics", "baseline", "cv"]
-CUE_KEEP = ["cue_model", "loop_model", "threshold", "loop_align", "max_cues", "loop_bars", "trained_at", "metrics",
+CUE_KEEP = ["cue_model", "loop_model", "threshold", "loop_align", "max_cues", "loop_bars", "length_model", "trained_at", "metrics",
             "version"]
 PERSONAL = re.compile(rb"/Users/|/home/|[A-Za-z]:\\\\|\.(mp3|flac|wav|aiff?|m4a|nml)\b", re.I)
 
