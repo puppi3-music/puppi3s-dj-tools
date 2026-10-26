@@ -1153,12 +1153,21 @@ def export_file(out: str, logs: list[str] | None = None) -> Path:
     return path
 
 
+_blas_limit = None  # serve()'s threadpool limit, kept for the server's life
+
 def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = None, open_browser: bool = True) -> None:
     import uvicorn
 
     dirs = [Path(d).expanduser().resolve() for d in (logs or [])] or [LOGS]
     url = f"http://{host}:{port}/"
     log(f"Puppi3's Track Analyzer web page on {url}  (Ctrl-C to stop)")
+    # numpy's OpenBLAS on one thread for good: forking a subprocess (ffmpeg, Rubber Band) runs its atfork handler,
+    # which waits for its worker threads, and with a matrix product running in another request those never came
+    # back; the fork holds the GIL meanwhile, so the whole page hung. Same bits (checked at 1 vs 10 threads).
+    from threadpoolctl import threadpool_limits
+
+    global _blas_limit
+    _blas_limit = threadpool_limits(1, user_api="blas")
     correction_counts()  # start counting proposed cue corrections now, before the page asks
     if open_browser:
         import webbrowser
