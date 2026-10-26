@@ -577,7 +577,7 @@ function navCounts() {
   const list = S.tracks[S.lib], a = document.querySelector('#nav a[href="#tracks"]');
   if (!list || !a) return;
   const n = list.filter(t => t.type === "track").length, fixes = list.filter(t => t.corrections > 0).length;
-  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: Cued or not → Has proposed corrections)"></span>` : ""}`;
+  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: All cues and grids → Corrections proposed for its cues)"></span>` : ""}`;
 }
 
 // ---------- router ----------
@@ -666,7 +666,7 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues set</option><option value="some">Has cues set</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option><option value="grid">Beat grid off the kicks</option><option value="grid_ok">Grid fix approved, not written yet</option></select>
+      <select id="f-cues"><option value="">All cues and grids</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
