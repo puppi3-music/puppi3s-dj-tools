@@ -234,6 +234,16 @@ td code { white-space: nowrap; }
   <li>Changed your mind? Before opening Traktor: <b>Undo</b> in the page or <code>traktor --undo</code>. Train again after cueing more tracks.</li>
 </ol>
 
+<h3 id="grids">Beat grids that sit on the kicks</h3>
+<p>Cue suggestions, loops and samples all trust Traktor's beat grid. To check every grid once (about 3 minutes, later only new and changed ones), press <b>Check the beat grids</b> on the Setup tab, or:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer grids check</pre></div>
+<ol>
+  <li>In the Tracks tab, filter on <b>Beat grid off the kicks</b> and open a track. Its <b>Beat grid</b> section says how far the kick lands from the grid lines.</li>
+  <li>Listen: <b>▶ Click on the grid now</b> and <b>▶ Click on the moved grid</b> loop a few bars with a click on each grid line. Adjust the amount if needed, then <b>Approve</b>, or <b>The grid is right</b> to stop it being proposed.</li>
+  <li>If it says the track's stem file is off, remake the stem first: Traktor uses one grid for both. "BPM drifts" means Traktor's BPM is slightly off; fix that in Traktor, moving the grid won't.</li>
+  <li>Quit Traktor and press <b>Write grid fixes to Traktor…</b>. It lists what moves, makes a backup, and moves each grid together with that track's cues and loops, so they stay on the beat. <b>Undo</b> in the page (or <code>traktor --undo</code>) puts it back.</li>
+</ol>
+
 <h3 id="hype">Finding hype tracks</h3>
 <ul>
   <li><b>Most hype first</b> (add <code>--least</code> for the chill end):
@@ -360,6 +370,7 @@ td code { white-space: nowrap; }
 <tr><td><code>web</code></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
 <tr><td><code>cues train</code> / <code>cues scan</code> / <code>cues show</code></td><td>Learns where you put cues and loops; listens to your tracks bar by bar; suggestions for one track</td><td>App database and model file</td></tr>
 <tr><td><code>cues apply</code></td><td>Writes the cues and corrections you approved in the web page into free hot-cue slots</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><code>grids check</code> / <code>grids show</code> / <code>grids apply</code></td><td>Checks that Traktor's beat grids sit on the kicks; one track's reading and its stem file; moves the grids you approved in the web page, with their cues</td><td class="changes">apply: Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
 <tr><td><code>hold</code></td><td>Lists the tracks whose genre or colour the writers leave alone; <code>--genre</code> / <code>--colour "name"</code> adds, with <code>--release</code> removes</td><td>The hold list only</td></tr>
 </tbody></table></div>
 
@@ -509,7 +520,7 @@ td code { white-space: nowrap; }
 <h3 id="how-listen">1. Listening to each track</h3>
 <p><code>scan</code> decodes every file once and measures it with <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library:</p>
 <ul>
-  <li><b>BPM and key</b>, rounded to whole BPM and shown as Camelot. Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM and beatgrid are never changed.</li>
+  <li><b>BPM and key</b>, rounded to whole BPM and shown as Camelot. Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beatgrid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
   <li><b>Loudness</b> and how the energy rises and falls through the track.</li>
   <li><b>Style</b>: two AI models trained on Discogs (one hears 400 styles, the other 519) listen to the main, loudest part of the track and their opinions are blended.</li>
   <li><b>Mood, instruments and vocals</b>: smaller models on top say how aggressive, happy, party, relaxed or sad it sounds, which instruments they hear and whether there are vocals.</li>
@@ -545,7 +556,7 @@ td code { white-space: nowrap; }
 <p>What the app never does:</p>
 <ul>
   <li>change a colour you set yourself (unless you pass <code>--overwrite-colors</code>)</li>
-  <li>touch cue points, beatgrids, play counts, your own playlists or your Comment field in Traktor</li>
+  <li>touch cue points or beatgrids you didn't approve a change to in the web page, play counts, your own playlists or your Comment field in Traktor</li>
   <li>write to Traktor while it's running</li>
   <li>save a Traktor collection that wouldn't be valid XML</li>
 </ul>
