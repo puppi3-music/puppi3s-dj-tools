@@ -396,7 +396,7 @@ uv run dj-track-analyzer colors train             # 2. learn your scale (only re
 - Tries several models and keeps the one with the lowest error *averaged per colour*, so Red and Magenta count as much as the crowded middle. All scores are measured on tracks the model didn't train on.
 - Prints a colour-scale check (BPM, loudness, aggressiveness per colour), the instruments that change most from Red to Magenta, and the tracks whose sound disagrees most with your colour.
 
-**How good is it?** That depends on how consistent your colours are and how much they follow the sound. On a test collection of about 470 house/techno/trance tracks (Red = hard … Magenta = pretty), it was off by **1.17 colours** on average (always guessing the middle colour: 1.63) and right or one step off **67%** of the time. Neighbouring colours were close to a coin flip from the sound alone; the two ends were clearly apart. `colors train` prints these numbers for your collection. Retrain whenever you've coloured more tracks.
+**How good is it?** That depends on how consistent your colours are and how much they follow the sound. On a test collection of about 470 house/techno/trance tracks (Red = hard … Magenta = pretty), it was off by **1.10 colours** on average (always guessing the middle colour: 1.59) and right or one step off **70%** of the time. Neighbouring colours were close to a coin flip from the sound alone; the two ends were clearly apart. `colors train` prints these numbers for your collection. Retrain whenever you've coloured more tracks.
 
 After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning Violet) and a `confidence`: how often tracks placed there really had that colour. Most tracks are 0.2–0.3.
 

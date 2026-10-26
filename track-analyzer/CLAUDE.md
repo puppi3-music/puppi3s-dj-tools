@@ -269,7 +269,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - `colors train` tries feature sets (incl. "descriptors weighted": moods, instruments, approachability/engagement,
   energy arc ×10 after standardising, `colors.WEIGHTED_SETS`) and picks by `average_error_per_colour` (macro),
   not the plain average, which rewards shrinking toward the middle. Baseline = always guess the median colour.
-  Test collection (~470 tracks): 1.17 avg error vs 1.63 baseline, within-one 67%; neighbouring colours are near
+  Test collection (~470 tracks): 1.10 avg error vs 1.59 baseline, within-one 70%; neighbouring colours are near
   coin flips from audio, the ends are clearly apart.
 - `confidence` = `analysis.color_confidence()`: kernel-smoothed (σ 0.3) share of CV tracks placed near that position
   that really had that colour (+5 pseudo-tracks of the overall rate). Bundles store `cv` (positions, truth);
