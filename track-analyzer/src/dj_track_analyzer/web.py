@@ -33,8 +33,8 @@ TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", 
 
 
 def libraries() -> dict:
-    """The normal library plus every tempo view in data/, and which view Traktor has loaded."""
-    from . import tempo
+    """The normal library plus every tempo view in data/, and which view Traktor (and Lexicon, when you have it) has loaded."""
+    from . import lexicon, tempo
 
     libs = [{"id": "native", "label": "Normal (each track at its own tempo)", "bpm": None}]
     for d in sorted(HOME.glob("at-*")):
@@ -44,8 +44,9 @@ def libraries() -> dict:
             except ValueError:
                 continue
             libs.append({"id": d.name, "label": f"{bpm:g} BPM tempo view", "bpm": bpm})
-    st = tempo.loaded()
+    st, lx = tempo.loaded(), lexicon.loaded()
     return {"libraries": libs, "loaded_view": st["bpm"] if st else None, "status": tempo.status(),
+            "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
             "home": str(HOME), "colours": COLOR_NAMES}
 
 
