@@ -289,6 +289,15 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   ({path: COLOR} for colours; {path: (grid key, cues)} for cues, `cues._label_key`; make_starter drops them);
   `colors.new_labels` / `cues.new_labels` = added/changed/removed vs those, None for starters and older bundles;
   `jobs._new_labels` (cached per NML/models/db mtime) → setup `colours.new` / `cues.new`, shown on the Setup steps.
+- Answers log (user, 2026-10-26: "anything that can be labelled as no or ignore"): NATIVE collection.db `feedback`
+  (at, kind, path, JSON), append-only, latest row per track+kind counts; `collection.log_feedback`, `feedback_counts`.
+  Kinds: hold (`set_hold`), colour_no / colour_keep (`review --apply` answers, yours + model), cue_ignore
+  (`cues.set_ignore`), cue_unticked (`cues.apply`, before writing: `_unticked` = suggest()'s cues + loop not within half
+  a bar of an approved or existing cue, free slots, starter), grid_ignore (`gridfix.set_ignore`, with the check's
+  reading via `web.ignore_grid`), grid_written (`gridfix.apply`). Created on first use with the earlier holds,
+  cue_ignore and grid_ignore rows copied in (`_feedback_table`). Not used by training yet: for a later with/without
+  CV test of weighting these (too few on 2026-10-26: 12 holds, 4 cue ignores, 11 grid ignores, 8 of them at 10-18 ms
+  against PROPOSE_MS 10).
 
 ### Hype
 - 1-10 decile within the scanned collection of (rank(rave styles) − rank(deep styles))/2 +

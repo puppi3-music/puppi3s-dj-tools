@@ -549,6 +549,9 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             asked = changes
             changes, out["kept_your_colour"], forever = _ask_each(changes, names)
             _keep_forever(forever, {p: old for p, (old, _new) in asked.items()})
+            said = lambda p: {"yours": COLOR_NAMES[asked[p][0] - 1], "model": COLOR_NAMES[asked[p][1] - 1]}  # noqa: E731
+            collection.log_feedback("colour_keep", [(p, said(p)) for p in forever])
+            collection.log_feedback("colour_no", [(p, said(p)) for p in asked if p not in changes and p not in forever])
         out["traktor"] = traktor.set_colors(changes, nml, dry_run=dry_run)
         if not dry_run and out["traktor"].get("changed"):
             out["undo"] = "uv run dj-track-analyzer traktor --undo"
