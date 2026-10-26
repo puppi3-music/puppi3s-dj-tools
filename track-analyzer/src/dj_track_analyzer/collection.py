@@ -581,14 +581,20 @@ def load_traktor_info(nml: str | None = None) -> dict[str, tuple[float | None, s
     except (SystemExit, OSError) as err:
         log(f"(Traktor's BPM/key not used: {err})")
         return {}
-    return {p: (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
+    return {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
 
 
 def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
+    """Traktor's BPM/key on every row; tracks Traktor no longer lists (or lists without either) lose theirs,
+    so a stale value doesn't keep winning in BPM_SQL / CAMELOT_SQL. Without a Traktor collection ({}),
+    nothing changes."""
     if not info:
         return
     con.executemany("UPDATE tracks SET traktor_bpm=?, traktor_camelot=? WHERE path=?",
                     [(b, c, p) for p, (b, c) in info.items()])
+    stale = [p for (p,) in con.execute("SELECT path FROM tracks WHERE traktor_bpm IS NOT NULL "
+                                       "OR traktor_camelot IS NOT NULL") if p not in info]
+    con.executemany("UPDATE tracks SET traktor_bpm=NULL, traktor_camelot=NULL WHERE path=?", [(p,) for p in stale])
     con.commit()
 
 

@@ -299,6 +299,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Colour confidence used to be 1 − 2·|pos − round(pos)|, which gave the model's hedges (pos ≈ 4.0) confidence 1.0.
 - Smartlist exclusions match the other genre's full name ("Techno" excludes "Melodic House & Techno").
 - `scan --write-tags`: Traktor's BPM/key must be attached to the row before tags are written.
+- `store_traktor_info` clears Traktor's BPM/key on rows Traktor no longer lists (else a stale value wins in BPM_SQL).
 - `save_row` is `INSERT OR REPLACE` over `NAMES`: columns not in the scan result are wiped until recomputed
   (view-only `source_bpm`/`native_color_position`; `hype` is in `KEEP_ON_RESCAN`).
 - NFC vs NFD paths create duplicate rows (`_drop_decomposed_duplicates`). Syncthing `*.sync-conflict-*` copies are
