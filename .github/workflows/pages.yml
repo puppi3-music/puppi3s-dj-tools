@@ -28,6 +28,7 @@ jobs:
           mkdir -p _site/track-analyzer
           cp site/index.html _site/index.html
           cp track-analyzer/docs/GUIDE.html _site/track-analyzer/index.html
+          cp -R track-analyzer/docs/img _site/track-analyzer/img  # the guide's screenshots (img/… beside it, as in docs/)
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
