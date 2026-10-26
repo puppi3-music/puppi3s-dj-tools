@@ -844,6 +844,7 @@ async function loadGrid(t, g) {
   const box = $("#gridbox"); if (!box) return;
   try { g ??= await api("grid", { path: t.path }); } catch (e) { box.className = "small dim"; box.textContent = e.message; return; }
   if ($("#drawer").dataset.path !== t.path) return;
+  gridStop();  // approved, taken back or written: the section is drawn again, and its play button with it
   box.className = ""; box.innerHTML = renderGrid(g) + gridWaveHTML(g);
   const shift = () => +($("#gr-shift")?.value || 0), msg = m => { const e = $("#gr-msg"); if (e) e.textContent = m; };
   gridWave(t.path, g, box, shift);
@@ -957,6 +958,7 @@ async function writeGrids(onDone) {
 async function openTrack(path) {
   prepFor(path);
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
+  if ($("#drawer").dataset.path !== path) gridStop();  // the grid click loop belongs to the track it was started on
   const all = await getTracks(), t = all.find(x => x.path === path);
   if (!t) return;
   markOpen(path);
