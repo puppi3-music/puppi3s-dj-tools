@@ -1259,7 +1259,8 @@ def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list
     become 5, 6, 7 ([{hotcue, ms (after any move), to}]); loops and other kinds keep their slots. A new cue with a
     "slot" (0-7) you chose goes there: if a cue point holds it, that one and the ones after it move up a slot into the
     next free one (never past a loop or another kind); with a slot chosen, the rest isn't put in time order.
-    Deleted cues (the 5th item: those still where they were) go first: their slot is left free, nothing renumbered."""
+    Deleted cues (the 5th item: those still where they were) go first: your hot cues after a deleted one in slots 1-7
+    slide back to close the gap (deleting cue 1 makes 2-7 into 1-6); slot 8 keeps its cue."""
     bar_ms = 4 * 60000 / bpm
     moves, skipped, removes = [], [], []
     for r in plan.get("remove", []):
@@ -1277,6 +1278,10 @@ def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list
             continue
         hit["ms"] = mv["to_ms"]
         moves.append(mv)
+    gone = [r["hotcue"] for r in removes if 0 <= r["hotcue"] < 7]
+    for c in cues:  # after the moves: they find your cue by its slot as it is now
+        if 0 <= c["hotcue"] < 7:
+            c["hotcue"] -= sum(g < c["hotcue"] for g in gone)
     starts = [c["ms"] for c in cues if c["type"] in ("cue", "loop")]
     held = [c for c in cues if c["hotcue"] >= 0]  # your hot cues and, as they're placed, the new ones
     new: list[dict] = []
@@ -1422,7 +1427,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
         for r, hit in sorted(hits, key=lambda x: -x[1].start()):  # from the end, so earlier offsets still hold
             entry = entry[:hit.start()] + traktor.set_attr(hit.group(0), "HOTCUE", str(r["to"])) + entry[hit.end():]
             stats["cues_renumbered"] += 1
-            examples.append(f"{name}: cue {r['hotcue'] + 1} → slot {r['to'] + 1} (keeps them in time order)")
+            examples.append(f"{name}: cue {r['hotcue'] + 1} → slot {r['to'] + 1}")
         new = ""
         for a_, slot in adds:
             new += _cue_tag(a_["name"], a_["type"], a_["ms"], a_["len_ms"], slot)
