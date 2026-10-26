@@ -316,7 +316,7 @@ pre.log { max-height: 280px; overflow: auto; font-family: var(--mono); font-size
 .step .act { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: 460px; }
 .step .act input[type=text] { width: 230px; }
 button:disabled { opacity: .5; cursor: default; }
-dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
   border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 13px; }
 
 #lib { max-width: 220px; }
@@ -645,7 +645,7 @@ async function pageTracks(main, open) {
   const genres = [...new Set(all.flatMap(t => [t.genre, t.genre_2, t.my_genre]).filter(Boolean))].sort();
   main.innerHTML = `
     <div class="page-head"><div><h2>Tracks</h2><div class="muted" id="tcount"></div></div><div class="spacer"></div>
-      ${!SNAP ? `<button id="t-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write approved cues to Traktor…</button>` : ""}</div>
+      ${!SNAP ? `<button id="t-grids" data-tip="Move every approved beat grid (and its cues) in Traktor (shows what changes first)">Write grid fixes to Traktor…</button><button id="t-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write approved cues to Traktor…</button>` : ""}</div>
     <div class="filters">
       <input type="search" id="f-q" placeholder="Search artist, title, file, album…" style="width:260px" value="${esc(TF.q)}">
       <select id="f-genre"><option value="">All genres</option>${genres.map(g => `<option ${g === TF.genre ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>
@@ -655,12 +655,13 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues set</option><option value="some">Has cues set</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option></select>
+      <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues set</option><option value="some">Has cues set</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option><option value="grid">Beat grid off the kicks</option><option value="grid_ok">Grid fix approved, not written yet</option></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
     <div class="card" style="padding:0"><div id="ttable"></div></div>`;
   $("#t-write")?.addEventListener("click", () => writeToTraktor(() => S.reloadTracks()));
+  $("#t-grids")?.addEventListener("click", () => writeGrids(() => S.reloadTracks()));
   $("#f-type").value = TF.type; $("#f-held").value = TF.held; $("#f-cues").value = TF.cues;
   const bind = (id, key, ev = "input", get = el => el.value) => { $(id).addEventListener(ev, e => { TF[key] = get(e.target); draw(); }); };
   bind("#f-q", "q"); bind("#f-genre", "genre", "change"); bind("#f-colour", "colour", "change"); bind("#f-bmin", "bpmMin");
@@ -688,7 +689,8 @@ async function pageTracks(main, open) {
       && (TF.bpmMin === "" || (t.mix_bpm ?? -1) >= +TF.bpmMin) && (TF.bpmMax === "" || (t.mix_bpm ?? 1e9) <= +TF.bpmMax)
       && (!keys || keys.includes(t.mix_camelot))
       && (!TF.held || (TF.held === "genre" ? t.held_genre : TF.held === "colour" ? t.held_colour : TF.held === "any" ? t.held_genre || t.held_colour : !t.held_genre && !t.held_colour)));
-    rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0 : t.own_cues > 0));
+    rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0
+      : TF.cues === "grid" ? t.grid_off != null || t.grid_drift : TF.cues === "grid_ok" ? t.grid_approved != null : t.own_cues > 0));
     if (TF.errors) rows = rows.filter(t => t.error && !t.error.startsWith("tags:"));  // as the error chip and the Overview's count
     if (TF.genre && TF.genreTop) rows = rows.filter(t => t.genre === TF.genre);  // from the Overview: its count is the top genre's
     shown = rows;
@@ -717,7 +719,7 @@ async function pageTracks(main, open) {
         <td ${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="Traktor ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : ""}>${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}</td>
         <td>${esc(t.my_genre || t.genre || "–")}${t.held_genre ? lock("Genre") : ""}${t.genre_2 ? `<div class="dim small">${esc(t.genre_2)}</div>` : ""}${t.error && !t.error.startsWith("tags:") ? `<div class="chip bad" data-tip="${esc(t.error)}">error</div>` : ""}</td>
         <td class="r">${hypeBadge(t.hype)}</td>
-        <td class="r num" data-tip="${t.own_cues ? `${t.own_cues} cue${t.own_cues > 1 ? "s" : ""} set in Traktor` : "no cues set in Traktor"}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? ` · approved, not written yet: ${approvedText(t.cues_approved, true)}` : ""}">${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">${approvedText(t.cues_approved)}</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}</td>
+        <td class="r num" data-tip="${t.own_cues ? `${t.own_cues} cue${t.own_cues > 1 ? "s" : ""} set in Traktor` : "no cues set in Traktor"}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? ` · approved, not written yet: ${approvedText(t.cues_approved, true)}` : ""}">${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">${approvedText(t.cues_approved)}</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}${t.grid_off != null ? ` <span class="chip warn" data-tip="Traktor's beat grid is ${Math.abs(t.grid_off).toFixed(0)} ms ${t.grid_off > 0 ? "before" : "after"} the kicks: see Beat grid in the track's panel">grid ${t.grid_off > 0 ? "+" : ""}${t.grid_off.toFixed(0)} ms</span>` : t.grid_approved != null ? ` <span class="chip good" data-tip="Grid fix approved, not written yet">grid fix approved</span>` : t.grid_drift ? ` <span class="chip warn" data-tip="The kick drifts against the grid along the track: the BPM looks off">BPM drifts</span>` : ""}</td>
         <td class="r num">${fmt(t.lufs, 1)}</td><td class="r num">${mmss(t.duration_sec)}</td></tr>`).join("")}</tbody></table></div>`;
     $("#ttable .tablewrap").scrollTop = scroll;
     $("#ttable thead").onclick = e => { const k = e.target.dataset?.k; if (!k) return; S.trackSort = { key: k, dir: S.trackSort.key === k ? -S.trackSort.dir : 1 }; draw(); };
@@ -754,7 +756,7 @@ function prepFor(path) {
   return PREP.ctl.signal;
 }
 const aborted = e => e?.name === "AbortError";
-function closeDrawer() { prepFor(null); deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
+function closeDrawer() { prepFor(null); gridStop(); deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
 // the track open in the panel, highlighted in every track list: one style rule, so it holds through any redraw
 function markOpen(path) {
   let st = document.getElementById("open-row");
@@ -777,6 +779,110 @@ function scaleView(t) {
   return `<div class="scale-marks top">${yours ? `<div class="m" style="${at(yours)}">yours</div>` : ""}</div>
     <div class="scale">${COLOURS.map(c => `<div class="sw-${c}" data-tip="${c}"></div>`).join("")}</div>
     <div class="scale-marks">${pos != null ? `<div class="m" style="${at(pos)}" data-tip="where the model places this track (1 = Red … 7 = Magenta)">model ${pos.toFixed(2)}</div>` : ""}</div>`;
+}
+// ---------- beat grid check (gridfix.py): does Traktor's grid sit on the kicks? ----------
+const GRIDPLAY = { src: null, btn: null };
+function gridStop() {
+  if (GRIDPLAY.src) { try { GRIDPLAY.src.stop(); } catch (e) {} }
+  if (GRIDPLAY.btn) GRIDPLAY.btn.textContent = GRIDPLAY.btn.dataset.label;
+  GRIDPLAY.src = GRIDPLAY.btn = null;
+}
+// A few bars where the kick plays, looped, with a click on each grid line: as Traktor has it (shift 0) or moved
+async function gridClick(path, g, shift, btn) {
+  if (GRIDPLAY.btn === btn) return gridStop();
+  gridStop(); deckStopLoop(); DECK.audio.pause();
+  const t0 = g.preview_ms ?? g.grid_ms, beats = 16, beat = g.beat_ms;  // a stretch whose kick agreed with the reading
+  btn.dataset.label ??= btn.textContent; btn.textContent = "Loading…"; GRIDPLAY.btn = btn;
+  try {
+    if (!DECK.ctx) { DECK.ctx = new AudioContext(); DECK.gain = DECK.ctx.createGain(); DECK.gain.gain.value = deckVolume(); DECK.gain.connect(DECK.ctx.destination); }
+    if (DECK.ctx.state === "suspended") await DECK.ctx.resume();
+    const r = await fetch(`/api/loop?path=${encodeURIComponent(path)}&start=${t0 / 1000}&len=${beats * beat / 1000}`);
+    if (!r.ok) throw new Error((await readJSON(r)).error);
+    const src0 = await DECK.ctx.decodeAudioData(await r.arrayBuffer());
+    if (GRIDPLAY.btn !== btn) return;  // stopped or another one meanwhile
+    const sr = src0.sampleRate, n = src0.length, buf = DECK.ctx.createBuffer(src0.numberOfChannels, n, sr);
+    const clickLen = Math.round(0.03 * sr), MUSIC = 0.45;  // the music turned down so the click stands out (mastered tracks sit near full scale)
+    for (let ch = 0; ch < src0.numberOfChannels; ch++) {
+      const x = buf.getChannelData(ch), y = src0.getChannelData(ch);
+      for (let i = 0; i < n; i++) x[i] = MUSIC * y[i];
+      for (let k = 0; k < beats; k++) {  // a 3 kHz tick on every grid line, accented on the bar: well above the kick and bass
+        const at = Math.round(((k * beat + shift) / 1000) * sr), amp = k % 4 ? 0.4 : 0.55;
+        for (let i = 0; i < clickLen; i++) { const j = ((at + i) % n + n) % n; x[j] += amp * Math.sin(2 * Math.PI * 3000 * i / sr) * Math.exp(-i / (0.008 * sr)); }
+      }
+    }
+    const src = DECK.ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(DECK.gain); src.start();
+    GRIDPLAY.src = src; btn.textContent = "■ Stop";
+  } catch (e) { gridStop(); btn.textContent = e.message; }
+}
+function renderGrid(g) {
+  const ms = v => `${v > 0 ? "+" : ""}${(+v).toFixed(Math.abs(v) < 10 ? 1 : 0)} ms`;
+  const n = (g.sections || []).filter(x => x != null).length;
+  if (g.state === "unclear") return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
+  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: Traktor's BPM looks slightly off. Moving the grid can't fix that; check the BPM in Traktor.</div>`;
+  if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
+  const stem = g.stem;
+  const stemNote = !stem ? "" : stem.matches === false
+    ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split("/").slice(-2).join("/"))}</span></div>`
+    : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
+    : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
+  const val = g.approved ?? g.suggested_ms;
+  return `<div class="small"><span class="chip warn">${g.approved != null ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
+      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} Traktor's grid lines, the same in ${n} stretches across the track.
+      ${g.lead_in ? `That's the size of an MP3's lead-in (51.2 ms), what you get from a grid set on a stem file made without it, so the fix is set to exactly that.` : ""}</div>
+    ${stemNote}
+    <div class="filters small" style="margin-top:6px;align-items:center">
+      <button type="button" class="mini" id="gr-now" data-tip="A few bars where the kick plays, looped, with a click on each of Traktor's grid lines as they are now">▶ Click on the grid now</button>
+      <button type="button" class="mini" id="gr-moved" data-tip="The same bars with the click on the moved grid lines: it should land on the kick">▶ Click on the moved grid</button>
+      <label class="inline">move it <input type="number" id="gr-shift" step="0.1" value="${esc(val)}" style="width:72px"> ms ${g.offset_ms > 0 ? "later" : "(negative: earlier)"}</label>
+      ${g.approved != null ? `<span class="chip good">✓ approved: ${ms(g.approved)}, not in Traktor yet</span><button type="button" id="gr-write" class="primary">Write grid fixes to Traktor…</button><button type="button" id="gr-unapprove">Take back</button>`
+        : `<button type="button" id="gr-approve" class="primary" data-tip="Your cues, loops and markers on this track move by the same amount, so they stay on the beat">Approve</button><button type="button" id="gr-ignore" data-tip="Leave this grid as it is: it won't be proposed again unless the grid changes">The grid is right</button>`}
+      <span id="gr-msg" class="muted"></span></div>`;
+}
+async function loadGrid(t, g) {
+  const box = $("#gridbox"); if (!box) return;
+  try { g ??= await api("grid", { path: t.path }); } catch (e) { box.className = "small dim"; box.textContent = e.message; return; }
+  if ($("#drawer").dataset.path !== t.path) return;
+  box.className = ""; box.innerHTML = renderGrid(g);
+  const shift = () => +($("#gr-shift")?.value || 0), msg = m => { const e = $("#gr-msg"); if (e) e.textContent = m; };
+  const after = async (d, text) => { await loadGrid(t, d); msg(text); S.tracks = {}; if (S.page === "tracks") S.reloadTracks?.(); };
+  $("#gr-now")?.addEventListener("click", e => gridClick(t.path, g, 0, e.currentTarget));
+  $("#gr-moved")?.addEventListener("click", e => gridClick(t.path, g, shift(), e.currentTarget));  // the moved lines: the old ones + the shift
+  $("#gr-shift")?.addEventListener("change", () => { if (GRIDPLAY.btn?.id === "gr-moved") { const b = GRIDPLAY.btn; gridStop(); gridClick(t.path, g, shift(), b); } });
+  $("#gr-approve")?.addEventListener("click", async () => { try { await after(await postJSON("/api/grid/approve", { path: t.path, shift_ms: shift() }), "Approved"); } catch (e) { msg(e.message); } });
+  $("#gr-unapprove")?.addEventListener("click", async () => { try { await after(await postJSON("/api/grid/approve", { path: t.path, shift_ms: null }), "Taken back"); } catch (e) { msg(e.message); } });
+  $("#gr-ignore")?.addEventListener("click", async () => { try { await after(await postJSON("/api/grid/ignore", { path: t.path, on: true }), "Marked as right"); } catch (e) { msg(e.message); } });
+  $("#gr-write")?.addEventListener("click", () => writeGrids(async () => { const top = $("#drawer").scrollTop; await openTrack(t.path); $("#drawer").scrollTop = top; S.tracks = {}; if (S.page === "tracks") S.reloadTracks?.(); }));
+}
+// Write every approved grid fix into Traktor's collection.nml (= `grids apply`): a preview first, then the write, then Undo.
+async function writeGrids(onDone) {
+  const dlg = document.createElement("dialog"); dlg.className = "write"; document.body.appendChild(dlg);
+  dlg.addEventListener("close", () => dlg.remove());
+  const show = (html, buttons) => {
+    dlg.innerHTML = `<h3>Write grid fixes to Traktor</h3>${html}<div class="filters" style="margin-top:12px">${buttons}<button data-close>Close</button><span class="small muted" id="wr-msg"></span></div>`;
+    dlg.querySelector("[data-close]").onclick = () => dlg.close();
+  };
+  const fail = e => { const m = dlg.querySelector("#wr-msg"); if (m) m.textContent = e.message; else show(errBox(e), ""); };
+  const list = items => items.length ? `<ul>${items.slice(0, 300).map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : "";
+  show(`<div class="muted">Checking what would change…</div>`, ""); dlg.showModal();
+  let d; try { d = await postJSON("/api/grid/write", { dry_run: true }); } catch (e) { return show(errBox(e), ""); }
+  if (d.nothing_approved) return show(`<div>Nothing approved yet.</div>`, "");
+  const running = d.traktor_running ? `<div class="warnbox"><b>Quit Traktor first.</b> It rewrites its collection when it closes, which would undo this.</div>` : "";
+  show(`${running}<div>${d.tracks} track${d.tracks === 1 ? "" : "s"}: grid moved${d.cues_moved ? `, with ${d.cues_moved} cues, loops and markers` : ""}.</div>${list(d.changes || [])}
+    ${(d.skipped || []).length ? `<div class="small"><b>Left alone:</b>${list(d.skipped)}</div>` : ""}
+    <div class="note small">A backup of the collection is made first; Undo puts it back.</div>`,
+    d.changed ? `<button class="primary" data-write ${d.traktor_running ? "disabled" : ""}>Write to Traktor</button>` : "");
+  dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
+    e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
+    let r; try { r = await postJSON("/api/grid/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = "Write to Traktor"; return fail(err); }
+    show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.tracks} grid${r.tracks === 1 ? "" : "s"} moved${r.cues_moved ? `, with ${r.cues_moved} cues, loops and markers` : ""}.</div>
+      <div class="note">Your approved cues on these tracks moved with them. Backup: <span class="mono">${esc(r.backup || "")}</span><br>Undo works until Traktor saves the collection again (it does when it quits).</div>`, `<button data-undo>Undo</button>`);
+    dlg.querySelector("[data-undo]").onclick = async ev => {
+      ev.currentTarget.disabled = true;
+      try { const u = await postJSON("/api/grid/undo", {}); show(`<div><b>Undone.</b> collection.nml is back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} grid fix${u.approvals_restored > 1 ? "es are" : " is"} approved again` : ""}.</div>`, ""); onDone?.(); }
+      catch (err) { ev.currentTarget.disabled = false; fail(err); }
+    };
+    onDone?.();
+  });
 }
 async function openTrack(path) {
   prepFor(path);
@@ -814,6 +920,7 @@ async function openTrack(path) {
     ${t.styles ? `<div class="section"><h3>Discogs styles</h3>${bars(parseScores(t.styles))}</div>` : ""}
     ${moods.length ? `<div class="section"><h3>Mood</h3>${bars(moods, { max: 1, fmtVal: v => pct(v) })}</div>` : ""}
     ${t.instruments ? `<div class="section"><h3>Instruments <span class="dim small">(compare tracks, not absolute)</span></h3>${bars(parseScores(t.instruments), { max: 1 })}</div>` : ""}
+    ${t.type === "track" && !SNAP ? `<div class="section" id="gridsec"><h3>Beat grid</h3><div id="gridbox" class="loading small">Checking where the kicks land…</div></div>` : ""}
     ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
     ${t.type === "track" ? `<div class="section"><h3>Mixes well with</h3><div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
       <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div></div>` : ""}`;
@@ -836,6 +943,7 @@ async function openTrack(path) {
   d.dataset.path = t.path;
   d.classList.add("open"); d.setAttribute("aria-hidden", "false"); if (!keepScroll) d.scrollTop = 0;
   if (t.type !== "track") return;
+  if (!SNAP) loadGrid(t);
   api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
     .catch(e => { const b = $("#cuebox"); if (b) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
   const load = async () => {
@@ -2269,6 +2377,11 @@ async function pageSetup(main) {
      ${jb("su-tempo", haveView ? "Scan new tracks" : "Scan tempo view", !haveView && st.tools.rubberband && sc.tracks, (!st.tools.rubberband || !sc.tracks) && "disabled")}
      ${T.loaded ? `<button id="su-native">Switch Traktor back…</button>` : T.views.length ? `<button id="su-load">Load into Traktor…</button>` : ""}
      ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon || T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
+  const G = st.grids || {};
+  const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 10, "Beat grids",
+    `Optional: checks that Traktor's grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
+     ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
+    jb("su-grids", G.checked ? "Check new and changed grids" : "Check the beat grids", !G.checked && !!sc.tracks, !sc.tracks && "disabled"));
   const w = (id, title, body, extra = "", disabled) => `<div class="step"><div class="ic">→</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div>
     <div class="act">${extra}<button id="${id}" ${disabled || ""}>Preview…</button></div></div>`;
   const noScan = !sc.tracks && "disabled";
@@ -2278,7 +2391,7 @@ async function pageSetup(main) {
     <div class="card"><h3>Learn from your own Traktor work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}</div></div>
     <div class="card"><h3>Extra tools <span class="dim small">(optional)</span></h3><div class="steps">
       ${tool(7, "ffmpeg", "Plays loops and saves samples in a track's panel, keeps MP3 timing exact, and cuts mix clips.")}
-      ${tool(8, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}</div></div>
+      ${tool(8, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
     <div class="card"><h3>Into your files and Traktor</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
       ${st.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Previews work, but quit Traktor before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
@@ -2310,6 +2423,7 @@ async function pageSetup(main) {
   on("su-colours", () => go("colors_train"));
   on("su-cues", () => go("cues_train"));
   on("su-cues-scan", () => go("cues_scan"));
+  on("su-grids", () => go("grids_check"));
   on("su-install-ffmpeg", () => go("install", { tool: "ffmpeg" }));
   on("su-install-rubberband", () => go("install", { tool: "rubberband" }));
   on("su-tempo", () => go("tempo_scan", { bpm: +($("#su-bpm").value || 145) }));

@@ -190,6 +190,15 @@ def main() -> None:
     cu.add_argument("--workers", type=int, default=None, help="parallel listeners (default: half your CPU cores, max 5)")
     cu.add_argument("--rescan", action="store_true", help="scan: listen again even if measured")
     cu.add_argument("--dry-run", action="store_true", help="apply: show what would be written, change nothing")
+    gr = sub.add_parser("grids", help="check that Traktor's beat grids sit on the kicks, and move the ones you approve")
+    gr.add_argument("action", choices=["check", "show", "apply"],
+                    help="check: measure every track with a beat grid (cached). show: one track's measurement and "
+                         "its stem file. apply: move the grids you approved in the web page, with your cues (Traktor closed)")
+    gr.add_argument("track", nargs="?", default=None, help="show: part of the track's file name")
+    gr.add_argument("--nml", default=None, help="path to collection.nml")
+    gr.add_argument("--workers", type=int, default=None, help="check: parallel workers (default: half your CPU cores, max 6)")
+    gr.add_argument("--rescan", action="store_true", help="check: measure again even if measured")
+    gr.add_argument("--dry-run", action="store_true", help="apply: show what would be written, change nothing")
     sub.add_parser("regenre", help="recompute the genres of scanned tracks from the cache (after editing dj_genres.json)")
     ex = sub.add_parser("export", help="write the scanned collection to a CSV spreadsheet")
     ex.add_argument("out", nargs="?", default=None)
@@ -334,6 +343,10 @@ def main() -> None:
         from . import cues
 
         cues.main(args)
+    elif args.cmd == "grids":
+        from . import gridfix
+
+        gridfix.main(args)
     elif args.cmd == "regenre":
         from . import collection
 

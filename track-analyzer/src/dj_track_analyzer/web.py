@@ -94,7 +94,7 @@ def tracks(lib: str = "native") -> dict:
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
-    from . import cues
+    from . import cues, gridfix
 
     approved = cues.plans()
     fixes = correction_counts()
@@ -102,7 +102,16 @@ def tracks(lib: str = "native") -> dict:
         g = cue_grids()
     except SystemExit:  # no Traktor collection found
         g = {}
+    grid_res, grid_plans, grid_ign = gridfix.results(g=g), gridfix.plans(), gridfix.ignored()
     for r in rows:
+        gr, d = grid_res.get(r["path"]), g.get(r["path"])
+        if gr and d:  # the beat grid check: off (and not marked right), drifting, or a fix approved
+            if r["path"] in grid_plans and gridfix.same(grid_plans[r["path"]], d["bpm"], d["grid_ms"]):
+                r["grid_approved"] = grid_plans[r["path"]]["shift_ms"]
+            elif gr["state"] == "off" and not (r["path"] in grid_ign and gridfix.same(grid_ign[r["path"]], d["bpm"], d["grid_ms"])):
+                r["grid_off"] = gr["offset_ms"]
+            elif gr["state"] == "drift":
+                r["grid_drift"] = True
         if r["path"] in approved:  # what's approved, not written yet: {add, move, remove} counts
             pl = approved[r["path"]]["plan"]
             r["cues_approved"] = {k: len(pl.get(k, [])) for k in ("add", "move", "remove")}
@@ -862,6 +871,94 @@ def approve_cues(path: str, plan: dict | None) -> dict:
     return out
 
 
+LEAD_IN_MS = 2257 / 44.1  # an MP3's lead-in as Traktor plays it (traktor.audio_offset): a common size for a shifted grid
+_stems: dict = {}  # (path, stem file, its mtime) -> stem check, so reopening a track doesn't decode the stem again
+
+
+def grid_info(path: str) -> dict:
+    """The beat grid check for one track (measured now if needed, ~2 s), what's approved, and for a grid that's off,
+    whether its stem file lines up with the track (one grid serves both)."""
+    from . import gridfix
+
+    d = cue_grids().get(path)
+    if not d:
+        raise ValueError("Traktor has no beat grid for this track")
+    p = Path(path)
+    r = gridfix.check_one(p, d["bpm"], d["grid_ms"])
+    pl, ign = gridfix.plans().get(path), gridfix.ignored().get(path)
+    out = {**r, "bpm": d["bpm"], "grid_ms": d["grid_ms"], "propose_ms": gridfix.PROPOSE_MS,
+           "approved": pl["shift_ms"] if pl and gridfix.same(pl, d["bpm"], d["grid_ms"]) else None,
+           "ignored": bool(ign and gridfix.same(ign, d["bpm"], d["grid_ms"]))}
+    if r["state"] == "off":
+        out["suggested_ms"] = r["offset_ms"]
+        if traktor.audio_offset(p) == 2257 and abs(r["offset_ms"] - LEAD_IN_MS) <= 5:  # within the measurement's few ms of it
+            out["suggested_ms"], out["lead_in"] = round(LEAD_IN_MS, 1), True
+        stem = gridfix.find_stem(p)
+        if stem is not None:
+            k = (path, str(stem), stem.stat().st_mtime)
+            if k not in _stems:
+                _stems[k] = gridfix.stem_check(p)
+            out["stem"] = _stems[k]
+    return out
+
+
+def approve_grid(path: str, shift_ms) -> dict:
+    from . import gridfix
+
+    d = cue_grids().get(path)
+    if not d:
+        raise ValueError("Traktor has no beat grid for this track")
+    gridfix.set_plan(path, d["bpm"], d["grid_ms"], None if shift_ms is None else float(shift_ms))
+    if shift_ms is not None:
+        gridfix.set_ignore(path, d["bpm"], d["grid_ms"], False)
+    return grid_info(path)
+
+
+def ignore_grid(path: str, on: bool) -> dict:
+    from . import gridfix
+
+    d = cue_grids().get(path)
+    if not d:
+        raise ValueError("Traktor has no beat grid for this track")
+    gridfix.set_ignore(path, d["bpm"], d["grid_ms"], on)
+    if on:
+        gridfix.set_plan(path, d["bpm"], d["grid_ms"], None)
+    return grid_info(path)
+
+
+def write_grids(dry_run: bool) -> dict:
+    """`grids apply` from the page: a preview first (dry_run), then the write. Refuses while Traktor is open."""
+    from . import gridfix, traktor
+
+    if jobs.busy():
+        raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
+    if not gridfix.plans():
+        return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
+    try:
+        out = gridfix.apply(dry_run=dry_run)
+    except SystemExit as e:
+        raise ValueError(str(e)) from None
+    out["traktor_running"] = traktor.traktor_running()
+    if not dry_run and out.get("changed"):
+        _grids["mtime"] = None
+        _wave_src.clear()
+    return out
+
+
+def undo_grids() -> dict:
+    from . import gridfix
+
+    if jobs.busy():
+        raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
+    try:
+        out = gridfix.undo_write()
+    except SystemExit as e:
+        raise ValueError(str(e)) from None
+    _grids["mtime"] = None
+    _wave_src.clear()
+    return out
+
+
 def setup_status() -> dict:
     with library("native"):
         return jobs.setup_status()
@@ -1132,6 +1229,11 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/cues/rescan", post(lambda b: rescan_track(str(b["path"]))), methods=["POST"]),
         Route("/api/cues/write", post(lambda b: write_cues(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/cues/undo", post(lambda b: undo_write()), methods=["POST"]),
+        Route("/api/grid", respond(lambda q: grid_info(q["path"]))),
+        Route("/api/grid/approve", post(lambda b: approve_grid(str(b["path"]), b.get("shift_ms"))), methods=["POST"]),
+        Route("/api/grid/ignore", post(lambda b: ignore_grid(str(b["path"]), bool(b.get("on", True)))), methods=["POST"]),
+        Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
+        Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/jobs", respond(lambda q: jobs.state(int(num(q, "since", 0))))),
         Route("/api/jobs/start", post(start_job), methods=["POST"]),

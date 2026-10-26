@@ -71,6 +71,7 @@ ACTIONS = {
     "colors_train": ("Learn your colours", lambda o: ["colors", "train"], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
+    "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),
     "regenre": ("Genres again from the saved scores", lambda o: ["regenre"], False),
     "install": ("Install a tool", _tool_install, False),
@@ -337,6 +338,19 @@ def setup_status() -> dict:
                      "predicted": predicted}
     st["cues"] = {"model": stamp(cues.MODEL), "starter": cues.STARTER_MODEL.exists(),
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
+    st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
+    if st["traktor"].get("collection"):
+        from . import cues, gridfix
+
+        try:
+            g = cues.grids()
+            res = gridfix.results(g=g)
+            st["grids"] = {"tracks": len(cues._one_path_each(g)), "checked": len(res),
+                           "off": sum(r["state"] == "off" for r in res.values()),
+                           "drift": sum(r["state"] == "drift" for r in res.values()),
+                           "approved": len(gridfix.plans()) if collection.NATIVE_DB.exists() else 0}
+        except (SystemExit, OSError) as e:
+            log(f"Beat grid check status skipped: {e}")
     st["tags"] = {"tagged_files": tagged}
     backups = []
     if st["traktor"].get("collection"):

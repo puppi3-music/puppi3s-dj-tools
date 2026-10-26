@@ -194,6 +194,29 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   53.7% vs 45.2% always 4 (8 bars found 28/74, 1 bar 1/25); track metadata (BPM, genre, colour, hype) didn't predict
   it. Ideas are still chosen at `loop_bars`; suggest() adds `suggested_bars`, the page's length menu (1-16, what fits)
   preselects it.
+- `gridfix.py`: `grids check|show|apply`: does Traktor's grid sit on the kicks. Per track, up to 6 eight-bar stretches
+  where kick_on (cue bars, one-bar gaps bridged: a fill every 8th bar left no 8-bar run and the 20-80% fallback
+  hit a breakdown), envelope 100-400 Hz + 4x 2-8 kHz, zero-phase, 1 ms bins on
+  Traktor's timeline (bins by time: 44.1 samples/ms; integer 44 drifted 0.7 s by 5 min), folded on the grid lines;
+  attack = where the fold rises past 30% from floor to peak within ±150 ms (steepest rise read +20 ms on a track
+  Traktor grids right). The cache holds raw readings (`measure`); `classify()` makes the verdict when read, so
+  thresholds change without measuring again. Offset = all stretches folded together; stretches only check it (2/3
+  within AGREE_MS 12 of their median: a two-part attack reads 47 or 60 ms; > 25 ms from the whole = no kick there,
+  left out); a steady line fit ≥ 15 ms = `drift` (BPM off, not fixable by a shift). States on / off (≥ PROPOSE_MS 10)
+  / drift / unclear; `preview_ms` = an agreeing stretch (the click preview). Test collection 2026-10-26 (grid-3):
+  others median 0 ms (p5/p95 -4/+9); 41 of 42 stem-gridded off (+51), the other drift; 403 on, 62 off, 2 drift,
+  6 unclear. Cache: the NORMAL cache.db `gridcheck` (own sqlite connection, so a view's swapped CACHE_DB doesn't
+  matter), keyed path+BPM+grid+VERSION.
+  Stems (`find_stem`: Browser.Dir.GeneratedStems, matched by artist+title tags; `stem_check`: cross-correlation of
+  the stem's stream 0 with the decoded track; a stem lines up when lag = audio_offset + AAC_PRIMING 2112): NUO Stems
+  left the MP3 lead-in (2257) out of 42 stems from LAME 3.100 MP3s (not all LAME 3.100), whose grids had been set on
+  the stem (Traktor: one grid per track, cues/grid shared by time with the stem; user checked). Remaking with NUO
+  4.1.0 lined Timeless's up. Web: /api/grid (measure + stem check, `lead_in`: an MP3 with offset 2257 read within 5 ms
+  of 51.2 is set to exactly 51.2), approve/ignore (collection.db `grid_plan` / `grid_ignore`, per grid), click preview
+  (16 beats from /api/loop with ticks on old or moved lines), write/undo. `apply` shifts every CUE_V2 START of the
+  entry (grid marker a bar later if it would go negative; refuses a cue that would), stamps MODIFIED, moves that
+  track's `cue_plan` (new grid key) and `cue_ignore` along; `undo_write` restores the NML (`traktor.undo`) and both,
+  from data/grids-last-written.json. The cue model's oof is per grid, so a moved track has no corrections until retrained.
 - Holds (`collection.held/set_hold/hold_matching`, `hold` command): tables `genre_keep` / `color_keep` (= the
   colour "keep always" list) in the NATIVE collection.db (`collection.NATIVE_DB`, also while a view is in use).
   Skipped by `_wanted` (tag, scan --write-tags), `traktor.sync` (genre and colour, even --overwrite-colors),
