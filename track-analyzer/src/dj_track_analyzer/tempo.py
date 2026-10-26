@@ -123,7 +123,8 @@ def view_db(bpm: float) -> sqlite3.Connection:
     for c, t in VIEW_EXTRA:
         if c not in have:
             con.execute(f"ALTER TABLE tracks ADD COLUMN {c} {t}")
-    # so a cached view analysis survives tag edits / file syncs (analysis._recover_key)
+    # so a cached view analysis survives tag edits / file syncs (analysis._recover_key); this view's ratios only
+    analysis.STRETCH.clear()
     analysis.STRETCH.update({p: bpm / b for p, b in con.execute(
         "SELECT path, source_bpm FROM tracks WHERE source_bpm > 0")})
     return con
