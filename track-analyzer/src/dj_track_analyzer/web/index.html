@@ -577,7 +577,7 @@ function navCounts() {
   const list = S.tracks[S.lib], a = document.querySelector('#nav a[href="#tracks"]');
   if (!list || !a) return;
   const n = list.filter(t => t.type === "track").length, fixes = list.filter(t => t.corrections > 0).length;
-  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: All cues and grids → Corrections proposed for its cues)"></span>` : ""}`;
+  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: All checks → Corrections proposed for its cues)"></span>` : ""}`;
 }
 
 // ---------- router ----------
@@ -666,7 +666,7 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">All cues and grids</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup></select>
+      <select id="f-cues"><option value="">All checks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
@@ -701,7 +701,8 @@ async function pageTracks(main, open) {
       && (!keys || keys.includes(t.mix_camelot))
       && (!TF.held || (TF.held === "genre" ? t.held_genre : TF.held === "colour" ? t.held_colour : TF.held === "any" ? t.held_genre || t.held_colour : !t.held_genre && !t.held_colour)));
     rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0
-      : TF.cues === "grid" ? t.grid_off != null || t.grid_drift : TF.cues === "grid_ok" ? t.grid_approved != null : t.own_cues > 0));
+      : TF.cues === "grid" ? t.grid_off != null || t.grid_drift : TF.cues === "grid_ok" ? t.grid_approved != null
+      : TF.cues === "key" ? t.traktor_camelot && t.camelot && !camelotNeighbours(t.traktor_camelot).includes(t.camelot) : t.own_cues > 0));
     if (TF.errors) rows = rows.filter(t => t.error && !t.error.startsWith("tags:"));  // as the error chip and the Overview's count
     if (TF.genre && TF.genreTop) rows = rows.filter(t => t.genre === TF.genre);  // from the Overview: its count is the top genre's
     shown = rows;
