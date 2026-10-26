@@ -343,7 +343,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <h3 id="read-colours">Reading the Colours tab</h3>
 <ul>
-  <li><b>Average error per colour</b>, <b>within one colour</b>, <b>exactly right</b>: how well the scale fits, tested on tracks it didn't learn from. The error is worked out per colour and averaged, so a small colour like Violet counts as much as Red. On the test collection the scale was 1.17 colours off on average, against 1.63 for guessing the middle colour for every track.</li>
+  <li><b>Average error per colour</b>, <b>within one colour</b>, <b>exactly right</b>: how well the scale fits, tested on tracks it didn't learn from. The error is worked out per colour and averaged, so a small colour like Violet counts as much as Red. On the test collection the scale was 1.10 colours off on average, against 1.59 for guessing the middle colour for every track.</li>
   <li><b>Profile per colour:</b> the average of each measurement per colour, darker = highest of the row. <b>ρ</b> is how strongly it moves with your scale: + means more of it toward Magenta, − toward Red. Around ±0.3 or more is a real pattern; under ±0.1 is basically nothing. <b>plays</b> and <b>purchased</b> describe how you use the tracks, not how they sound.</li>
   <li><b>Where in a set:</b> from Traktor's History, how often each colour is played in the first, middle and last third of a session.</li>
   <li><b>Playlists:</b> your playlists from hardest to prettiest by average colour; <b>Stands out</b> marks a colour that appears there at more than twice its usual rate.</li>
@@ -758,10 +758,10 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <h4><code>colors train</code></h4>
 <ul>
-  <li><b><code>baseline_always_guess_middle</code>:</b> how good guessing your middle colour for every track would be (1.63 colours off on the test collection), with the same four numbers as the model. The model should beat it clearly.</li>
-  <li><b><code>average_error_in_colours</code>:</b> how many colour steps off it is on average, tested on tracks it didn't learn from. On the test collection: 1.17, against 1.63 for the baseline.</li>
+  <li><b><code>baseline_always_guess_middle</code>:</b> how good guessing your middle colour for every track would be (1.59 colours off on the test collection), with the same four numbers as the model. The model should beat it clearly.</li>
+  <li><b><code>average_error_in_colours</code>:</b> how many colour steps off it is on average, tested on tracks it didn't learn from. On the test collection: 1.10, against 1.59 for the baseline.</li>
   <li><b><code>exact</code>:</b> how often it guesses exactly your colour.</li>
-  <li><b><code>within_one_colour</code>:</b> how often it's right or one step off (67% on the test collection).</li>
+  <li><b><code>within_one_colour</code>:</b> how often it's right or one step off (70% on the test collection).</li>
   <li><b><code>average_error_per_colour</code>:</b> the same error, but worked out for each colour separately and then averaged, so a small colour like Violet counts as much as a big one like Red. Training keeps the model with the lowest value here: the plain average would favour a model that plays safe in the middle and never gets the end colours right. 0 would be perfect; your own colouring isn't perfectly consistent either, so don't expect it near 0.</li>
   <li><b><code>accuracy_per_colour</code>:</b> The two ends are hardest to get exactly (around 10–13% on the test collection), because the model plays it safe toward the middle. Neighbouring colours are close to a coin flip from the sound alone.</li>
   <li><b><code>biggest_disagreements</code>:</b> tracks worth a second listen (also in <code>colors review</code>).</li>
