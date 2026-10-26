@@ -603,6 +603,10 @@ def _ffmpeg() -> str:
     return exe
 
 
+def _ffprobe() -> str:
+    return analysis.find_tool("ffprobe") or "ffprobe"
+
+
 def _render_loop(src: Path, start: float, length: float, smooth: bool, out_args: list[str], timeout: int = 60):
     """Run ffmpeg to write the loop [start, start + length) with out_args (codec, metadata, output): the track's exact
     samples, with Traktor's EDGE_FADE at both ends. smooth: also the loop's last SMOOTH_MS fade (raised cosine) into the
@@ -613,7 +617,7 @@ def _render_loop(src: Path, start: float, length: float, smooth: bool, out_args:
     import numpy as np
 
     exe = _ffmpeg()
-    info = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels",
+    info = subprocess.run([_ffprobe(), "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate,channels",
                            "-of", "csv=p=0", str(src)], capture_output=True, text=True, timeout=30).stdout.strip().split(",")
     sr, ch = int(info[0]), int(info[1])
     start = max(0.0, start - traktor.audio_offset(src) / sr)
@@ -711,7 +715,7 @@ def _wav_codec(src: Path) -> str:
     where Traktor, playing the MP3 in floating point, doesn't."""
     import subprocess
 
-    out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
+    out = subprocess.run([_ffprobe(), "-v", "error", "-select_streams", "a:0", "-show_entries",
                           "stream=codec_name,sample_fmt,bits_per_raw_sample,bits_per_sample", "-of", "json", str(src)],
                          capture_output=True, text=True, timeout=30)
     st = (json.loads(out.stdout or "{}").get("streams") or [{}])[0]
@@ -749,7 +753,7 @@ def _saved_db():
         if str(f) in known or f in _samples_read:
             continue
         _samples_read.add(f)
-        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=comment", "-of", "default=nw=1:nk=1", str(f)],
+        out = subprocess.run([_ffprobe(), "-v", "error", "-show_entries", "format_tags=comment", "-of", "default=nw=1:nk=1", str(f)],
                              capture_output=True, text=True, timeout=30)
         m = _SAMPLE_NOTE.match(out.stdout.strip())
         if m:

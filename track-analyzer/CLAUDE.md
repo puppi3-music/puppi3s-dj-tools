@@ -32,7 +32,14 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
   `analysis.resample_medium`) and `resample_linear` (= Resample quality 4, the models' 16 kHz input via
   `analysis.resample_linear`; needs FMA in `x0 + t*(x1 - x0)`: the plain form was 1 sample off in 62.9M on a mix,
-  though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). A step goes in only
+  though every test signal passed). `analysis.mono_mix` is MonoMixer in numpy (same bits). `musicnn_mels` (= TensorflowInputMusiCNN per
+  FrameGenerator frame; `analysis.musicnn_mels`, MAEST's patches; `streaming=True` = the streaming FrameCutter's
+  frames, whose silentFrames="noise" blanks a silent first frame) and `analysis.effnet_embeddings` (EffNet's
+  padding/patches/batches as TensorflowPredictEffnetDiscogs, graph via plain TensorflowPredict). Its 512-point FFT is
+  FFTW 3.3.10's plan with the codelets ported (`dsp/tools/gen_fftw_codelets.py`: Essentia's FFTW runs the PLAIN
+  codelet variant and gcc -O3 fuses mul+add across statements, modelled with mul_add; checked by calling the
+  wheel's local `_r2cf_16` etc. via ctypes). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
+  it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
   after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
   release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
@@ -43,7 +50,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   docs/WINDOWS.md.
   Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
   decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
-  AAC/Opus untrimmed. Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
+  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV when installed (`analysis.pyav()`), bit
+  for bit on 507/508 files (stage 2; the other: FFmpeg 2.8 decoded one MP3's LAME Info frame as 1152 samples of audio,
+  current FFmpeg doesn't, as `traktor.audio_offset` assumes); raw frame bytes converted ~1M samples at a time (per-frame
+  numpy was slower than Essentia), FLAC/ALAC frame threads; >2 channels via PyAV's resampler = `ffmpeg -ac 2` bits.
+  Opus length = sum of packet durations (FFmpeg 2.8's). Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
   speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
@@ -307,7 +318,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (view-only `source_bpm`/`native_color_position`; `hype` is in `KEEP_ON_RESCAN`).
 - NFC vs NFD paths create duplicate rows (`_drop_decomposed_duplicates`). Syncthing `*.sync-conflict-*` copies are
   skipped by `scan` (and earlier rows dropped). >2-channel files (Essentia's AudioLoader rejects them) are mixed down to
-  stereo by ffmpeg (`_load_downmixed`, float). Rows for files that are gone are dropped by every scan unless they're on
+  stereo by PyAV's resampler (`decode`), or by the ffmpeg command without PyAV (`_load_downmixed`, float; same bits). Rows for files that are gone are dropped by every scan unless they're on
   a drive that isn't mounted (/Volumes/<disk>; Linux /media, /run/media, /mnt via ismount). `nfc()` composes a
   path on macOS always, on Linux only if that spelling exists (ext4 compares bytes).
 - `scan` recomputes hype after analysing anything (it's a rank within the collection); `hype` is also kept on rescan.

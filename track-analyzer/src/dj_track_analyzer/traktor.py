@@ -62,7 +62,9 @@ def audio_offset(path: Path) -> int:
     if k not in _offsets:
         n = 0
         if path.suffix.lower() == ".mp3":
-            out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=start_time,sample_rate",
+            from .analysis import find_tool
+
+            out = subprocess.run([find_tool("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=start_time,sample_rate",
                                   "-of", "csv=p=0", k], capture_output=True, text=True, timeout=30).stdout.strip().split(",")
             try:
                 sr, st = int(out[0]), float(out[1])

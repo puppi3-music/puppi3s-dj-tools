@@ -10,7 +10,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+mod fft512;
+mod fftw_codelets;
 mod mid_qual_coeffs;
+mod musicnn;
+mod musicnn_tables;
 mod resample;
 
 // ---------------------------------------------------------------------------------------------------
@@ -289,11 +293,36 @@ fn resample_linear(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, Py
     with_buffers(py, signal, out, |x, o| resample::linear(x, o, in_rate, out_rate, fma))
 }
 
+/// Number of mel frames musicnn_mels gives for a signal of n samples (FrameCutter 512/256, startFromZero=False).
+#[pyfunction]
+fn musicnn_frame_count(n: usize) -> usize {
+    musicnn::frame_starts(n).len()
+}
+
+/// Essentia's TensorflowInputMusiCNN on every frame of a 16 kHz float32 `signal` (frames as FrameGenerator /
+/// FrameCutter with frameSize 512, hopSize 256, startFromZero False), bit for bit, into the float32 array `out`
+/// (at least musicnn_frame_count(len) * 96 long, C-contiguous, writable; row = frame); returns the frame count.
+/// streaming=True: frames as the streaming FrameCutter makes them (TensorflowPredictEffnetDiscogs; see musicnn::mels).
+#[pyfunction]
+#[pyo3(signature = (signal, out, streaming = false))]
+fn musicnn_mels(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>, streaming: bool) -> PyResult<usize> {
+    with_buffers(py, signal, out, |x, o| {
+        let n = musicnn::frame_starts(x.len()).len();
+        if o.len() < n * musicnn::BANDS {
+            return Err(format!("out holds {} values, {} needed", o.len(), n * musicnn::BANDS));
+        }
+        musicnn::mels(x, o, streaming);
+        Ok(n)
+    })
+}
+
 #[pymodule]
 fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loudness_ebur128, m)?)?;
     m.add_function(wrap_pyfunction!(resample_max_len, m)?)?;
     m.add_function(wrap_pyfunction!(resample_sinc_medium, m)?)?;
     m.add_function(wrap_pyfunction!(resample_linear, m)?)?;
+    m.add_function(wrap_pyfunction!(musicnn_frame_count, m)?)?;
+    m.add_function(wrap_pyfunction!(musicnn_mels, m)?)?;
     Ok(())
 }

@@ -33,11 +33,11 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Resample to 44.1 kHz | `Resample(quality=1)`, libsamplerate 0.2.2 | Rust | **done**, bit-identical |
 | Mono mix | `MonoMixer` | Rust | bit-identical |
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
-| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | bit-identical on MP3/WAV/AIFF/FLAC/ALAC (stage 0); else measured |
-| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, linking the same FFTW 3.3.10 | bit-identical |
+| Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
+| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical (stage 3) |
 | Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | bit-identical with TF 2.15 (stage 0) |
-| Key | `KeyExtractor(profileType="edma")` | Rust port, same FFTW | bit-identical |
-| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, same FFTW | bit-identical; gate below |
+| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | bit-identical |
+| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's codelets for its sizes | bit-identical; gate below |
 
 Essentia is AGPL-3.0, and so is this repo, so porting its code line by line is fine. FFTW (GPL-2.0+) can be
 linked into an AGPL program too.
@@ -59,14 +59,17 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Resample to 44.1 kHz (48 kHz files) | 19.7 s per 65-min mix | Rust: 3.8 s | 5.1x faster | 34 files |
 | Mono mix | 0.010 s per 6-min track, 0.12 s per mix | numpy: 0.008 s, 0.09 s | 1.3x faster (tiny) | 10 tracks, 1 mix as FLAC and MP3 |
 | Resample to 16 kHz (models) | 0.055 s per 6-min track, 0.60 s per mix | Rust: 0.055 s, 0.61 s | same (one sequential walk) | same files |
-| Decode | 78 ms per minute of audio (0.47 s per 6-min track, 4.6–5.4 s per mix) | PyAV: 88 ms | 12% slower (+0.04 s per track, +0.7 s per mix) | 10 tracks, 1 mix as FLAC and MP3 |
+| EffNet with its mel input | 1.15 s per 6-min track, 9.2 s per mix | Rust mels: 0.74 s, 7.7 s | 1.2-1.8x faster | same files |
+| MAEST's mel input (90 s of audio) | 0.043 s | Rust: 0.002 s | 20x faster (tiny) | same files |
+| Decode | 80 ms per minute of audio (0.47 s per 6-min track, 4.7–5.5 s per mix) | PyAV: 58 ms (0.42 s; 2.0 s FLAC mix, 4.8 s MP3 mix) | MP3 1.15x, FLAC 2.4x faster; mix peak memory 5.6 → 1.8 GB | 10 tracks, 1 mix as FLAC and MP3 |
 | EffNet | 0.74 s per track (median) | TF 2.15: 0.76 s; onnxruntime: 0.72 s | same | 58 tracks |
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
 
-The decode gap is probably the Python side of `av_decode` (one numpy array per frame, then a join and an int to
-float pass); stage 2 does that conversion in one pass (numpy into a preallocated array, or Rust) and measures again.
+Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
+and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
+array, and lets FLAC and ALAC decode on several threads (same bits). Now it's faster than Essentia on every file.
 
 **Stage 0: two probes before any code. Done (October 2026), both passed.**
 - *Decoding*: PyAV 18.1 (FFmpeg 8) against `AudioLoader`, sample for sample, on the whole test collection, 38
@@ -102,7 +105,27 @@ off (7e-15) in 62.9 million on a 65-minute 48 kHz mix. Bit-identical on the test
 tracks and 39 mix recordings (`dsp/check.py`). Same speed as Essentia (speed table). After this,
 `load_audio` only calls Essentia to decode.
 
-**Stage 2: decoding** with PyAV. Copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
+**Stage 2: decoding** with PyAV. **Done (October 2026)**: `analysis.decode` (PyAV 18.1, FFmpeg 8) when PyAV is
+installed, `AudioLoader` otherwise. PyAV is an opt-in extra (`uv sync --extra decode`) until stage 7, because its
+Apple Silicon wheels need macOS 14 (Python 3.11+; 3.10 keeps Essentia). `decode` is used by `load_audio`, the cue code, and to read `stretch()`'s
+Rubber Band output. `dsp/check.py --steps decode` checks it on test files made with the ffmpeg command (8/16/24/32-bit
+and float WAV, AIFF, FLAC up to 96 kHz, ALAC, MP3 with and without a Xing frame, mono, 5.1) and on every file given.
+- **507 of 508 files bit-identical**: every collection track but one, the 31 mix recordings, and the 5.1 FLAC (PyAV's
+  downmix gives the same bits as the `ffmpeg -ac 2` the Essentia path uses). Also every test file except AAC,
+  Vorbis and Opus (last-bit differences as in stage 0; FFmpeg's own Vorbis encoder's files also come out 768
+  samples shorter: current FFmpeg trims the end padding, the start lines up).
+- **The exception**, one MP3: FFmpeg 2.8 decodes the file's LAME Info header frame as 1152 samples of audio;
+  current FFmpeg (and the ffmpeg command) treats it as a header. Essentia's samples are PyAV's with 1152 in front,
+  bit for bit. So on this track Essentia's audio sat 26 ms late on Traktor's timeline (`traktor.audio_offset`
+  assumes the header frame isn't decoded, and was checked with the ffmpeg command's decode). Full analysis both
+  ways: BPM, key, top 3 genres in order, colour (position 4.34) the same; genre scores ±0.02, LUFS -9.6 → -9.7,
+  BPM confidence 2.52 → 2.49. Cue suggestions moved: the kick pulse (on-beat vs between beats) reads about +30 dB in
+  the intro where Essentia's read +21, and turns positive in the groove, so the grid now lines up with the kicks;
+  one cue added (bar 24), one dropped (bar 64), names changed. The analyses of AAC, Vorbis and Opus test files
+  (9 files) differ in at most one rounded value each.
+- Speed and memory: speed table above.
+
+What was planned for this stage: copy `AudioLoader`'s behaviour as stage 0 found it: float32 stereo at the
 file's own rate, MP3 through the fixed-point decoder, mono in the left channel only, AAC/Opus untrimmed,
 damaged packets skipped. The >2-channel files already go through the ffmpeg CLI (`_load_downmixed`);
 PyAV's libswresample can do the same downmix, checked against the CLI. Also covers the Rubber Band output that
@@ -122,12 +145,42 @@ hearing. But FFmpeg 2.8 has years of known decoder vulnerabilities and nobody ma
   decoding. If the start moves, re-measure that alignment against the Remix Deck captures, to the sample.
 Building FFmpeg 2.8's decoders ourselves is the last resort, not the fallback.
 
-**Stage 3: the mel front end** (Rust). `TensorflowInputMusiCNN` (512-sample frames, hop 256 at 16 kHz, 96 mel
-bands, log compression) for EffNet and MAEST, plus EffNet's 128-frame patches and 64-patch batches
-(`TensorflowPredictEffnetDiscogs`). The FFT is the hard part: Essentia uses FFTW with `FFTW_ESTIMATE` plans,
-and only the same FFTW code gives the same bits. The `dsp/` crate builds FFTW 3.3.10 from source in its
-build script (CMake, single precision, the same SIMD options as Essentia's build) on all four CI platforms.
-The key and BPM ports reuse it.
+**Stage 3: the mel front end. Done (October 2026).** `track_analyzer_dsp.musicnn_mels` is `TensorflowInputMusiCNN`
+on every frame (`analysis.musicnn_mels`, used for MAEST's patches), and `analysis.effnet_embeddings` builds
+EffNet's input as `TensorflowPredictEffnetDiscogs` does and runs the graph alone through `TensorflowPredict`.
+Without the Rust module, Essentia does both as before.
+- **The FFT without building FFTW.** The plan was to build FFTW 3.3.10 in CI with Essentia's options. Instead, the
+  512-point real FFT is FFTW's own code ported: `fftwf_sprint_plan` shows the plan `FFTW_ESTIMATE` picks (a radix-32
+  step over four generated codelets, `r2cf_16`, `r2cf_32`, `r2cfII_32`, `hc2cf_32`), and `dsp/tools/gen_fftw_codelets.py`
+  translates those from FFTW's source. Essentia's FFTW was built with gcc -O3 without FFTW's FMA option, so it runs
+  the codelets' plain variant and gcc fuses multiply-adds by itself, across statements; the generator models where
+  (each product whose results only feed adds, taken in order) with explicit `mul_add`. The wheel's library still
+  has the codelets as local symbols, so each was called directly and compared: identical on 2,000 random inputs
+  each, and the whole FFT against `fftwf_execute` on 20,000. Being Rust, it gives the same bits on every platform,
+  with no C compiler in CI. The twiddle factors (FFTW's split table in double, rounded to float) are a table.
+- **The rest of a frame:** Hann window (zero-phase), `sqrt(re*re + im*im)`, 96 Slaney mel bands summed bin by bin,
+  `x*10000 + 1`, `log10f`. Essentia's arm64 build fuses the magnitude and the band sums but not the scale and
+  shift (clang's default: within one expression); the same here. The window and filter weights are read off
+  Essentia (`dsp/tools/gen_musicnn_tables.py`). macOS's `log10f` isn't correctly rounded: it differs from `log10`
+  in double rounded to float on 249 of the 1.07 billion floats ≥ 1 (an exhaustive scan); those, and 30 more where
+  another platform's `log10` could round the other way, are a table (`dsp/tools/log10f_exceptions.c`).
+- **EffNet's input:** the signal zero-padded so the last batch of 64 patches is full (`padSignal`'s float maths),
+  patches of 128 frames every 62, an incomplete last batch dropped, the padding's outputs removed. Its frames come
+  from the *streaming* `FrameCutter`, whose default `silentFrames="noise"` does two things to a frame below about
+  -100 dBFS: adds noise of about 1e-10 (unseeded, but it vanishes in `log10(1 + 10000·x)`, so EffNet's output is the
+  same on every run), and copies the frame shifted by its left zero-padding, so a silent *first* frame loses its
+  samples. That happens on 109 of the 469 collection tracks (a few samples near 1e-5 in the first 16 ms);
+  reproduced (`musicnn_mels(..., streaming=True)`). MAEST's frames come from `FrameGenerator`, which does neither.
+- **Checked** (`dsp/check.py --steps mel effnet`): every frame of every collection track and mix recording against
+  `TensorflowInputMusiCNN`, and every track's EffNet embeddings against `TensorflowPredictEffnetDiscogs`, plus test
+  signals (lengths around every patch and batch boundary, a near-silent first frame).
+  **Mel frames: all 508 files bit-identical** (469 tracks, 39 mix recordings). **EffNet: bit-identical on 492**; the
+  other 16 differ only in patches holding near-silent frames, by up to 2e-7, and there Essentia isn't
+  reproducible itself: its noise tips roundings, so it gives a different result on each run (19 different results
+  in 20 runs on one track). Ours is the noise-free one, which Essentia also gives on some runs (9 of the 16
+  matched exactly when Essentia ran again). The check counts these separately. `analyze_file`'s whole output is byte-identical to the previous version on 4 tracks and a mix.
+- The key and BPM ports need FFTs of other sizes: each size has its own plan and codelets, found and ported the
+  same way.
 
 **Stage 4: neural nets.** With stages 1–3, the nets get bit-identical input, so any difference comes from the
 runtime alone.
@@ -167,14 +220,14 @@ works on Windows, and the rest of this file (Traktor, paths, launcher) is the Wi
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
 from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
 every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8) for Python TensorFlow
-2.15 and PyAV: about the same size. Apple Silicon then needs macOS 12, and Python stays at 3.10-3.11.
+2.15 and PyAV: about the same size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
 
 **Risks, biggest first.**
-1. *Decoder differences*: small after stage 0 (one MP3 in the test collection, plus AAC, Vorbis and Opus).
-   Measured per track in stage 2.
+1. *Decoder differences*: one MP3 in the test collection (its header frame, now decoded as Traktor's timeline
+   assumes), plus last bits of AAC, Vorbis and Opus (stage 2).
 2. *TF runtime bits*: none with TF 2.15 (stage 0). onnxruntime differs (stage 4) and isn't used.
-3. *FFTW build in CI* on four platforms with the same options as Essentia's. Fiddly, but stages 3, 5 and 6
-   check it to the bit.
+3. *FFTW*: no longer a build risk (stage 3 ports FFTW's codelets instead of building FFTW). The key and BPM
+   ports need the plans for their FFT sizes, each checked against the wheel's FFTW.
 4. *Size of the BPM port.* Large but mechanical; the check finds every slip.
 
 ### Rust for the parts that get rewritten
@@ -218,8 +271,7 @@ Candidates, best first:
   by that much already; the Rust module gives the Mac's numbers on every platform (`mul_add` is exact
   everywhere; on x86_64 it may call the C library's `fmaf`, check its speed in CI).
 - **Key port** (0.17 s). Already fast; Rust only so it sits with the BPM code (shared spectral peaks).
-- **The mel front end** for EffNet and MAEST. Small today (0.06 s for MAEST's); numpy is fine. Rust only if it
-  has to share code with the rest.
+- **The mel front end: done** (stage 3), for the FFT the key and BPM ports share. Speed: table above.
 - **Resampling: done** (`track_analyzer_dsp.resample_sinc_medium`, used by `analysis.resample_medium()` for the
   44.1 kHz copy in `load_audio` and the cue code). A port of libsamplerate 0.2.2's medium sinc as Essentia calls
   it (`src_simple`, the whole signal at once). libsamplerate walks the input once through a ring buffer; that
@@ -309,9 +361,10 @@ several places assume `/`:
   then SIGTERM. Windows has neither. Start with `creationflags=CREATE_NEW_PROCESS_GROUP` and send
   `CTRL_BREAK_EVENT`; the scans' safe stop listens for SIGINT, so they'd need a SIGBREAK handler too.
 - **Installing tools.** The Setup tab installs ffmpeg and rubberband with Homebrew; without it, it shows
-  `analysis.install_hint()`. Add a Windows hint (`winget install ffmpeg`; Rubber Band has Windows builds at
-  breakfastquay.com/rubberband, needs 3.0+ for the R3 engine) or run winget from `_tool_install`.
-  `analysis.find_tool()` looks in Homebrew folders; add the winget install location.
+  `analysis.install_hint()`. **Done:** the Windows hint (`winget install Gyan.FFmpeg`; Rubber Band's Windows build
+  from breakfastquay.com/rubberband, 3.0+ for the R3 engine, on PATH), and `analysis.find_tool()` also looks in
+  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). Still open: running winget from `_tool_install`.
+  Every ffprobe call goes through `find_tool` (the page's player and loops, `traktor.audio_offset`), except `clips.py`.
 - **Show in Explorer** (`web._show`) already uses `explorer /select,` on Windows.
 
 ## Launcher
