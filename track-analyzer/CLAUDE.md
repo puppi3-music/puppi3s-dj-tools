@@ -175,7 +175,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `_wav_codec` (lossless: source bit depth; lossy: pcm_f32le, since a test MP3 decoded to 1.049 peak and 24-bit
   clipped 128 samples per loop); identical to the decoded source apart from the edge fades (below); never overwrites (" (2)"); collection.db `saved_sample` (file, src_name, start, len, smooth, format) skips a loop saved before (±2 ms, any subfolder; samples not in it are read once per run from their ffprobe comment "Loop from <name> at <s> s, <len> s", files named "* from bar *.wav"), shown via /api/cues `saved_samples` drives the playhead over the zoomable canvas (`box._wave`). Web: per-track correction counts (`web.correction_counts`) start counting in a
   background thread at `serve()` (one track per `library()` lock; predictions under `threadpool_limits(1)`, 16 vs ~100
-  ms, identical) and are saved in `data/cue-corrections.json`, keyed by the model's and collection.nml's mtimes.
+  ms, identical) and are saved in `data/cue-corrections.json`, keyed by the model's mtime and, per track, a hash of its grid + cues
+  (`_fix_sig`): a write to Traktor or Traktor saving recounts only the tracks that changed (≤ `FIXES_SYNC` 30 in the
+  request, more in the background; counting all of them on each NML change made the list show "counting…" for a minute).
   Loop ideas (`loop_ideas`, `_idea`, up to 6): the 2 best by the loop model, 2 peak loops (best loopability within
   1.5 dB of the loudest bar, kick on, outside the first/last 15%; then without the kick: kick_on still misses it
   under a full drop on ~3% of tracks; then anywhere; then loudest), then the best `loopability()` (mean timbre

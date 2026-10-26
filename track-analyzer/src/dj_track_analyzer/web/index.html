@@ -738,7 +738,7 @@ async function pageTracks(main, open) {
     $("#f-chips").querySelectorAll("[data-unchip]").forEach(b => b.addEventListener("click", () => { TF[b.dataset.unchip] = false; draw(); }));
     const { key, dir } = S.trackSort, f = SORTS[key];
     rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
-    $("#tcount").textContent = `${rows.length} of ${all.length} files${S.fixesPending ? " · counting proposed corrections (about 10 s)…" : ""}`;
+    $("#tcount").textContent = `${rows.length} of ${all.length} files${S.fixesPending ? " · counting proposed corrections (about 30 s)…" : ""}`;
     const head = [["colour", "Colour"], ["track", "Track"], ["bpm", "BPM", 1], ["key", "Key"], ["genre", "Genre"], ["hype", "Hype", 1], ["cues", "Cues", 1], ["lufs", "LUFS", 1], ["length", "Length", 1]];
     const scroll = $("#ttable .tablewrap")?.scrollTop || 0;
     if (!rows.length) {
