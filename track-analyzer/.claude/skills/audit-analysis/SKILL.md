@@ -19,12 +19,12 @@ each model's JSON), `calibration` (EffNet vs MAEST score scale), `bpm` (colour s
 input alone), `cache` (tracks missing cached MAEST etc.), `timing` (seconds per stage). Pass names
 to run only some. Compare with the baselines below; a change is a finding.
 
-Baselines (2026-10-22, 471 tracks):
+Baselines (2026-10-22, 471 tracks; rules/calibration/bpm re-checked 2026-10-25, unchanged):
 - rules: all valid; MAEST-only: Neo Trance, Hard Beat, Doomcore, J-Core, UK Funky, Footwork.
 - calibration: MAEST runs ~1.3x EffNet (top score 0.55 vs 0.42); MAEST-only styles are scaled by the per-track ratio (fixed 2026-10-22).
 - bpm: BPM input → 145 moves the colour by −0.15 on average (sd 0.19, −1.48 … +0.22) with the model trained 2026-10-22 14:39 (the older model: −0.30, sd 0.10). This is the model's sensitivity; since 2026-10-22 the view feeds it the native BPM, so this number should no longer show up in view shifts.
-- cache: only the 2 Syncthing `.sync-conflict-` copies lack MAEST styles; 1 row for a file that's gone (2026-10-23).
-- timing: decode 1.6, rhythm 3.2, loudness 1.4, EffNet 1.8, MAEST ~6-7 (first run includes loading) s; tempo stretch ~20 s (R3; kept for accuracy).
+- cache: nothing missing on 469 tracks (2026-10-25; the conflict copies and the gone row were dropped by scans).
+- timing (2026-10-25, PyAV decode + Rust loudness/mels): decode 0.7, rhythm 4.3, key 0.1, loudness 0.3, EffNet 1.3, heads 0.1, MAEST ~5.4 (first run includes loading) s; tempo stretch ~20 s (R3; kept for accuracy). Before the Rust port: decode 1.6, rhythm 3.2, loudness 1.4, EffNet 1.8, MAEST ~6-7.
 
 ## 2. Read the code with this checklist
 
