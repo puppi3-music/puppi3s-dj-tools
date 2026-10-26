@@ -77,6 +77,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `analysis.own_or_starter()` loads them in `color_model()` / `cues.model()` (both cached per path + mtime) until
   `data/my_*.joblib` exists. With a starter: `colors review` refuses, `cues.suggest` proposes no corrections or moves
   of the user's cues; `setup_status` reports `starter`. Rebuild after retraining or a scikit-learn bump.
+- README screenshots (`docs/img/{cues,overview,track}-{light,dark}.png`, shown via `<picture>`): `scripts/readme_shots.py
+  [--track TEXT]` (+ `readme_shots.mjs`, headless Chrome) from the real library, with titles/artists/albums/paths
+  swapped for made-up ones in the page's fetch answers and text. Retake after visible page changes; look at every PNG
+  for leftover names before committing.
 - `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment 2).
 - `tempo.py`: `tempo` command, the catalogue as heard at one tempo (default 145, `--bpm` for any).
 - `lexicon.py`: `tempo load/native --lexicon` via Lexicon's Local API.

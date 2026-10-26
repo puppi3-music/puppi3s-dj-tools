@@ -4,6 +4,13 @@ Local music analysis for a DJ's Mac (or Linux computer): BPM, key, subgenre, moo
 
 > **Already installed?** Day-to-day use is in **[docs/GUIDE.html](docs/GUIDE.html)** (`open docs/GUIDE.html`): what to run for each task, how to read the output, how to undo. This README is the full reference.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/cues-dark.png">
+  <img src="docs/img/cues-light.png" alt="A track's waveform in the web page, coloured by lows, mids and highs, with the DJ's own hot cues 1-8 on top, suggested cues below it named Start, Phrase, Lift, Breakdown and Drop, and six loop ideas L1-L6 described by their sound">
+</picture>
+
+*One track in the web page: your hot cues on Traktor's beat grid, the cues and mix loops the analyzer suggests (learned from where you put yours), and loop ideas named by what plays in them. Every pad plays from the page.*
+
 ## What you get
 
 For every MP3, WAV, FLAC, AIFF or M4A:
@@ -207,6 +214,20 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 - **Setup**: what's done and what's next, with a button for each step (below).
 
 The **This page shows** menu switches the page between your normal library and a tempo view; it changes only the page. The **Traktor tempo view** and **Lexicon tempo view** labels beside it (Lexicon only if you use it) say what is loaded there right now, on every tab, and update when you come back to the page after a `tempo load` or `native` in a terminal. Browsing changes nothing; the page only writes when you press a button that says so (holds, cue approvals, saved samples, and the writers on the Setup tab), and anything that changes your files or Traktor shows a preview first. In a tempo view, colours show as `tempo load` puts them into Traktor (your colour moved by how the track sounds at that tempo; the track's panel also shows yours at its own tempo). Hype comes from the last scan, and `colors explain` leaves out tracks that haven't had the deep listening pass yet. The page runs only on this computer. Stop it with Ctrl-C.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/overview-dark.png">
+  <img src="docs/img/overview-light.png" alt="The Overview tab: tracks per DJ genre with average BPM, a BPM histogram, tracks per Traktor colour and the most common Camelot keys">
+</picture>
+
+*Overview: the whole collection by genre, BPM, colour and key. Click any bar to list those tracks.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/track-dark.png">
+  <img src="docs/img/track-light.png" alt="A track's panel: BPM and key (Traktor's and the analyzer's), colour with the model's guess and confidence, hype 10 of 10, loudness, a colour scale from Red to Magenta with your colour and the model's position, then bars for the top genres, Discogs styles, moods and instruments">
+</picture>
+
+*A track's panel: Traktor's BPM and key next to the analyzer's, your colour next to the model's, hype, and what the models hear: genres, Discogs styles, moods, instruments.*
 
 **Setup tab: everything without a terminal.** A checklist from a fresh install to everything in Traktor: download the models, scan (your Traktor collection, a folder, or both), score hype, learn your colours and cue points, install ffmpeg and rubberband with Homebrew (without Homebrew, on Linux for example, it shows the command to run), scan a tempo view, check the beat grids. It shows what's done (models, how many Traktor tracks aren't scanned yet, files changed on disk since the scan, trained models with their dates) and what each step needs (for example 30 coloured tracks for the colour model). A button starts the step's command in the background, one at a time: a progress bar and the live log show on the page and in a bar at the top of every tab, and **Stop** works like Ctrl-C (scans keep what's done). The command is shown, so you can run the same thing in a terminal later. Stopping the web page stops a running step too.
 
@@ -700,7 +721,9 @@ dj-track-analyzer/
 ├── README.md               this reference
 ├── docs/
 │   ├── GUIDE.html          day-to-day guide (open in a browser)
-│   └── IDEAS.md            features, ideas, what was tried
+│   ├── IDEAS.md            features, ideas, what was tried
+│   └── img/                the README's screenshots
+├── scripts/                make_starter.py (starter models), readme_shots.py (the screenshots, names made up)
 ├── src/dj_track_analyzer/  the code (a Python package)
 │   ├── cli.py              the `dj-track-analyzer` command
 │   ├── mcp_server.py       MCP tools for LM Studio / Open WebUI
