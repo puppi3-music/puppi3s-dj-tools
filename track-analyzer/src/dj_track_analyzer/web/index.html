@@ -655,6 +655,12 @@ function camelotNeighbours(code) {
   return [`${n}${l}`, `${w(n - 1)}${l}`, `${w(n + 1)}${l}`, `${n}${l === "A" ? "B" : "A"}`];
 }
 const colourOf = t => t.traktor_color || t.color;
+// the Tracks tab's "All checks" menu: value → which tracks it lists
+const CHECKS = {
+  some: t => t.own_cues > 0, none: t => !t.own_cues, fixes: t => t.corrections > 0, approved: t => t.cues_approved,
+  grid: t => t.grid_off != null || t.grid_drift, grid_ok: t => t.grid_approved != null,
+  key: t => t.traktor_camelot && t.camelot && !camelotNeighbours(t.traktor_camelot).includes(t.camelot), guess: t => t.colour_guess,
+};
 const colourPos = t => t.traktor_color ? COLOURS.indexOf(t.traktor_color) + 1 : t.color_position ?? 99;
 const SORTS = {
   track: t => `${t.artist || ""} ${t.title || t.filename}`.toLowerCase(), bpm: t => t.mix_bpm ?? 1e9, key: t => {
@@ -717,12 +723,12 @@ async function pageTracks(main, open) {
       && (TF.bpmMin === "" || (t.mix_bpm ?? -1) >= +TF.bpmMin) && (TF.bpmMax === "" || (t.mix_bpm ?? 1e9) <= +TF.bpmMax)
       && (!keys || keys.includes(t.mix_camelot))
       && (!TF.held || (TF.held === "genre" ? t.held_genre : TF.held === "colour" ? t.held_colour : TF.held === "any" ? t.held_genre || t.held_colour : !t.held_genre && !t.held_colour)));
-    rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0
-      : TF.cues === "grid" ? t.grid_off != null || t.grid_drift : TF.cues === "grid_ok" ? t.grid_approved != null
-      : TF.cues === "key" ? t.traktor_camelot && t.camelot && !camelotNeighbours(t.traktor_camelot).includes(t.camelot)
-      : TF.cues === "guess" ? t.colour_guess : t.own_cues > 0));
     if (TF.errors) rows = rows.filter(t => t.error && !t.error.startsWith("tags:"));  // as the error chip and the Overview's count
     if (TF.genre && TF.genreTop) rows = rows.filter(t => t.genre === TF.genre);  // from the Overview: its count is the top genre's
+    // each check's count among the tracks the other filters leave, so it's what picking it shows
+    $("#f-cues").querySelectorAll("option[value]:not([value=''])").forEach(o => {
+      o.dataset.label ??= o.textContent; o.textContent = `${o.dataset.label} (${rows.filter(CHECKS[o.value]).length})`; });
+    if (TF.cues) rows = rows.filter(CHECKS[TF.cues]);
     shown = rows;
     // filters the Overview's links set that have no control of their own, as chips: ✕ takes one off
     const chip = (k, text, tipText) => `<span class="fchip" data-tip="${tipText}">${text} <button data-unchip="${k}" aria-label="Remove this filter">✕</button></span>`;
