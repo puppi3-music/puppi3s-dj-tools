@@ -218,6 +218,9 @@ def scan(bpm: float = DEFAULT_BPM, workers: int | None = None, rescan: bool = Fa
     con.commit()
     if recovered:
         log(f"{recovered} files changed on disk (tags or sync) but have the same audio; kept their analysis")
+    pruned = analysis.prune_cache(collection._missing_for_good, collection.sync_conflict)  # the view's cache; before the workers start
+    if pruned:
+        log(f"Dropped {pruned} view cache entries nothing can use any more (old versions, gone files, replaced keys)")
     if rescan:
         retempo = todo
     if retempo:

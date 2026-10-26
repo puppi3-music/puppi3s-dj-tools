@@ -22,6 +22,7 @@ import sqlite3
 import sys
 import threading
 import time
+import unicodedata
 import urllib.request
 from pathlib import Path
 
@@ -938,6 +939,43 @@ def _recover_key(con: sqlite3.Connection, p: Path, key: str) -> bool:
             con.commit()
             return True
     return False
+
+
+def prune_cache(missing_for_good, never_read=lambda path: False) -> int:
+    """Drop cache rows nothing can reach any more: rows from another cache version (keys include it, and
+    _recover_key only looks at this version's), rows for files that are gone for good (missing_for_good(path),
+    which spares drives that aren't plugged in), and a file's older keys once its current key has a row. A
+    file whose current key has no row keeps its old ones: _recover_key may still move one over. Also every row
+    of a path scans never read: never_read(path) (Syncthing conflict copies) or the decomposed spelling of a
+    path whose composed spelling has rows too (macOS opens both; scans use the composed one). Returns the
+    number of rows dropped (emb + deep)."""
+    dropped = 0
+    with _db() as con:
+        for table in ("emb", "deep"):
+            rows = con.execute(f"SELECT k, path, ver FROM {table}").fetchall()
+            paths = {path for _k, path, _v in rows}
+            unused = {path for path in paths if never_read(path)
+                      or (unicodedata.normalize("NFC", path) != path and unicodedata.normalize("NFC", path) in paths)}
+            current = {}  # path -> its current key (None: gone or unreadable)
+            for path in paths - unused:
+                try:
+                    current[path] = _cache_key(Path(path))
+                except OSError:
+                    current[path] = None
+            have = {k for k, _p, _v in rows}
+            dead = []
+            for k, path, ver in rows:
+                if path in unused:
+                    dead.append((k,))
+                    continue
+                cur = current[path]
+                if k == cur:
+                    continue
+                if ver != CACHE_VERSION or (cur is None and missing_for_good(path)) or cur in have:
+                    dead.append((k,))
+            con.executemany(f"DELETE FROM {table} WHERE k=?", dead)
+            dropped += len(dead)
+    return dropped
 
 
 def _get(sql: str, p: Path):

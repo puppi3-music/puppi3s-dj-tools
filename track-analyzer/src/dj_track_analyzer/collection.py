@@ -667,6 +667,9 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     log(f"{len(files)} audio files found, {len(files) - len(todo)} already scanned, {len(todo)} to analyze")
     tk_info = load_traktor_info(traktor_nml)
     store_traktor_info(con, tk_info)
+    pruned = analysis.prune_cache(_missing_for_good, sync_conflict)  # before the workers start writing to the cache
+    if pruned:
+        log(f"Dropped {pruned} cache entries nothing can use any more (old versions, gone files, replaced keys)")
     if not todo:
         if csv_out:
             export_csv(csv_out)
