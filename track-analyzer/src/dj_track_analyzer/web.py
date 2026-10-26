@@ -164,6 +164,8 @@ def colour_kept() -> dict:
 def tempo_report(bpm: float, limit: int = 25) -> dict:
     from . import tempo
 
+    if not (tempo.view_home(bpm) / "collection.db").exists():  # tempo.report would make an empty view (a new library)
+        raise SystemExit(f"No {bpm:g} BPM analysis yet. Run: uv run dj-track-analyzer tempo scan --bpm {bpm:g}")
     with library("native"):
         return tempo.report(bpm, limit=limit)
 
@@ -238,8 +240,13 @@ def correction_counts() -> dict[str, int] | None:
                             counts[p] = len(cues.pending_corrections(p, cues.suggest(p, d["bpm"], d["grid_ms"], own=d["cues"])["corrections"]))
                         except SystemExit:
                             pass
+                        except Exception as e:  # one track's problem (a file gone, unreadable audio): count the rest
+                            log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
                 _fixes.update(key=key, counts=counts)
                 FIXES_FILE.write_text(json.dumps({"key": list(key), "counts": counts}))
+            except Exception as e:  # keep what's counted: otherwise every /api/tracks starts again, and the page polls forever
+                log(f"Counting cue corrections stopped: {type(e).__name__}: {e}")
+                _fixes.update(key=key, counts=counts)
             finally:
                 _fixes["busy"] = False
 
@@ -420,6 +427,19 @@ DECK_KEEP = 6
 _deck_locks: dict[str, threading.Lock] = {}
 
 
+def _prune_deck_audio() -> None:
+    """Keep the DECK_KEEP newest finished files (a *.tmp.flac is another request's file still being written)."""
+    done = []
+    for f in DECK_AUDIO.glob("*.flac"):
+        try:  # another track's request may be cleaning up at the same time (the locks are per file)
+            if not f.name.endswith(".tmp.flac"):
+                done.append((f.stat().st_mtime, f))
+        except FileNotFoundError:
+            pass
+    for _m, old in sorted(done, key=lambda x: x[0], reverse=True)[DECK_KEEP:]:
+        old.unlink(missing_ok=True)
+
+
 def deck_audio(path: str) -> Path:
     """The file the page's player plays: the track itself, or for an MP3 that Traktor times differently than decoders
     do (traktor.audio_offset), a lossless copy with that offset in front, so the player's time is Traktor's time
@@ -442,8 +462,7 @@ def deck_audio(path: str) -> Path:
             if res.returncode or not tmp.exists():
                 raise ValueError(f"ffmpeg couldn't prepare the audio: {res.stderr.decode(errors='replace')[:200]}")
             tmp.replace(out)
-            for old in sorted(DECK_AUDIO.glob("*.flac"), key=lambda f: f.stat().st_mtime, reverse=True)[DECK_KEEP:]:
-                old.unlink(missing_ok=True)
+            _prune_deck_audio()
         else:
             out.touch()
     return out
@@ -545,8 +564,7 @@ def deck_stretched(path: str, bpm: float) -> tuple[Path, float]:
             if res.returncode or not tmp.exists():
                 raise ValueError(f"ffmpeg couldn't save the stretched audio: {res.stderr.decode(errors='replace')[:200]}")
             tmp.replace(out)
-            for old in sorted(DECK_AUDIO.glob("*.flac"), key=lambda f: f.stat().st_mtime, reverse=True)[DECK_KEEP:]:
-                old.unlink(missing_ok=True)
+            _prune_deck_audio()
         else:
             out.touch()
     return out, ratio
@@ -732,6 +750,7 @@ def _wav_codec(src: Path) -> str:
 
 _SAMPLE_NOTE = re.compile(r"Loop from (.+) at ([\d.]+) s, ([\d.]+) s(?:, (\d+) ms crossfade)?(, edge fades)?(, Traktor time)?")
 _samples_read: set[Path] = set()  # sample files whose comment was read this server run
+_roots_walked: set[Path] = set()  # sample folders searched this run (samples saved from the page go straight into the list)
 
 
 def _saved_db():
@@ -749,7 +768,9 @@ def _saved_db():
         con.execute("ALTER TABLE saved_sample ADD COLUMN format INTEGER DEFAULT 1")
     root = sample_root()
     known = {r[0] for r in con.execute("SELECT file FROM saved_sample")}
-    for f in root.rglob("* from bar *.wav") if root.is_dir() else []:
+    found = [] if root in _roots_walked or not root.is_dir() else root.rglob("* from bar *.wav")  # ~40 ms: once
+    _roots_walked.add(root)
+    for f in found:
         if str(f) in known or f in _samples_read:
             continue
         _samples_read.add(f)
@@ -880,7 +901,7 @@ def saved_files(dirs: list[Path]) -> list[dict]:
 
 def saved_file(dirs: list[Path], ident: str):
     i, _, name = ident.partition("/")
-    if not i.isdigit() or int(i) >= len(dirs) or "/" in name or name.startswith("."):
+    if not i.isdigit() or int(i) >= len(dirs) or Path(name).name != name or "\\" in name or name.startswith("."):
         raise ValueError("unknown file")
     f = dirs[int(i)] / name
     if not f.is_file():
@@ -937,21 +958,43 @@ def snapshot(dirs: list[Path], progress=log) -> str:
     return page.replace("<script>\n\"use strict\";", f"<script>window.SNAPSHOT = {blob};</script>\n<script>\n\"use strict\";", 1)
 
 
-def build_app(log_dirs: list[Path]):
+LOCAL_HOSTS = ["127.0.0.1", "localhost"]
+
+
+def allowed_hosts(host: str) -> list[str]:
+    """Host headers the server answers: only this machine's names. A web site whose own name points at 127.0.0.1
+    (DNS rebinding) is 'same origin' to the browser, so only the Host header tells it apart. Served on all
+    interfaces (--host 0.0.0.0) for other devices, any name is accepted."""
+    if host in ("0.0.0.0", "::", ""):
+        return ["*"]
+    return sorted({*LOCAL_HOSTS, host})
+
+
+def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
     from starlette.applications import Starlette
+    from starlette.middleware import Middleware
+    from starlette.middleware.trustedhost import TrustedHostMiddleware
     from starlette.concurrency import run_in_threadpool
     from starlette.requests import Request
     from starlette.responses import FileResponse, HTMLResponse, JSONResponse
     from starlette.routing import Route
 
+    def failed(e: BaseException) -> JSONResponse:
+        """Every failure as JSON {error}: the page reads each answer with .json()."""
+        if isinstance(e, SystemExit):  # expected problems come with advice
+            return JSONResponse({"error": str(e.code or e)}, status_code=409)
+        if isinstance(e, (ValueError, OSError, KeyError, TypeError, AttributeError)):  # bad input, missing file
+            return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=400)
+        logging.getLogger(__name__).exception("web request failed")
+        return JSONResponse({"error": f"{type(e).__name__}: {e} (a bug: the terminal running the page has the details)"},
+                            status_code=500)
+
     def respond(fn):
         async def endpoint(request: Request):
             try:
                 return JSONResponse(await run_in_threadpool(fn, request.query_params))
-            except SystemExit as e:  # expected problems come with advice
-                return JSONResponse({"error": str(e.code or e)}, status_code=409)
-            except (ValueError, OSError, KeyError) as e:
-                return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=400)
+            except (Exception, SystemExit) as e:
+                return failed(e)
         return endpoint
 
     def num(q, k, default=None):
@@ -962,8 +1005,8 @@ def build_app(log_dirs: list[Path]):
             q = request.query_params
             p = await run_in_threadpool(lambda: deck_stretched(q["path"], float(q["bpm"]))[0] if q.get("bpm")
                                         else deck_audio(q.get("path", "")))
-        except (ValueError, KeyError, SystemExit) as e:
-            return JSONResponse({"error": str(e)}, status_code=404)
+        except (Exception, SystemExit) as e:
+            return failed(e)
         return FileResponse(p)  # supports Range requests, so jumping around doesn't load the whole file
 
     async def loop_endpoint(request: Request):
@@ -973,8 +1016,8 @@ def build_app(log_dirs: list[Path]):
         try:
             data = await run_in_threadpool(loop_clip, q.get("path", ""), float(q.get("start", "nan")), float(q.get("len", "nan")),
                                            q.get("smooth") == "1", float(q["bpm"]) if q.get("bpm") else None)
-        except (ValueError, SystemExit) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
+        except (Exception, SystemExit) as e:
+            return failed(e)
         return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
     async def page(request):
@@ -992,45 +1035,19 @@ def build_app(log_dirs: list[Path]):
         return request.headers.get("content-type", "").split(";")[0] == "application/json" and \
             not (origin and origin.split("://", 1)[-1] != request.headers.get("host"))
 
-    async def save_loop_endpoint(request: Request):
-        if not from_this_page(request):
-            return JSONResponse({"error": "not allowed"}, status_code=403)
-        b = await request.json()
-        try:
-            return JSONResponse(await run_in_threadpool(save_loop, str(b["path"]), float(b["start"]), float(b["len"]),
-                                                        str(b["folder"]), int(b.get("bar", 0)), str(b.get("kind", "loop"))[:40],
-                                                        bool(b.get("smooth", False))))
-        except (ValueError, KeyError, TypeError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
-
     def post(fn):
         """A change from this page: JSON body, checked origin, run in a worker thread."""
         async def endpoint(request: Request):
             if not from_this_page(request):
                 return JSONResponse({"error": "not allowed"}, status_code=403)
             try:
-                return JSONResponse(await run_in_threadpool(fn, await request.json()))
-            except (ValueError, KeyError, TypeError) as e:
-                return JSONResponse({"error": str(e)}, status_code=400)
+                body = await request.json()
+                if not isinstance(body, dict):
+                    raise ValueError("the body must be a JSON object")
+                return JSONResponse(await run_in_threadpool(fn, body))
+            except (Exception, SystemExit) as e:
+                return failed(e)
         return endpoint
-
-    async def approve_endpoint(request: Request):
-        if not from_this_page(request):
-            return JSONResponse({"error": "not allowed"}, status_code=403)
-        body = await request.json()
-        try:
-            return JSONResponse(await run_in_threadpool(approve_cues, str(body["path"]), body.get("plan")))
-        except (ValueError, KeyError, TypeError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
-
-    async def hold_endpoint(request: Request):
-        if not from_this_page(request):
-            return JSONResponse({"error": "not allowed"}, status_code=403)
-        body = await request.json()
-        try:
-            return JSONResponse(await run_in_threadpool(hold, list(body["paths"]), body["kind"], bool(body["on"])))
-        except (ValueError, KeyError, TypeError) as e:
-            return JSONResponse({"error": str(e)}, status_code=400)
 
     q_lib = lambda q: q.get("lib", "native")  # noqa: E731
     routes = [
@@ -1056,8 +1073,8 @@ def build_app(log_dirs: list[Path]):
         Route("/api/audio", audio),
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond(lambda q: {"ratio": deck_stretched(q["path"], float(q["bpm"]))[1]})),
-        Route("/api/hold", hold_endpoint, methods=["POST"]),
-        Route("/api/cues/approve", approve_endpoint, methods=["POST"]),
+        Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
+        Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),
         Route("/api/cues/rescan", post(lambda b: rescan_track(str(b["path"]))), methods=["POST"]),
@@ -1068,11 +1085,13 @@ def build_app(log_dirs: list[Path]):
         Route("/api/jobs/start", post(start_job), methods=["POST"]),
         Route("/api/jobs/stop", post(lambda b: jobs.stop()), methods=["POST"]),
         Route("/api/samples/folders", respond(lambda q: sample_folders())),
-        Route("/api/samples/save", save_loop_endpoint, methods=["POST"]),
+        Route("/api/samples/save", post(lambda b: save_loop(
+            str(b["path"]), float(b["start"]), float(b["len"]), str(b["folder"]), int(b.get("bar", 0)),
+            str(b.get("kind", "loop"))[:40], bool(b.get("smooth", False)))), methods=["POST"]),
         Route("/api/samples/reveal", post(lambda b: reveal_sample(b.get("file"), b.get("folder"))), methods=["POST"]),
         Route("/export", export),
     ]
-    return Starlette(routes=routes)
+    return Starlette(routes=routes, middleware=[Middleware(TrustedHostMiddleware, allowed_hosts=hosts or LOCAL_HOSTS)])
 
 
 def export_file(out: str, logs: list[str] | None = None) -> Path:
@@ -1101,7 +1120,7 @@ def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = No
             logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
             super().handle_exit(sig, frame)
 
-    server = Server(uvicorn.Config(build_app(dirs), host=host, port=port, log_level="warning", timeout_graceful_shutdown=1))
+    server = Server(uvicorn.Config(build_app(dirs, allowed_hosts(host)), host=host, port=port, log_level="warning", timeout_graceful_shutdown=1))
     try:
         server.run()
     except KeyboardInterrupt:
