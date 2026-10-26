@@ -362,6 +362,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   stays a substring search over genres, styles and the genre tag.
 
 ## Tried, no gain (don't retry without a new idea)
+- MAEST on mix segments (2026-10-25, 65-min set at ~145, 33 two-minute segments, all 30 s patches, no psy gate):
+  3/33 segment genres changed; agreement with the playing track's @145 view genre 8/33 either way (own tempo 1 vs
+  0); +125 s on a 72 s analysis. Both models hear the tempo as psy; the tracklist's psy gate is what fixes that.
+  Mix timelines stay EffNet only.
 - Cue model (2026-10-23, 447 tracks, CV F1 0.629 exact bar): a second stage over neighbouring bars' scores;
   fixed top-k; "lead-in" features (next w bars vs the w before the previous w, kick share before/after,
   biggest single-bar fall in the last 8 bars): 0.627; a bonus for 8-bar boundaries where the kick goes out/back
