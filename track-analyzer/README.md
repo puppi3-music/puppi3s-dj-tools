@@ -2,7 +2,7 @@
 
 Local music analysis for a DJ's Mac (or Linux computer): BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon), plus an MCP server so a local LLM can search your collection. Fully offline, no length limit, free.
 
-> **Already installed?** Day-to-day use is in **[docs/GUIDE.html](docs/GUIDE.html)** (`open docs/GUIDE.html`): what to run for each task, how to read the output, how to undo. This README is the full reference.
+> **Already installed?** Day-to-day use is in the **[guide](https://puppi3-music.github.io/puppi3s-dj-tools/track-analyzer/)** (also in the project as `docs/GUIDE.html`): each task in the web page step by step, how to read it, how to undo, and every command in its own section. This README is the full reference.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/cues-dark.png">
@@ -192,7 +192,7 @@ uv run dj-track-analyzer scan --traktor ~/Music/Incoming   # both
 | `--csv <file>` | Write the spreadsheet somewhere else | `data/collection.csv` |
 
 **Results:**
-- `data/collection.csv`, a spreadsheet for Numbers or Excel (column guide in [GUIDE.html](GUIDE.html#results)). Write it again any time with `uv run dj-track-analyzer export [file]`.
+- `data/collection.csv`, a spreadsheet for Numbers or Excel (column guide in [the guide](https://puppi3-music.github.io/puppi3s-dj-tools/track-analyzer/#results)). Write it again any time with `uv run dj-track-analyzer export [file]`.
 - A database that the hype, colour and LLM tools read.
 - `uv run dj-track-analyzer stats`: tracks per genre with average BPM, common keys, a BPM histogram, tracks per colour.
 
@@ -720,7 +720,7 @@ Environment variables, in your shell or in an `"env": {}` block in `mcp.json`:
 dj-track-analyzer/
 ├── README.md               this reference
 ├── docs/
-│   ├── GUIDE.html          day-to-day guide (open in a browser)
+│   ├── GUIDE.html          day-to-day guide, web page first (published on GitHub Pages)
 │   ├── IDEAS.md            features, ideas, what was tried
 │   └── img/                the README's screenshots
 ├── scripts/                make_starter.py (starter models), readme_shots.py (the screenshots, names made up)
