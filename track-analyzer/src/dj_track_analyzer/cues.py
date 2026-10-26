@@ -23,6 +23,7 @@ from . import analysis, traktor
 from .analysis import HOME, log
 
 MODEL = HOME / "my_cues.joblib"
+STARTER_MODEL = analysis.STARTER_DIR / "cues.joblib"  # used until you train your own
 SR, N, HOP = 44100, 2048, 441  # 10 ms hop
 BANDS = [(30, 100), (100, 250), (250, 800), (800, 2500), (2500, 6000), (6000, 16000)]
 N_MELS = 40
@@ -572,18 +573,20 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
     return out
 
 
-_bundle = None
+_bundle: dict = {}
 
 
 def model():
-    global _bundle
-    if _bundle is None:
-        if not MODEL.exists():
-            return None
+    """Your cue model, else the starter one; reloaded when the file changes (a `cues train` from the web page)."""
+    path = analysis.own_or_starter(MODEL, STARTER_MODEL)
+    if path is None:
+        return None
+    key = (path, path.stat().st_mtime)
+    if _bundle.get("key") != key:
         import joblib
 
-        _bundle = joblib.load(MODEL)
-    return _bundle
+        _bundle.update(key=key, bundle=joblib.load(path))
+    return _bundle["bundle"]
 
 
 # ----------------------------------------------------------------------------
@@ -926,7 +929,7 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
             continue
         if j == q["bar"] and dist <= 1.01:
             q["matches"] = c["hotcue"]
-        elif not any(m[1] == q["bar"] for m in mine):
+        elif not b.get("starter") and not any(m[1] == q["bar"] for m in mine):
             q["moves"] = c["hotcue"]
             moved_by_suggestion.append((c, j, dist, q))
     zero_ = int(np.argmin(np.abs(starts - grid_ms / 1000)))
@@ -937,6 +940,8 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
         fair = pc  # not in training (fewer than 3 cues of yours): the model never saw them
     else:
         fair = None  # grid changed since training
+    if b.get("starter"):  # another DJ's habits don't correct your cues
+        fair = None
     fixes = corrections(starts, bpm, own, fair, zero_, b["threshold"]) if fair is not None and own else []
     for c, j, dist, q in moved_by_suggestion:  # the suggestions' moves, unless already proposed
         if any(f["hotcue"] == c["hotcue"] and f["to_bar"] == q["bar"] - zero_ + 1 for f in fixes):
@@ -976,7 +981,7 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
             "grid_bar": zero, "bars": nb, "cues": cues, "more_cues": more, "loop": loop,
             "loudness": [round(float(x), 1) for x in info["loud"]],
             "kick": [round(float(x), 1) for x in info["kick"]],
-            "trained_at": b["trained_at"]}
+            "trained_at": b["trained_at"], "starter": bool(b.get("starter"))}
 
 
 def scan(nml: str | None = None, workers: int | None = None, rescan: bool = False, progress=log) -> dict:

@@ -72,6 +72,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `recording_dirs()` (skips recordings + samples; `mac_path()` converts the .tsi's colon-style paths like
   `"Macintosh HD:Users:Shared:Traktor:Samples:"`).
 - `colors.py`: `colors train|review|explain|apply`: learns a Traktor colour scale from already-coloured tracks.
+- Starter models (`src/dj_track_analyzer/starter/{colors,cues}.joblib`, built by `scripts/make_starter.py` from the
+  developer's trained models with every track path and the collection path dropped, `starter: True`):
+  `analysis.own_or_starter()` loads them in `color_model()` / `cues.model()` (both cached per path + mtime) until
+  `data/my_*.joblib` exists. With a starter: `colors review` refuses, `cues.suggest` proposes no corrections or moves
+  of the user's cues; `setup_status` reports `starter`. Rebuild after retraining or a scikit-learn bump.
 - `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment 2).
 - `tempo.py`: `tempo` command, the catalogue as heard at one tempo (default 145, `--bpm` for any).
 - `lexicon.py`: `tempo load/native --lexicon` via Lexicon's Local API.

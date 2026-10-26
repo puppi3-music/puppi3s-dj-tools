@@ -453,6 +453,9 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
     b = analysis.color_model()
     if b is None:
         raise SystemExit("No colour model yet. Run: uv run dj-track-analyzer colors train")
+    if b.get("starter"):
+        raise SystemExit("Review compares your colours with a model trained on them; the starter model learned "
+                         "another DJ's. Train your own first: uv run dj-track-analyzer colors train")
     scale = b.get("kind") != "classes"
     tracks, changes = [], {}
     if scale and not b.get("cv"):
