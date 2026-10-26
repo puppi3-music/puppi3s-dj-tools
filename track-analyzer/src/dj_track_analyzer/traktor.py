@@ -524,6 +524,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     if colors:
         stats.update(colours_set=0, colours_kept=0, no_colour_prediction=0)
     examples, genres_seen, traktor_colors = [], set(), {}
+    guessed = {}  # colours written without anyone checking them: training leaves them out until you do
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
 
     def fix_entry(m: re.Match) -> str:
@@ -574,6 +575,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
                 entry, _old = _set_info_attr(entry, "COLOR", str(want))
                 stats["colours_set"] += 1
                 traktor_colors[p] = want
+                guessed[p] = want
                 if len(examples) < 30:
                     was = analysis.COLOR_NAMES[int(cur) - 1] if has else "no colour"
                     examples.append(f"{Path(p).name}: {was} → {analysis.COLOR_NAMES[want - 1]}")
@@ -612,7 +614,10 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
             stats["smartlists"] = []
             stats["note"] = "No genre tags found in the scanned files yet. Run `uv run dj-track-analyzer tag` first."
     stats["examples"] = examples
-    return _save(path, text, new_text, stats, dry_run)
+    out = _save(path, text, new_text, stats, dry_run)
+    if out.get("changed") and not dry_run:
+        collection.add_guesses(guessed)
+    return out
 
 
 def _save(path: Path, text: str, new_text: str, stats: dict, dry_run: bool, prefix: str = BACKUP_PREFIX) -> dict:
@@ -718,7 +723,7 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
                          "and would undo these changes.")
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "colours_changed": 0, "skipped_changed_since": 0}
-    examples, done = [], set()
+    examples, done, changed = [], set(), []
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
@@ -737,6 +742,7 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
             return entry
         entry, _old = _set_info_attr(entry, "COLOR", str(want))
         stats["colours_changed"] += 1
+        changed.append(p)
         examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1]} → {analysis.COLOR_NAMES[want - 1]}")
         return entry
 
@@ -747,7 +753,10 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
     body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
     stats["not_in_collection"] = len(changes) - len(done)
     stats["changes"] = examples
-    return _save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
+    out = _save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
+    if out.get("changed") and not dry_run:
+        collection.accept_guesses(changed)  # you said yes to these: yours now, even where the app had guessed
+    return out
 
 
 WRITTEN_SUFFIX = ".written-sha1"

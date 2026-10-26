@@ -145,6 +145,7 @@ tr.sel td { background: var(--accent-soft); }
 .chip.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
 .chip.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
 .lock { display: inline-flex; vertical-align: -2px; color: var(--text-2); margin-left: 4px; }
+.guess { display: inline-block; margin-left: 4px; font-size: 11px; font-weight: 600; color: var(--text-2); }
 .selbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 10px; border-radius: var(--radius);
   background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); }
 .holds { display: grid; grid-template-columns: max-content 1fr; gap: 8px 12px; align-items: center; }
@@ -406,6 +407,8 @@ const parseScores = s => (s || "").split(";").map(x => x.trim()).filter(Boolean)
 const SNAP = window.SNAPSHOT || null;
 const LOCK = `<svg width="11" height="12" viewBox="0 0 11 12" aria-hidden="true"><rect x="1" y="5" width="9" height="7" rx="1.5" fill="currentColor"/><path d="M3 5V3.5a2.5 2.5 0 0 1 5 0V5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
 const lock = what => `<span class="lock" data-tip="${what} held: kept as it is when writing to files, Traktor or Lexicon">${LOCK}</span>`;
+const GUESS_TIP = "The app guessed this colour into Traktor and nobody has checked it yet, so the colour model doesn't learn from it. Change it in Traktor, or mark it right here, and it counts as yours.";
+const guessMark = () => `<span class="guess" data-tip="${GUESS_TIP}">?</span>`;
 if (SNAP) {
   $("#mode").textContent = `· snapshot of ${SNAP.made}`;
   $("#export").remove();
@@ -450,6 +453,13 @@ function snapApi(path, p) {
 }
 // an answer's JSON; one that isn't JSON (a crash, a page from something else on the port) becomes its status
 const readJSON = async r => { try { return await r.json(); } catch (e) { return { error: `The server answered ${r.status} ${r.statusText}` }; } };
+async function acceptColours(paths) {  // guessed colours checked and right: yours from now on
+  const d = await postJSON("/api/colours/accept", { paths });
+  const set = new Set(paths);
+  for (const list of Object.values(S.tracks)) for (const t of list) if (set.has(t.path)) delete t.colour_guess;
+  SETUP = null;  // the Setup tab's count of new colours to learn from changed
+  return d;
+}
 async function hold(paths, kind, on) {
   const d = await postJSON("/api/hold", { paths, kind, on });
   const set = new Set(paths);
@@ -666,7 +676,7 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">All checks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup></select>
+      <select id="f-cues"><option value="">All checks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup><optgroup label="Colour"><option value="guess">Colour guessed by the app, not checked yet</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
@@ -681,11 +691,18 @@ async function pageTracks(main, open) {
   function selbar() {
     const n = SEL.size, box = $("#selbar");
     if (SNAP || !n) { box.innerHTML = ""; return; }
+    const guessed = all.filter(t => t.colour_guess && SEL.has(t.path)).map(t => t.path);
     box.innerHTML = `<div class="selbar"><b>${n} selected</b>
+      ${guessed.length ? `<button data-accept data-tip="${plural(guessed.length, "selected colour")} guessed by the app: they're right, learn from them">Guessed colours are right (${guessed.length})</button>` : ""}
       <button data-h="genre" data-on="1">Hold genre</button><button data-h="colour" data-on="1">Hold colour</button>
       <button data-h="genre" data-on="0">Release genre</button><button data-h="colour" data-on="0">Release colour</button>
       <button data-clear>Clear selection</button><span class="small muted" id="selmsg"></span></div>`;
     box.querySelector("[data-clear]").onclick = () => { SEL.clear(); draw(); };
+    const acc = box.querySelector("[data-accept]");
+    if (acc) acc.onclick = async () => {
+      try { await acceptColours(guessed); draw(); $("#selmsg").textContent = `${plural(guessed.length, "colour")} now count as yours`; }
+      catch (e) { $("#selmsg").textContent = e.message; }
+    };
     box.querySelectorAll("[data-h]").forEach(b => b.onclick = async () => {
       try { await hold([...SEL], b.dataset.h, b.dataset.on === "1"); draw(); $("#selmsg").textContent = b.dataset.on === "1" ? `${b.dataset.h} held` : `${b.dataset.h} released`; }
       catch (e) { $("#selmsg").textContent = e.message; }
@@ -702,7 +719,8 @@ async function pageTracks(main, open) {
       && (!TF.held || (TF.held === "genre" ? t.held_genre : TF.held === "colour" ? t.held_colour : TF.held === "any" ? t.held_genre || t.held_colour : !t.held_genre && !t.held_colour)));
     rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0
       : TF.cues === "grid" ? t.grid_off != null || t.grid_drift : TF.cues === "grid_ok" ? t.grid_approved != null
-      : TF.cues === "key" ? t.traktor_camelot && t.camelot && !camelotNeighbours(t.traktor_camelot).includes(t.camelot) : t.own_cues > 0));
+      : TF.cues === "key" ? t.traktor_camelot && t.camelot && !camelotNeighbours(t.traktor_camelot).includes(t.camelot)
+      : TF.cues === "guess" ? t.colour_guess : t.own_cues > 0));
     if (TF.errors) rows = rows.filter(t => t.error && !t.error.startsWith("tags:"));  // as the error chip and the Overview's count
     if (TF.genre && TF.genreTop) rows = rows.filter(t => t.genre === TF.genre);  // from the Overview: its count is the top genre's
     shown = rows;
@@ -726,7 +744,7 @@ async function pageTracks(main, open) {
       <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${head.map(([k, h, r]) => `<th class="sort ${r ? "r" : ""} ${S.trackSort.key === k ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${h}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(t => `<tr class="click ${SEL.has(t.path) ? "sel" : ""}" data-path="${esc(t.path)}">
         ${SNAP ? "" : `<td class="cb"><input type="checkbox" data-sel ${SEL.has(t.path) ? "checked" : ""}></td>`}
-        <td>${colour(colourOf(t), !t.traktor_color)}${t.held_colour ? lock("Colour") : ""}</td><td>${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? "No cue points or loops set in Traktor" : "Not in Traktor's collection (or no beat grid)"}">no cues</span>` : ""}</td>
+        <td>${colour(colourOf(t), !t.traktor_color)}${t.colour_guess ? guessMark() : ""}${t.held_colour ? lock("Colour") : ""}</td><td>${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? "No cue points or loops set in Traktor" : "Not in Traktor's collection (or no beat grid)"}">no cues</span>` : ""}</td>
         <td class="r num" ${t.source_bpm ? `data-tip="own tempo ${Math.round(t.source_bpm)} BPM"` : ""}>${fmt(t.mix_bpm)}</td>
         <td ${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="Traktor ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : ""}>${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}</td>
         <td>${esc(t.my_genre || t.genre || "–")}${t.held_genre ? lock("Genre") : ""}${t.genre_2 ? `<div class="dim small">${esc(t.genre_2)}</div>` : ""}${t.error && !t.error.startsWith("tags:") ? `<div class="chip bad" data-tip="${esc(t.error)}">error</div>` : ""}</td>
@@ -1004,7 +1022,9 @@ async function openTrack(path) {
       ${moods.length ? `<div class="sub">Mood</div>${bars(moods, { max: 1, fmtVal: v => pct(v) })}` : ""}
       ${t.instruments ? `<div class="sub">Instruments <span class="dim">(compare tracks, not absolute)</span></div>${bars(parseScores(t.instruments), { max: 1 })}` : ""}`,
       hint(moods.length ? moods.reduce((a, b) => b.value > a.value ? b : a).label : "")) : ""}
-    ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}`, hint(colourOf(t))) : ""}
+    ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}
+      ${t.colour_guess ? `<div class="note">${guessMark()} ${GUESS_TIP}${SNAP ? "" : ` <button id="dr-accept">It's right</button>`}</div>` : ""}`,
+      hint(colourOf(t) + (t.colour_guess ? " · guessed" : ""))) : ""}
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
@@ -1022,6 +1042,11 @@ async function openTrack(path) {
     b.dataset.tip = wide ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"; tip.style.display = "none";
   };
   d.classList.toggle("wide", drawerWide());
+  const acc = body.querySelector("#dr-accept");
+  if (acc) acc.onclick = async () => {
+    try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
+    catch (e) { acc.textContent = e.message; }
+  };
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
@@ -2419,6 +2444,14 @@ function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+// what training your own model again would learn that it hasn't: {added, changed, removed} since it was trained
+function learnNew(n, what) {
+  if (!n) return { text: "", any: false };
+  const k = n.added + n.changed + n.removed;
+  if (!k) return { text: "Nothing new to learn since then.", any: false };
+  const parts = [n.added && `${n.added} new`, n.changed && `${n.changed} changed`, n.removed && `${n.removed} gone`].filter(Boolean).join(", ");
+  return { text: `<b>${plural(k, what)} to learn from since then</b> (${parts}): train again to use them.`, any: true };
+}
 async function pageSetup(main) {
   const st = await getSetup(true), b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
   const jb = (id, text, primary, disabled) => `<button id="${id}" class="${primary ? "primary" : ""}" ${disabled || b}>${text}</button>`;
@@ -2445,15 +2478,16 @@ async function pageSetup(main) {
     : step("blocked", 4, "Hype scores", "Needs 20 scanned tracks.");
   const cm = st.colours, colourOk = tk.collection && tk.coloured >= 30 && sc.tracks >= 30;
   const colourStarter = cm.starter ? ` Until then a starter scale learned from another DJ's colours (Red = hard … Magenta = pretty) predicts them${cm.predicted ? ` (${plural(cm.predicted, "track")} so far)` : ""}.` : "";
-  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. Train again after recolouring tracks in Traktor. See the Colours tab.`, jb("su-colours", "Train again"))
+  const colourNew = learnNew(cm.new, "colour"), cueNew = learnNew(st.cues.new, "track");
+  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || "Train again after recolouring tracks in Traktor."} See the Colours tab.`, jb("su-colours", "Train again", colourNew.any))
     : step(colourOk ? "todo" : "blocked", 5, "Learn your colours", colourOk
         ? "Learns what your Traktor colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads Traktor's collection." + colourStarter
         : `Optional. Needs 30+ tracks you've coloured in Traktor that are also scanned${tk.collection ? ` (you have ${tk.coloured} coloured)` : ""}.` + colourStarter,
       colourOk ? jb("su-colours", "Learn your colours", true) : "");
   const cueOk = tk.collection && tk.cued >= 30;
   const cueStarter = st.cues.starter ? " Until then a starter model learned from another DJ's cues suggests them: listen to your tracks first, then see each track's panel (Tracks tab)." : "";
-  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to Traktor. Listen to the other tracks to get suggestions for those too.`,
-        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Train again")}`)
+  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to Traktor. Listen to the other tracks to get suggestions for those too. ${cueNew.text}`,
+        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Train again", cueNew.any)}`)
     : step(cueOk ? "todo" : "blocked", 6, "Learn your cue points", cueOk
         ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection." + cueStarter
         : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,

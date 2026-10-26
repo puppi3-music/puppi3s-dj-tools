@@ -94,6 +94,7 @@ def tracks(lib: str = "native") -> dict:
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
+    guessed = colour_guesses()
     from . import cues, gridfix
 
     approved = cues.plans()
@@ -125,6 +126,8 @@ def tracks(lib: str = "native") -> dict:
             r["held_genre"] = True
         if r["path"] in colour_held:
             r["held_colour"] = True
+        if r["path"] in guessed:  # guessed into Traktor by the app, not checked yet: training leaves it out
+            r["colour_guess"] = True
     return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
 
 
@@ -193,6 +196,30 @@ def hold(paths: list[str], kind: str, on: bool) -> dict:
     values = {p: r["tag_genre"] if kind == "genre" else r["traktor_color"] for p, r in rows.items()}
     collection.set_hold(kind, values, on)
     return {"kind": kind, "on": on, "tracks": len(values), "held": len(collection.held(kind))}
+
+
+def accept_colours(paths: list[str]) -> dict:
+    """These guessed colours are right: they count as yours (and teach the colour model) from now on."""
+    n = collection.accept_guesses(paths)
+    return {"accepted": n, "still_guessed": len(colour_guesses())}
+
+
+_guesses: dict = {"key": None, "data": {}}
+
+
+def colour_guesses() -> set[str]:
+    """Tracks whose colour the app guessed into Traktor and nobody has checked (collection.unchecked_guesses),
+    read again when collection.nml or the database changes. Empty while a tempo view is loaded (not your colours)."""
+    from . import colors
+
+    try:
+        nml = traktor_nml()
+        key = (nml.stat().st_mtime, collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
+        if _guesses["key"] != key:
+            _guesses.update(key=key, data=set(collection.unchecked_guesses(colors.read_traktor_colors(str(nml))[1])))
+    except (SystemExit, OSError):
+        return set()
+    return _guesses["data"]
 
 
 _grids: dict = {"mtime": None, "data": {}}
@@ -1223,6 +1250,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
+        Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),

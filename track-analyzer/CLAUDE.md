@@ -280,6 +280,15 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `read_traktor_colors` refuses while a tempo view is loaded (train, explain, apply, `--keep`). `colors apply`: scan --traktor (new only) → deep features
   for uncoloured → refresh predictions → `traktor.sync(update_genres=False, make_smartlists=False)`.
 - `colors explain`: per-colour profile + playlists + History set position + artist consistency (read-only).
+- Learn from what was set or accepted, whoever suggested it (user, 2026-10-26). `traktor.sync` (colour fills and
+  `--overwrite-colors`, i.e. `traktor` and `colors apply`) records each colour it writes in NATIVE collection.db
+  `color_guess` (`collection.add_guesses`); `collection.unchecked_guesses(traktor colours)` = those Traktor still has.
+  `colors train` (`usable_labels`) leaves them out; changing one in Traktor, `set_colors` (review --apply: said yes),
+  `colors guessed --accept TEXT|all` or the page (POST /api/colours/accept, `web.colour_guesses` → `colour_guess` on
+  /api/tracks, "?" mark, All checks → Colour, selection bar / panel button) make it yours. Bundles store `labels`
+  ({path: COLOR} for colours; {path: (grid key, cues)} for cues, `cues._label_key`; make_starter drops them);
+  `colors.new_labels` / `cues.new_labels` = added/changed/removed vs those, None for starters and older bundles;
+  `jobs._new_labels` (cached per NML/models/db mtime) → setup `colours.new` / `cues.new`, shown on the Setup steps.
 
 ### Hype
 - 1-10 decile within the scanned collection of (rank(rave styles) − rank(deep styles))/2 +

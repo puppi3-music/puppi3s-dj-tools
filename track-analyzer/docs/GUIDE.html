@@ -218,12 +218,13 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Optional, genres: <b>Genre tags in your files</b>, then <b>Genres, colours and Smartlists in Traktor</b> (see <a href="#genres">Genres</a>).</li>
   <li>Optional, hype: <b>Hype in Traktor's Comment 2</b>. It updates every track, because new tracks can shift the ranking a little.</li>
   <li>Open Traktor and check the new tracks. Changed your mind? Before opening Traktor, <b>Undo the last change to Traktor</b> at the bottom of the Setup tab.</li>
+  <li>The colours it set are guesses, marked <b>?</b> in the Tracks tab, and the colour model doesn't learn from them until you've checked them: change the wrong ones in Traktor, and for the right ones pick <b>All checks → Colour guessed by the app, not checked yet</b>, select them and press <b>Guessed colours are right</b>. Then <b>Train again</b>.</li>
 </ol>
 
 <h3 id="recoloured">I recoloured a bunch of tracks</h3>
 <ol>
   <li>Quit Traktor, so the collection is saved.</li>
-  <li>Setup tab, <b>Your colour scale → Train again</b> (<b>Learn your colours</b> the first time). About a minute.</li>
+  <li>Setup tab, <b>Your colour scale → Train again</b> (<b>Learn your colours</b> the first time). About a minute. The step says how many colours are new or changed since the last training, so you can see when it's worth it.</li>
   <li>The Colours tab then shows the new profile and how well the scale fits (see <a href="#read-colours">Reading the Colours tab</a>).</li>
 </ol>
 
@@ -638,6 +639,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>colors review</code></td><td>Tracks whose sound disagrees most with the colour you gave them</td><td>Nothing; with <code>--apply</code>: <span class="changes">Traktor</span></td></tr>
 <tr><td><code>colors explain</code></td><td>What each colour means: sound, playlists, sets, artists</td><td>Nothing</td></tr>
 <tr><td><code>colors apply</code></td><td>Analyses new Traktor tracks and colours the uncoloured ones</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><code>colors guessed</code></td><td>Colours the app guessed into Traktor that nobody has checked; <code>--accept TEXT</code> or <code>all</code>: they're right, learn from them</td><td>Nothing; with <code>--accept</code>: app database</td></tr>
 <tr><td><code>hype</code></td><td>Lists tracks by hype (1–10), with filters</td><td>App database</td></tr>
 <tr><td><code>hype --traktor</code></td><td>Writes "Hype NN" into Comment 2, after your own text there</td><td class="changes">Traktor<br><small>undo: <code>hype --traktor --remove</code></small></td></tr>
 <tr><td><code>tempo scan</code></td><td>Analyses every scanned track stretched to your play tempo (145 unless <code>--bpm</code>), key lock</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>

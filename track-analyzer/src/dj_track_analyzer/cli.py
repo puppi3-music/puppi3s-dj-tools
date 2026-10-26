@@ -123,11 +123,12 @@ def main() -> None:
     tk.add_argument("--overwrite-colors", action="store_true", help="also replace colours you set yourself (not recommended)")
     tk.add_argument("--color-min-confidence", type=float, default=0.0, help="only set predicted colours at or above this confidence")
     co = sub.add_parser("colors", help="learn your Traktor colour scale from tracks you've coloured")
-    co.add_argument("action", choices=["train", "review", "explain", "apply"],
+    co.add_argument("action", choices=["train", "review", "explain", "apply", "guessed"],
                     help="train: learn your scale. review: tracks that disagree with their colour "
                          "(--apply recolours the clearest ones in Traktor). "
                          "explain: what each colour means in your collection. "
-                         "apply: scan new Traktor tracks and colour the uncoloured ones")
+                         "apply: scan new Traktor tracks and colour the uncoloured ones. "
+                         "guessed: the colours apply / traktor wrote that nobody has checked (train leaves them out)")
     co.add_argument("--nml", default=None, help="path to collection.nml")
     co.add_argument("--workers", type=int, default=None, help="parallel workers for the deep listening pass")
     co.add_argument("--no-deep", action="store_true", help="skip the MAEST/mood features (faster, less accurate)")
@@ -147,6 +148,9 @@ def main() -> None:
                     help="review --kept: add the coloured tracks whose path contains TEXT to the keep-always list")
     co.add_argument("--forget", metavar="TEXT", default=None,
                     help="review --kept: take tracks whose path contains TEXT off the keep-always list")
+    co.add_argument("--accept", metavar="TEXT", default=None,
+                    help="guessed: these guessed colours are right, learn from them: the tracks whose path contains TEXT "
+                         "(at most 10), or `all`")
     co.add_argument("--json", action="store_true", help="explain: print JSON instead of tables")
     hy = sub.add_parser("hype", help="find tracks by how hype they are (1-10), optionally write it to Traktor's Comment 2")
     hy.add_argument("--least", action="store_true", help="least hype (chill) first")
@@ -310,6 +314,10 @@ def main() -> None:
             return
         if args.action == "train":
             out = colors.train(args.nml, deep=not args.no_deep, workers=args.workers)
+        elif args.action == "guessed":
+            out = colors.guessed(accept=args.accept, nml=args.nml)
+        elif args.accept:
+            raise SystemExit("--accept goes with guessed: uv run dj-track-analyzer colors guessed --accept \"<name>\"")
         elif args.action == "apply":
             out = colors.apply(args.nml, dry_run=args.dry_run, min_confidence=args.min_confidence or 0.0,
                                workers=args.workers)

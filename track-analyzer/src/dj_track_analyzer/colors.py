@@ -240,8 +240,10 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
     rows = {r["path"]: dict(r) for r in con.execute(
         f"SELECT path, filename, {', '.join(INFO_COLS)} FROM tracks "
         "WHERE (error IS NULL OR error LIKE 'tags:%') AND type='track'")}
-    pairs = [(p, c) for p, c in colors.items() if p in rows]
-    progress(f"{n_coloured} coloured tracks in Traktor, {len(pairs)} of them scanned")
+    guesses = collection.unchecked_guesses(colors)
+    pairs = [(p, c) for p, c in colors.items() if p in rows and p not in guesses]
+    progress(f"{n_coloured} coloured tracks in Traktor, {len(pairs)} of them scanned"
+             + (f" and yours ({len(guesses)} guessed by the app, not checked yet, left out)" if guesses else ""))
     if len(pairs) < 30:
         raise SystemExit("Need at least 30 coloured tracks that are also scanned. Scan the folders your "
                          "Traktor tracks live in first: uv run dj-track-analyzer scan <folder>")
@@ -355,7 +357,8 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
                  "metrics": metrics, "baseline": baseline, "disagreements": disagreements[:100],
                  # cross-validated positions, for analysis.color_confidence
                  "cv": {"position": [round(float(v), 3) for v in pos], "truth": [int(v) for v in y]},
-                 "collection": str(nml_path)}, COLOR_MODEL)
+                 # the colours it learned from, so new_labels() can tell when there's something new
+                 "labels": dict(pairs), "collection": str(nml_path)}, COLOR_MODEL)
     analysis._color_bundle.clear()
 
     updated = refresh_predictions(con, traktor_colors=colors, progress=progress)
@@ -364,6 +367,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
     views = tempo.refresh_all_views(progress)  # their colours came from the previous model (train refuses while one is loaded)
     return {
         "trained_on": int(len(y)), "tracks_per_colour": counts,
+        **({"guessed_colours_left_out": len(guesses)} if guesses else {}),
         "colour_scale_check": sanity,
         **({"instruments_vs_colour": instrument_check} if instrument_check else {}),
         "baseline_always_guess_middle": baseline,
@@ -377,6 +381,48 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         "predictions_updated": updated, "saved_to": str(COLOR_MODEL),
         **({"tempo_views_refreshed": views} if views else {}),
     }
+
+
+def usable_labels(colors: dict[str, int]) -> dict[str, int]:
+    """The colours `train` learns from, given Traktor's {path: COLOR}: scanned tracks, unchecked guesses left out."""
+    if not collection.NATIVE_DB.exists():
+        return {}
+    con = collection.db()
+    rows = {r[0] for r in con.execute("SELECT path FROM tracks WHERE (error IS NULL OR error LIKE 'tags:%') AND type='track'")}
+    guesses = collection.unchecked_guesses(colors)
+    return {p: c for p, c in colors.items() if p in rows and p not in guesses}
+
+
+def guessed(accept: str | None = None, nml: str | None = None) -> dict:
+    """The colours the app wrote into Traktor that nobody has checked (`train` leaves them out). accept: mark the
+    ones whose path contains this text right (at most 10, so a typo can't accept half the collection), or "all"."""
+    _path, colors, _n = read_traktor_colors(nml)
+    g = collection.unchecked_guesses(colors)
+    out = {}
+    if accept:
+        hit = list(g) if accept.strip().lower() == "all" else [p for p in g if accept.lower() in p.lower()]
+        if not hit:
+            raise SystemExit(f'No guessed colour has "{accept}" in its path.')
+        if len(hit) > 10 and accept.strip().lower() != "all":
+            raise SystemExit(f'"{accept}" matches {len(hit)} guessed colours; use more of the name, or `all`.')
+        collection.accept_guesses(hit)
+        out["accepted"] = sorted(Path(p).name for p in hit)
+        g = {p: c for p, c in g.items() if p not in hit}
+    out["guessed_not_checked"] = [{"file": Path(p).name, "colour": COLOR_NAMES[c - 1]} for p, c in sorted(g.items())]
+    out["note"] = ("Change a guessed colour in Traktor, or accept it (colors guessed --accept TEXT, or the Tracks tab), "
+                   "and colors train learns from it.")
+    return out
+
+
+def new_labels(colors: dict[str, int]) -> dict | None:
+    """What `train` would learn that your own model hasn't: tracks coloured since (added), recoloured (changed) or
+    no longer coloured (removed), given Traktor's {path: COLOR}. None with the starter or a model from before this."""
+    b = analysis.color_model()
+    if not b or b.get("starter") or "labels" not in b:
+        return None
+    now, then = usable_labels(colors), b["labels"]
+    return {"added": sum(p not in then for p in now), "changed": sum(p in then and then[p] != c for p, c in now.items()),
+            "removed": sum(p not in now for p in then), "trained_at": b.get("trained_at")}
 
 
 def _instrument_check(instr_rows: list[dict], y: np.ndarray, used: list[int], top: int = 10) -> dict:

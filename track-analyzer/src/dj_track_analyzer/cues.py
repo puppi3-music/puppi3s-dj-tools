@@ -581,13 +581,32 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
               "threshold": threshold, "loop_align": loop_align, "max_cues": max_cues, "loop_bars": loop_bars,
               "length_model": length_model,
               "trained_at": time.strftime("%Y-%m-%d %H:%M"), "metrics": {k: v for k, v in out.items() if k != "measuring"},
-              "version": BARS_VERSION}
+              "version": BARS_VERSION,
+              "labels": {p: _label_key(d) for p, d in tracks}}  # what it learned from, for new_labels()
     joblib.dump(bundle, MODEL)
     out["saved_to"] = str(MODEL)
     out["note"] = ("exact_bar: share of suggested cues on a bar you cued (precision) and of your cues that were "
                    "suggested (recall), for tracks the model never saw. Many misses are 8 or 16 bars off: a phrase "
                    "boundary, but not the one you chose.")
     return out
+
+
+def _label_key(d: dict) -> tuple:
+    """A track's grid and your cue points and loops, as training reads them: changes when any of them does."""
+    return _grid_key(d["bpm"], d["grid_ms"]), tuple((c["type"], round(c["ms"]), c["bars"]) for c in d["cues"])
+
+
+def new_labels(g: dict[str, dict]) -> dict | None:
+    """What `train` would learn that your own model hasn't, given grids(): tracks with MIN_CUES+ of your cues that
+    weren't trained on (added), whose cues or grid changed since (changed), or that no longer qualify (removed).
+    None with the starter or a model from before this."""
+    b = model()
+    if not b or b.get("starter") or "labels" not in b:
+        return None
+    then = b["labels"]
+    now = {p: _label_key(d) for p, d in _one_path_each(g) if sum(c["type"] == "cue" for c in d["cues"]) >= MIN_CUES}
+    return {"added": sum(p not in then for p in now), "changed": sum(p in then and then[p] != k for p, k in now.items()),
+            "removed": sum(p not in now for p in then), "trained_at": b.get("trained_at")}
 
 
 _bundle: dict = {}
