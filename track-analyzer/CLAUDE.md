@@ -200,7 +200,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `vocal_share` >0.5, **whole track**); the tagger's own "voice" class is ~0.02 even on vocal club tracks.
   Cached in cache.db `deep.instruments`; `deep_features` adds them without recomputing MAEST.
 - Extras (deep.extra JSON): approachability/engagement regression heads (`model/Identity`, whole track) +
-  `energy_arc()` from short-term loudness.
+  `energy_arc()` from short-term loudness (silence before / inside the music counts as quiet, trailing silence
+  is trimmed: identical to the old silence-dropping version on all 469 test tracks, whose silence was all at the end).
 - Files > 12 min are DJ mixes → timeline per 2-min segment (`--tracklist` adds a per-track check). Their BPM/key
   measurements run in `analysis.AudioPool` (spawn workers as `scan`, audio via a memory-mapped .npy, worker
   stdout → stderr for MCP); output identical to serial, 121 → 71 s on a 65-min mix.

@@ -486,14 +486,19 @@ def energy_arc(short_term: np.ndarray) -> dict:
     """How the track's energy moves, from the short-term loudness (10 values per second):
     drop_lift_db: loudest moments above the typical level; intro_sec: time to reach full energy;
     breakdown_share / longest_break_sec: time spent 6 dB+ below the loud parts (not counting the
-    intro/outro); dynamics_db: loud parts minus quiet parts."""
-    s = np.asarray(short_term, dtype=np.float32)
-    s = s[np.isfinite(s) & (s > -70)]
+    intro/outro); dynamics_db: loud parts minus quiet parts. Silence (below -70 LUFS) counts as quiet where it
+    is part of the track: silence before the music adds to intro_sec, a silent gap is a break. Silence after the
+    music is file padding, left out (all the silence in a test collection of ~470 tracks was at the end)."""
+    s_all = np.asarray(short_term, dtype=np.float32)
+    sound = np.isfinite(s_all) & (s_all > -70)
+    s = s_all[sound]
     if len(s) < 50:
         return {k: None for k in ARC_FEATURES}  # too short to say; counts as measured
+    end = int(np.flatnonzero(sound)[-1]) + 1
+    s_all, sound = s_all[:end], sound[:end]
     hop = 0.1
     p90 = float(np.percentile(s, 90))
-    quiet = s < p90 - 6
+    quiet = ~sound | (s_all < p90 - 6)
     longest, i = 0, 0
     while i < len(quiet):
         if quiet[i]:
@@ -507,7 +512,7 @@ def energy_arc(short_term: np.ndarray) -> dict:
             i += 1
     return {
         "drop_lift_db": round(float(np.percentile(s, 95) - np.median(s)), 2),
-        "intro_sec": round(next((k for k, v in enumerate(s) if v >= p90 - 3), 0) * hop, 1),
+        "intro_sec": round(next((k for k, v in enumerate(s_all) if sound[k] and v >= p90 - 3), 0) * hop, 1),
         "breakdown_share": round(float(quiet.mean()), 3),
         "longest_break_sec": round(longest * hop, 1),
         "dynamics_db": round(p90 - float(np.percentile(s, 10)), 2),
