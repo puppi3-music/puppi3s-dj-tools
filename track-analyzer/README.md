@@ -257,6 +257,8 @@ New cues go only into free hot-cue slots (cue points in 1-7, the loop in slot 8 
 
 `train` reports how often its suggestions land on the bars you cued, for tracks it never saw (cross-validated). On a test collection of about 470 tracks: 61% of suggested cues were on a bar the DJ cued, and 64% of their cues were found, against 29% / 35% for a cue every 16 bars. The loop landed within 4 bars of theirs 36% of the time. Needs at least 30 tracks with 3+ of your own cue points; train again after cueing more.
 
+**Starter model.** Until you train your own, suggestions and loop ideas come from a starter model that ships with the app, learned from one DJ's hand-placed cues on that test collection (cues on 8-bar phrases, a 4-bar mix loop near the end). Run `cues scan` so it can hear your tracks. It doesn't propose corrections of your own cues; `cues train` replaces it.
+
 **Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From a terminal: `uv run dj-track-analyzer web --export set.html`.
 
 The Mixes and Files tabs read `logs/`. Save a mix's analysis there with `analyze <mix> --tracklist --json-only > logs/<name>.json`, or drop a JSON file onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
@@ -347,6 +349,8 @@ If you colour-code tracks in Traktor, the app learns your system from the tracks
 **Red** (1) → **Orange** → **Yellow** → **Green** → **Blue** → **Violet** → **Magenta** (7)
 
 It works best when your colours mean something that runs in that order. The labels and the LLM tools assume Red = hardest/darkest and Magenta = softest/prettiest; the model itself just learns whatever order you use.
+
+**Starter scale.** Until you train your own, the app uses a starter model that ships with it, learned from one DJ's colours on a test collection of about 470 tracks (Red = hard, heavy … Magenta = peaceful, pretty). Scans predict colours with it and `colors apply` can write them; `colors review` waits for your own model, since it compares your colours with what it learned from them. `colors train` replaces the starter for good (it stays in the app, unused).
 
 ```bash
 uv run dj-track-analyzer scan --traktor           # 1. analyse your Traktor tracks

@@ -98,6 +98,9 @@ ARC_FEATURES = ["drop_lift_db", "intro_sec", "breakdown_share", "longest_break_s
 # Traktor's 7 track colours, as stored in collection.nml (INFO COLOR="1".."7"), in menu order.
 COLOR_NAMES = ["Red", "Orange", "Yellow", "Green", "Blue", "Violet", "Magenta"]
 COLOR_MODEL = HOME / "my_colors.joblib"
+# Starter models shipped with the app (scripts/make_starter.py): one DJ's colours and cues, used until you train your own.
+STARTER_DIR = Path(__file__).resolve().parent / "starter"
+STARTER_COLOR_MODEL = STARTER_DIR / "colors.joblib"
 
 # Genre is judged on the main section: style windows quieter than this many dB below the
 # track's loud parts (intros, outros, breakdowns) are left out.
@@ -605,10 +608,16 @@ def color_features(inputs: dict, feature_set: str) -> np.ndarray:
 _color_bundle: dict = {}
 
 
+def own_or_starter(own: Path, starter: Path) -> Path | None:
+    """Your trained model, else the starter model shipped with the app, else None."""
+    return own if own.exists() else starter if starter.exists() else None
+
+
 def color_model():
-    if not COLOR_MODEL.exists():
+    path = own_or_starter(COLOR_MODEL, STARTER_COLOR_MODEL)
+    if path is None:
         return None
-    mtime = COLOR_MODEL.stat().st_mtime
+    mtime = (path, path.stat().st_mtime)
     if _color_bundle.get("mtime") != mtime:
         import joblib
 
@@ -617,7 +626,7 @@ def color_model():
         # Models trained before the move into the dj_track_analyzer package pickled colors.BlockWeights
         # under the plain module name `colors`.
         sys.modules.setdefault("colors", colors)
-        _color_bundle.update(mtime=mtime, bundle=joblib.load(COLOR_MODEL))
+        _color_bundle.update(mtime=mtime, bundle=joblib.load(path))
     return _color_bundle["bundle"]
 
 

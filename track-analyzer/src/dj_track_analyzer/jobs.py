@@ -333,8 +333,10 @@ def setup_status() -> dict:
                   "changed_since_scan": changed,
                   "traktor_tracks": len(tk_files)}
     stamp = lambda p: time.strftime("%Y-%m-%d %H:%M", time.localtime(p.stat().st_mtime)) if p.exists() else None  # noqa: E731
-    st["colours"] = {"model": stamp(analysis.COLOR_MODEL), "predicted": predicted}
-    st["cues"] = {"model": stamp(cues.MODEL), "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
+    st["colours"] = {"model": stamp(analysis.COLOR_MODEL), "starter": analysis.STARTER_COLOR_MODEL.exists(),
+                     "predicted": predicted}
+    st["cues"] = {"model": stamp(cues.MODEL), "starter": cues.STARTER_MODEL.exists(),
+                  "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
     st["tags"] = {"tagged_files": tagged}
     backups = []
     if st["traktor"].get("collection"):

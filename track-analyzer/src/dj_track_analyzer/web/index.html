@@ -871,7 +871,7 @@ function renderCues(c) {
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${SNAP ? "" : helpFold("keys", "Keys", `<div class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</div>`)}
     ${helpFold("legend", "Legend", `<div class="legend" style="margin-top:0"><span><i style="background:var(--text)"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
     <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span><i style="background:#ffd23f"></i>your cue moved (ticked or approved; grey = where it was)</span><span>colour: <i style="background:#ff5a4f"></i>lows · <i style="background:#5fe36b"></i>mids · <i style="background:#5aa8ff"></i>highs · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>`)}</div>
-    ${SNAP ? cueTable(c, c.cues) : approveBox(c)}<div class="note">Suggestions are learned from the cues you set yourself (trained ${esc(c.trained_at || "")}).</div>`;
+    ${SNAP ? cueTable(c, c.cues) : approveBox(c)}<div class="note">${c.starter ? "Suggestions come from the starter model, learned from another DJ's cues. Learn your own in Setup to get suggestions like yours." : `Suggestions are learned from the cues you set yourself (trained ${esc(c.trained_at || "")}).`}</div>`;
 }
 // your cues as they'll be in Traktor: with an approval, moved ones at their new place and new ones in their slot
 // plus your fade-in, fade-out and load markers (never moved or added by an approval)
@@ -2184,18 +2184,20 @@ async function pageSetup(main) {
     : sc.tracks >= 20 ? step("todo", 4, "Score hype", "Ranks every track 1-10 by rave sound and energy within your collection. Takes seconds.", jb("su-hype", "Score hype", true))
     : step("blocked", 4, "Hype scores", "Needs 20 scanned tracks.");
   const cm = st.colours, colourOk = tk.collection && tk.coloured >= 30 && sc.tracks >= 30;
+  const colourStarter = cm.starter ? ` Until then a starter scale learned from another DJ's colours (Red = hard … Magenta = pretty) predicts them${cm.predicted ? ` (${plural(cm.predicted, "track")} so far)` : ""}.` : "";
   const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. Train again after recolouring tracks in Traktor. See the Colours tab.`, jb("su-colours", "Train again"))
     : step(colourOk ? "todo" : "blocked", 5, "Learn your colours", colourOk
-        ? "Learns what your Traktor colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads Traktor's collection."
-        : `Optional. Needs 30+ tracks you've coloured in Traktor that are also scanned${tk.collection ? ` (you have ${tk.coloured} coloured)` : ""}.`,
+        ? "Learns what your Traktor colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads Traktor's collection." + colourStarter
+        : `Optional. Needs 30+ tracks you've coloured in Traktor that are also scanned${tk.collection ? ` (you have ${tk.coloured} coloured)` : ""}.` + colourStarter,
       colourOk ? jb("su-colours", "Learn your colours", true) : "");
   const cueOk = tk.collection && tk.cued >= 30;
+  const cueStarter = st.cues.starter ? " Until then a starter model learned from another DJ's cues suggests them: listen to your tracks first, then see each track's panel (Tracks tab)." : "";
   const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to Traktor. Listen to the other tracks to get suggestions for those too.`,
         `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Train again")}`)
     : step(cueOk ? "todo" : "blocked", 6, "Learn your cue points", cueOk
-        ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection."
-        : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.`,
-      cueOk ? jb("su-cues", "Learn your cue points", true) : "");
+        ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection." + cueStarter
+        : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,
+      `${st.cues.starter && tk.collection ? jb("su-cues-scan", "Listen to your tracks") : ""}${cueOk ? jb("su-cues", "Learn your cue points", true) : ""}`);
   const tool = (n, name, what) => st.tools[name] ? step("done", n, name, `Installed. ${what}`)
     : step("todo", n, name, `${what} ${st.brew ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
         : `Install it in a terminal: <code>${esc(st.install_hint[name])}</code>, then reload this page.`}`,
@@ -2232,7 +2234,7 @@ async function pageSetup(main) {
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>`, (noScan || !tk.collection) && "disabled")}
       ${w("wr-hype", "Hype in Traktor's Comment 2", `Adds "Hype 07" after anything already in Comment 2 (never your own Comment), so you can sort and search by it in Traktor.`,
         `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !tk.collection) && "disabled")}
-      ${cm.model ? w("wr-capply", "Colour new tracks", "Scans tracks that are new in Traktor and gives the uncoloured ones their predicted colour. Colours you set are never changed.", "", !tk.collection && "disabled") : ""}
+      ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in Traktor and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !tk.collection && "disabled") : ""}
       ${cm.model ? w("wr-recolour", "Recolour clear disagreements", "Recolours the few tracks whose colour clearly disagrees with how they sound (gap 2.5+ colours, confidence 75%+; the Colours tab lists them). Tracks you keep always are skipped.", "", !tk.collection && "disabled") : ""}
       ${st.traktor_backup ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last change to Traktor</div><div class="small muted">Last backup: <span class="mono">${esc(st.traktor_backup)}</span></div></div><div class="act"><button id="wr-undo">Undo…</button></div></div>` : ""}
       </div></div>
