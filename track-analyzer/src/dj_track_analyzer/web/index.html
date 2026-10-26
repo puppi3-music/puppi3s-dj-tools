@@ -68,6 +68,10 @@ nav a.on .count { color: inherit; opacity: .75; }
 label.inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .libnote { padding: 6px 20px; font-size: 12px; background: var(--surface-2); color: var(--text-2); border-top: 1px solid var(--line); }
 .libnote b { color: var(--text); }
+#loaded { display: inline-flex; gap: 6px; flex-wrap: wrap; color: inherit; }
+#loaded[hidden] { display: none; }
+#loaded:hover { text-decoration: none; }
+#loaded:hover .chip { border-color: var(--text-3); }
 
 main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .page-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -327,7 +331,7 @@ dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--su
   /* the theme button beside the name (it wrapped onto a line of its own), library and export on the next line */
   .bar-top .spacer { display: none; }
   #theme { order: 1; margin-left: auto; }
-  #libwrap, #export { order: 2; }
+  #loaded, #libwrap, #export { order: 2; }
   nav a { padding: 6px 10px; white-space: nowrap; }
   #lib { max-width: calc(100vw - 190px); }
   .libnote { padding: 6px 16px; }
@@ -350,7 +354,8 @@ dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--su
       <a href="#tempo">Tempo view</a><a href="#mixes">Mixes</a><a href="#files">Files</a><a href="#setup">Setup</a>
     </nav>
     <div class="spacer"></div>
-    <label class="inline small muted" id="libwrap">Library <select id="lib"></select></label>
+    <a id="loaded" href="#tempo" hidden></a>
+    <label class="inline small muted" id="libwrap" data-tip="What the tabs here show: each track as heard at its own BPM, or every track stretched to one tempo (a tempo view you scanned). Only this page changes; Traktor and Lexicon stay as the tempo view labels beside this say.">This page shows <select id="lib"></select></label>
     <a id="export" class="btn" href="/export" download data-tip="Save every tab as one HTML file you can keep or send. It can't change anything.">Export snapshot</a>
     <button id="theme">◐</button>
   </div>
@@ -511,7 +516,8 @@ themeButton();
 async function loadLibs() {
   S.libs = await api("libraries");
   const sel = $("#lib");
-  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `${esc(l.bpm)} BPM view` : "Normal (own tempo)"}</option>`).join("");
+  const inTraktor = l => (l.bpm || null) === (S.libs.loaded_view || null);  // the one Traktor has loaded
+  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? " (as Traktor)" : ""}</option>`).join("");
   if (!S.libs.libraries.some(l => l.id === S.lib)) S.lib = "native";
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
@@ -520,11 +526,26 @@ async function loadLibs() {
 function libNote() {
   const n = $("#libnote"), v = S.libs.loaded_view, usesLib = ["overview", "tracks", "hype"].includes(S.page);
   $("#libwrap").style.visibility = usesLib ? "visible" : "hidden";
-  const parts = [];
+  loadedChips();
+  const parts = [], shown = S.lib !== "native" ? +S.lib.replace("at-", "") : null;
   if (v) parts.push(`Traktor has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment 2 show ${v} BPM values.`);
-  if (usesLib && S.lib !== "native") parts.push(`Showing the <b>${esc(S.lib.replace("at-", ""))} BPM tempo view</b>: every track as heard stretched to that tempo with key lock.`);
+  if (usesLib && shown) parts.push(`This page shows <b>every track at ${esc(shown)} BPM</b>: as heard stretched to that tempo with key lock.`);
+  if (!SNAP && usesLib && shown && shown !== v) parts.push(`Traktor itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
 }
+function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loaded right now, on every tab
+  const el = $("#loaded"), L = S.libs;
+  el.hidden = !!SNAP;  // a snapshot can't know what's loaded now
+  if (SNAP) return;
+  const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
+  el.innerHTML = chip("Traktor", L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
+  el.dataset.tip = `Traktor: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment 2 as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment 2 are each track's own, at its own BPM"}`
+    + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
+    + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
+}
+document.addEventListener("visibilitychange", () => {  // `tempo load` / `native` may have run in a terminal meanwhile
+  if (!document.hidden && S.libs && !SNAP) loadLibs().catch(() => {});
+});
 async function getTracks(lib = S.lib) {
   if (!S.tracks[lib]) {
     const d = await api("tracks", { lib });
