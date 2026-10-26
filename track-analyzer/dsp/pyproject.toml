@@ -1,6 +1,6 @@
 [project]
 name = "track-analyzer-dsp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Fast DSP for the track analyzer (Rust), bit-identical to the Essentia code it replaces"
 requires-python = ">=3.10"
 

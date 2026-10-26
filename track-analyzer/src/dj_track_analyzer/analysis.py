@@ -145,6 +145,22 @@ def dsp():
     return _dsp
 
 
+_av = False
+
+
+def pyav():
+    """PyAV or None. `decode` reads files with it the way Essentia's AudioLoader does, bit for bit, faster;
+    checked over the test collection (docs/WINDOWS.md stage 2). Without it Essentia decodes."""
+    global _av
+    if _av is False:
+        try:
+            import av as m
+        except ImportError:
+            m = None
+        _av = m
+    return _av
+
+
 def models_present() -> bool:
     return all((MODELS_DIR / name).exists() for name in MODEL_FILES)
 
@@ -225,10 +241,11 @@ def style_models():
         )
     if not _models:
         e = es()
-        _models["embed"] = e.TensorflowPredictEffnetDiscogs(
-            graphFilename=str(MODELS_DIR / "discogs-effnet-bs64-1.pb"),
-            output="PartitionedCall:1",
-        )
+        pb = str(MODELS_DIR / "discogs-effnet-bs64-1.pb")
+        if _rust_mels():  # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
+            _models["embed"] = e.TensorflowPredict(graphFilename=pb, inputs=[EFFNET_INPUT], outputs=[EFFNET_OUTPUT])
+        else:
+            _models["embed"] = e.TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
         _models["styles"] = e.TensorflowPredict2D(
             graphFilename=str(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb"),
             input="serving_default_model_Placeholder",
@@ -682,11 +699,32 @@ MAEST_MEL_MEAN, MAEST_MEL_STD = 2.06755686098554, 1.268292820667291
 MAEST_PATCH, MAEST_PATCH_HOP = 1876, 1875
 
 
-def _maest_patches(audio: np.ndarray) -> np.ndarray:
+def _rust_mels():
+    """The Rust module if it has musicnn_mels (dsp 0.3.0 on)."""
+    m = dsp()
+    return m if m is not None and hasattr(m, "musicnn_mels") else None
+
+
+def musicnn_mels(x: np.ndarray, streaming: bool = False) -> np.ndarray:
+    """Essentia's TensorflowInputMusiCNN on every frame of 16 kHz audio, cut as FrameGenerator(frameSize=512,
+    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (bit for bit; docs/WINDOWS.md
+    stage 3), else Essentia. streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs
+    gives them (a silent first frame comes out as silence); Rust only."""
+    x = np.ascontiguousarray(x, dtype=np.float32)
+    if m := _rust_mels():
+        out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
+        m.musicnn_mels(x, out, streaming=streaming)
+        return out
+    if streaming:
+        raise RuntimeError("streaming mel frames need track_analyzer_dsp 0.3.0 or newer")
     e = es()
     mel = e.TensorflowInputMusiCNN()
-    frames = np.array([mel(fr) for fr in e.FrameGenerator(audio, frameSize=512, hopSize=256, startFromZero=False)],
-                      dtype=np.float32)
+    return np.array([mel(fr) for fr in e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)],
+                    dtype=np.float32).reshape(-1, 96)
+
+
+def _maest_patches(audio: np.ndarray) -> np.ndarray:
+    frames = musicnn_mels(audio)
     frames = (frames - MAEST_MEL_MEAN) / (2 * MAEST_MEL_STD)
     n = max(0, (len(frames) - MAEST_PATCH) // MAEST_PATCH_HOP + 1)
     return np.stack([frames[i * MAEST_PATCH_HOP: i * MAEST_PATCH_HOP + MAEST_PATCH] for i in range(n)]) if n else \
@@ -1004,21 +1042,28 @@ def cache_put(p: Path, duration: float, emb: np.ndarray, styles: np.ndarray) -> 
 # ----------------------------------------------------------------------------
 
 
-TOOL_DIRS = "/opt/homebrew/bin:/usr/local/bin:/home/linuxbrew/.linuxbrew/bin"  # Homebrew's, when PATH lacks them
+TOOL_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"]  # Homebrew's, when PATH lacks them
+if sys.platform == "win32":  # winget's command links (a new PATH entry reaches only programs started after the install)
+    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links")]
 APT_NAMES = {"rubberband": "rubberband-cli"}  # Debian/Ubuntu packages named differently from the command
 
 
 def find_tool(name: str) -> str | None:
-    """ffmpeg / ffprobe / rubberband / brew: on PATH or in Homebrew's folders."""
+    """ffmpeg / ffprobe / rubberband / brew: on PATH or in Homebrew's (on Windows, winget's) folders."""
     import shutil
 
-    return shutil.which(name) or shutil.which(name, path=TOOL_DIRS)
+    return shutil.which(name) or shutil.which(name, path=os.pathsep.join(TOOL_DIRS))
 
 
 def install_hint(name: str) -> str:
     """How to install ffmpeg or rubberband on this system."""
     if sys.platform == "darwin":
         return f"brew install {name}"
+    if sys.platform == "win32":
+        if name == "rubberband":
+            return ("download the Windows build (3.0 or newer) from breakfastquay.com/rubberband and put the folder "
+                    "with rubberband.exe on your PATH")
+        return "winget install Gyan.FFmpeg"
     return f"sudo apt install {APT_NAMES.get(name, name)} (or your distribution's package manager)"
 
 
@@ -1060,7 +1105,7 @@ def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float) ->
         _write_float_wav(src, stereo, int(sr))  # float in, float out: Rubber Band keeps the input's format
         subprocess.run([exe, "-3", "-q", "--tempo", f"{src_bpm:.4f}:{target_bpm:.4f}", str(src), str(out)],
                        check=True, capture_output=True)
-        audio, _sr, *_ = es().AudioLoader(filename=str(out))()
+        audio, _sr, _nch = decode(out)
     return audio
 
 
@@ -1078,9 +1123,117 @@ def _write_float_wav(path: Path, audio: np.ndarray, sr: int) -> None:
         f.write(data.tobytes())
 
 
+_INT_SCALE = {"s16": 1.0 / (1 << 15), "s32": 1.0 / (1 << 31)}  # libswresample's int to float: x * (1.0f / 2^(bits-1))
+_DTYPES = {"s16": np.int16, "s32": np.int32, "flt": np.float32, "dbl": np.float64}
+_CHUNK = 1 << 20  # samples per channel gathered as raw bytes before converting to float
+
+
+def decode(p: Path) -> tuple[np.ndarray, float, int]:
+    """(stereo float32 (n, 2) at the file's own rate, the rate, the file's channel count), as Essentia's
+    AudioLoader gives it: PyAV if installed (bit for bit, faster), else Essentia."""
+    if m := pyav():
+        return _av_decode(m, p)
+    try:
+        stereo, sr, nch, *_ = es().AudioLoader(filename=str(p))()
+    except RuntimeError as err:
+        if "more than 2 channels" not in str(err):
+            raise
+        stereo, sr, nch, *_ = _load_downmixed(p)
+    return stereo, float(sr), int(nch)
+
+
+def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
+    """AudioLoader's output, from current FFmpeg (stage 0 in docs/WINDOWS.md): MP3 through the fixed-point
+    decoder (16-bit, clipped; FFmpeg 2.8's default), AAC and Opus keeping the encoder's priming samples (2.8
+    didn't trim them; Opus is then cut to its packets' total length, as 2.8 did), mono files in the left channel
+    with the right one silent, damaged packets skipped. More than 2 channels: FFmpeg's standard downmix, as
+    `ffmpeg -ac 2` gives it (_load_downmixed). Frames are gathered as raw bytes and converted in chunks into one
+    array: per-frame numpy work made it slower than Essentia, this is faster."""
+    with av.open(str(p), metadata_errors="replace") as c:  # tags unused; Traktor writes binary into WAV INFO tags
+        s = c.streams.audio[0]
+        name = s.codec_context.name
+        if name in ("mp3", "mp3float"):
+            cc = av.CodecContext.create("mp3", "r")
+            cc.sample_rate = s.codec_context.sample_rate
+            cc.layout = s.codec_context.layout
+        else:
+            cc = s.codec_context
+            if name in ("aac", "opus"):
+                cc.options = {"flags2": "+skip_manual"}
+        cc.thread_type = "AUTO"  # frame threads (FLAC, ALAC): same bits, 2.5-6x faster
+        sr = cc.sample_rate
+        nch = s.codec_context.layout.nb_channels
+        conv = None  # libswresample, as AudioLoader converts: >2 channels, and sample formats not done below
+        est = (float(s.duration * s.time_base) if s.duration else (c.duration or 0) / 1e6) * sr
+        out = np.zeros((int(est) + 8192, 2), np.float32)
+        pos = 0
+        state = {}  # sample format of the frames, bytes per sample, planes being gathered
+        packets = 0  # Opus: the length FFmpeg 2.8 gave (its packets' durations)
+
+        def flush():
+            nonlocal out, pos
+            if not state.get("bufs") or not state["bufs"][0]:
+                return
+            fmt, planar, k = state["fmt"], state["planar"], state["k"]
+            dt = _DTYPES[fmt]
+            if planar:
+                chans = [np.frombuffer(b, dt) for b in state["bufs"]]
+            else:
+                x = np.frombuffer(state["bufs"][0], dt).reshape(-1, k)
+                chans = [x[:, i] for i in range(k)]
+            n = len(chans[0])
+            if pos + n > len(out):
+                grown = np.zeros((max(2 * len(out), pos + n), 2), np.float32)
+                grown[:pos] = out[:pos]
+                out = grown
+            for i, ch in enumerate(chans[:2]):
+                if fmt in _INT_SCALE:
+                    np.multiply(ch, np.float32(_INT_SCALE[fmt]), out=out[pos:pos + n, i], dtype=np.float32)
+                else:
+                    out[pos:pos + n, i] = ch
+            pos += n
+            state["bufs"] = [bytearray() for _ in state["bufs"]]  # numpy still holds the old ones
+
+        def add(f):
+            fmt = f.format.name.rstrip("p")
+            planar = f.format.is_planar
+            k = f.layout.nb_channels
+            if state.get("fmt") != fmt or state.get("planar") != planar or state.get("k") != k:
+                flush()
+                state.update(fmt=fmt, planar=planar, k=k, bufs=[bytearray() for _ in range(k if planar else 1)],
+                             n=0, width=f.format.bytes * (1 if planar else k))
+            width = state["width"]
+            for b, plane in zip(state["bufs"], f.planes):
+                b += memoryview(plane)[: f.samples * width]
+            state["n"] += f.samples
+            if state["n"] >= _CHUNK:
+                flush()
+                state["n"] = 0
+
+        for pk in c.demux(s):
+            packets += pk.duration or 0
+            try:
+                frames = cc.decode(pk)
+            except av.error.InvalidDataError:  # a damaged packet: skip it, as ffmpeg does
+                continue
+            for f in frames:
+                if conv is None and (nch > 2 or f.format.name.rstrip("p") not in _DTYPES):  # u8, s64
+                    conv = av.AudioResampler(format="flt", layout="stereo" if nch > 2 else f.layout, rate=sr)
+                for g in conv.resample(f) if conv else (f,):
+                    add(g)
+        for g in conv.resample(None) if conv else ():
+            add(g)
+        flush()
+    if name == "opus":
+        pos = min(pos, packets)
+    out = out[:pos] if len(out) - pos < 1 << 16 else out[:pos].copy()  # don't keep a much larger buffer
+    return out, float(sr), min(nch, 2)
+
+
 def _load_downmixed(p: Path):
     """Files with more than 2 channels (5.1 FLACs): Essentia's AudioLoader refuses them, so ffmpeg mixes
-    them down to stereo with its standard downmix, at the file's own rate, as float (no rounding)."""
+    them down to stereo with its standard downmix, at the file's own rate, as float (no rounding).
+    Only without PyAV (decode)."""
     import shutil
     import subprocess
     import tempfile
@@ -1126,13 +1279,7 @@ def mono_mix(stereo: np.ndarray, nch: int) -> np.ndarray:
 def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     """Decode once; return stereo (native rate), mono 44.1k, mono 16k, rate.
     tempo: (track's BPM, BPM to play it at) to hear it sped up / slowed down with key lock."""
-    e = es()
-    try:
-        stereo, sr, nch, *_ = e.AudioLoader(filename=str(p))()
-    except RuntimeError as err:
-        if "more than 2 channels" not in str(err):
-            raise
-        stereo, sr, nch, *_ = _load_downmixed(p)
+    stereo, sr, nch = decode(p)
     if tempo:
         stereo = stretch(stereo, sr, *tempo)
     mono = mono_mix(stereo, nch)
@@ -1141,10 +1288,55 @@ def load_audio(p: Path, tempo: tuple[float, float] | None = None):
     return stereo, mono44, mono16, float(sr)
 
 
+EFFNET_INPUT, EFFNET_OUTPUT = "serving_default_melspectrogram", "PartitionedCall:1"
+EFFNET_PATCH, EFFNET_PATCH_HOP, EFFNET_BATCH = 128, 62, 64
+
+
+def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
+    """Discogs-EffNet's embeddings (patches, 1280), as TensorflowPredictEffnetDiscogs gives them (its defaults:
+    patches of 128 mel frames every 62, the last incomplete one dropped, batches of 64 with lastBatchMode "same").
+    Like padSignal, the audio is zero-padded so that the last batch is full, and the padding patches' outputs are
+    dropped; the arithmetic of its patch count (float, with a double step) is copied as is. Checked identical to
+    TensorflowPredictEffnetDiscogs (docs/WINDOWS.md stage 3). No patch (under ~3 s): an empty array, as it gives.
+    Without the Rust module, TensorflowPredictEffnetDiscogs itself."""
+    from essentia import Pool
+
+    x = np.ascontiguousarray(mono16, dtype=np.float32)
+    if not _rust_mels():
+        return np.asarray(style_models()["embed"](x), dtype=np.float32)
+    f32 = np.float32
+    hops = f32((float(f32(len(x))) - 512 / 2.0) / float(f32(256)))
+    n_frames = 1 + math.ceil(hops)
+    patch_hops = f32((f32(n_frames) - f32(EFFNET_PATCH)) / f32(EFFNET_PATCH_HOP))
+    n_patches = 1 + math.floor(patch_hops)
+    n_batches = math.ceil(f32(n_patches) / f32(EFFNET_BATCH))
+    padding = n_batches * EFFNET_BATCH - n_patches
+    if padding:
+        x = np.concatenate([x, np.zeros(padding * EFFNET_PATCH_HOP * 256, dtype=np.float32)])
+    frames = musicnn_mels(x, streaming=True)
+    starts = range(0, len(frames) - EFFNET_PATCH + 1, EFFNET_PATCH_HOP)
+    if not len(starts):
+        return np.zeros((0,), dtype=np.float32)
+    view = np.lib.stride_tricks.sliding_window_view(frames, (EFFNET_PATCH, 96))[::EFFNET_PATCH_HOP, 0]
+    model = style_models()["embed"]
+    out = []
+    # whole batches only: an incomplete last one (when the estimate above is a patch off) is dropped, as
+    # VectorRealToTensor's lastBatchMode "discard" does; then the padding's patches come off the end
+    for b in range(0, len(starts) - EFFNET_BATCH + 1, EFFNET_BATCH):
+        pool = Pool()
+        pool.set(EFFNET_INPUT, np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :]))
+        y = np.asarray(model(pool)[EFFNET_OUTPUT], dtype=np.float32)
+        out.append(y.reshape(-1, y.shape[-1]))
+    if not out:
+        return np.zeros((0,), dtype=np.float32)
+    emb = np.concatenate(out)
+    return emb[: max(0, len(emb) - padding)] if padding > 0 else emb
+
+
 def run_style_model(mono16: np.ndarray):
     """Per-patch embeddings (n,1280) and style activations (n,400)."""
     m = style_models()
-    emb = np.asarray(m["embed"](mono16), dtype=np.float32)
+    emb = effnet_embeddings(mono16)
     acts = np.asarray(m["styles"](emb), dtype=np.float32)
     return emb, acts
 
