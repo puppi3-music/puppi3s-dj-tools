@@ -1139,10 +1139,21 @@ def rubberband() -> str:
     return exe
 
 
-def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float) -> np.ndarray:
+class Cancelled(Exception):
+    """Work given a cancel event (threading.Event) that was set: nobody wants the result any more."""
+
+
+def check_cancel(cancel: threading.Event | None) -> None:
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
+
+
+def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float,
+            cancel: threading.Event | None = None) -> np.ndarray:
     """Change the tempo from src_bpm to target_bpm keeping the pitch (like Traktor's key lock), with
     Rubber Band's R3 engine. Traktor uses its own stretcher (élastique), so this sounds close, not identical.
-    At the track's own BPM the audio comes back as it is: R3 at ratio 1 isn't a passthrough (up to -55 dBFS off)."""
+    At the track's own BPM the audio comes back as it is: R3 at ratio 1 isn't a passthrough (up to -55 dBFS off).
+    cancel: once set, Rubber Band is stopped and Cancelled raised (the web page's player, for a track you've left)."""
     import subprocess
     import tempfile
 
@@ -1152,8 +1163,22 @@ def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float) ->
     with tempfile.TemporaryDirectory(prefix="track-analyzer-") as tmp:
         src, out = Path(tmp) / "in.wav", Path(tmp) / "out.wav"
         _write_float_wav(src, stereo, int(sr))  # float in, float out: Rubber Band keeps the input's format
-        subprocess.run([exe, "-3", "-q", "--tempo", f"{src_bpm:.4f}:{target_bpm:.4f}", str(src), str(out)],
-                       check=True, capture_output=True)
+        cmd = [exe, "-3", "-q", "--tempo", f"{src_bpm:.4f}:{target_bpm:.4f}", str(src), str(out)]
+        if cancel is None:
+            subprocess.run(cmd, check=True, capture_output=True)
+        else:
+            proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            while True:
+                try:
+                    so, se = proc.communicate(timeout=0.1)  # retrying after a timeout loses no output
+                    break
+                except subprocess.TimeoutExpired:
+                    if cancel.is_set():
+                        proc.kill()
+                        proc.communicate()
+                        raise Cancelled() from None
+            if proc.returncode:
+                raise subprocess.CalledProcessError(proc.returncode, cmd, so, se)
         audio, _sr, _nch = decode(out)
     return audio
 

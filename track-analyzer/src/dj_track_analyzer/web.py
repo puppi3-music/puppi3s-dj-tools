@@ -392,17 +392,23 @@ def slot_preview(path: str, plan: dict) -> dict:
             "moved_up": [{"was": r["hotcue"], "to": r["to"]} for r in renum], "skipped": skipped}
 
 
-def loop_parts(path: str) -> dict:
-    """The track's loop ideas with what plays in each (vocals, synth...): separated now if not cached (~8 s)."""
+def loop_parts(path: str, cancel: threading.Event | None = None) -> dict:
+    """The track's loop ideas with what plays in each (vocals, synth...): separated now if not cached (~8 s).
+    Demucs runs outside the library lock, so approving cues or opening another track doesn't wait for it; each
+    separated idea is saved as it's done, so a cancel (the page left the track) keeps those for the next visit."""
     from . import cues
 
     d = cue_grids().get(path)
     if not d:
         raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+    p = Path(path)
     with library("native"):
         ideas = cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]
-        if cues.parts_available():
-            cues.loop_parts(Path(path), ideas, d["bpm"])
+        todo = [l for l in ideas if l["ms"] not in cues.parts_cached(p, ideas)] if cues.parts_available() else []
+    for l, m in cues.separate_parts(p, todo, d["bpm"], cancel):
+        with library("native"):
+            cues.store_parts(p, l, m)
+    with library("native"):
         return {"loop_ideas": cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]}
 
 
@@ -492,12 +498,12 @@ STRETCH_CHUNK, STRETCH_PRE, STRETCH_POST, STRETCH_FADE = 15.0, 4.0, 1.0, 0.03  #
 STRETCH_WORKERS = 8  # 4-min track: 15 s pieces 8 at once 5.5 s; one piece per core 9 s (long pieces slow down side by side)
 
 
-def stretch_parallel(stereo, sr: float, src: float, bpm: float):
+def stretch_parallel(stereo, sr: float, src: float, bpm: float, cancel: threading.Event | None = None):
     """analysis.stretch in STRETCH_CHUNK pieces, STRETCH_WORKERS at once, for listening: ≈6 s for a 4-min track instead of
     ≈30 (one Rubber Band can't use more cores). Each piece starts STRETCH_PRE early, so the stretcher has settled by its
     own start (as Mixxx's real-time stretching does after a jump), and runs STRETCH_POST past its end for a STRETCH_FADE
     crossfade into the next. Sounds like the whole-track stretch the view's scan uses; the samples differ, as two runs
-    of a phase vocoder from different starting points do."""
+    of a phase vocoder from different starting points do. cancel: stops every piece (analysis.Cancelled)."""
     import os
     from concurrent.futures import ThreadPoolExecutor
 
@@ -510,8 +516,9 @@ def stretch_parallel(stereo, sr: float, src: float, bpm: float):
     starts = list(range(0, n, step))
 
     def piece(s):
+        analysis.check_cancel(cancel)  # the pieces not started yet
         a = max(0, s - pre)
-        return analysis.stretch(stereo[a:min(n, s + step + post)], sr, src, bpm)[round((s - a) * k):]
+        return analysis.stretch(stereo[a:min(n, s + step + post)], sr, src, bpm, cancel)[round((s - a) * k):]
 
     with ThreadPoolExecutor(workers) as ex:  # threads: each waits on its own Rubber Band process
         parts = list(ex.map(piece, starts))
@@ -531,10 +538,11 @@ def stretch_parallel(stereo, sr: float, src: float, bpm: float):
     return out
 
 
-def deck_stretched(path: str, bpm: float) -> tuple[Path, float]:
+def deck_stretched(path: str, bpm: float, cancel: threading.Event | None = None) -> tuple[Path, float]:
     """The player's audio at a tempo view's BPM: (the file, its time / Traktor's time). Rubber Band R3 on the decoded
     audio as the view's scan does, in parallel pieces (stretch_parallel), with Traktor's offset in front
-    (traktor.audio_offset, scaled), so stretched time = Traktor time × the ratio. ≈3 s once, kept like deck_audio."""
+    (traktor.audio_offset, scaled), so stretched time = Traktor time × the ratio. ≈3 s once, kept like deck_audio.
+    cancel (the page left the track): stops, saving nothing, so the next ask starts again."""
     import hashlib
     import subprocess
 
@@ -552,8 +560,9 @@ def deck_stretched(path: str, bpm: float) -> tuple[Path, float]:
     with _deck_locks.setdefault(out.name, threading.Lock()):
         if not out.exists():
             analysis.rubberband()  # installed and new enough, with how to install it if not
+            analysis.check_cancel(cancel)  # given up while another request was making it
             stereo, sr, _nch = analysis.decode(p)
-            y = stretch_parallel(stereo, sr, src, bpm)
+            y = stretch_parallel(stereo, sr, src, bpm, cancel)
             if off:
                 y = np.concatenate([np.zeros((round(off * ratio), y.shape[1]), np.float32), y])
             DECK_AUDIO.mkdir(parents=True, exist_ok=True)
@@ -658,7 +667,8 @@ def _render_loop(src: Path, start: float, length: float, smooth: bool, out_args:
                           input=y.astype(np.float32).tobytes(), capture_output=True, timeout=timeout)
 
 
-def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm: float | None = None) -> bytes:
+def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm: float | None = None,
+              cancel: threading.Event | None = None) -> bytes:
     """Just the loop, cut sample-accurately by ffmpeg as float WAV (~0.15 s for 4 bars), so the page can loop it
     gaplessly without decoding the whole track first. bpm: from the track stretched to a tempo view's BPM
     (start and length stay in Traktor's time)."""
@@ -666,7 +676,7 @@ def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm:
     if not (0 <= start < 3600 and 0 < length <= 120):
         raise ValueError("start / length out of range")
     if bpm:
-        p, ratio = deck_stretched(path, bpm)  # Traktor's offset is already in front
+        p, ratio = deck_stretched(path, bpm, cancel)  # Traktor's offset is already in front
         start, length = start * ratio, length * ratio
     out = _render_loop(p, start, length, smooth, ["-f", "wav", "-acodec", "pcm_f32le", "-"], timeout=30)
     if out.returncode or not out.stdout:
@@ -1000,11 +1010,49 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
     def num(q, k, default=None):
         return float(q[k]) if q.get(k) not in (None, "") else default
 
+    async def until_gone(request: Request, fn):
+        """fn(cancel) in a worker thread; cancel is set once the page drops the request (it moved on to another
+        track), so Rubber Band and Demucs stop instead of working for nobody."""
+        import anyio
+
+        cancel = threading.Event()
+
+        async def watch():
+            while not await request.is_disconnected():
+                await anyio.sleep(0.2)
+            cancel.set()
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(watch)
+            try:
+                out = await run_in_threadpool(fn, cancel)
+            except (Exception, SystemExit) as e:  # raised outside the task group, so not wrapped in a group
+                out = e
+            tg.cancel_scope.cancel()
+        if isinstance(out, BaseException):
+            raise out
+        return out
+
+    def gone() -> JSONResponse:
+        return JSONResponse({"error": "cancelled: the page no longer wanted it"}, status_code=499)
+
+    def respond_until_gone(fn):
+        async def endpoint(request: Request):
+            try:
+                return JSONResponse(await until_gone(request, lambda cancel: fn(request.query_params, cancel)))
+            except analysis.Cancelled:
+                return gone()
+            except (Exception, SystemExit) as e:
+                return failed(e)
+        return endpoint
+
     async def audio(request: Request):
         try:
             q = request.query_params
-            p = await run_in_threadpool(lambda: deck_stretched(q["path"], float(q["bpm"]))[0] if q.get("bpm")
-                                        else deck_audio(q.get("path", "")))
+            p = await until_gone(request, lambda cancel: deck_stretched(q["path"], float(q["bpm"]), cancel)[0] if q.get("bpm")
+                                 else deck_audio(q.get("path", "")))
+        except analysis.Cancelled:
+            return gone()
         except (Exception, SystemExit) as e:
             return failed(e)
         return FileResponse(p)  # supports Range requests, so jumping around doesn't load the whole file
@@ -1014,8 +1062,11 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
 
         q = request.query_params
         try:
-            data = await run_in_threadpool(loop_clip, q.get("path", ""), float(q.get("start", "nan")), float(q.get("len", "nan")),
-                                           q.get("smooth") == "1", float(q["bpm"]) if q.get("bpm") else None)
+            data = await until_gone(request, lambda cancel: loop_clip(
+                q.get("path", ""), float(q.get("start", "nan")), float(q.get("len", "nan")), q.get("smooth") == "1",
+                float(q["bpm"]) if q.get("bpm") else None, cancel))
+        except analysis.Cancelled:
+            return gone()
         except (Exception, SystemExit) as e:
             return failed(e)
         return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
@@ -1068,11 +1119,11 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
         Route("/api/cues", respond(lambda q: track_cues(q["path"]))),
-        Route("/api/cues/parts", respond(lambda q: loop_parts(q["path"]))),
+        Route("/api/cues/parts", respond_until_gone(lambda q, cancel: loop_parts(q["path"], cancel))),
         Route("/api/wave", respond(lambda q: wave_detail(q["path"], num(q, "t0"), num(q, "t1"), int(num(q, "n", 1000))))),
         Route("/api/audio", audio),
         Route("/api/loop", loop_endpoint),
-        Route("/api/deck/stretch", respond(lambda q: {"ratio": deck_stretched(q["path"], float(q["bpm"]))[1]})),
+        Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),

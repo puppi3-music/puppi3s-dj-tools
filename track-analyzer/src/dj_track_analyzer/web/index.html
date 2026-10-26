@@ -440,13 +440,14 @@ async function hold(paths, kind, on) {
   for (const list of Object.values(S.tracks)) for (const t of list) if (set.has(t.path)) { if (on) t["held_" + kind] = true; else delete t["held_" + kind]; }
   return d;
 }
-async function api(path, params = {}) {
+async function api(path, params = {}, { signal } = {}) {
   if (SNAP) return snapApi(path, params);
   const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== ""));
   let r;
   for (let attempt = 0; ; attempt++) {
-    try { r = await fetch(`/api/${path}${q.toString() ? "?" + q : ""}`); break; }
+    try { r = await fetch(`/api/${path}${q.toString() ? "?" + q : ""}`, { signal }); break; }
     catch (e) { // no answer at all: the server is restarting, or was stopped
+      if (e.name === "AbortError") throw e;  // given up on by the page (another track opened)
       if (attempt >= 2) throw new Error("Can't reach the Puppi3's Track Analyzer server. Start it again: double-click Start Puppi3's Track Analyzer.command (on a Mac), or run `uv run dj-track-analyzer web` in a terminal.");
       await new Promise(ok => setTimeout(ok, 600 * (attempt + 1)));
     }
@@ -724,7 +725,15 @@ function drawerWide() {  // the panel's wide mode, remembered between visits
 }
 // the waveform measures its width only when it draws: draw it again once the panel has its new width
 $("#drawer").addEventListener("transitionend", e => { if (e.target === $("#drawer") && e.propertyName === "width") $("#cuebox")?._wave?.redraw(); });
-function closeDrawer() { deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
+// The open track's slow preparations (Rubber Band for the tempo view, Demucs for the loop ideas) run with this signal:
+// opening another track or closing the panel aborts them, the server stops them, and coming back asks again
+const PREP = { path: null, ctl: new AbortController() };
+function prepFor(path) {
+  if (PREP.path !== path) { PREP.ctl.abort(); PREP.ctl = new AbortController(); PREP.path = path; }
+  return PREP.ctl.signal;
+}
+const aborted = e => e?.name === "AbortError";
+function closeDrawer() { prepFor(null); deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
 // the track open in the panel, highlighted in every track list: one style rule, so it holds through any redraw
 function markOpen(path) {
   let st = document.getElementById("open-row");
@@ -749,6 +758,7 @@ function scaleView(t) {
     <div class="scale-marks">${pos != null ? `<div class="m" style="${at(pos)}" data-tip="where the model places this track (1 = Red … 7 = Magenta)">model ${pos.toFixed(2)}</div>` : ""}</div>`;
 }
 async function openTrack(path) {
+  prepFor(path);
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
   const all = await getTracks(), t = all.find(x => x.path === path);
   if (!t) return;
@@ -834,11 +844,12 @@ function loopPads(c) {
 // What plays in each loop idea, separated on the server (~8 s the first time per track); updates the buttons in place
 function loadParts(c, b, path) {
   if (!c.parts_pending || SNAP) return;
-  api("cues/parts", { path }).then(r => {
+  api("cues/parts", { path }, { signal: prepFor(path) }).then(r => {
     if (!b.isConnected || $("#drawer")?.dataset.path !== path) return;
     c.loop_ideas = r.loop_ideas; c.parts_pending = false;
     const row = b.querySelector("#loop-pads"); if (row) row.outerHTML = loopPads(c);
-  }).catch(e => { const w = b.querySelector("#parts-wait"); if (w) { w.classList.add("failed"); w.textContent = `Couldn't listen for vocals: ${e.message}`; }
+  }).catch(e => { if (aborted(e)) return;  // left the track: it asks again when you come back
+    const w = b.querySelector("#parts-wait"); if (w) { w.classList.add("failed"); w.textContent = `Couldn't listen for vocals: ${e.message}`; }
     b.querySelector("#loop-pads")?.classList.remove("listening"); });
 }
 
@@ -1098,7 +1109,9 @@ function bindApprove(c, box, t) {
     const fresh = await api("cues", { path: t.path });
     for (const list of Object.values(S.tracks)) for (const x of list) if (x.path === t.path) {  // the list's approved chip
       const ap = fresh.approved; if (ap) x.cues_approved = { add: ap.add.length, move: ap.move.length, remove: (ap.remove || []).length }; else delete x.cues_approved;
-    } box.innerHTML = renderCues(fresh); drawWave(fresh, box); bindApprove(fresh, box, t); deckAttach(fresh, box);
+    }
+    if (!box.isConnected || $("#drawer").dataset.path !== t.path) { if (S.page === "tracks") S.redrawTracks?.(); return; }  // approved, then moved on: the open track's panel stays
+    box.innerHTML = renderCues(fresh); drawWave(fresh, box); bindApprove(fresh, box, t); deckAttach(fresh, box);
     const msg = box.querySelector("#ap-msg"); if (msg && msgText) msg.textContent = msgText;
     if (S.page === "tracks") S.redrawTracks?.();
   };
@@ -1341,7 +1354,7 @@ function deckRatio(bpm) {
   const key = `${DECK.path}|${bpm}`;
   if (!DECK_RATIOS.has(key)) {
     DECK_PENDING.add(key);  // deckUi shows the spinner while it's in here
-    DECK_RATIOS.set(key, api("deck/stretch", { path: DECK.path, bpm }).then(r => r.ratio)
+    DECK_RATIOS.set(key, api("deck/stretch", { path: DECK.path, bpm }, { signal: prepFor(DECK.path) }).then(r => r.ratio)
       .catch(e => { DECK_RATIOS.delete(key); throw e; }).finally(() => { DECK_PENDING.delete(key); deckUi(); }));
     deckUi();
   }
@@ -1403,7 +1416,9 @@ function deckReady() {  // the file loads only once you play or jump: opening a 
     DECK.audio.preload = "auto"; DECK.audio.src = `/api/audio?path=${encodeURIComponent(path)}${bpm ? `&bpm=${bpm}` : ""}`; DECK.loaded = true;
     DECK.preparing = true; deckMsg("Preparing audio… (the first time for a track takes a few seconds)");
     return true;
-  }, err => { if (DECK.readyBpm === bpm) DECK.ready = null; deckMsg(`Couldn't stretch: ${err.message}`); return false; });
+  }, err => { if (DECK.path !== path) return false;  // another track meanwhile (its stretch was cancelled)
+    if (DECK.readyBpm === bpm) DECK.ready = null;  // asks again on the next play
+    if (!aborted(err)) deckMsg(`Couldn't stretch: ${err.message}`); return false; });
   return DECK.ready;
 }
 function deckTime() {  // where playback is now, looping or not, in Traktor's time (the track's own tempo)
@@ -1433,15 +1448,16 @@ async function deckLoop(a, b) {
     let buf = LOOP_CLIPS.get(key), whole = false;
     if (!buf) {
       try {
-        const r = await fetch(`/api/loop?path=${encodeURIComponent(want)}&start=${a}&len=${b - a}${smooth ? "&smooth=1" : ""}${bpm ? `&bpm=${bpm}` : ""}`);
+        const r = await fetch(`/api/loop?path=${encodeURIComponent(want)}&start=${a}&len=${b - a}${smooth ? "&smooth=1" : ""}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) });
         if (!r.ok) throw new Error((await readJSON(r)).error);
         buf = await DECK.ctx.decodeAudioData(await r.arrayBuffer());
         LOOP_CLIPS.set(key, buf);
         if (LOOP_CLIPS.size > 12) LOOP_CLIPS.delete(LOOP_CLIPS.keys().next().value);
       } catch (e) {  // no ffmpeg or a cut that failed: decode the whole track instead (slower, same loop)
+        if (aborted(e) || DECK.path !== want) throw e;
         deckMsg("Preparing a gapless loop…");
         if (DECK.bufPath !== `${want}|${bpm}`) {
-          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`)).arrayBuffer();
+          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) })).arrayBuffer();
           DECK.buf = await DECK.ctx.decodeAudioData(data); DECK.bufPath = `${want}|${bpm}`;
         }
         buf = DECK.buf; whole = true;
@@ -1454,7 +1470,8 @@ async function deckLoop(a, b) {
     else { src.connect(DECK.gain); src.start(0, 0); }  // the clip is exactly the loop
     DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b, k, bpm }; DECK.waiting = false;
     deckTick();
-  } catch (err) { DECK.loop = null; DECK.waiting = false; deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
+  } catch (err) { if (DECK.path !== want) return;  // another track meanwhile: its deck isn't this loop's
+    DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
 }
 function deckSeek(t, play = true, loop = null) {
   if (!DECK.path) return;

@@ -745,6 +745,21 @@ def loop_parts(p: Path, ideas: list[dict], bpm: float, compute: bool = True) -> 
     the thresholds can change without separating again. The kick is measured on the drum
     stem, where no bassline fills the gaps between beats: on 4 loops that kick_on (the full mix) read as kick-free,
     it heard a kick, and all 4 had one by ear."""
+    got = parts_cached(p, ideas)
+    todo = [l for l in ideas if l["ms"] not in got]
+    if todo and compute:
+        for l, m in separate_parts(p, todo, bpm):
+            got[l["ms"]] = m
+            store_parts(p, l, m)
+    out = []
+    for l in ideas:
+        sh = _parts_shares(got[l["ms"]]) if l["ms"] in got else None
+        out.append({**sh, "label": _parts_label(sh)} if sh else None)
+    return out
+
+
+def parts_cached(p: Path, ideas: list[dict]) -> dict[float, dict]:
+    """{idea ms: its cached per-beat measurements} for the ideas separated before."""
     with _bars_db() as con:
         con.execute("CREATE TABLE IF NOT EXISTS parts (k TEXT PRIMARY KEY, path TEXT, data TEXT)")
         got = {}
@@ -752,19 +767,33 @@ def loop_parts(p: Path, ideas: list[dict], bpm: float, compute: bool = True) -> 
             row = con.execute("SELECT data FROM parts WHERE k=?", (_parts_key(p, l["ms"], l["len_ms"]),)).fetchone()
             if row:
                 got[l["ms"]] = json.loads(row[0])
-    todo = [l for l in ideas if l["ms"] not in got]
-    if todo and compute:
+    return got
+
+
+def store_parts(p: Path, l: dict, m: dict) -> None:
+    with _bars_db() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS parts (k TEXT PRIMARY KEY, path TEXT, data TEXT)")
+        con.execute("INSERT OR REPLACE INTO parts VALUES (?,?,?)", (_parts_key(p, l["ms"], l["len_ms"]), str(p), json.dumps(m)))
+
+
+def separate_parts(p: Path, todo: list[dict], bpm: float, cancel=None):
+    """Yields (idea, its per-beat measurements) one idea at a time, separated by Demucs. Reads and writes no cache,
+    so the web page runs it outside its library lock. cancel (threading.Event): stops before the next idea
+    (analysis.Cancelled); the ones yielded so far can still be stored."""
+    if todo:
         import julius
         import torch
         from demucs.apply import apply_model
         from scipy.signal import butter, sosfilt
 
+        analysis.check_cancel(cancel)
         model, dev, lock = _separator()
         stereo, sr, _nch = analysis.decode(p)
         x = np.ascontiguousarray(np.asarray(stereo, np.float32).T)
         off = traktor.audio_offset(p) / sr  # Traktor time = decoded time + off
         db = lambda y: 10 * np.log10(np.mean(y ** 2) + 1e-12)  # noqa: E731
         for l in todo:
+            analysis.check_cancel(cancel)
             a = l["ms"] / 1000 - off
             b = a + l["len_ms"] / 1000
             a0, b0 = max(0.0, a - 4), min(x.shape[1] / sr, b + 4)
@@ -774,6 +803,7 @@ def loop_parts(p: Path, ideas: list[dict], bpm: float, compute: bool = True) -> 
             ref = seg.mean(0)
             mu, sd = ref.mean(), ref.std() + 1e-8
             with lock, torch.no_grad():  # as the demucs command does: normalized, shifts=1, overlap 0.25
+                analysis.check_cancel(cancel)  # given up while another track's separation had the model
                 st = apply_model(model, ((seg - mu) / sd)[None].to(dev), device=dev, shifts=1, split=True,
                                  overlap=0.25)[0].cpu() * sd + mu
             k0 = int((a - a0) * model.samplerate)
@@ -791,15 +821,7 @@ def loop_parts(p: Path, ideas: list[dict], bpm: float, compute: bool = True) -> 
             m["kick_db"] = [round(db(low[k * hop:k * hop + hit]) - mixb[k], 1) for k in beats]
             m["kick_pulse"] = [round(db(low[k * hop:k * hop + hit]) - db(low[k * hop + int(0.3 * hop):k * hop + int(0.75 * hop)]), 1)
                                for k in beats]
-            got[l["ms"]] = m
-            with _bars_db() as con:
-                con.execute("INSERT OR REPLACE INTO parts VALUES (?,?,?)",
-                            (_parts_key(p, l["ms"], l["len_ms"]), str(p), json.dumps(m)))
-    out = []
-    for l in ideas:
-        sh = _parts_shares(got[l["ms"]]) if l["ms"] in got else None
-        out.append({**sh, "label": _parts_label(sh)} if sh else None)
-    return out
+            yield l, m
 
 
 def _name(i: int, first: bool, loud: np.ndarray, on: np.ndarray, nb: int, bass: np.ndarray) -> str:

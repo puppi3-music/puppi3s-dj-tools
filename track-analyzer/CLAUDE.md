@@ -180,7 +180,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   apart; kinds from kick_on and level. Loop parts (`loop_parts`, optional `stems` extra = Demucs htdemucs): each idea ±4 s
   separated (one model, a lock, mps/cuda/cpu), per-beat stem levels against the loop and the drum stem's 30-150 Hz
   kick cached in cache.db `parts` (PARTS_VERSION), so thresholds (PART_DB, PART_BG_DB, KICK_STEM_DB) change without
-  separating again; suggest() reads only the cache (`parts_pending`), the page then calls /api/cues/parts (~8 s). The
+  separating again; suggest() reads only the cache (`parts_pending`), the page then calls /api/cues/parts (~8 s). Demucs runs outside
+  web's `library()` lock (`cues.separate_parts`, each idea stored as it's done), so approving or opening another track
+  doesn't wait for it. /api/cues/parts, /api/deck/stretch, /api/audio and /api/loop stop when the page drops the request
+  (`until_gone` → a cancel Event → `analysis.Cancelled`; Rubber Band processes killed); the page aborts them on opening
+  another track or closing the panel (`PREP` / `prepFor`), and asks again when you come back. The
   drum stem's kick overrides kick_on in the kind. No male/female: no head or pitch test told them apart.
   The suggested loop never starts within a bar of a suggested
   cue (the user's never do), in suggest() and in the CV loop score.
