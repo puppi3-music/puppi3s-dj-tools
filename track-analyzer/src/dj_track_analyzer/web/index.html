@@ -152,6 +152,8 @@ button.on { background: var(--accent); border-color: var(--accent); color: #fff;
 td.cb, th.cb { width: 28px; padding-right: 0; }
 .wavewrap { position: relative; background: #0c0c0e; border-radius: 8px; padding: 0; overflow: hidden; }
 .wavewrap canvas { display: block; width: 100%; height: 206px; cursor: crosshair; }
+.gridwave { position: relative; background: #0c0c0e; border-radius: 8px; overflow: hidden; margin-top: 8px; }
+.gridwave canvas { display: block; width: 100%; height: 150px; }
 .playhead { position: absolute; top: 22px; height: 110px; width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 6px rgba(255,255,255,.8);
   pointer-events: none; display: none; }
 .playhead.ov { top: 170px; height: 32px; box-shadow: none; }
@@ -842,8 +844,9 @@ async function loadGrid(t, g) {
   const box = $("#gridbox"); if (!box) return;
   try { g ??= await api("grid", { path: t.path }); } catch (e) { box.className = "small dim"; box.textContent = e.message; return; }
   if ($("#drawer").dataset.path !== t.path) return;
-  box.className = ""; box.innerHTML = renderGrid(g);
+  box.className = ""; box.innerHTML = renderGrid(g) + gridWaveHTML(g);
   const shift = () => +($("#gr-shift")?.value || 0), msg = m => { const e = $("#gr-msg"); if (e) e.textContent = m; };
+  gridWave(t.path, g, box, shift);
   const after = async (d, text) => { await loadGrid(t, d); msg(text); S.tracks = {}; if (S.page === "tracks") S.reloadTracks?.(); };
   $("#gr-now")?.addEventListener("click", e => gridClick(t.path, g, 0, e.currentTarget));
   $("#gr-moved")?.addEventListener("click", e => gridClick(t.path, g, shift(), e.currentTarget));  // the moved lines: the old ones + the shift
@@ -852,6 +855,73 @@ async function loadGrid(t, g) {
   $("#gr-unapprove")?.addEventListener("click", async () => { try { await after(await postJSON("/api/grid/approve", { path: t.path, shift_ms: null }), "Taken back"); } catch (e) { msg(e.message); } });
   $("#gr-ignore")?.addEventListener("click", async () => { try { await after(await postJSON("/api/grid/ignore", { path: t.path, on: true }), "Marked as right"); } catch (e) { msg(e.message); } });
   $("#gr-write")?.addEventListener("click", () => writeGrids(async () => { const top = $("#drawer").scrollTop; await openTrack(t.path); $("#drawer").scrollTop = top; S.tracks = {}; if (S.page === "tracks") S.reloadTracks?.(); }));
+}
+// A close look at a few beats: the waveform with Traktor's grid lines on it (and the moved ones, dashed), to check by eye
+const GRID_VIEW = { beats: 2 };  // beats on screen, kept from track to track
+function gridWaveHTML(g) {
+  const stretches = (g.section_starts_ms || []).map((t, i) => [t, (g.sections || [])[i]]);
+  const mmss = ms => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+  const read = v => v == null ? "no clear kick" : `kick ${v > 0 ? "+" : ""}${v.toFixed(1)} ms`;
+  return `<div class="filters small" style="margin-top:10px;align-items:center">
+      <button type="button" class="mini" id="gw-prev" data-tip="One bar earlier">‹ bar</button><button type="button" class="mini" id="gw-next" data-tip="One bar later">bar ›</button>
+      ${stretches.length ? `<select id="gw-at" data-tip="The stretches the check measured, with where it read the kick in each">${stretches.map(([t, v]) =>
+        `<option value="${t}" ${t === g.preview_ms ? "selected" : ""}>${mmss(t)} · ${read(v)}</option>`).join("")}</select>` : ""}
+      <span class="inline">show ${[1, 2, 4, 8].map(k => `<button type="button" class="mini ${k === GRID_VIEW.beats ? "on" : ""}" data-gwbeats="${k}">${k === 4 ? "1 bar" : k === 8 ? "2 bars" : `${k} beat${k > 1 ? "s" : ""}`}</button>`).join("")}</span>
+      <span id="gw-pos" class="muted mono"></span></div>
+    <div class="gridwave"><canvas id="gw-canvas" aria-label="Close-up of the waveform with the beat grid lines on it"></canvas></div>
+    <div class="small muted" style="margin-top:4px">White lines: Traktor's grid now (thicker on the bar). <span style="color:#ffd23f">Yellow dashed: the grid moved</span> by the amount above. The kick's attack (red, low) should start on the line.</div>`;
+}
+function gridWave(path, g, box, shift) {
+  const cv = box.querySelector("#gw-canvas"); if (!cv) return;
+  const beat = 60000 / g.bpm, lineAt = ms => g.grid_ms + Math.round((ms - g.grid_ms) / beat) * beat;  // the grid line nearest a time
+  let at = lineAt(g.preview_ms ?? (g.section_starts_ms || [])[Math.floor((g.section_starts_ms || []).length / 2)] ?? g.grid_ms);
+  let data = null, seq = 0, timer = 0;
+  // the stretch on screen: from a quarter beat before a grid line to a quarter beat after the last one shown
+  const view = () => { const v0 = Math.max(0, at - beat / 4); return [v0, at + (GRID_VIEW.beats + 0.25) * beat]; };
+  function fetchWave() {
+    const [v0, v1] = view(), n = Math.round(cv.clientWidth * (window.devicePixelRatio || 1)), k = ++seq;
+    if (!n) return;
+    if (data && data.t0 <= v0 / 1000 + 1e-6 && data.t0 + data.sec >= v1 / 1000 - 1e-6 && data.n / data.sec >= n / ((v1 - v0) / 1000) * 0.7) return draw();
+    clearTimeout(timer);
+    timer = setTimeout(() => api("wave", { path, t0: (v0 / 1000).toFixed(4), t1: (v1 / 1000).toFixed(4), n })
+      .then(w => { if (k === seq) { data = decodeWave(w); draw(); } }).catch(e => { const p = box.querySelector("#gw-pos"); if (p) p.textContent = e.message; }), data ? 80 : 0);
+    draw();
+  }
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (!W) return;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    const gx = cv.getContext("2d"); gx.setTransform(dpr, 0, 0, dpr, 0, 0); gx.clearRect(0, 0, W, H);
+    const [v0, v1] = view(), X = ms => (ms - v0) / (v1 - v0) * W, TOP = 18, BOT = H - 16;
+    if (data) waveColumns(gx, data, v0 / 1000, v1 / 1000, TOP, BOT, W, 1);
+    else { gx.fillStyle = "rgba(255,255,255,.4)"; gx.font = "11px system-ui, sans-serif"; gx.fillText("Loading…", 8, H / 2); }
+    gx.font = "10px system-ui, sans-serif"; gx.textAlign = "left";
+    const k0 = Math.ceil((v0 - g.grid_ms) / beat) - 1, k1 = Math.floor((v1 - g.grid_ms) / beat) + 1, sh = shift();
+    for (let k = k0; k <= k1; k++) {
+      const t = g.grid_ms + k * beat, down = ((k % 4) + 4) % 4 === 0, x = Math.round(X(t));
+      gx.fillStyle = down ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.7)"; gx.fillRect(x - (down ? 1 : 0), 4, down ? 2 : 1, H - 8);
+      gx.fillText(down ? `bar ${Math.floor(k / 4) + 1}` : `${((k % 4) + 4) % 4 + 1}`, x + 3, 13);
+      if (Math.abs(sh) >= 0.05) {
+        const m = X(t + sh);
+        gx.setLineDash([4, 3]); gx.strokeStyle = "#ffd23f"; gx.lineWidth = 1.5;
+        gx.beginPath(); gx.moveTo(m, TOP); gx.lineTo(m, H - 4); gx.stroke(); gx.setLineDash([]); gx.lineWidth = 1;
+      }
+    }
+    // a 10 ms ruler, to judge how far off a kick is
+    const r = X(v0 + 10) - X(v0), y = H - 6;
+    gx.fillStyle = "rgba(255,255,255,.7)"; gx.fillRect(W - 12 - r, y, r, 2); gx.fillRect(W - 12 - r, y - 3, 1, 5); gx.fillRect(W - 13, y - 3, 1, 5);
+    gx.textAlign = "right"; gx.fillText("10 ms", W - 16 - r, y + 3);
+    const p = box.querySelector("#gw-pos"); if (p) p.textContent = `${(at / 1000).toFixed(2)} s`;
+  }
+  const go = ms => { at = lineAt(Math.max(0, ms)); fetchWave(); };
+  box.querySelector("#gw-prev")?.addEventListener("click", () => go(at - 4 * beat));
+  box.querySelector("#gw-next")?.addEventListener("click", () => go(at + 4 * beat));
+  box.querySelector("#gw-at")?.addEventListener("change", e => go(+e.target.value));
+  box.querySelectorAll("[data-gwbeats]").forEach(b => b.addEventListener("click", () => {
+    GRID_VIEW.beats = +b.dataset.gwbeats; box.querySelectorAll("[data-gwbeats]").forEach(o => o.classList.toggle("on", o === b)); fetchWave();
+  }));
+  box.querySelector("#gr-shift")?.addEventListener("input", draw);
+  new ResizeObserver(() => fetchWave()).observe(cv);
 }
 // Write every approved grid fix into Traktor's collection.nml (= `grids apply`): a preview first, then the write, then Undo.
 async function writeGrids(onDone) {
@@ -1728,6 +1798,22 @@ function decodeWave(w) {
   for (let i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i);
   return { n: w.slices, t0: w.t0 || 0, sec: w.seconds, a };
 }
+function waveColumns(g, data, v0, v1, y0, y1, w, alpha) {  // one column per device pixel
+  const mid = (y0 + y1) / 2, half = (y1 - y0) / 2, span = v1 - v0, dpr = window.devicePixelRatio || 1, cols = Math.round(w * dpr), k = data.n / data.sec;
+  for (let px = 0; px < cols; px++) {
+    const ta = v0 + px * span / cols - data.t0, tb = ta + span / cols;
+    const a = Math.max(0, Math.floor(ta * k)), z = Math.min(data.n, Math.max(a + 1, Math.floor(tb * k)));
+    if (a >= data.n) break;
+    let pk = 0, rm = 0, lo = 0, md = 0, hi = 0;
+    for (let i = a; i < z; i++) { const o = i * 5, d = data.a; pk = Math.max(pk, d[o]); rm = Math.max(rm, d[o + 1]); lo += d[o + 2]; md += d[o + 3]; hi += d[o + 4]; }
+    const m = Math.max(lo, md, hi, 1), wl = (lo / m) ** 3, wm = (md / m) ** 3, wh = (hi / m) ** 3, sum = wl + wm + wh;
+    // lows red, mids green, highs blue; the strongest band sets the colour
+    const r = Math.round((255 * wl + 40 * wm + 60 * wh) / sum), gg = Math.round((50 * wl + 225 * wm + 140 * wh) / sum), bb = Math.round((40 * wl + 70 * wm + 255 * wh) / sum);
+    const ph = pk / 255 * half, rh = Math.min(ph, rm / 255 * half * 1.6);
+    g.fillStyle = `rgba(${r},${gg},${bb},${0.45 * alpha})`; g.fillRect(px / dpr, mid - ph, 1 / dpr, ph * 2);
+    g.fillStyle = `rgba(${r},${gg},${bb},${alpha})`; g.fillRect(px / dpr, mid - rh, 1 / dpr, rh * 2);
+  }
+}
 function drawWave(c, box) {
   const cv = box.querySelector("#wave");
   if (!cv || !c.wave) return;
@@ -1767,22 +1853,6 @@ function drawWave(c, box) {
         .then(w => { if (seq === fineSeq) { st.fine = decodeWave(w); render(); } }).catch(() => {});
     }, 120);
   }
-  function columns(g, data, v0, v1, y0, y1, w, alpha) {  // one column per device pixel
-    const mid = (y0 + y1) / 2, half = (y1 - y0) / 2, span = v1 - v0, dpr = window.devicePixelRatio || 1, cols = Math.round(w * dpr), k = data.n / data.sec;
-    for (let px = 0; px < cols; px++) {
-      const ta = v0 + px * span / cols - data.t0, tb = ta + span / cols;
-      const a = Math.max(0, Math.floor(ta * k)), z = Math.min(data.n, Math.max(a + 1, Math.floor(tb * k)));
-      if (a >= data.n) break;
-      let pk = 0, rm = 0, lo = 0, md = 0, hi = 0;
-      for (let i = a; i < z; i++) { const o = i * 5, d = data.a; pk = Math.max(pk, d[o]); rm = Math.max(rm, d[o + 1]); lo += d[o + 2]; md += d[o + 3]; hi += d[o + 4]; }
-      const m = Math.max(lo, md, hi, 1), wl = (lo / m) ** 3, wm = (md / m) ** 3, wh = (hi / m) ** 3, sum = wl + wm + wh;
-      // lows red, mids green, highs blue; the strongest band sets the colour
-      const r = Math.round((255 * wl + 40 * wm + 60 * wh) / sum), gg = Math.round((50 * wl + 225 * wm + 140 * wh) / sum), bb = Math.round((40 * wl + 70 * wm + 255 * wh) / sum);
-      const ph = pk / 255 * half, rh = Math.min(ph, rm / 255 * half * 1.6);
-      g.fillStyle = `rgba(${r},${gg},${bb},${0.45 * alpha})`; g.fillRect(px / dpr, mid - ph, 1 / dpr, ph * 2);
-      g.fillStyle = `rgba(${r},${gg},${bb},${alpha})`; g.fillRect(px / dpr, mid - rh, 1 / dpr, rh * 2);
-    }
-  }
   let render = function () {
     const dpr = window.devicePixelRatio || 1;
     W = cv.clientWidth; const H = cv.clientHeight;
@@ -1807,7 +1877,7 @@ function drawWave(c, box) {
     }
     const fine = covers(st.fine, st.v0, st.v1) && st.fine.n / st.fine.sec > 100 ? st.fine : null;
     const data = fine || (st.detail && span < dur * 0.6 ? st.detail : over);
-    columns(g, data, st.v0, st.v1, TOP, BOT, W, 1);
+    waveColumns(g, data, st.v0, st.v1, TOP, BOT, W, 1);
     const vis = x => x > -40 && x < W + 40;
     const hov = box._hoverPath === c.path ? box._hover || [] : [];
     for (const [a, b] of hov) {  // the approve-panel row under the mouse: its span (a loop) or bar (a cue), lit up
@@ -1910,7 +1980,7 @@ function drawWave(c, box) {
       g.fillStyle = "#cfe4ff"; g.fillText(zoomed() ? `${q.name} · bar ${barLabel(c, q.bar).n}` : q.name, Math.min(W - 30, Math.max(30, x)), BOT + 21 + (i % 2) * 12);
     });
     // overview of the whole track with the visible part framed; click or drag it to move
-    columns(g, over, 0, dur, OV0, OV1, W, 0.75);
+    waveColumns(g, over, 0, dur, OV0, OV1, W, 0.75);
     for (const [a, b] of hov) { g.fillStyle = "rgba(91,158,240,.55)"; g.fillRect(a / dur * W - 1, OV0, Math.max(3, (b - a) / dur * W), OV1 - OV0); }
     const OX = t => t / dur * W;  // every cue on the overview too: yours white + number, suggested blue, loop orange, corrections yellow
     for (const l of c.loop_ideas || []) { g.fillStyle = "#f08a24"; g.fillRect(OX(l.ms / 1000), OV0, Math.max(3, OX(l.len_ms / 1000)), 4); }
