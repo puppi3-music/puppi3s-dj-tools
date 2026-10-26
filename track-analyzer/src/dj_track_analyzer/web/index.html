@@ -37,7 +37,7 @@ body { background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -app
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 h1, h2, h3 { margin: 0; line-height: 1.25; }
-h2 { font-size: 20px; margin-bottom: 4px; }
+h2 { font-size: 20px; margin-bottom: 4px; overflow-wrap: anywhere; }
 h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .muted { color: var(--text-2); }
 .dim { color: var(--text-3); }
@@ -61,6 +61,10 @@ input[type=number] { width: 80px; }
 button { background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 5px 12px; cursor: pointer; }
 button:hover { border-color: var(--text-3); }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+a.btn { display: inline-block; background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 8px; padding: 5px 12px; color: var(--text); white-space: nowrap; }
+a.btn:hover { border-color: var(--text-3); text-decoration: none; }
+nav a .count { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--text-3); font-variant-numeric: tabular-nums; }
+nav a.on .count { color: inherit; opacity: .75; }
 label.inline { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .libnote { padding: 6px 20px; font-size: 12px; background: var(--surface-2); color: var(--text-2); border-top: 1px solid var(--line); }
 .libnote b { color: var(--text); }
@@ -73,13 +77,24 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .card + .card, .card + .grid, .grid + .card, .grid + .grid, .tiles + .card { margin-top: 16px; }
 .grid > .card, .grid > div > .card:first-child { margin-top: 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
-.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-top: 3px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: var(--radius); padding: 10px 14px 12px; }
+.tile.bad { border-top-color: var(--bad); } .tile.good { border-top-color: var(--good); }
+.tile.bad .v { color: var(--bad); }
+.tile.go { cursor: pointer; } .tile.go:hover { border-color: var(--text-3); }
 .tile .v { font-size: 24px; font-weight: 650; font-variant-numeric: tabular-nums; }
 .tile .l { font-size: 12px; color: var(--text-2); }
 .filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .err { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--bad) 40%, var(--line));
   color: var(--text); padding: 12px 14px; border-radius: var(--radius); white-space: pre-wrap; }
-.loading { color: var(--text-3); padding: 24px 0; }
+.loading { color: var(--text-3); padding: 24px 0; display: flex; align-items: center; gap: 8px; }
+.loading::before { content: ""; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; flex: none; }
+.empty { text-align: center; padding: 32px 20px; color: var(--text-2); }
+.empty .et { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.empty .eb { max-width: 520px; margin: 0 auto; }
+.empty .ea { margin-top: 12px; }
+.fchip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 99px; background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); font-size: 12px; white-space: nowrap; }
+.fchip button { padding: 0 6px; font-size: 11px; line-height: 16px; border-radius: 99px; }
 .note { font-size: 12px; color: var(--text-2); margin-top: 8px; }
 
 /* bar lists */
@@ -91,6 +106,8 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .cols { display: flex; align-items: flex-end; gap: 2px; height: 160px; padding-top: 6px; border-bottom: 1px solid var(--line-strong); }
 .cols .c { flex: 1; background: var(--bar); border-radius: 4px 4px 0 0; min-height: 2px; }
 .cols .c:hover, .bars .row-h:hover .fill { background: var(--accent); filter: brightness(1.15); }
+.bars .go, .cols .go { cursor: pointer; }
+.bars .lab.go:hover { color: var(--accent); }
 .cols-x { display: flex; gap: 2px; font-size: 11px; color: var(--text-3); }
 .cols-x span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
 
@@ -140,16 +157,18 @@ td.cb, th.cb { width: 28px; padding-right: 0; }
 .deck .vol input { width: 90px; accent-color: var(--accent); }
 .pads { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-bottom: 8px; font-size: 12px; }
 .pads button { padding: 3px 8px; font-size: 12px; }
-.pads button.mine { background: #fff; color: #111; border-color: #fff; font-weight: 700; min-width: 28px; }
-.pads button.mine.new { background: #4cd17a; border-color: #4cd17a; }
-.pads button.mine.pend { background: transparent; color: #4cd17a; border: 1px dashed #4cd17a; }
-.pads button.mine.del { background: transparent; color: #ff786e; border: 1px dashed #ff786e; text-decoration: line-through; }
+/* your cue pads: solid in the text colour (white in dark, as on the waveform; black in light) */
+.pads button.mine { background: var(--text); color: var(--surface); border-color: var(--text); font-weight: 700; min-width: 28px; }
+.pads button.mine.new { background: #4cd17a; border-color: #4cd17a; color: #111; }
+.pads button.mine.pend { background: transparent; color: var(--good); border: 1px dashed var(--good); }
+.pads button.mine.del { background: transparent; color: var(--bad); border: 1px dashed var(--bad); text-decoration: line-through; }
 .pads .pad { position: relative; display: inline-flex; }
 .pads .padx { position: absolute; top: -6px; right: -6px; width: 15px; height: 15px; padding: 0; font-size: 9px; line-height: 13px; border-radius: 50%;
   border: 1px solid #555; background: #1b1b1f; color: #ddd; opacity: 0; }
 .pads .pad:hover .padx, .pads .padx:focus-visible, .pads .mine.del + .padx { opacity: 1; }
 .pads .padx:hover { color: #ff786e; border-color: #ff786e; }
-.pads button.mine.pend.nofit, .pads button.mine.new.nofit { color: #ff786e; border-color: #ff786e; }
+.pads button.mine.pend.nofit, .pads button.mine.new.nofit { color: var(--bad); border-color: var(--bad); }
+.pads button.mine.new.nofit { background: transparent; }
 .pads button.sug { border-color: #6fb4ff; }
 .pads button.lp { border-color: #f08a24; }
 .pads button.on { background: #f08a24; color: #111; }
@@ -192,7 +211,15 @@ button.mini.on { background: var(--accent); border-color: var(--accent); color: 
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 100vw); background: var(--surface); border-left: 1px solid var(--line);
   box-shadow: -12px 0 32px rgba(0,0,0,.18); z-index: 40; overflow-y: auto; padding: 20px; transform: translateX(105%); transition: transform .18s ease; }
 .drawer.open { transform: none; }
-.drawer .close { position: absolute; top: 14px; right: 14px; }
+.drawer { transition: transform .18s ease, width .18s ease; }
+.drawer.wide { width: min(1100px, 100vw); }
+.drawer-head { position: sticky; top: -20px; z-index: 5; display: flex; align-items: flex-start; gap: 10px; background: var(--surface);
+  margin: -20px -20px 0; padding: 16px 20px 10px; border-bottom: 1px solid var(--line); }
+.drawer-head > div:first-child { flex: 1; min-width: 0; }
+.drawer-head .acts { display: flex; gap: 6px; flex: none; }
+details.help { margin-top: 6px; }
+details.help > summary { cursor: pointer; font-size: 12px; color: var(--text-2); width: max-content; }
+details.help[open] > summary { margin-bottom: 4px; }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 12px 0; }
 .facts dt { color: var(--text-2); }
 .facts dd { margin: 0; }
@@ -207,7 +234,9 @@ button.mini.on { background: var(--accent); border-color: var(--accent); color: 
 .scale-marks.top .m::after { content: ""; display: block; width: 2px; height: 6px; margin: 1px auto 0; background: var(--text); }
 
 /* mixes */
-.split { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+.split { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+.split > * { min-width: 0; }
+.list a > div { overflow-wrap: anywhere; }
 .list a { display: block; padding: 8px 10px; border-radius: 8px; color: var(--text); }
 .list a:hover { background: var(--surface-2); text-decoration: none; }
 .list a.on { background: var(--accent-soft); }
@@ -226,7 +255,7 @@ textarea { width: 100%; min-height: 220px; font-family: var(--mono); font-size: 
 .drop.over { border-color: var(--accent); background: var(--accent-soft); }
 
 /* json tree */
-.tree { font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+.tree { font-family: var(--mono); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .tree details { margin-left: 14px; }
 .tree summary { cursor: pointer; margin-left: -14px; }
 .tree .kv { margin-left: 0; }
@@ -266,11 +295,11 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 #loop-pads.listening button.lp { animation: breathe 1.6s ease-in-out infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes breathe { 50% { border-color: var(--line); } }
-@media (prefers-reduced-motion: reduce) { .parts-wait::before, #loop-pads.listening button.lp, #dk-play.waiting::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .parts-wait::before, #loop-pads.listening button.lp, #dk-play.waiting::before, .loading::before { animation: none; } }
 pre.log { max-height: 280px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.45; background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px 10px; margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; }
 .steps { display: grid; }
-.step { display: grid; grid-template-columns: 26px 1fr auto; gap: 4px 14px; padding: 14px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.step { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 4px 14px; padding: 14px 0; border-bottom: 1px solid var(--line); align-items: start; }
 .step:first-child { padding-top: 4px; }
 .step:last-child { border-bottom: 0; padding-bottom: 0; }
 .step .ic { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700;
@@ -288,19 +317,26 @@ dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--su
 
 #lib { max-width: 220px; }
 @media (max-width: 760px) {
-  .step { grid-template-columns: 26px 1fr; }
+  .step { grid-template-columns: 26px minmax(0, 1fr); }
+  .step .act label.inline { white-space: normal; }
   .step .act { grid-column: 2; justify-content: flex-start; max-width: none; }
   .step .act input[type=text] { width: 100%; }
   .banner, .jobbar { padding: 6px 16px; }
   .bar-top { padding: 10px 16px; gap: 8px; }
   nav { flex-wrap: nowrap; overflow-x: auto; width: 100%; order: 3; }
+  /* the theme button beside the name (it wrapped onto a line of its own), library and export on the next line */
+  .bar-top .spacer { display: none; }
+  #theme { order: 1; margin-left: auto; }
+  #libwrap, #export { order: 2; }
   nav a { padding: 6px 10px; white-space: nowrap; }
   #lib { max-width: calc(100vw - 190px); }
   .libnote { padding: 6px 16px; }
   .drawer { padding: 16px; }
+  .drawer-head { top: -16px; margin: -16px -16px 0; padding: 12px 16px 10px; }
+  .drawer-head .wide-btn { display: none; }
   main { padding: 16px; }
-  .split { grid-template-columns: 1fr; }
-  .grid.two { grid-template-columns: 1fr; }
+  .split { grid-template-columns: minmax(0, 1fr); }
+  .grid.two { grid-template-columns: minmax(0, 1fr); }
   .bars .lab { max-width: 130px; }
 }
 </style>
@@ -315,15 +351,15 @@ dialog.write .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--su
     </nav>
     <div class="spacer"></div>
     <label class="inline small muted" id="libwrap">Library <select id="lib"></select></label>
-    <a id="export" href="/export" download><button tabindex="-1" data-tip="Save every tab as one HTML file you can keep or send. It can't change anything.">Export snapshot</button></a>
-    <button id="theme" title="Switch light/dark">◐</button>
+    <a id="export" class="btn" href="/export" download data-tip="Save every tab as one HTML file you can keep or send. It can't change anything.">Export snapshot</a>
+    <button id="theme">◐</button>
   </div>
   <div class="libnote" id="libnote" hidden></div>
   <div class="jobbar" id="jobbar" hidden></div>
   <div class="banner" id="setupnote" hidden></div>
 </header>
 <main id="main"><div class="loading">Loading…</div></main>
-<aside class="drawer" id="drawer" aria-hidden="true"><button class="close" onclick="closeDrawer()">✕</button><div id="drawer-body"></div></aside>
+<aside class="drawer" id="drawer" aria-hidden="true"><div id="drawer-body"></div></aside>
 <div id="tip"></div>
 
 <script>
@@ -345,7 +381,7 @@ const trackName = t => `<div class="trk"><div class="t">${esc(t.title || t.filen
 function hypeBadge(h) {
   if (h == null) return `<span class="dim">–</span>`;
   const a = 0.12 + (h - 1) / 9 * 0.7;
-  return `<span class="hype" style="background:color-mix(in srgb, var(--bar) ${Math.round(a * 100)}%, transparent);color:${h >= 6 ? "#fff" : "var(--text)"}">${h}</span>`;
+  return `<span class="hype" style="background:color-mix(in srgb, var(--bar) ${Math.round(a * 100)}%, transparent);color:var(--text)">${h}</span>`;
 }
 const parseScores = s => (s || "").split(";").map(x => x.trim()).filter(Boolean).map(x => {
   const m = x.match(/^(.*)\s+(-?[\d.]+)$/); return m ? { label: m[1], value: +m[2] } : { label: x, value: null };
@@ -396,10 +432,10 @@ function snapApi(path, p) {
   if (res.error) throw new Error(res.error);
   return res;
 }
+// an answer's JSON; one that isn't JSON (a crash, a page from something else on the port) becomes its status
+const readJSON = async r => { try { return await r.json(); } catch (e) { return { error: `The server answered ${r.status} ${r.statusText}` }; } };
 async function hold(paths, kind, on) {
-  const r = await fetch("/api/hold", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ paths, kind, on }) });
-  const d = await r.json();
-  if (!r.ok) throw new Error(d.error || r.statusText);
+  const d = await postJSON("/api/hold", { paths, kind, on });
   const set = new Set(paths);
   for (const list of Object.values(S.tracks)) for (const t of list) if (set.has(t.path)) { if (on) t["held_" + kind] = true; else delete t["held_" + kind]; }
   return d;
@@ -415,24 +451,30 @@ async function api(path, params = {}) {
       await new Promise(ok => setTimeout(ok, 600 * (attempt + 1)));
     }
   }
-  const d = await r.json();
+  const d = await readJSON(r);
   if (!r.ok) throw new Error(d.error || r.statusText);
   return d;
 }
 const errBox = e => `<div class="err">${esc(e.message || e)}${SNAP ? "" : ` <button style="margin-left:8px" onclick="route()">Retry</button>`}</div>`;
+// a friendly "nothing here yet": what it is, what to do, and (live only) a link to do it
+const empty = (title, body, action = "", card = true) => `<div class="${card ? "card " : ""}empty"><div class="et">${title}</div><div class="eb small">${body}</div>${action ? `<div class="ea">${action}</div>` : ""}</div>`;
+const toSetup = text => SNAP ? "" : `<a class="btn" href="#setup">${text} →</a>`;  // a snapshot has no Setup
 
 function bars(items, { max, fmtVal = v => fmt(v), colourLabels = false } = {}) {
   if (!items.length) return `<div class="dim">Nothing yet.</div>`;
   const m = max ?? Math.max(...items.map(i => i.value || 0), 1e-9);
+  // an item with `go` (a Tracks filter) opens the Tracks tab filtered that way when clicked
+  const go = i => i.go ? ` go" data-go="${esc(JSON.stringify(i.go))}` : "";
+  const tipOf = i => esc((i.tip || `${i.label}: ${fmtVal(i.value)}`) + (i.go ? "\nClick to show these tracks" : ""));
   return `<div class="bars">${items.map(i => `
-    <div class="lab" title="${esc(i.label)}">${colourLabels ? sw(i.label) : ""}${esc(i.label)}</div>
-    <div class="track row-h" data-tip="${esc(i.tip || `${i.label}: ${fmtVal(i.value)}`)}"><div class="fill" style="width:${Math.max(0, (i.value || 0) / m * 100)}%"></div></div>
+    <div class="lab${go(i)}" title="${esc(i.label)}">${colourLabels ? sw(i.label) : ""}${esc(i.label)}</div>
+    <div class="track row-h${go(i)}" data-tip="${tipOf(i)}"><div class="fill" style="width:${Math.max(0, (i.value || 0) / m * 100)}%"></div></div>
     <div class="val">${i.valText ?? fmtVal(i.value)}</div>`).join("")}</div>`;
 }
 function columns(items) {
   const m = Math.max(...items.map(i => i.value), 1);
   const every = Math.ceil(items.length / 12);
-  return `<div class="cols">${items.map(i => `<div class="c" style="height:${i.value / m * 100}%" data-tip="${esc(i.label)}: ${i.value}"></div>`).join("")}</div>
+  return `<div class="cols">${items.map(i => `<div class="c${i.go ? ` go" data-go="${esc(JSON.stringify(i.go))}` : ""}" style="height:${i.value / m * 100}%" data-tip="${esc(i.label)}: ${i.value}${i.go ? "\nClick to show these tracks" : ""}"></div>`).join("")}</div>
     <div class="cols-x">${items.map((i, k) => `<span>${k % every ? "" : esc(i.short ?? i.label)}</span>`).join("")}</div>`;
 }
 function table(cols, rows, { onRow, rowAttr } = {}) {
@@ -453,17 +495,22 @@ document.addEventListener("mousemove", e => {
   tip.style.left = x + "px"; tip.style.top = y + "px";
 });
 
+// theme: follow the system → light → dark → system
+const THEMES = { "": ["◐", "Theme: follows your system (click for light)"], light: ["☀", "Theme: light (click for dark)"], dark: ["☾", "Theme: dark (click to follow your system)"] };
+function themeButton() { const [icon, tipText] = THEMES[document.documentElement.dataset.theme] || THEMES[""]; $("#theme").textContent = icon; $("#theme").dataset.tip = tipText; $("#theme").setAttribute("aria-label", tipText); }
 $("#theme").onclick = () => {
-  const root = document.documentElement, dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  root.dataset.theme = dark ? "light" : "dark";
-  try { localStorage.setItem("ta-theme", root.dataset.theme); } catch (e) {}
+  const root = document.documentElement, next = { light: "dark", dark: "" }[root.dataset.theme] ?? "light";
+  if (next) root.dataset.theme = next; else delete root.dataset.theme;
+  try { if (next) localStorage.setItem("ta-theme", next); else localStorage.removeItem("ta-theme"); } catch (e) {}
+  themeButton(); tip.textContent = $("#theme").dataset.tip;
 };
+themeButton();
 
 // ---------- library ----------
 async function loadLibs() {
   S.libs = await api("libraries");
   const sel = $("#lib");
-  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}">${esc(l.label)}</option>`).join("");
+  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `${esc(l.bpm)} BPM view` : "Normal (own tempo)"}</option>`).join("");
   if (!S.libs.libraries.some(l => l.id === S.lib)) S.lib = "native";
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
@@ -477,18 +524,27 @@ function libNote() {
   if (usesLib && S.lib !== "native") parts.push(`Showing the <b>${esc(S.lib.replace("at-", ""))} BPM tempo view</b>: every track as heard stretched to that tempo with key lock.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
 }
-async function getTracks() {
-  if (!S.tracks[S.lib]) {
-    const d = await api("tracks", { lib: S.lib }), lib = S.lib;
+async function getTracks(lib = S.lib) {
+  if (!S.tracks[lib]) {
+    const d = await api("tracks", { lib });
     S.tracks[lib] = d.tracks;
     S.fixesPending = !!d.corrections_pending;
+    navCounts();
     if (d.corrections_pending) setTimeout(async () => {  // corrections are still being counted: fetch again
       delete S.tracks[lib];
-      await getTracks();
-      if (S.page === "tracks") route();
+      try { await getTracks(lib); } catch (e) { return; }
+      if (S.page === "tracks" && S.lib === lib) S.refreshTracks?.();  // the new counts into the list as it is now
     }, 4000);
   }
-  return S.tracks[S.lib];
+  return S.tracks[lib];
+}
+
+// the Tracks tab's count, and a dot when the model proposes corrections to your cues
+function navCounts() {
+  const list = S.tracks[S.lib], a = document.querySelector('#nav a[href="#tracks"]');
+  if (!list || !a) return;
+  const n = list.filter(t => t.type === "track").length, fixes = list.filter(t => t.corrections > 0).length;
+  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: Cued or not → Has proposed corrections)"></span>` : ""}`;
 }
 
 // ---------- router ----------
@@ -499,6 +555,7 @@ async function route() {
   document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + S.page));
   if (S.libs) libNote();
   if (!SNAP) { jobBar(); refreshSetupNote(); }
+  if (S.page !== "tracks") getTracks().then(navCounts, () => {});  // in the background (cached): the tab's count
   const main = $("#main"), me = S.routeId = (S.routeId || 0) + 1;
   main.innerHTML = `<div class="loading">Loading…</div>`;
   try { await PAGES[S.page](main, decodeURIComponent(rest.join("/"))); }
@@ -509,17 +566,23 @@ addEventListener("hashchange", route);
 // ---------- overview ----------
 async function pageOverview(main) {
   const d = await api("stats", { lib: S.lib });
-  const genres = Object.entries(d.genres).map(([g, v]) => ({ label: g, value: v.tracks, valText: `${v.tracks} · ${v.avg_bpm ?? "–"} BPM`, tip: `${g}: ${v.tracks} tracks, average ${v.avg_bpm ?? "–"} BPM` }));
-  const hist = Object.entries(d.bpm_histogram).map(([b, n]) => ({ label: `${b} BPM`, short: b.split("-")[0], value: n }));
-  const keys = Object.entries(d.top_camelot_keys).map(([k, n]) => ({ label: k, value: n }));
-  const cols = COLOURS.filter(c => d.colours[c]).map(c => ({ label: c, value: d.colours[c] }));
+  if (!d.tracks) {
+    main.innerHTML = `<div class="page-head"><div><h2>Overview</h2></div></div>` + empty("Nothing scanned yet",
+      "Once your music is scanned, this shows your genres, tempos, keys and colours at a glance.", toSetup("Scan your music"));
+    return;
+  }
+  const genres = Object.entries(d.genres).map(([g, v]) => ({ label: g, value: v.tracks, valText: `${v.tracks} · ${v.avg_bpm ?? "–"} BPM`, go: { genre: g, genreTop: true },
+    tip: `${g}: ${v.tracks} tracks with it as their top genre, average ${v.avg_bpm ?? "–"} BPM` }));
+  const hist = Object.entries(d.bpm_histogram).map(([b, n]) => { const [lo, hi] = b.split("-"); return { label: `${b} BPM`, short: lo, value: n, go: { bpmMin: lo, bpmMax: hi } }; });
+  const keys = Object.entries(d.top_camelot_keys).map(([k, n]) => ({ label: k, value: n, go: { key: k } }));
+  const cols = COLOURS.filter(c => d.colours[c]).map(c => ({ label: c, value: d.colours[c], go: { colour: c } }));
   const st = S.libs.status;
   main.innerHTML = `
     <div class="page-head"><div><h2>Overview</h2><div class="muted">${esc(S.libs.libraries.find(l => l.id === S.lib)?.label || "")}</div></div></div>
     <div class="tiles">
-      <div class="tile"><div class="v">${d.tracks}</div><div class="l">scanned files</div></div>
+      <div class="tile go" data-go="{}" data-tip="Click to show every file"><div class="v">${d.tracks}</div><div class="l">scanned files</div></div>
       <div class="tile"><div class="v">${Object.keys(d.genres).length}</div><div class="l">genres in use</div></div>
-      <div class="tile"><div class="v">${d.errors}</div><div class="l">analysis errors</div></div>
+      <div class="tile ${d.errors ? "bad go" : "good"}" ${d.errors ? `data-go='{"errors":true}' data-tip="Click to show the files that couldn't be analysed"` : ""}><div class="v">${d.errors}</div><div class="l">analysis errors</div></div>
       <div class="tile"><div class="v" style="font-size:16px;padding-top:6px">${esc(d.last_scan || "–")}</div><div class="l">last scan</div></div>
     </div>
     <div class="grid two">
@@ -537,7 +600,11 @@ async function pageOverview(main) {
 }
 
 // ---------- tracks ----------
-const TF = { q: "", genre: "", colour: "", key: "", harmonic: false, bpmMin: "", bpmMax: "", type: "track", held: "", cues: "" };
+const TF0 = { q: "", genre: "", colour: "", key: "", harmonic: false, bpmMin: "", bpmMax: "", type: "track", held: "", cues: "", errors: false, genreTop: false };
+const TF = { ...TF0 };
+// the Tracks tab with only this filter set (Everything, so the counts match the Overview's)
+function showTracks(filter) { Object.assign(TF, TF0, { type: "" }, filter); location.hash = "tracks"; }
+document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) showTracks(JSON.parse(g.dataset.go)); });
 const SEL = new Set();
 function camelotNeighbours(code) {
   const m = code.trim().toUpperCase().match(/^(\d{1,2})([AB])$/); if (!m) return [code.trim().toUpperCase()];
@@ -567,6 +634,7 @@ async function pageTracks(main, open) {
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
       <select id="f-cues"><option value="">Cued or not</option><option value="none">No cues set</option><option value="some">Has cues set</option><option value="approved">Approved, not written yet</option><option value="fixes">Has proposed corrections</option></select>
+      <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
     <div class="card" style="padding:0"><div id="ttable"></div></div>`;
@@ -599,12 +667,25 @@ async function pageTracks(main, open) {
       && (!keys || keys.includes(t.mix_camelot))
       && (!TF.held || (TF.held === "genre" ? t.held_genre : TF.held === "colour" ? t.held_colour : TF.held === "any" ? t.held_genre || t.held_colour : !t.held_genre && !t.held_colour)));
     rows = rows.filter(t => !TF.cues || (TF.cues === "none" ? !t.own_cues : TF.cues === "approved" ? t.cues_approved : TF.cues === "fixes" ? t.corrections > 0 : t.own_cues > 0));
+    if (TF.errors) rows = rows.filter(t => t.error && !t.error.startsWith("tags:"));  // as the error chip and the Overview's count
+    if (TF.genre && TF.genreTop) rows = rows.filter(t => t.genre === TF.genre);  // from the Overview: its count is the top genre's
     shown = rows;
+    // filters the Overview's links set that have no control of their own, as chips: ✕ takes one off
+    const chip = (k, text, tipText) => `<span class="fchip" data-tip="${tipText}">${text} <button data-unchip="${k}" aria-label="Remove this filter">✕</button></span>`;
+    $("#f-chips").innerHTML = (TF.errors ? chip("errors", "Only analysis errors", "Files that couldn't be analysed") : "")
+      + (TF.genre && TF.genreTop ? chip("genreTop", "Top genre only", `Only tracks whose top genre is ${esc(TF.genre)}; ✕ also lists tracks with it as their 2nd genre`) : "");
+    $("#f-chips").querySelectorAll("[data-unchip]").forEach(b => b.addEventListener("click", () => { TF[b.dataset.unchip] = false; draw(); }));
     const { key, dir } = S.trackSort, f = SORTS[key];
     rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
     $("#tcount").textContent = `${rows.length} of ${all.length} files${S.fixesPending ? " · counting proposed corrections (about 10 s)…" : ""}`;
     const head = [["colour", "Colour"], ["track", "Track"], ["bpm", "BPM", 1], ["key", "Key"], ["genre", "Genre"], ["hype", "Hype", 1], ["cues", "Cues", 1], ["lufs", "LUFS", 1], ["length", "Length", 1]];
     const scroll = $("#ttable .tablewrap")?.scrollTop || 0;
+    if (!rows.length) {
+      $("#ttable").innerHTML = empty("No tracks match", all.length ? "Nothing matches all of these filters." : "Nothing is scanned yet.",
+        all.length ? `<button data-clear-filters>Clear filters</button>` : toSetup("Scan your music"), false);
+      $("#ttable [data-clear-filters]")?.addEventListener("click", () => { Object.assign(TF, TF0); pageTracks(main); });
+      selbar(); return;
+    }
     $("#ttable").innerHTML = `<div class="tablewrap" style="max-height:calc(100vh - 230px);overflow:auto"><table>
       <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${head.map(([k, h, r]) => `<th class="sort ${r ? "r" : ""} ${S.trackSort.key === k ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${h}</th>`).join("")}</tr></thead>
       <tbody>${rows.map(t => `<tr class="click ${SEL.has(t.path) ? "sel" : ""}" data-path="${esc(t.path)}">
@@ -631,11 +712,18 @@ async function pageTracks(main, open) {
   }
   S.redrawTracks = draw;
   S.reloadTracks = async () => { delete S.tracks[S.lib]; all = await getTracks(); draw(); };
+  S.refreshTracks = () => { if (S.tracks[S.lib] && $("#ttable")) { all = S.tracks[S.lib]; draw(); } };
   draw();
   if (open) openTrack(open);
 }
 
 // ---------- track drawer ----------
+function drawerWide() {  // the panel's wide mode, remembered between visits
+  if (S.drawerWide === undefined) { try { S.drawerWide = localStorage.getItem("ta-drawer-wide") === "1"; } catch (e) { S.drawerWide = false; } }
+  return S.drawerWide;
+}
+// the waveform measures its width only when it draws: draw it again once the panel has its new width
+$("#drawer").addEventListener("transitionend", e => { if (e.target === $("#drawer") && e.propertyName === "width") $("#cuebox")?._wave?.redraw(); });
 function closeDrawer() { deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
 // the track open in the panel, highlighted in every track list: one style rule, so it holds through any redraw
 function markOpen(path) {
@@ -645,7 +733,9 @@ function markOpen(path) {
   st.textContent = sel ? `${sel} td { background: color-mix(in srgb, var(--accent) 24%, var(--surface, transparent)); } ${sel} td:first-child { box-shadow: inset 3px 0 0 var(--accent); }` : "";
   if (sel) document.querySelector(sel)?.scrollIntoView({ block: "nearest" });
 }
-addEventListener("keydown", e => { if (e.key === "Escape") closeDrawer(); });
+// a dialog or menu open over the panel takes the keys (Escape closes just that)
+const overlayOpen = () => !!document.querySelector("dialog[open], .usemenu");
+addEventListener("keydown", e => { if (e.key === "Escape" && !overlayOpen()) closeDrawer(); });
 addEventListener("pointerdown", e => {  // a click outside the panel closes it; a track row opens that track instead
   if (!$("#drawer").classList.contains("open") || !e.target.isConnected) return;
   if (e.target.closest("#drawer, tr[data-path], dialog, .usemenu")) return;
@@ -667,7 +757,9 @@ async function openTrack(path) {
   const moods = ["aggressive", "happy", "party", "relaxed", "sad"].filter(m => t["mood_" + m] != null).map(m => ({ label: m, value: t["mood_" + m] }));
   const genreScores = [[t.genre, t.genre_score], [t.genre_2, t.genre_2_score], [t.genre_3, t.genre_3_score]].filter(g => g[0]).map(([g, s]) => ({ label: g, value: s }));
   body.innerHTML = `
-    <h2 style="padding-right:40px">${esc(t.title || t.filename)}</h2><div class="muted">${esc(t.artist || "")}</div>
+    <div class="drawer-head"><div><h2>${esc(t.title || t.filename)}</h2><div class="muted">${esc(t.artist || "")}</div></div>
+      <div class="acts"><button class="wide-btn" id="dr-wide" aria-pressed="${drawerWide()}" data-tip="${drawerWide() ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"}">${drawerWide() ? "⇥ Narrow" : "⇤ Wide"}</button>
+      <button id="dr-close" aria-label="Close" data-tip="Close (Esc)">✕</button></div></div>
     <dl class="facts">
       <dt>BPM</dt><dd>${fmt(t.mix_bpm)}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
       <dt>Key</dt><dd>${esc(t.mix_camelot || "–")} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
@@ -695,6 +787,15 @@ async function openTrack(path) {
     ${t.type === "track" ? `<div class="section"><h3>Mixes well with</h3><div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
       <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div></div>` : ""}`;
   function pos(t) { return t.color_position != null || t.traktor_color ? `<div class="section"><h3>Colour scale <span class="dim small">Red = hardest … Magenta = prettiest</span></h3>${scaleView(t)}</div>` : ""; }
+  $("#dr-close").onclick = closeDrawer;
+  $("#dr-wide").onclick = () => {
+    const wide = !drawerWide();
+    try { localStorage.setItem("ta-drawer-wide", wide ? "1" : "0"); } catch (e) {}
+    S.drawerWide = wide; d.classList.toggle("wide", wide);
+    const b = $("#dr-wide"); b.textContent = wide ? "⇥ Narrow" : "⇤ Wide"; b.setAttribute("aria-pressed", wide);
+    b.dataset.tip = wide ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"; tip.style.display = "none";
+  };
+  d.classList.toggle("wide", drawerWide());
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
@@ -760,16 +861,16 @@ function renderCues(c) {
       ${deckViewBpm() ? `<label class="inline small" data-tip="Hear the track as the ${deckViewBpm()} BPM tempo view does: stretched with key lock by Rubber Band, the same way its scan heard it. A few seconds the first time for a track, started when you open it"><input type="checkbox" id="dk-stretch" ${deckBpm() ? "checked" : ""}> at ${deckViewBpm()} BPM</label><span class="small dim parts-wait" id="dk-stretching" hidden data-tip="Rubber Band stretches the track in pieces on every core: a few seconds, once per track (the last few are kept)">Stretching to ${deckViewBpm()} BPM…</span>` : ""}
       <label class="inline small"><input type="checkbox" id="dk-follow" checked> follow when zoomed</label>
       <button id="dk-cue" data-tip="Set a cue where the playhead is, on the nearest beat (C): it's ticked under New cues; Approve ticked keeps it, Write to Traktor writes it">+ Cue</button>
-      <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from Traktor (Traktor saves them when it quits)">Rescan track</button>
-      <span class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</span></div>
+      <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from Traktor (Traktor saves them when it quits)">Rescan track</button></div>
     <div class="pads"><span class="small muted">${c.approved_view ? "Yours, with approved:" : "Yours:"}</span><span id="your-pads" style="display:contents">${yourPads(c, null)}</span>
       <span class="small muted" style="margin-left:8px">Suggested:</span>${c.cues.filter(q => !sugHidden(c, q)).map(q => `<button class="sug" data-t="${q.ms / 1000}">${esc(q.name)} · ${barLabel(c, q.bar).n}</button>`).join("")}
       </div>${loopPads(c)}`;
   return `${deck}<div class="filters" style="margin:0 0 6px"><button data-zoom="in" data-tip="Zoom in, down to a single beat (or pinch / ctrl+scroll on the waveform, double-click)">+</button><button data-zoom="out" data-tip="Zoom out (shift+double-click)">−</button><button data-zoom="fit">Fit</button>
     <span class="small muted" id="wavezoom"></span><span class="small dim">drag or scroll sideways to move</span></div>
     <div class="wavewrap"><div class="wavehl" id="wavehl"></div><div class="playhead" id="ph"></div><div class="playhead ov" id="phov"></div><canvas id="wave" aria-label="Waveform with your cues (white, top) and suggested cues (blue, bottom)"></canvas></div>
-    <div class="legend"><span><i style="background:#fff"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
-    <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span><i style="background:#ffd23f"></i>your cue moved (ticked or approved; grey = where it was)</span><span>colour: <b style="color:#ff5a4f">lows</b> · <b style="color:#5fe36b">mids</b> · <b style="color:#5aa8ff">highs</b> · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${SNAP ? "" : helpFold("keys", "Keys", `<div class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</div>`)}
+    ${helpFold("legend", "Legend", `<div class="legend" style="margin-top:0"><span><i style="background:var(--text)"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>
+    <span><i style="background:#f08a24;opacity:.6"></i>loop ideas (L1 = most like yours)</span>${(c.corrections || []).some(f => !fixSettled(c, f)) ? `<span><i style="background:#ffd23f"></i>proposed correction</span>` : ""}<span><i style="background:#ffd23f"></i>your cue moved (ticked or approved; grey = where it was)</span><span>colour: <i style="background:#ff5a4f"></i>lows · <i style="background:#5fe36b"></i>mids · <i style="background:#5aa8ff"></i>highs · grid: beat, bar, every 4 bars, 8-bar phrase, 32 bars</span></div>`)}</div>
     ${SNAP ? cueTable(c, c.cues) : approveBox(c)}<div class="note">Suggestions are learned from the cues you set yourself (trained ${esc(c.trained_at || "")}).</div>`;
 }
 // your cues as they'll be in Traktor: with an approval, moved ones at their new place and new ones in their slot
@@ -802,6 +903,9 @@ const isApprovedMove = (c, f) => !!c.approved_view && c.approved_view.cues.some(
 const sameFix = (f, g) => f.hotcue === g.hotcue && Math.abs(f.from_ms - g.from_ms) < 1 && Math.abs(f.to_ms - g.to_ms) < 1;
 const fixSettled = (c, f) => f.ignored || isApprovedMove(c, f);  // approved or ignored: no longer a pending correction
 const sugHidden = (c, q) => isApprovedAdd(c, q.ms) || (q.moves != null && (c.corrections || []).some(f => f.hotcue === q.moves && Math.abs(f.to_ms - q.ms) < 1 && fixSettled(c, f)));
+// a folded help text in the track panel; stays open or shut across the panel's redraws
+const helpFold = (key, title, html) => `<details class="help" data-help="${key}" ${S.helpOpen?.[key] ? "open" : ""}><summary>${title}</summary>${html}</details>`;
+document.addEventListener("toggle", e => { const k = e.target.dataset?.help; if (k) (S.helpOpen ??= {})[k] = e.target.open; }, true);  // toggle doesn't bubble
 const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
 // the track list's approved chip: "+3 approved", "+2 · 1 moved · −1 approved"; long: in words, for its tip
 function approvedText(n, long = false) {
@@ -905,13 +1009,13 @@ function approveBox(c) {
     const left = isOn(it) && (c.approved_view?.skipped_ms || []).some(m => Math.abs(m - from) < 1);  // approved but won't fit
     const done = isOn(it) && !(ap && ap.grid_changed) && !left;
     const chip = done ? `<span class="chip good" style="margin-right:6px">✓ approved</span>` : left ? `<span class="chip warn" style="margin-right:6px" data-tip="Approved, but it won't be written: see the note above">won't fit</span>` : "";
-    const body = it.kind === "remove" ? `${play}${chip}<span style="color:#ff786e">Delete</span> ${it.label}`
+    const body = it.kind === "remove" ? `${play}${chip}<span style="color:var(--bad)">Delete</span> ${it.label}`
       : it.kind === "move" ? `${chip}${it.label}${play}${ign}${note}`  // a new cue or loop: ▶ and its name, then the rest of its controls on a line of their own
       : `<div>${play}${chip}${it.label}${note}</div><div class="ctl">${nm}${as}${slot}${useAs}${save}</div>`;
     return `<label class="${it.kind === "move" ? "fix" : it.kind === "remove" ? "del" : "add"}${done ? " approved" : ""}" style="${dim}" ${tipAttr}>
       <input type="checkbox" data-key="${esc(it.key)}" ${it.extra || it.also ? "data-more" : ""} ${isOn(it) ? "checked" : ""} ${it.disabled ? "disabled" : ""}> <span>${body}</span></label>`;
   };
-  const summary = [fixes.length && `<b style="color:#c99700">${fixes.length} correction${fixes.length > 1 ? "s" : ""} to your cues</b>`,
+  const summary = [fixes.length && `<b style="color:var(--warn)">${fixes.length} correction${fixes.length > 1 ? "s" : ""} to your cues</b>`,
     `${newCues} new cue${newCues === 1 ? "" : "s"}`, loops.length && `${loops.length} loop idea${loops.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
   return `<div class="section" style="margin-top:12px"><h3>Approve for Traktor</h3>
     ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
@@ -928,13 +1032,13 @@ function approveBox(c) {
     </div>
     <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>
       ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write to Traktor…</button>`}<span class="small muted" id="ap-msg"></span></div>
-    <div class="note">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
-      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div></div>
+    ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
+      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div>`)}</div>
     ${cueTable(c, c.cues)}`;
 }
 async function postJSON(url, body) {
   const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const d = await r.json(); if (!r.ok) throw new Error(d.error || r.statusText);
+  const d = await readJSON(r); if (!r.ok) throw new Error(d.error || r.statusText);
   return d;
 }
 // Write every approval into Traktor's collection.nml (= `cues apply`): a preview first, then the write, then Undo.
@@ -1200,9 +1304,7 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === b.dataset.save), out = box.querySelector(`[data-saved="${CSS.escape(b.dataset.save)}"]`);
     b.disabled = true; out.textContent = " saving…";
     try {
-      const r = await fetch("/api/samples/save", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value, bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() }) });
-      const d = await r.json(); if (!r.ok) throw new Error(d.error || r.statusText);
+      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value, bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
       out.innerHTML = ` ✓ ${d.already ? "already saved in" : "saved to"} ${esc(d.folder)} ${showBtn(d.saved, c.file_manager)}`;
       b.remove();
     } catch (err) { out.style.color = "var(--bad)"; out.textContent = ` ${err.message}`; }
@@ -1332,7 +1434,7 @@ async function deckLoop(a, b) {
     if (!buf) {
       try {
         const r = await fetch(`/api/loop?path=${encodeURIComponent(want)}&start=${a}&len=${b - a}${smooth ? "&smooth=1" : ""}${bpm ? `&bpm=${bpm}` : ""}`);
-        if (!r.ok) throw new Error((await r.json()).error);
+        if (!r.ok) throw new Error((await readJSON(r)).error);
         buf = await DECK.ctx.decodeAudioData(await r.arrayBuffer());
         LOOP_CLIPS.set(key, buf);
         if (LOOP_CLIPS.size > 12) LOOP_CLIPS.delete(LOOP_CLIPS.keys().next().value);
@@ -1433,7 +1535,7 @@ function deckUi() {
   pho.style.display = "block"; pho.style.left = (t / w.dur * W) + "px";
 }
 document.addEventListener("keydown", e => {
-  if (!DECK.path || !$("#drawer").classList.contains("open") || e.target.closest("input, textarea, select")) return;
+  if (!DECK.path || !$("#drawer").classList.contains("open") || e.target.closest("input, textarea, select") || overlayOpen()) return;
   const c = DECK.c, t = deckTime();
   if (e.code === "Space") { e.preventDefault(); deckToggle(); }
   else if (/^Digit[1-8]$/.test(e.code)) {
@@ -1454,6 +1556,7 @@ document.addEventListener("keydown", e => {
 const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
 let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
 const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
+let WAVE_UP = null;  // the drawn waveform's window mouseup listener
 function decodeWave(w) {
   const raw = atob(w.data), a = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) a[i] = raw.charCodeAt(i);
@@ -1691,7 +1794,8 @@ function drawWave(c, box) {
   cv.onmouseup = e => {  // a click (not a drag) on the waveform jumps there, like Traktor
     if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting || !DECK.loaded, null);
   };
-  window.addEventListener("mouseup", () => { drag = null; cv.style.cursor = ""; });
+  WAVE_UP?.abort(); WAVE_UP = new AbortController();  // drawWave runs on every redraw: drop the last one's listener
+  window.addEventListener("mouseup", () => { drag = null; cv.style.cursor = ""; }, { signal: WAVE_UP.signal });
   const marks = [...myCues(c).map(y => ({ t: y.ms / 1000, s: `${y.status === "new" ? "approved (not written yet): " : y.status === "moved" ? "your cue, approved to move here: " : ""}your ${cueKind(y).toLowerCase()}${y.hotcue >= 0 ? ` (slot ${y.hotcue + 1})` : ""}` })),
     ...c.cues.map(q => ({ t: q.ms / 1000, s: `suggested: ${q.name}` })), ...(c.loop_ideas || []).map((l, k) => ({ t: l.ms / 1000, s: `loop idea L${k + 1}: ${l.kind} (${l.bars} bars, ${l.why})` })),
     ...(c.corrections || []).filter(f => !fixSettled(c, f)).map(f => ({ t: f.to_ms / 1000, s: `proposed: move your cue ${f.hotcue + 1} here` }))];
@@ -1756,6 +1860,8 @@ async function pageHype(main) {
     try {
       const d = await api("hype", { lib: S.lib, colour: HF.colour, bpm: HF.bpm, tolerance: HF.tolerance, key: HF.key, gems: HF.gems ? 1 : 0, least: HF.least ? 1 : 0, limit: 500 });
       box.className = "";
+      if (!d.scored) { box.innerHTML = empty("No hype scores yet", "Hype ranks every track 1-10 by rave sound and energy within your collection. It needs 20 scanned tracks and takes seconds.", toSetup("Score hype")); return; }
+      if (!d.matches) { box.innerHTML = empty("No tracks match", `None of the ${d.scored} scored tracks match ${esc(d.filters.join(", "))}.`); return; }
       box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${d.matches} of ${d.scored} tracks match (${esc(d.filters.join(", "))}); ${esc(d.order)}</div>
         <div class="card" style="padding:0">${table([
           { h: "Hype", r: 1, f: t => hypeBadge(t.hype) }, { h: "Stars", f: t => t.stars ? "★".repeat(t.stars) : `<span class="dim">–</span>` },
@@ -1836,7 +1942,12 @@ async function pageColours(main) {
 // ---------- tempo ----------
 async function pageTempo(main, bpmArg) {
   const views = S.libs.libraries.filter(l => l.bpm);
-  if (!views.length) { main.innerHTML = `<h2>Tempo view</h2><div class="card">No tempo view scanned yet. ${SNAP ? "" : `Scan one in <a href="#setup">Setup</a> (or run <span class="mono">uv run dj-track-analyzer tempo scan --bpm 145</span>).`}</div>`; return; }
+  if (!views.length) {
+    main.innerHTML = `<div class="page-head"><div><h2>Tempo view</h2></div></div>` + empty("No tempo view scanned yet",
+      `A tempo view hears your catalogue stretched to the tempo you play at, with key lock, and shows which genres, colours and hype change.${SNAP ? "" : ` In a terminal: <span class="mono">uv run dj-track-analyzer tempo scan --bpm 145</span>`}`,
+      toSetup("Scan a tempo view"));
+    return;
+  }
   const bpm = +(bpmArg || views[0].bpm);
   const d = await api("tempo/report", { bpm, limit: 25 });
   const brief = rows => table([{ h: "Track", f: r => esc(r.track) }, { h: "BPM", r: 1, f: r => fmt(r.bpm) }, { h: "Genres", f: r => esc(r.genres) },
@@ -1851,7 +1962,7 @@ async function pageTempo(main, bpmArg) {
       ${SNAP ? "" : S.libs.loaded_view ? `<button id="tv-native">Switch Traktor back to normal…</button>` : `<button id="tv-load" data-tip="Traktor's genres, colours and hype as heard at ${d.bpm} BPM (shows what changes first; switch back any time)">Load into Traktor…</button>`}</div>
     <div class="tiles">
       <div class="tile"><div class="v">${d.tracks}</div><div class="l">tracks compared</div></div>
-      <div class="tile"><div class="v">${d.tempo_change.median_pct > 0 ? "+" : ""}${d.tempo_change.median_pct}%</div><div class="l">median tempo change (${d.tempo_change.min_pct}% … +${d.tempo_change.max_pct}%)</div></div>
+      <div class="tile"><div class="v">${d.tempo_change.median_pct > 0 ? "+" : ""}${d.tempo_change.median_pct}%</div><div class="l">median tempo change (${d.tempo_change.min_pct > 0 ? "+" : ""}${d.tempo_change.min_pct}% … ${d.tempo_change.max_pct > 0 ? "+" : ""}${d.tempo_change.max_pct}%)</div></div>
       <div class="tile"><div class="v">${d.genre_changed}</div><div class="l">top genre changed</div></div>
       <div class="tile"><div class="v">${d.colour_changed} <span class="dim" style="font-size:14px">/ ${d.colours_coloured_tracks}</span></div><div class="l">colour changed</div></div>
       <div class="tile"><div class="v">${d.colour_mean_shift > 0 ? "+" : ""}${fmt(d.colour_mean_shift)}</div><div class="l">mean colour shift (+ = prettier)</div></div>
@@ -2188,9 +2299,11 @@ async function pageMixes(main, id) {
   if (!id && mixes.length) id = mixes[0].id;
   main.innerHTML = `<div class="split">
     <div class="card list" style="padding:8px"><div class="small muted" style="padding:4px 10px 8px">Saved <span class="mono">analyze</span> results of mixes in ${L.folders.map(esc).join(", ")}</div>
-      ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(f.name)}</div><div class="k">${esc(f.recording || "")} · ${esc(f.duration || "")} · ${ago(f.modified)}</div></a>`).join("") || `<div class="dim" style="padding:10px">None yet. Save one with:<br><span class="mono">analyze &lt;mix.wav&gt; --tracklist --json-only &gt; logs/mix.json</span></div>`}
+      ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(f.name)}</div><div class="k">${esc(f.recording || "")} · ${esc(f.duration || "")} · ${ago(f.modified)}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div style="padding:10px"><div class="drop" id="drop">Drop a JSON file here or <a href="#" id="pick">open one</a><input type="file" id="file" accept=".json,.txt" hidden></div></div>
-    </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : ""}</div></div>`;
+    </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
+      `Analyse a recorded DJ mix to see its genre, mood, a loudness timeline, a tracklist check against Traktor's history and clip ideas. Save the result in <span class="mono">logs/</span>:<br>
+      <span class="mono">uv run dj-track-analyzer analyze &lt;mix.wav&gt; --tracklist --json-only &gt; logs/mix.json</span><br>or drop a saved JSON file on the left.`)}</div></div>`;
   dropZone($("#drop"), $("#file"), $("#pick"), data => { $("#mix").innerHTML = data.type === "dj_mix" ? renderMix(data) : `<div class="card tree">${tree(data)}</div>`; });
   if (id) {
     const me = S.routeId;  // a newer click wins over a slower earlier answer
