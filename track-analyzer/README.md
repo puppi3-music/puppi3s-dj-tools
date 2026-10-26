@@ -205,7 +205,7 @@ uv run dj-track-analyzer web
 Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts. Click a bar, column or tile to list those tracks.
-- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. **⇤ Wide** widens the panel for the waveform and cues.
+- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). **⇤ Wide** widens the panel for the waveform and cues.
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
