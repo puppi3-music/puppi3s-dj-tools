@@ -7,6 +7,7 @@ button save a snapshot: one self-contained, read-only HTML file with the data in
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -241,74 +242,108 @@ def traktor_nml() -> Path:
     return traktor.find_collection(None)
 
 
-_fixes: dict = {"key": None, "counts": None, "busy": False}
+_fixes: dict = {"key": None, "counts": None, "sigs": {}, "busy": False}
 FIXES_FILE = HOME / "cue-corrections.json"  # the last count, reused while the model and collection are unchanged
+FIXES_SYNC = 30  # this many tracks or fewer to count again (a write to Traktor, Traktor saving): counted in the request
+
+
+def _fix_sig(d: dict) -> str:
+    """What one track's count depends on in collection.nml: its grid and cues (approvals and ignores recount)."""
+    return hashlib.sha1(json.dumps([d["bpm"], d["grid_ms"], d["cues"]], sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _count_one(p: str, d: dict) -> int:
+    from . import cues
+
+    if not d["cues"]:
+        return 0
+    with library("native"):  # one track at a time, so other requests aren't held up
+        try:
+            return len(cues.pending_corrections(p, cues.suggest(p, d["bpm"], d["grid_ms"], own=d["cues"])["corrections"]))
+        except SystemExit:
+            return 0
+
+
+def _save_fixes():
+    try:
+        FIXES_FILE.write_text(json.dumps({"key": list(_fixes["key"]), "counts": _fixes["counts"], "sigs": _fixes["sigs"]}))
+    except (OSError, TypeError):
+        pass
 
 
 def correction_counts() -> dict[str, int] | None:
-    """{path: proposed corrections of your cues}, worked out in the background (≈10 s for 470 tracks) and again
-    only when the cue model or Traktor's collection changes. None while counting."""
+    """{path: proposed corrections of your cues}, worked out in the background (≈30 s for 470 tracks) and again
+    only for tracks whose grid or cues changed in Traktor's collection (all of them when the cue model changes).
+    None while counting."""
     from . import cues
 
     try:
         key = (cues.MODEL.stat().st_mtime, traktor_nml().stat().st_mtime)
+        g = cue_grids()
     except (OSError, SystemExit):
         return {}
     if _fixes["key"] == key:
         return _fixes["counts"]
-    try:  # counted before, by an earlier run of the server, with the same model and collection
-        saved = json.loads(FIXES_FILE.read_text())
-        if tuple(saved["key"]) == key:
-            _fixes.update(key=key, counts=saved["counts"])
-            return _fixes["counts"]
-    except (OSError, ValueError, KeyError):
-        pass
-    if not _fixes["busy"]:
-        _fixes["busy"] = True
+    if _fixes["busy"]:
+        return None
+    if _fixes["counts"] is None:  # counted before, by an earlier run of the server
+        try:
+            saved = json.loads(FIXES_FILE.read_text())
+            if saved["key"][0] == key[0]:
+                _fixes.update(counts=saved["counts"], sigs=saved.get("sigs", {}))
+        except (OSError, ValueError, KeyError, IndexError, TypeError):
+            pass
+    elif _fixes["key"] and _fixes["key"][0] != key[0]:  # a new cue model: every count again
+        _fixes.update(counts=None, sigs={})
+    old_counts, old_sigs = _fixes["counts"] or {}, _fixes["sigs"] if _fixes["counts"] is not None else {}
+    each = dict(cues._one_path_each(g))
+    sigs = {p: _fix_sig(d) for p, d in each.items()}
+    todo = [p for p in each if old_sigs.get(p) != sigs[p] or p not in old_counts]
 
-        def work():
-            counts = {}
+    def finish(fresh: dict):
+        counts = {p: old_counts[p] for p in each if p not in fresh and p in old_counts}
+        counts.update(fresh)
+        _fixes.update(key=key, counts=counts, sigs={p: sigs[p] for p in counts})
+        _save_fixes()
+
+    if len(todo) <= FIXES_SYNC:
+        fresh = {}
+        for p in todo:
             try:
-                for p, d in cues._one_path_each(cue_grids()):
-                    if not d["cues"]:
-                        continue
-                    with library("native"):  # one track at a time, so other requests aren't held up
-                        try:
-                            counts[p] = len(cues.pending_corrections(p, cues.suggest(p, d["bpm"], d["grid_ms"], own=d["cues"])["corrections"]))
-                        except SystemExit:
-                            pass
-                        except Exception as e:  # one track's problem (a file gone, unreadable audio): count the rest
-                            log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
-                _fixes.update(key=key, counts=counts)
-                FIXES_FILE.write_text(json.dumps({"key": list(key), "counts": counts}))
-            except Exception as e:  # keep what's counted: otherwise every /api/tracks starts again, and the page polls forever
-                log(f"Counting cue corrections stopped: {type(e).__name__}: {e}")
-                _fixes.update(key=key, counts=counts)
-            finally:
-                _fixes["busy"] = False
+                fresh[p] = _count_one(p, each[p])
+            except Exception as e:  # one track's problem (a file gone, unreadable audio): count the rest
+                log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
+        finish(fresh)
+        return _fixes["counts"]
+    _fixes["busy"] = True
 
-        threading.Thread(target=work, daemon=True).start()
+    def work():
+        fresh = {}
+        try:
+            for p in todo:
+                try:
+                    fresh[p] = _count_one(p, each[p])
+                except Exception as e:
+                    log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
+        except Exception as e:  # keep what's counted: otherwise every /api/tracks starts again, and the page polls forever
+            log(f"Counting cue corrections stopped: {type(e).__name__}: {e}")
+        finally:
+            finish(fresh)
+            _fixes["busy"] = False
+
+    threading.Thread(target=work, daemon=True).start()
     return None
 
 
 def recount(path: str) -> int:
     """One track's pending corrections again (after approving, ignoring or a rescan), kept in the saved counts."""
-    from . import cues
-
     d = cue_grids().get(path)
-    n = 0
-    if d and d["cues"]:
-        with library("native"):
-            try:
-                n = len(cues.pending_corrections(path, cues.suggest(path, d["bpm"], d["grid_ms"], own=d["cues"])["corrections"]))
-            except SystemExit:
-                n = 0
+    n = _count_one(path, d) if d else 0
     if _fixes["counts"] is not None:
         _fixes["counts"][path] = n
-        try:
-            FIXES_FILE.write_text(json.dumps({"key": list(_fixes["key"]), "counts": _fixes["counts"]}))
-        except (OSError, TypeError):
-            pass
+        if d:
+            _fixes["sigs"][path] = _fix_sig(d)
+        _save_fixes()
     return n
 
 
