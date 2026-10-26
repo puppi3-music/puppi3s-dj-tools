@@ -40,6 +40,7 @@ KICK_STEM_DB = -25.0  # the drum stem's 30-150 Hz on the beat this close to the 
 WAVE_SLICES = 1500  # waveform overview resolution (fewer for short files: at least 0.1 s per slice)
 WS = (1, 2, 4, 8, 16)  # context windows, bars
 MIN_CUES = 3  # tracks with fewer of your own cues aren't used for learning
+LOOP_LENGTHS = (1, 2, 4, 8)  # what the loop length model picks from (16-bar loops: 3 of 439 on a test collection, too few to learn)
 CUE_TYPES = {"0": "cue", "1": "fade-in", "2": "fade-out", "3": "load", "4": "grid", "5": "loop"}
 
 
@@ -352,7 +353,7 @@ def measure(jobs: list[tuple[str, float, float]], workers: int | None = None, pr
             done += 1
             if err:
                 errors.append(f"{Path(path).name}: {err}")
-            if done % 25 == 0 or done == len(todo):
+            if done % max(1, min(25, len(todo) // 20)) == 0 or done == len(todo):  # ~every 5%, so few tracks still move the bar
                 rate = done / max(time.time() - t0, 1e-6)
                 progress(f"  [{done}/{len(todo)}  ~{analysis.fmt_time((len(todo) - done) / rate)} left]")
     finally:
@@ -494,17 +495,26 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
             continue
         X, info = features(hit[0], hit[1], d["grid_ms"])
         yc, yl, lens = labels(hit[0], d["bpm"], d["cues"])
-        rows.append((p, X, yc, yl, lens, d["grid_ms"], hit[0], d["bpm"], hit[1], info["kick_on"]))
+        rows.append((p, X, yc, yl, lens, d["grid_ms"], hit[0], d["bpm"], hit[1], info["kick_on"], d["cues"]))
     progress(f"Learning from {len(rows)} tracks: {sum(r[2].sum() for r in rows)} cue points, "
              f"{sum(r[3].sum() for r in rows)} loops")
     X = np.vstack([r[1] for r in rows])
     yc, yl = np.concatenate([r[2] for r in rows]), np.concatenate([r[3] for r in rows])
     grp = np.concatenate([[i] * len(r[2]) for i, r in enumerate(rows)])
     off = np.cumsum([0] + [len(r[2]) for r in rows])
+    t_learn, steps, done = time.time(), 10, 0  # 5 folds, 3 loop grids, loop lengths, the final models
+
+    def step(what: str) -> None:  # "[k/10  ~t left]" lines: the web page's progress bar
+        nonlocal done
+        done += 1
+        rate = done / max(time.time() - t_learn, 1e-6)
+        progress(f"  [{done}/{steps}  ~{analysis.fmt_time((steps - done) / rate)} left] {what}")
+
     Pc, Pl = np.zeros(len(yc)), np.zeros(len(yl))
-    for tr, te in GroupKFold(5).split(X, yc, grp):
+    for k, (tr, te) in enumerate(GroupKFold(5).split(X, yc, grp)):
         Pc[te] = _model().fit(X[tr], yc[tr]).predict_proba(X[te])[:, 1]
         Pl[te] = _model().fit(X[tr], yl[tr]).predict_proba(X[te])[:, 1]
+        step(f"cross-checking on tracks it hasn't seen, {k + 1} of 5")
     cue_pt = [(_pick(Pc[off[i]:off[i + 1]], max_cues, threshold), r[2]) for i, r in enumerate(rows)]
     grid16 = []
     for r in rows:
@@ -544,7 +554,10 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
             found["exact"] += dist == 0
             found["within_4_bars"] += dist <= 4
         by_align[align] = {k: round(found[k] / max(len(with_loop), 1), 3) for k in ("exact", "within_4_bars")}
+        step(f"loop ideas on a {align}-bar grid")
     loop_align = max(by_align, key=lambda a: (by_align[a]["exact"] + by_align[a]["within_4_bars"], a))
+    length_model, length_cv = train_lengths(rows)
+    step("your loop lengths")
     out.update({
         "trained_on": len(rows),
         "cue_points_cross_validated": {"exact_bar": _prf(cue_pt), "within_1_bar": _prf(cue_pt, 1)},
@@ -557,12 +570,16 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
                                  "suggested_length_bars": loop_bars,
                                  "yours_among_5_ideas": by_align[loop_align],
                                  "clean_loop_grid_bars": {"chosen": loop_align,
-                                                          "tried": {str(a): v for a, v in by_align.items()}}},
+                                                          "tried": {str(a): v for a, v in by_align.items()}},
+                                 "length_cross_validated": length_cv},
     })
     oof = {r[0]: {"grid": _grid_key(r[7], r[5]), "p": Pc[off[i]:off[i + 1]].astype(np.float16)}
            for i, r in enumerate(rows)}  # for correcting your own cues fairly: the model never saw them
-    bundle = {"oof": oof, "cue_model": _model().fit(X, yc), "loop_model": _model().fit(X, yl) if yl.any() else None,
+    cue_model, loop_model = _model().fit(X, yc), _model().fit(X, yl) if yl.any() else None
+    step("the final models")
+    bundle = {"oof": oof, "cue_model": cue_model, "loop_model": loop_model,
               "threshold": threshold, "loop_align": loop_align, "max_cues": max_cues, "loop_bars": loop_bars,
+              "length_model": length_model,
               "trained_at": time.strftime("%Y-%m-%d %H:%M"), "metrics": {k: v for k, v in out.items() if k != "measuring"},
               "version": BARS_VERSION}
     joblib.dump(bundle, MODEL)
@@ -606,6 +623,66 @@ def loopability(F: np.ndarray, L: int) -> np.ndarray:
     for i in range(nb - L + 1):
         out[i] = S[i:i + L, i:i + L].mean() - loud[i:i + L].std() / 6
     return out
+
+
+def length_features(F: np.ndarray, starts: list[int], bpm: float) -> np.ndarray:
+    """Per loop start bar, for the loop length model: how cleanly 1/2/4/8 bars loop from there (as loopability())
+    and how closely the next L bars repeat those L (an L-bar pattern), plus the BPM. -1 where it doesn't fit."""
+    nb = len(F)
+    M = F[:, 6:6 + N_MELS]
+    Mz = (M - M.mean(0)) / (M.std(0) + 1e-6)
+    U = Mz / (np.linalg.norm(Mz, axis=1, keepdims=True) + 1e-9)
+    S = U @ U.T
+    loud = _db((10 ** (F[:, :6] / 10)).sum(1))
+    rows = []
+    for i in starts:
+        r = []
+        for L in LOOP_LENGTHS:
+            r.append(S[i:i + L, i:i + L].mean() - loud[i:i + L].std() / 6 if i + L <= nb else -1.0)
+            r.append(float(np.mean([S[i + j, i + L + j] for j in range(L)])) if i + 2 * L <= nb else -1.0)
+        rows.append(r + [bpm])
+    return np.array(rows, dtype=float)
+
+
+def _length_model():
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    return HistGradientBoostingClassifier(max_depth=3, max_iter=100, learning_rate=0.05, random_state=0)
+
+
+def train_lengths(rows: list) -> tuple:
+    """(model or None, metrics): your loop lengths from the audio where each of your loops starts. Kept only when,
+    cross-validated by track, it picks your length more often than always using your most common one."""
+    from collections import Counter
+
+    from sklearn.model_selection import StratifiedGroupKFold
+
+    X, y, grp = [], [], []
+    for k, r in enumerate(rows):
+        starts, bpm, F, own = r[6], r[7], r[8], r[10]
+        for c in own:
+            if c["type"] != "loop" or not c.get("bars") or round(c["bars"]) not in LOOP_LENGTHS:
+                continue
+            t = c["ms"] / 1000
+            i = int(np.argmin(np.abs(starts - t)))
+            if abs(starts[i] - t) <= 60 / bpm * 1.01:
+                X.append(length_features(F, [i], bpm)[0])
+                y.append(round(c["bars"]))
+                grp.append(k)
+    y = np.array(y)
+    n = Counter(y.tolist())
+    if len(y) < 50 or len(n) < 2 or min(n.values()) < 5:
+        return None, {"loops": len(y), "used": False, "why": "too few loops of more than one length"}
+    X = np.array(X)
+    common, base = n.most_common(1)[0][0], n.most_common(1)[0][1] / len(y)
+    pred = np.zeros(len(y), int)
+    for tr, te in StratifiedGroupKFold(5, shuffle=True, random_state=0).split(X, y, grp):
+        pred[te] = _length_model().fit(X[tr], y[tr]).predict(X[te])
+    acc = float((pred == y).mean())
+    used = acc > base
+    return (_length_model().fit(X, y) if used else None), {
+        "loops": len(y), "exact": round(acc, 3), f"always_{common}_bars": round(base, 3), "used": used,
+        "per_length_found": {str(L): f"{int(((pred == L) & (y == L)).sum())}/{n[L]}" for L in LOOP_LENGTHS if n[L]}}
 
 
 def loop_ideas(pl: np.ndarray, F: np.ndarray, on: np.ndarray, picks: list[int], L: int, n: int = 6,
@@ -988,6 +1065,12 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
                 l["kind"] = _kind(l["level_db"], pt["kick"] >= 0.5, l["steady"])  # the drum stem's kick over kick_on's
                 if pt["label"]:
                     l["kind"] += " · " + pt["label"]
+        if ideas and b.get("length_model") is not None:  # the length you'd likely give each (the page preselects it)
+            with threadpool_limits(1):
+                guess = b["length_model"].predict(length_features(F, [l["bar"] for l in ideas], bpm))
+            for l, L in zip(ideas, guess):
+                if l["bar"] + int(L) <= nb:
+                    l["suggested_bars"] = int(L)
         loop = ideas[0] if ideas else None  # the one most like yours
     zero = int(np.argmin(np.abs(starts - grid_ms / 1000)))
     w = wave_get(Path(path))

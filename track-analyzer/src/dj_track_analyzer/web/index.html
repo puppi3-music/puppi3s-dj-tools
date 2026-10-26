@@ -961,11 +961,16 @@ function approveItems(c) {
   });
   if (free) (c.more_cues || []).forEach(q => items.push({ key: "a" + q.ms, kind: "add", extra: true,  // the next-best bars, for a free slot
     label: `${q.time} · bar ${barLabel(c, q.bar).n} · <b>${esc(q.name)}</b> <span class="dim small">· scores ${q.score}</span>`, disabled: "", data: { ms: q.ms, name: q.name, type: "cue", len_ms: 0 } }));
-  (c.loop_ideas || []).forEach((l, k) => items.push({ key: "l" + l.ms, kind: "add",
-    label: `${l.time} · bar ${barLabel(c, l.bar).n} · <b>Loop ${l.bars} bars</b> <span class="dim small">L${k + 1} · ${esc(l.kind)} · ${esc(l.why)}${k === 0 ? " · slot 8 when free" : ""}</span>`,
-    sample: { bar: barLabel(c, l.bar).n, kind: `L${k + 1} ${l.kind.split(" · ")[0]}` },
-    asCue: { ms: l.ms, name: (k => k.charAt(0).toUpperCase() + k.slice(1))(l.kind.split(" · ")[0] || "Loop").slice(0, 40), type: "cue", len_ms: 0 },  // "as cue point": a hot cue at its start
-    data: { ms: l.ms, name: `Loop ${l.bars}`, type: "loop", len_ms: l.len_ms } }));
+  (c.loop_ideas || []).forEach((l, k) => {
+    const barMs = l.len_ms / l.bars, mine = (c.approved?.add || []).find(a => a.type === "loop" && Math.abs(a.ms - l.ms) < 1);
+    const picked = l.suggested_bars ?? l.bars;  // the length you'd likely give it (cues train learns it), else your most common
+    const bars = loopLen(c.path).get("l" + l.ms) ?? (mine ? Math.round(mine.len_ms / barMs * 4) / 4 : picked);  // chosen here, else as approved, else suggested
+    items.push({ key: "l" + l.ms, kind: "add", lenOf: { picked, learned: l.suggested_bars != null, bars, room: c.bars - l.bar },  // room: bars left before the track ends
+      label: `${l.time} · bar ${barLabel(c, l.bar).n} · <b>Loop ${bars} bar${bars === 1 ? "" : "s"}</b> <span class="dim small">L${k + 1} · ${esc(l.kind)} · ${esc(l.why)}${k === 0 ? " · slot 8 when free" : ""}</span>`,
+      sample: { bar: barLabel(c, l.bar).n, kind: `L${k + 1} ${l.kind.split(" · ")[0]}` },
+      asCue: { ms: l.ms, name: (k => k.charAt(0).toUpperCase() + k.slice(1))(l.kind.split(" · ")[0] || "Loop").slice(0, 40), type: "cue", len_ms: 0 },  // "as cue point": a hot cue at its start
+      data: { ms: l.ms, name: `Loop ${bars}`, type: "loop", len_ms: +(barMs * bars).toFixed(3) } });
+  });
   (c.alternatives || []).forEach(y => {  // each of your cues: move it to a bar you choose (the model's pick first)
     const same = (a, b) => a.hotcue === b.hotcue && Math.abs(a.from_ms - b.from_ms) < 1;
     const fx = (c.corrections || []).filter(f => same(f, y)), pend = fx.filter(f => !f.ignored);
@@ -1035,6 +1040,8 @@ function approveBox(c) {
     const asCue = it.asCue && ap?.add.some(a => Math.abs(a.ms - it.data.ms) < 1 && a.type === "cue");
     const as = it.asCue && !SNAP ? `<select class="as" data-as="${esc(it.key)}" data-tip="Write it as a loop, or as a plain hot cue at the loop's start (it then goes in the cue slots 1–7 with your other cues, in time order)">
       <option value="loop" ${asCue ? "" : "selected"}>as loop</option><option value="cue" ${asCue ? "selected" : ""}>as cue point</option></select>` : "";
+    const len = it.lenOf && !SNAP ? `<select class="len" data-len="${esc(it.key)}" data-tip="How long the loop is. ${it.lenOf.learned ? `Suggested: ${it.lenOf.picked} bar${it.lenOf.picked === 1 ? "" : "s"}, the length you'd likely give a loop here (learned from your loops by cues train)` : `Suggested: ${it.lenOf.picked} bars, your most common loop length`}. Press ▶ to hear another length before approving">
+      ${[...new Set([...LOOP_BARS.filter(n => n <= it.lenOf.room), it.lenOf.picked, it.lenOf.bars])].sort((a, b) => a - b).map(n => `<option value="${n}" ${n === it.lenOf.bars ? "selected" : ""}>${n} bar${n === 1 ? "" : "s"}${n === it.lenOf.picked ? " (suggested)" : ""}</option>`).join("")}</select>` : "";
     const nm = it.hand && !SNAP ? `<input class="nm" data-nm="${esc(it.key)}" value="${esc(it.data.name)}" maxlength="40" placeholder="name" style="width:130px;font-size:12px;padding:1px 4px" data-tip="Its name in Traktor (saved when you press Approve ticked)">${isOn(it) ? "" : ` <button class="mini" type="button" data-unhand="${it.data.ms}" data-tip="Remove this hand-set cue">✕</button>`}` : "";
     const note = it.disabled ? ` <span class="small" style="color:${it.disabled.startsWith("✓") ? "var(--good)" : "var(--text-3)"}">· ${esc(it.disabled)}</span>` : "";
     const from = it.kind === "move" ? it.data.from_ms : it.data.ms;  // a deletion: its place (data.ms)
@@ -1043,7 +1050,7 @@ function approveBox(c) {
     const chip = done ? `<span class="chip good" style="margin-right:6px">✓ approved</span>` : left ? `<span class="chip warn" style="margin-right:6px" data-tip="Approved, but it won't be written: see the note above">won't fit</span>` : "";
     const body = it.kind === "remove" ? `${play}${chip}<span style="color:var(--bad)">Delete</span> ${it.label}`
       : it.kind === "move" ? `${chip}${it.label}${play}${ign}${note}`  // a new cue or loop: ▶ and its name, then the rest of its controls on a line of their own
-      : `<div>${play}${chip}${it.label}${note}</div><div class="ctl">${nm}${as}${slot}${useAs}${save}</div>`;
+      : `<div>${play}${chip}${it.label}${note}</div><div class="ctl">${nm}${as}${len}${slot}${useAs}${save}</div>`;
     return `<label class="${it.kind === "move" ? "fix" : it.kind === "remove" ? "del" : "add"}${done ? " approved" : ""}" style="${dim}" ${tipAttr}>
       <input type="checkbox" data-key="${esc(it.key)}" ${it.extra || it.also ? "data-more" : ""} ${isOn(it) ? "checked" : ""} ${it.disabled ? "disabled" : ""}> <span>${body}</span></label>`;
   };
@@ -1252,6 +1259,16 @@ function bindApprove(c, box, t) {
     if (!it || !ap || ap.grid_changed || !ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1)) return;
     const add = ap.add.map(a => Math.abs(a.ms - it.data.ms) >= 1 ? a : { ...asData(it), ...(a.slot != null ? { slot: a.slot } : {}) });
     send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: ${it.data.name} → ${s.value === "cue" ? "as a cue point" : "as a loop"}`))
+      .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
+  }));
+  box.querySelectorAll("#approve select.len").forEach(s => s.addEventListener("change", () => {  // a loop's length: ticks it; approved already, saved now
+    const k = s.dataset.len; loopLen(c.path).set(k, +s.value);
+    const it = items.find(i => i.key === k), ap = c.approved;
+    const approved = it && ap && !ap.grid_changed && ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1 && a.type === "loop");
+    redraw(() => { const cb = box.querySelector(`#approve input[data-key="${CSS.escape(k)}"]`); if (cb && !cb.disabled) cb.checked = true; });
+    if (!approved) return;
+    const add = ap.add.map(a => Math.abs(a.ms - it.data.ms) >= 1 ? a : { ...a, len_ms: +(it.data.len_ms / it.lenOf.bars * +s.value).toFixed(3), name: `Loop ${+s.value}` });
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: loop → ${s.value} bars`))
       .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
   }));
   box.querySelectorAll("#approve select.slot").forEach(s => s.addEventListener("change", () => {  // picking a slot ticks the cue
@@ -1591,6 +1608,9 @@ document.addEventListener("keydown", e => {
   }
 });
 
+const LOOP_BARS = [1, 2, 4, 8, 16];
+const LOOP_LEN = new Map();  // path -> Map(loop idea key -> bars you picked for it in the menu)
+const loopLen = path => { if (!LOOP_LEN.has(path)) LOOP_LEN.set(path, new Map()); return LOOP_LEN.get(path); };
 const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
 let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
 const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
