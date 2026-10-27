@@ -310,9 +310,10 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 #dk-play.waiting::before { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35);
   border-top-color: #fff; animation: spin .8s linear infinite; }
 #loop-pads.listening button.lp { animation: breathe 1.6s ease-in-out infinite; }
+.counting::before { content: ""; display: inline-block; vertical-align: -2px; margin-right: 6px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes breathe { 50% { border-color: var(--line); } }
-@media (prefers-reduced-motion: reduce) { .parts-wait::before, #loop-pads.listening button.lp, #dk-play.waiting::before, .loading::before { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .parts-wait::before, #loop-pads.listening button.lp, #dk-play.waiting::before, .loading::before, .counting::before { animation: none; } }
 pre.log { max-height: 280px; overflow: auto; font-family: var(--mono); font-size: 11.5px; line-height: 1.45; background: var(--surface-2); border: 1px solid var(--line);
   border-radius: 8px; padding: 8px 10px; margin: 10px 0 0; white-space: pre-wrap; word-break: break-word; }
 .steps { display: grid; }
@@ -588,7 +589,7 @@ function navCounts() {
   const list = S.tracks[S.lib], a = document.querySelector('#nav a[href="#tracks"]');
   if (!list || !a) return;
   const n = list.filter(t => t.type === "track").length, fixes = list.filter(t => t.corrections > 0).length;
-  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: All checks → Corrections proposed for its cues)"></span>` : ""}`;
+  a.innerHTML = `Tracks<span class="count">${n}</span>${fixes ? `<span class="dot" data-tip="${plural(fixes, "track")} with proposed corrections to your cues (Tracks: All tracks → Corrections proposed for its cues)"></span>` : ""}`;
 }
 
 // ---------- router ----------
@@ -646,6 +647,10 @@ async function pageOverview(main) {
 // ---------- tracks ----------
 const TF0 = { q: "", genre: "", colour: "", key: "", harmonic: false, bpmMin: "", bpmMax: "", type: "track", held: "", cues: "", errors: false, genreTop: false };
 const TF = { ...TF0 };
+try { const { _sort, ...tf } = JSON.parse(sessionStorage.getItem("ta-tf") || "{}"); Object.assign(TF, tf); if (_sort) S.trackSort = _sort; } catch (e) {}  // a refresh keeps the Tracks filters
+addEventListener("pagehide", () => { try { sessionStorage.setItem("ta-tf", JSON.stringify({ ...TF, _sort: S.trackSort })); sessionStorage.setItem("ta-scroll", JSON.stringify({ hash: location.hash, y: scrollY })); } catch (e) {} });
+// the open track lives in the address (#tracks/<path>), so a refresh opens it again; replaceState doesn't fire hashchange or add history
+const hashTrack = path => { if (S.page === "tracks") try { history.replaceState(null, "", "#tracks" + (path ? "/" + encodeURIComponent(path) : "")); } catch (e) {} };
 // the Tracks tab with only this filter set (Everything, so the counts match the Overview's)
 function showTracks(filter) { Object.assign(TF, TF0, { type: "" }, filter); location.hash = "tracks"; }
 document.addEventListener("click", e => { const g = e.target.closest("[data-go]"); if (g) showTracks(JSON.parse(g.dataset.go)); });
@@ -656,7 +661,7 @@ function camelotNeighbours(code) {
   return [`${n}${l}`, `${w(n - 1)}${l}`, `${w(n + 1)}${l}`, `${n}${l === "A" ? "B" : "A"}`];
 }
 const colourOf = t => t.traktor_color || t.color;
-// the Tracks tab's "All checks" menu: value → which tracks it lists
+// the Tracks tab's "All tracks" menu: value → which tracks it lists
 const CHECKS = {
   some: t => t.own_cues > 0, none: t => !t.own_cues, fixes: t => t.corrections > 0, approved: t => t.cues_approved,
   grid: t => t.grid_off != null || t.grid_drift, grid_ok: t => t.grid_approved != null,
@@ -683,7 +688,7 @@ async function pageTracks(main, open) {
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
       <select id="f-type"><option value="track">Tracks</option><option value="dj_mix">Mixes</option><option value="">Everything</option></select>
       <select id="f-held"><option value="">Held or not</option><option value="genre">Genre held</option><option value="colour">Colour held</option><option value="any">Anything held</option><option value="none">Nothing held</option></select>
-      <select id="f-cues"><option value="">All checks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup><optgroup label="Colour"><option value="guess">Colour guessed by the app, not checked yet</option></optgroup></select>
+      <select id="f-cues"><option value="">All tracks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup><optgroup label="Colour"><option value="guess">Colour guessed by the app, not checked yet</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
     <div id="selbar"></div>
@@ -738,7 +743,7 @@ async function pageTracks(main, open) {
     $("#f-chips").querySelectorAll("[data-unchip]").forEach(b => b.addEventListener("click", () => { TF[b.dataset.unchip] = false; draw(); }));
     const { key, dir } = S.trackSort, f = SORTS[key];
     rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
-    $("#tcount").textContent = `${rows.length} of ${all.length} files${S.fixesPending ? " · counting proposed corrections (about 30 s)…" : ""}`;
+    $("#tcount").innerHTML = `${rows.length} of ${all.length} files${S.fixesPending ? ` · <span class="counting">counting proposed corrections (about 30 s)…</span>` : ""}`;
     const head = [["colour", "Colour"], ["track", "Track"], ["bpm", "BPM", 1], ["key", "Key"], ["genre", "Genre"], ["hype", "Hype", 1], ["cues", "Cues", 1], ["lufs", "LUFS", 1], ["length", "Length", 1]];
     const scroll = $("#ttable .tablewrap")?.scrollTop || 0;
     if (!rows.length) {
@@ -793,7 +798,7 @@ function prepFor(path) {
   return PREP.ctl.signal;
 }
 const aborted = e => e?.name === "AbortError";
-function closeDrawer() { prepFor(null); gridStop(); deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); }
+function closeDrawer() { prepFor(null); gridStop(); deckStopLoop(); DECK.audio.pause(); $("#drawer").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); markOpen(null); hashTrack(null); }
 // the track open in the panel, highlighted in every track list: one style rule, so it holds through any redraw
 function markOpen(path) {
   let st = document.getElementById("open-row");
@@ -999,7 +1004,7 @@ async function openTrack(path) {
   if ($("#drawer").dataset.path !== path) gridStop();  // the grid click loop belongs to the track it was started on
   const all = await getTracks(), t = all.find(x => x.path === path);
   if (!t) return;
-  markOpen(path);
+  markOpen(path); hashTrack(path);
   const d = $("#drawer"), body = $("#drawer-body");
   const moods = ["aggressive", "happy", "party", "relaxed", "sad"].filter(m => t["mood_" + m] != null).map(m => ({ label: m, value: t["mood_" + m] }));
   const genreScores = [[t.genre, t.genre_score], [t.genre_2, t.genre_2_score], [t.genre_3, t.genre_3_score]].filter(g => g[0]).map(([g, s]) => ({ label: g, value: s }));
@@ -2738,7 +2743,8 @@ async function init() {
     jobPoll();
     try { if (!location.hash && !setupReady(await getSetup())) location.hash = "setup"; } catch (e) {}  // a new user starts at Setup
   }
-  route();
+  await route();
+  try { const sv = JSON.parse(sessionStorage.getItem("ta-scroll") || "null"); if (sv && sv.hash === location.hash) scrollTo(0, sv.y); sessionStorage.removeItem("ta-scroll"); } catch (e) {}  // back to where the page was scrolled
 }
 init().catch(e => { $("#main").innerHTML = errBox(e); });
 </script>
