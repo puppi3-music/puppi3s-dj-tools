@@ -2476,15 +2476,15 @@ function step(state, n, title, body, actions = "") {
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 // what training your own model again would learn that it hasn't: {added, changed, removed} since it was trained
 function learnNew(n, what) {
-  if (!n) return { text: "", any: false };
+  if (!n) return { text: "", any: false, none: false };  // unknown (a starter or an older model): the button stays on
   const k = n.added + n.changed + n.removed;
-  if (!k) return { text: "Nothing new to learn since then.", any: false };
+  if (!k) return { text: "", any: false, none: true };
   const parts = [n.added && `${n.added} new`, n.changed && `${n.changed} changed`, n.removed && `${n.removed} gone`].filter(Boolean).join(", ");
-  return { text: `<b>${plural(k, what)} to learn from since then</b> (${parts}): train again to use them.`, any: true };
+  return { text: `<b>${plural(k, what)} to learn from since then</b> (${parts}): update training to use them.`, any: true, none: false };
 }
 async function pageSetup(main) {
   const st = await getSetup(true), b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
-  const jb = (id, text, primary, disabled) => `<button id="${id}" class="${primary ? "primary" : ""}" ${disabled || b}>${text}</button>`;
+  const jb = (id, text, primary, disabled, why) => `<button id="${id}" class="${primary ? "primary" : ""}" ${disabled || b} ${disabled && why ? `title="${esc(why)}"` : ""}>${text}</button>`;
   const models = st.models.ready
     ? step("done", 1, "Analysis models", `Downloaded${st.models.maest ? "" : ", without MAEST: genres come from the smaller EffNet model only"}. <span class="mono">${esc(st.models.folder)}</span>`,
         st.models.maest ? "" : jb("su-maest", "Download MAEST too"))
@@ -2509,7 +2509,7 @@ async function pageSetup(main) {
   const cm = st.colours, colourOk = tk.collection && tk.coloured >= 30 && sc.tracks >= 30;
   const colourStarter = cm.starter ? ` Until then a starter scale learned from another DJ's colours (Red = hard … Magenta = pretty) predicts them${cm.predicted ? ` (${plural(cm.predicted, "track")} so far)` : ""}.` : "";
   const colourNew = learnNew(cm.new, "colour"), cueNew = learnNew(st.cues.new, "track");
-  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || "Train again after recolouring tracks in Traktor."} See the Colours tab.`, jb("su-colours", "Train again", colourNew.any))
+  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || "Update training after recolouring tracks in Traktor."} See the Colours tab.`, jb("su-colours", "Update training", colourNew.any, colourNew.none && "disabled", "Updating wouldn't change anything: no colour is new or changed since the last training"))
     : step(colourOk ? "todo" : "blocked", 5, "Learn your colours", colourOk
         ? "Learns what your Traktor colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads Traktor's collection." + colourStarter
         : `Optional. Needs 30+ tracks you've coloured in Traktor that are also scanned${tk.collection ? ` (you have ${tk.coloured} coloured)` : ""}.` + colourStarter,
@@ -2517,7 +2517,7 @@ async function pageSetup(main) {
   const cueOk = tk.collection && tk.cued >= 30;
   const cueStarter = st.cues.starter ? " Until then a starter model learned from another DJ's cues suggests them: listen to your tracks first, then see each track's panel (Tracks tab)." : "";
   const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to Traktor. Listen to the other tracks to get suggestions for those too. ${cueNew.text}`,
-        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Train again", cueNew.any)}`)
+        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Update training", cueNew.any, cueNew.none && "disabled", "Updating wouldn't change anything: no cues are new or changed since the last training")}`)
     : step(cueOk ? "todo" : "blocked", 6, "Learn your cue points", cueOk
         ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection." + cueStarter
         : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,
@@ -2539,7 +2539,8 @@ async function pageSetup(main) {
   const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 10, "Beat grids",
     `Optional: checks that Traktor's grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
      ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
-    jb("su-grids", G.checked ? "Check new and changed grids" : "Check the beat grids", !G.checked && !!sc.tracks, !sc.tracks && "disabled"));
+    jb("su-grids", G.checked ? "Update beat-grids" : "Check the beat grids", !G.checked && !!sc.tracks,
+      (!sc.tracks || (G.checked && G.checked >= (G.tracks || 0))) && "disabled", !sc.tracks ? "" : "Checking again wouldn't change anything: every grid is checked already, none is new or changed"));
   const w = (id, title, body, extra = "", disabled) => `<div class="step"><div class="ic">→</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div>
     <div class="act">${extra}<button id="${id}" ${disabled || ""}>Preview…</button></div></div>`;
   const noScan = !sc.tracks && "disabled";
