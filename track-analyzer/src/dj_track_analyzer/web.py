@@ -116,7 +116,7 @@ def tracks(lib: str = "native") -> dict:
                 r["grid_drift"] = True
         if r["path"] in approved:  # what's approved, not written yet: {add, move, remove} counts
             pl = approved[r["path"]]["plan"]
-            r["cues_approved"] = {k: len(pl.get(k, [])) for k in ("add", "move", "remove")}
+            r["cues_approved"] = {**{k: len(pl.get(k, [])) for k in ("add", "move", "remove")}, **({"renumber": 1} if pl.get("renumber") else {})}
         if fixes and fixes.get(r["path"]):
             r["corrections"] = fixes[r["path"]]
         if r["path"] in g:  # how many cue points / loops you set in Traktor
