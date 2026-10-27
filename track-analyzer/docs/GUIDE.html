@@ -218,13 +218,13 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Optional, genres: <b>Genre tags in your files</b>, then <b>Genres, colours and Smartlists in Traktor</b> (see <a href="#genres">Genres</a>).</li>
   <li>Optional, hype: <b>Hype in Traktor's Comment 2</b>. It updates every track, because new tracks can shift the ranking a little.</li>
   <li>Open Traktor and check the new tracks. Changed your mind? Before opening Traktor, <b>Undo the last change to Traktor</b> at the bottom of the Setup tab.</li>
-  <li>The colours it set are guesses, marked <b>?</b> in the Tracks tab, and the colour model doesn't learn from them until you've checked them: change the wrong ones in Traktor, and for the right ones pick <b>All tracks → Colour guessed by the app, not checked yet</b>, select them and press <b>Guessed colours are right</b>. Then <b>Train again</b>.</li>
+  <li>The colours it set are guesses, marked <b>?</b> in the Tracks tab, and the colour model doesn't learn from them until you've checked them: change the wrong ones in Traktor, and for the right ones pick <b>All tracks → Colour guessed by the app, not checked yet</b>, select them and press <b>Guessed colours are right</b>. Then <b>Update training</b>.</li>
 </ol>
 
 <h3 id="recoloured">I recoloured a bunch of tracks</h3>
 <ol>
   <li>Quit Traktor, so the collection is saved.</li>
-  <li>Setup tab, <b>Your colour scale → Train again</b> (<b>Learn your colours</b> the first time). About a minute. The step says how many colours are new or changed since the last training, so you can see when it's worth it.</li>
+  <li>Setup tab, <b>Your colour scale → Update training</b> (<b>Learn your colours</b> the first time). About a minute. The step says how many colours are new or changed since the last training, so you can see when it's worth it.</li>
   <li>The Colours tab then shows the new profile and how well the scale fits (see <a href="#read-colours">Reading the Colours tab</a>).</li>
 </ol>
 
@@ -234,7 +234,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Listen to the tracks at the top in Traktor, and recolour the ones you agree are off.</li>
   <li>Or let the app recolour only the clearest cases, marked <b>over threshold</b> (a gap of 2.5 colours or more, and tracks placed there really had that colour or a neighbour 75% of the time or more): quit Traktor, then <b>Recolour them in Traktor…</b> (also on the Setup tab as <b>Recolour clear disagreements</b>).</li>
   <li>A track you want left as it is, whatever the model says: hold its colour (<a href="#hold">below</a>). It's then marked <b>kept</b> and never recoloured.</li>
-  <li>Then <b>Train again</b>, as in <a href="#recoloured">I recoloured a bunch of tracks</a>.</li>
+  <li>Then <b>Update training</b>, as in <a href="#recoloured">I recoloured a bunch of tracks</a>.</li>
 </ol>
 
 <h3 id="understand">Understanding my collection</h3>
@@ -268,11 +268,11 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Tick the cues (and any yellow corrections of your own cues) you want, then <b>Approve ticked</b>. A correction's list lets you pick a different bar the model found instead of its proposal (★). To put one of your other cues on a suggested cue instead, use <b>move my cue here…</b> next to that suggestion. Each loop has a length menu, set to the length you'd likely give it (learned from your own loops). Press <b>C</b> while it plays to set a new cue on the nearest beat, and the ✕ on a pad to delete that cue from Traktor. Approving writes nothing yet; the Tracks filter <b>Cues approved, not written to Traktor yet</b> lists them.</li>
   <li><b>Save sample</b> on a loop idea saves exactly that loop as a WAV in Traktor's sample folder, ready for a Remix Deck.</li>
   <li>Quit Traktor and press <b>Write to Traktor…</b> (in the track's panel or at the top of the Tracks tab). It lists what will change first, then writes, with a backup and an <b>Undo</b> button. New cues only fill free hot-cue slots; your cues only move where you ticked a correction, and are only deleted where you ticked that.</li>
-  <li><b>Train again</b> on the Setup tab after cueing more tracks.</li>
+  <li><b>Update training</b> on the Setup tab after cueing more tracks (greyed out while nothing is new or changed since the last training).</li>
 </ol>
 
 <h3 id="grids">Beat grids that sit on the kicks</h3>
-<p>Cue suggestions, loops and samples all trust Traktor's beat grid. To check every grid once (about 3 minutes, later only new and changed ones), press <b>Check the beat grids</b> on the Setup tab.</p>
+<p>Cue suggestions, loops and samples all trust Traktor's beat grid. To check every grid once (about 3 minutes, later only new and changed ones), press <b>Check the beat grids</b> on the Setup tab. After that the button reads <b>Update beat-grids</b>, and is greyed out while no grid is new or changed.</p>
 <ol>
   <li>In the Tracks tab, filter on <b>Grid off the kicks or drifting</b> and open a track. Its <b>Beat grid</b> section says how far the kick lands from the grid lines.</li>
   <li>Listen: <b>▶ Click on the grid now</b> and <b>▶ Click on the moved grid</b> loop a few bars with a click on each grid line. Adjust the amount if needed, then <b>Approve</b>, or <b>The grid is right</b> to stop it being proposed.</li>
@@ -328,7 +328,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <ol>
   <li>Double-click <code>Start Puppi3's Track Analyzer.command</code> again: it installs new dependencies before opening the page.</li>
   <li>Check the Setup tab: if a new model is needed, <b>Analysis models</b> offers the download.</li>
-  <li>Press <b>Your colour scale → Train again</b>. The first run after an update may fill in new data for every track (about 10–15 minutes); later runs take a minute.</li>
+  <li>Press <b>Your colour scale → Update training</b>. The first run after an update may fill in new data for every track (about 10–15 minutes); later runs take a minute.</li>
   <li>If the update notes say the genre list changed or everything should be analysed again, those are <a href="#cli-update">terminal steps</a>.</li>
 </ol>
 
@@ -428,7 +428,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tbody>
 <tr><td>"Traktor is running. Quit Traktor first"</td><td>Quit Traktor fully (⌘Q), then press <b>Check again</b> in the dialog (or run the command again)</td></tr>
 <tr><td>"No colour model yet"</td><td>Setup tab: <b>Your colour scale → Learn your colours</b> (<code>colors train</code>)</td></tr>
-<tr><td>"…from before confidence was measured properly. Retrain it"</td><td>Setup tab: <b>Your colour scale → Train again</b> (<code>colors train</code>)</td></tr>
+<tr><td>"…from before confidence was measured properly. Retrain it"</td><td>Setup tab: <b>Your colour scale → Update training</b> (<code>colors train</code>)</td></tr>
 <tr><td>"The 145 BPM view is loaded in this Traktor collection" (or another tempo)</td><td>Switch back first: <b>Switch Traktor back…</b> (<code>tempo native</code>), Traktor closed, then try again</td></tr>
 <tr><td>"Rubber Band isn't installed"</td><td>Setup tab, Extra tools: install <b>rubberband</b>, or <code>brew install rubberband</code> (Linux: <code>sudo apt install rubberband-cli</code>, version 3.0 or newer)</td></tr>
 <tr><td>"Can't reach Lexicon's Local API"</td><td>Open Lexicon and turn on Settings → Integrations → Local API, then run the command again</td></tr>

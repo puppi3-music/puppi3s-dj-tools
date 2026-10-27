@@ -1036,6 +1036,8 @@ def _after_job(job: dict) -> None:
     """A job may have changed collection.nml, the scans or the models: read them again next time."""
     _grids["mtime"] = None
     _wave_src.clear()
+    if job.get("action") == "cues_train" and not job.get("dry_run"):  # a new cue model: count the proposed corrections now, not when the Tracks tab is next opened
+        threading.Thread(target=lambda: correction_counts(), daemon=True).start()
 
 
 jobs.on_finish.append(_after_job)

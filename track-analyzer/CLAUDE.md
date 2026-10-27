@@ -127,7 +127,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   after 20 s; `web.serve` stops a running job on exit. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
-  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers.
+  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers. Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
 - `cues.py`: `cues train|scan|show`. Traktor's grid (AutoGrid CUE_V2 TYPE 4 START ms + TEMPO BPM; `grids()`,
   read-only; your cues = TYPE 0 cue / 5 loop, LEN ms) → bars. Per bar (cache.db `bars`, keyed path+grid, valid
   while mutagen length is within 0.25 s): 6 band dB, 40 mel dB (2048 FFT, 10 ms hop, 44.1k mono), kick body
