@@ -1202,8 +1202,10 @@ def pending_corrections(path: str, fixes: list[dict]) -> list[dict]:
     ign = ignored(path)
     pl = plans().get(path)
     moves = pl["plan"]["move"] if pl else []
+    gone = pl["plan"].get("remove", []) if pl else []  # a cue you approved deleting has nothing left to correct
     return [f for f in fixes if not any(_same_fix(f, g) for g in ign)
-            and not any(f["hotcue"] == m["hotcue"] and abs(f["from_ms"] - m["from_ms"]) < 1 for m in moves)]
+            and not any(f["hotcue"] == m["hotcue"] and abs(f["from_ms"] - m["from_ms"]) < 1 for m in moves)
+            and not any(f["hotcue"] == r["hotcue"] and abs(f["from_ms"] - r["ms"]) < 1 for r in gone)]
 
 
 def forget_track(path: str) -> None:
@@ -1228,20 +1230,21 @@ def clean_plan(plan: dict | None) -> dict:
             "move": [{"from_ms": float(m["from_ms"]), "to_ms": float(m["to_ms"]), "hotcue": int(m["hotcue"]),
                       "name": str(m.get("name") or "")} for m in move],
             "remove": [{"ms": float(r["ms"]), "hotcue": int(r["hotcue"]), "type": str(r["type"]), "name": str(r.get("name") or "")}
-                       for r in remove if str(r.get("type")) in CUE_TYPES.values() and r.get("type") != "grid"]}
+                       for r in remove if str(r.get("type")) in CUE_TYPES.values() and r.get("type") != "grid"],
+            **({"renumber": True} if (plan or {}).get("renumber") else {})}
 
 
 def set_plan(path: str, bpm: float, grid_ms: float, plan: dict | None) -> dict:
     """Save (or with None / an empty plan, clear) your approval for one track. Writes nothing to Traktor."""
     add, move, remove = (plan or {}).get("add", []), (plan or {}).get("move", []), (plan or {}).get("remove", [])
     with _plan_db() as con:
-        if not add and not move and not remove:
+        if not add and not move and not remove and not (plan or {}).get("renumber"):
             con.execute("DELETE FROM cue_plan WHERE path=?", (path,))
             return {"approved": 0}
         clean = clean_plan(plan)
         con.execute("INSERT OR REPLACE INTO cue_plan VALUES (?,?,?,?)",
                     (path, _grid_key(bpm, grid_ms), json.dumps(clean), time.strftime("%Y-%m-%d %H:%M")))
-    return {"approved": len(add) + len(move) + len(remove)}
+    return {"approved": len(add) + len(move) + len(remove) + bool((plan or {}).get("renumber"))}
 
 
 def same_cue(a: dict, b: dict) -> bool:
@@ -1260,7 +1263,8 @@ def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list
     "slot" (0-7) you chose goes there: if a cue point holds it, that one and the ones after it move up a slot into the
     next free one (never past a loop or another kind); with a slot chosen, the rest isn't put in time order.
     Deleted cues (the 5th item: those still where they were) go first: your hot cues after a deleted one in slots 1-7
-    slide back to close the gap (deleting cue 1 makes 2-7 into 1-6); slot 8 keeps its cue."""
+    slide back to close the gap (deleting cue 1 makes 2-7 into 1-6); slot 8 keeps its cue. With "renumber", the cue
+    points in slots 1-7 (yours and new) end up in time order, filling the slots no loop or marker holds."""
     bar_ms = 4 * 60000 / bpm
     moves, skipped, removes = [], [], []
     for r in plan.get("remove", []):
@@ -1319,6 +1323,10 @@ def resolve(every: list[dict], plan: dict, bpm: float) -> tuple[list[dict], list
     if in_order and not picked and any(n["type"] == "cue" for n in new):  # yours were in time order: keep them so
         mine = sorted((c for c in held if c["type"] == "cue"), key=lambda c: c["ms"])
         for c, slot in zip(mine, sorted(c["hotcue"] for c in mine)):
+            c["hotcue"] = slot
+    if plan.get("renumber"):  # "number in time order": cue points in slots 1-7 by time, into the slots no loop or marker holds
+        free = [s for s in range(7) if s not in {c["hotcue"] for c in held if not (c["type"] == "cue" and c["hotcue"] < 7)}]
+        for c, slot in zip(sorted((c for c in held if c["type"] == "cue" and c["hotcue"] < 7), key=lambda c: c["ms"]), free):
             c["hotcue"] = slot
     renum = [{"hotcue": c["h0"], "ms": c["ms"], "to": c["hotcue"]} for c in cues if c["hotcue"] != c["h0"]]
     return moves, [(n["add"], n["hotcue"]) for n in new], renum, skipped, removes

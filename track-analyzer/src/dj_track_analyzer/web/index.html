@@ -1115,9 +1115,10 @@ const pendSlot = (y, p) => {  // the slot one of your (or an approved) cue ends 
 };
 const yourPads = (c, pend) => [...myCues(c).map(y => { const to = pendSlot(y, pend); return to === -1 ? { ...y, hotcue: -1, nofit: true } : to != null ? { ...y, hotcue: to, was_hotcue: y.was_hotcue ?? y.hotcue, renum: true } : y; }),
     ...(pend?.adds || []).map(a => ({ ...a, status: "pending", bars: a.type === "loop" && a.len_ms ? a.len_ms / 1000 / c.bar_seconds : 0, hotcue: a.nofit || a.hotcue == null ? -1 : a.hotcue }))].sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms)
-      .map(y => { const del = isDel(y, pend), x = SNAP || y.status === "new" || y.status === "pending" ? ""
-        : `<button class="padx" type="button" data-del="${esc(delKey(y))}" data-tip="${del ? "Keep it: untick its deletion" : "Delete this from Traktor (ticks it under Delete your cues; written when you approve and write)"}">${del ? "↺" : "✕"}</button>`;
-        return `<span class="pad">` + `<button class="mine${del ? " del" : y.status === "new" ? " new" + (y.nofit ? " nofit" : "") : y.status === "pending" ? " pend" + (y.nofit ? " nofit" : "") : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${del ? `Marked for deletion: ${y.status === "deleted" ? "approved, " : ""}not deleted in Traktor yet · ` : ""}${y.status === "pending" ? (y.nofit ? `Ticked ${esc(y.name || y.type)}: no free slot, won't be written` : `Ticked ${esc(y.name || y.type)}, not approved yet`) : y.status === "new" ? (y.nofit ? `Approved ${esc(y.name || y.type)}, but with the ticked cues there's no slot left for it` : `Approved ${esc(y.name || y.type)}, not written yet`) : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""}${y.was_hotcue != null ? ` (was slot ${y.was_hotcue + 1}, renumbered${y.renum ? " once the ticked cues are approved" : ""})` : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.nofit ? "✕" : y.hotcue >= 0 ? y.hotcue + 1 : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>${x}</span>`; }).join("") || `<span class="dim small">none</span>`;
+      .map(y => { const del = isDel(y, pend), was = origOf(y).hotcue, rn = was >= 0 && y.hotcue >= 0 && was !== y.hotcue;  // rn: pushed to another slot, the pad reads "2→3"
+        const x = SNAP || y.status === "new" ? "" : y.status === "pending" ? `<button class="padx" type="button" data-unadd="${y.ms}" data-tip="Take it out: untick it (a cue you set by hand is dropped)">✕</button>`
+        : `<button class="padx" type="button" data-del="${esc(delKey(y))}" data-tip="${del ? "Keep it: untick its deletion" : `Delete your ${esc(cueKind(y).toLowerCase())}${was >= 0 ? " " + (was + 1) : ""}${rn ? ` (shown as ${y.hotcue + 1} ${y.renum ? "once the ticked cues are approved" : "after the approved changes"})` : ""} from Traktor (ticks it under Delete your cues; written when you approve and write)`}">${del ? "↺" : "✕"}</button>`;
+        return `<span class="pad">` + `<button class="mine${del ? " del" : y.status === "new" ? " new" + (y.nofit ? " nofit" : "") : y.status === "pending" ? " pend" + (y.nofit ? " nofit" : "") : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${del ? `Marked for deletion: ${y.status === "deleted" ? "approved, " : ""}not deleted in Traktor yet · ` : ""}${y.status === "pending" ? (y.nofit ? `Ticked ${esc(y.name || y.type)}: no free slot, won't be written` : `Ticked ${esc(y.name || y.type)}, not approved yet`) : y.status === "new" ? (y.nofit ? `Approved ${esc(y.name || y.type)}, but with the ticked cues there's no slot left for it` : `Approved ${esc(y.name || y.type)}, not written yet`) : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""}${y.was_hotcue != null ? ` (was slot ${y.was_hotcue + 1}, renumbered${y.renum ? " once the ticked cues are approved" : ""})` : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.nofit ? "✕" : y.hotcue >= 0 ? (rn ? `${was + 1}→` : "") + (y.hotcue + 1) : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>${x}</span>`; }).join("") || `<span class="dim small">none</span>`;
 function renderCues(c) {
   if (!c.bars) return `<div class="dim small">${esc(c.note || "No suggestions yet.")}</div>` + ((c.yours || []).length ? cueTable(c, []) : "");
   if (!c.wave) return `<div class="dim small">No waveform for this track yet: run <span class="mono">cues scan</span>.</div>` + cueTable(c, c.cues);
@@ -1163,10 +1164,16 @@ function shownCues(c, box) {
 const pickedMove = (box, f) => box._movesPath === box._view?.path && box._moves?.get(moveKey(f.hotcue, f.from_ms)) != null;
 const CUE_KIND = { cue: "Cue", loop: "Loop", "fade-in": "Fade in", "fade-out": "Fade out", load: "Load" };
 const cueKind = y => y.type === "loop" && y.bars ? `Loop ${y.bars} bar${y.bars === 1 ? "" : "s"}` : CUE_KIND[y.type] || y.type;
+const renumOn = c => RENUM.has(c.path) ? RENUM.get(c.path) : !!c.approved?.renumber;
+// a cue of yours that's moved off its spot (approved, or ticked in the panel), which frees the spot for a new cue
+const movedAway = (c, ms) => c._movedAway ? c._movedAway.some(m => Math.abs(m - ms) < 1) : (c.approved?.move || []).some(m => Math.abs(m.from_ms - ms) < 1);
 const isApprovedAdd = (c, ms) => !!c.approved_view && c.approved_view.cues.some(y => y.status === "new" && Math.abs(y.ms - ms) < 1);
 const isApprovedMove = (c, f) => !!c.approved_view && c.approved_view.cues.some(y => y.status === "moved" && (y.was_hotcue ?? y.hotcue) === f.hotcue && Math.abs(y.from_ms - f.from_ms) < 1);
 const sameFix = (f, g) => f.hotcue === g.hotcue && Math.abs(f.from_ms - g.from_ms) < 1 && Math.abs(f.to_ms - g.to_ms) < 1;
-const fixSettled = (c, f) => f.ignored || isApprovedMove(c, f);  // approved or ignored: no longer a pending correction
+// a deleted cue (approved, or ticked under Delete your cues) has nothing left to correct
+const cueGone = (c, f) => (c.approved_view?.cues || []).some(y => y.status === "deleted" && (y.was_hotcue ?? y.hotcue) === f.hotcue && Math.abs(y.ms - f.from_ms) < 1)
+  || (c._delTicked || []).some(r => r.hotcue === f.hotcue && Math.abs(r.ms - f.from_ms) < 1);
+const fixSettled = (c, f) => f.ignored || isApprovedMove(c, f) || cueGone(c, f);  // approved, ignored or its cue deleted: no longer a pending correction
 const sugHidden = (c, q) => isApprovedAdd(c, q.ms) || (q.moves != null && (c.corrections || []).some(f => f.hotcue === q.moves && Math.abs(f.to_ms - q.ms) < 1 && fixSettled(c, f)));
 // a folded help text in the track panel; stays open or shut across the panel's redraws
 // the track panel's folding sections: open or closed as you last left them, from track to track
@@ -1182,8 +1189,8 @@ const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")
 function approvedText(n, long = false) {
   if (n === true) n = { add: 0, move: 0, remove: 0 };  // an older server: no counts
   const pl = (k, w) => `${k} ${w}${k > 1 ? "s" : ""}`;
-  if (long) return [n.add && pl(n.add, "new cue"), n.move && pl(n.move, "move"), n.remove && pl(n.remove, "deletion")].filter(Boolean).join(", ") || "nothing";
-  return ([n.add && `+${n.add}`, n.move && `${n.move} moved`, n.remove && `−${n.remove}`].filter(Boolean).join(" · ") || "") + " approved";
+  if (long) return [n.add && pl(n.add, "new cue"), n.move && pl(n.move, "move"), n.remove && pl(n.remove, "deletion"), n.renumber && "renumbered"].filter(Boolean).join(", ") || "nothing";
+  return ([n.add && `+${n.add}`, n.move && `${n.move} moved`, n.remove && `−${n.remove}`, n.renumber && "renumbered"].filter(Boolean).join(" · ") || "") + " approved";
 }
 function barLabel(c, bar) {  // bar: index into the track's bars; bar 1 = Traktor's grid marker
   const n = bar - c.grid_bar + 1, ph = Math.floor((n - 1) / 8) + 1, inph = ((n - 1) % 8 + 8) % 8 + 1;
@@ -1194,7 +1201,8 @@ function approveItems(c) {
   const free = c.free_slots > 0;
   (c.cues || []).forEach(q => {  // none when the track isn't measured yet (the panel shows c.note)
     if (q.moves != null && !free) return;  // offered below as a correction of your cue; with a free slot, also as a new cue
-    const note = q.matches != null ? `✓ matches your cue ${q.matches + 1}` : q.at_your_loop ? "your loop is here" : "";
+    const mine = q.matches != null && (c.yours || []).find(y => y.hotcue === q.matches && y.type === "cue"),
+      note = q.matches != null && !(mine && movedAway(c, mine.ms)) ? `✓ matches your cue ${q.matches + 1}` : q.at_your_loop ? "your loop is here" : "";
     const also = q.moves != null ? ` <span class="dim small">· or move your cue ${q.moves + 1} here (correction)</span>` : "";
     items.push({ key: "a" + q.ms, kind: "add", also: q.moves != null, label: `${q.time} · bar ${barLabel(c, q.bar).n} · <b>${esc(q.name)}</b>${also}`, disabled: note, data: { ms: q.ms, name: q.name, type: "cue", len_ms: 0 } });
   });
@@ -1211,12 +1219,14 @@ function approveItems(c) {
       data: { ms: l.ms, name: `Loop ${bars}`, type: "loop", len_ms: +(barMs * bars).toFixed(3) } });
   });
   (c.alternatives || []).forEach(y => {  // each of your cues: move it to a bar you choose (the model's pick first)
+    if (cueGone(c, y)) return;  // deleted: nothing to move
     const same = (a, b) => a.hotcue === b.hotcue && Math.abs(a.from_ms - b.from_ms) < 1;
     const fx = (c.corrections || []).filter(f => same(f, y)), pend = fx.filter(f => !f.ignored);
     const mv = (c.approved?.move || []).find(m => same(m, y));
     const opts = y.options.slice(), barOf = ms => Math.round((ms / 1000 - c.first_bar_s) / c.bar_seconds) - c.grid_bar + 1;
     const addOpt = ms => { if (!opts.some(o => Math.abs(o.to_ms - ms) < 1)) opts.push({ to_ms: ms, to_bar: barOf(ms), to_time: clock(ms / 1000), score: null }); };
     fx.forEach(f => addOpt(f.to_ms)); if (mv) addOpt(mv.to_ms);
+    const dragged = DRAGMV.get(c.path)?.get(`m${y.hotcue}:${y.from_ms}`); if (dragged != null) addOpt(dragged);  // where you dropped it on the waveform
     opts.sort((a, b) => a.to_ms - b.to_ms);
     const proposed = o => fx.some(f => Math.abs(f.to_ms - o.to_ms) < 1);
     const best = opts.reduce((a, o) => (o.score ?? -1) > (a.score ?? -1) ? o : a, opts[0]);
@@ -1231,15 +1241,16 @@ function approveItems(c) {
       data: { from_ms: y.from_ms, to_ms: chosen, hotcue: y.hotcue, name: y.name } });
   });
   [...(c.yours || []), ...(c.marks || [])].sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms).forEach(y => {  // delete any of yours
-    const what = y.hotcue >= 0 ? `${y.type === "cue" ? "Cue" : cueKind(y)} ${y.type === "cue" ? y.hotcue + 1 : `(slot ${y.hotcue + 1})`}` : cueKind(y);
+    const to = `<span data-renum="${y.hotcue}"></span>`;  // " → 3" once the ticked or approved cues push it to another slot (showSlots fills it)
+    const what = y.hotcue >= 0 ? (y.type === "cue" ? `Cue ${y.hotcue + 1}${to}` : `${esc(cueKind(y))} (slot ${y.hotcue + 1}${to})`) : esc(cueKind(y));
     items.push({ key: delKey({ ...y, status: "yours" }), kind: "remove",
-      label: `<b>${esc(what)}</b>${y.name && !/^(Cue|n\.n\.)\s*\d*$/.test(y.name) ? ` <span class="small dim">${esc(y.name)}</span>` : ""} · ${clock(y.ms / 1000)} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}`,
+      label: `<b>${what}</b>${y.name && !/^(Cue|n\.n\.)\s*\d*$/.test(y.name) ? ` <span class="small dim">${esc(y.name)}</span>` : ""} · ${clock(y.ms / 1000)} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}`,
       data: { ms: y.ms, hotcue: y.hotcue, type: y.type, name: y.name || "", len_ms: y.type === "loop" && y.bars ? y.bars * c.bar_seconds * 1000 : 0 } });
   });
   // cues you set by hand (+ Cue), and approved cues the lists above no longer offer
   const known = ms => items.some(i => i.kind === "add" && (Math.abs(i.data.ms - ms) < 1 || (i.asCue && Math.abs(i.asCue.ms - ms) < 1)));
   const hand = [...(c.approved?.add || []).filter(a => a.type === "cue"), ...(HAND.get(c.path) || [])];
-  hand.filter((h, k) => !known(h.ms) && !(c.yours || []).some(y => Math.abs(y.ms - h.ms) < 1) && hand.findIndex(g => Math.abs(g.ms - h.ms) < 1) === k).sort((a, b) => a.ms - b.ms).forEach(h => {
+  hand.filter((h, k) => !known(h.ms) && !(c.yours || []).some(y => Math.abs(y.ms - h.ms) < 1 && !movedAway(c, y.ms)) && hand.findIndex(g => Math.abs(g.ms - h.ms) < 1) === k).sort((a, b) => a.ms - b.ms).forEach(h => {
     const k = Math.round((h.ms - c.grid_ms) / (60000 / c.bpm)), n = Math.floor(k / 4) + 1, beat = ((k % 4) + 4) % 4 + 1;
     items.push({ key: "h" + h.ms, kind: "add", hand: true, disabled: "",
       label: `${clock(h.ms / 1000)} · bar ${n}${beat > 1 ? ` beat ${beat}` : ""} · <b>Cue set by hand</b>`,
@@ -1296,7 +1307,7 @@ function approveBox(c) {
   const summary = [fixes.length && `<b style="color:var(--warn)">${fixes.length} correction${fixes.length > 1 ? "s" : ""} to your cues</b>`,
     `${newCues} new cue${newCues === 1 ? "" : "s"}`, loops.length && `${loops.length} loop idea${loops.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
   return `<div class="section" style="margin-top:12px"><h3>Approve for Traktor</h3>
-    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
+    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length + (ap.renumber ? 1 : 0)} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
     <div class="small muted">${summary}</div>
     <div id="approve">
       ${approved.length ? `<div class="apgroup"><h4 style="color:var(--good)">✓ Approved · not in Traktor yet <span class="small muted" style="font-weight:400">· untick and press Approve ticked to take one back</span></h4>${approved.map(row).join("")}</div>` : ""}
@@ -1308,7 +1319,7 @@ function approveBox(c) {
         <label class="inline small" style="font-weight:400;margin-left:8px" data-tip="Fade the loop's last 5 ms into the audio just before its start, so a sound ringing over the end isn't cut off with a click. Changes the loop pads and saved samples; off = the track's exact samples"><input type="checkbox" id="smooth-loops" ${smoothLoops() ? "checked" : ""}> smooth loop point</label></h4>${loops.map(row).join("")}</div>` : ""}
       ${dels.length ? `<details class="apgroup" id="delbox"><summary class="small muted">Delete your cues · ${dels.length} · or press ✕ next to a pad above</summary><div class="small dim" style="margin:2px 0 4px">Your cues after it in slots 1–7 slide back to close the gap; slot 8 keeps its cue.</div>${dels.map(row).join("")}</details>` : ""}
     </div>
-    <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>
+    <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>${SNAP ? "" : `<button id="ap-renum" class="${renumOn(c) ? "primary" : ""}" aria-pressed="${renumOn(c)}" data-tip="Number your cue points 1-7 in the order they play, filling the slots no loop holds. Shows on the pads at once; Approve ticked keeps it, Write to Traktor writes it">Number cues in order</button>`}
       ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write to Traktor…</button>`}<span class="small muted" id="ap-msg"></span></div>
     ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
       (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div>`)}</div>
@@ -1374,8 +1385,9 @@ function bindApprove(c, box, t) {
       if ("corrections" in d) { if (d.corrections) x.corrections = d.corrections; else delete x.corrections; }
     }
     const fresh = await api("cues", { path: t.path });
+    RENUM.delete(t.path);  // the button follows what's saved now
     for (const list of Object.values(S.tracks)) for (const x of list) if (x.path === t.path) {  // the list's approved chip
-      const ap = fresh.approved; if (ap) x.cues_approved = { add: ap.add.length, move: ap.move.length, remove: (ap.remove || []).length }; else delete x.cues_approved;
+      const ap = fresh.approved; if (ap) x.cues_approved = { add: ap.add.length, move: ap.move.length, remove: (ap.remove || []).length, renumber: ap.renumber ? 1 : 0 }; else delete x.cues_approved;
     }
     if (!box.isConnected || $("#drawer").dataset.path !== t.path) { if (S.page === "tracks") S.redrawTracks?.(); return; }  // approved, then moved on: the open track's panel stays
     box.innerHTML = renderCues(fresh); drawWave(fresh, box); bindApprove(fresh, box, t); deckAttach(fresh, box);
@@ -1401,7 +1413,7 @@ function bindApprove(c, box, t) {
     const target = i => { const s = box.querySelector(`select[data-target="${CSS.escape(i.key)}"]`); return s ? { ...i.data, to_ms: +s.value } : i.data; };
     const slot = i => { const v = box.querySelector(`select[data-slot="${CSS.escape(i.key)}"]`)?.value, d = asData(i); return v ? { ...d, slot: +v } : d; };
     return { add: sel.filter(i => i.kind === "add").map(slot), move: sel.filter(i => i.kind === "move").map(target),
-      remove: sel.filter(i => i.kind === "remove").map(i => i.data) }; };
+      remove: sel.filter(i => i.kind === "remove").map(i => i.data), ...(renumOn(c) ? { renumber: true } : {}) }; };
   const useAs = (s, k) => {  // a suggestion → one of your cues: show that cue's move, set to here
     const hand = box.querySelector(`[data-hand="${CSS.escape(k)}"]`);
     if (hand) { hand.hidden = false; box.querySelector("#byhand").hidden = false; }
@@ -1418,25 +1430,41 @@ function bindApprove(c, box, t) {
     if (pl) pl.dataset.t = +s.value / 1000;
   }));
   box.querySelector("#ap-save")?.addEventListener("click", () => go(ticked()));
-  const syncMoves = () => {  // every move in the panel, ticked (its picked bar) or not (null): the waveform draws them
+  const syncMoves = live => {  // every move in the panel, ticked (its picked bar) or not (null): the waveform draws them
     box._moves = new Map(items.filter(i => i.kind === "move").map(i => {
       const cb = box.querySelector(`#approve input[data-key="${CSS.escape(i.key)}"]`), s = box.querySelector(`select[data-target="${CSS.escape(i.key)}"]`);
       return [moveKey(i.data.hotcue, i.data.from_ms), cb?.checked ? (s ? +s.value : i.data.to_ms) : null];
     }));
     box._movesPath = c.path;
+    if (!live) return box._wave?.redraw();  // binding a freshly drawn panel: its ticks aren't restored yet, so they say nothing about moves
+    const was = JSON.stringify(c._movedAway || []);
+    c._movedAway = items.filter(i => i.kind === "move" && box._moves.get(moveKey(i.data.hotcue, i.data.from_ms)) != null
+      && Math.abs(box._moves.get(moveKey(i.data.hotcue, i.data.from_ms)) - i.data.from_ms) >= 1).map(i => i.data.from_ms);
+    if (was !== JSON.stringify(c._movedAway)) return redraw();  // a suggestion your moved cue no longer matches opens up
     box._wave?.redraw();
   };
-  box.querySelector("#approve")?.addEventListener("change", syncMoves);
+  box.querySelector("#approve")?.addEventListener("change", () => syncMoves(true));
   let slotAsk = 0;
   const showSlots = () => {  // "auto" names its slot: the server's resolve() on what's ticked, the same as apply writes it
     const sels = [...box.querySelectorAll("#approve select.slot")];
     const plan = ticked(), n = ++slotAsk, label = (s, text) => { s.options[0].textContent = text; };
+    c._delTicked = plan.remove;  // a cue ticked for deletion can't be moved or corrected: untick its move
+    let unticked = false;
+    items.filter(i => i.kind === "move").forEach(i => { const cb = box.querySelector(`#approve input[data-key="${CSS.escape(i.key)}"]`); if (!cb) return;
+      const gone = cueGone(c, { hotcue: i.data.hotcue, from_ms: i.data.from_ms }); if (gone && cb.checked) { cb.checked = false; unticked = true; } cb.disabled = gone; });
+    if (unticked) syncMoves(true);
     // the waveform draws the ticked new cues as pending (dashed), numbered once the server says which slot
     const pend = plan.add.filter(a => !isApprovedAdd(c, a.ms));
     box._pending = PEND = { path: c.path, adds: pend.map(a => ({ ...a, hotcue: a.slot ?? null })), removes: plan.remove, slots: null };
-    const pads = () => { const y = box.querySelector("#your-pads"); if (y) y.innerHTML = yourPads(c, box._pending); box._wave?.redraw(); };
+    const pads = () => {
+      const y = box.querySelector("#your-pads"); if (y) y.innerHTML = yourPads(c, box._pending); box._wave?.redraw();
+      box.querySelectorAll("#approve [data-renum]").forEach(s => {  // Delete your cues names each cue by its slot in Traktor, and where the pads show it
+        const h = +s.dataset.renum, cue = myCues(c).find(y => y.status !== "deleted" && origOf(y).hotcue === h), to = cue && (pendSlot(cue, box._pending) ?? cue.hotcue);
+        s.textContent = cue && !isDel(cue, box._pending) && to !== h ? (to >= 0 ? ` → ${to + 1}` : " → no slot") : "";
+      });
+    };
     pads();
-    if (!(plan.add.length || plan.remove.length) || SNAP) return sels.forEach(s => label(s, "slot: auto"));  // a deletion slides the cues after it back
+    if (!(plan.add.length || plan.remove.length || plan.renumber) || SNAP) return sels.forEach(s => label(s, "slot: auto"));  // a deletion slides the cues after it back
     send("/api/cues/slots", { path: t.path, plan }).then(r => {
       if (n !== slotAsk || !box.isConnected) return;
       if (box._pending) {
@@ -1455,6 +1483,15 @@ function bindApprove(c, box, t) {
   box.querySelector("#approve")?.addEventListener("change", showSlots);
   showSlots();
   box.querySelector("#your-pads")?.addEventListener("click", e => {  // a pad's ✕: tick (or untick) its deletion in the panel
+    const u = e.target.closest("[data-unadd]");  // a ticked, not yet approved pad's ✕: untick it; a hand-set cue goes away altogether
+    if (u) {
+      e.preventDefault(); e.stopPropagation();
+      const ms = +u.dataset.unadd, it = items.find(i => i.kind === "add" && Math.abs(i.data.ms - ms) < 1);
+      if (it?.hand) { HAND.set(c.path, (HAND.get(c.path) || []).filter(h => Math.abs(h.ms - ms) >= 1)); return redraw(); }
+      const cb = it && box.querySelector(`#approve input[data-key="${CSS.escape(it.key)}"]`);
+      if (cb) { cb.checked = false; cb.dispatchEvent(new Event("change", { bubbles: true })); }
+      return;
+    }
     const b = e.target.closest("[data-del]"); if (!b) return;
     e.preventDefault(); e.stopPropagation();
     const cb = box.querySelector(`#approve input[data-key="${CSS.escape(b.dataset.del)}"]`); if (!cb) return;
@@ -1466,12 +1503,13 @@ function bindApprove(c, box, t) {
     const q = sel => [...box.querySelectorAll(sel)];
     const ticks = new Map(q("#approve input[data-key]").map(i => [i.dataset.key, i.checked]));
     const vals = q("#approve [data-target], #approve [data-slot], #approve [data-as], #approve [data-nm]").map(e => [e.dataset.target ?? e.dataset.slot ?? e.dataset.as ?? e.dataset.nm, e.className, e.value]);
-    const open = q("#approve details").map(d => d.open), scroll = [];
+    const open = q("#approve details").map(d => d.open), scroll = [], shown = q("#approve [data-hand]:not([hidden])").map(e => e.dataset.hand);
     for (let e = box; e; e = e.parentElement) scroll.push([e, e.scrollTop]);
     box.innerHTML = renderCues(c); drawWave(c, box); bindApprove(c, box, t); deckAttach(c, box);
     q("#approve input[data-key]").forEach(i => { if (ticks.has(i.dataset.key)) i.checked = ticks.get(i.dataset.key); });
     vals.forEach(([k, cls, v]) => { const e = q(`#approve .${cls.split(" ")[0]}`).find(e => (e.dataset.target ?? e.dataset.slot ?? e.dataset.as ?? e.dataset.nm) === k); if (e) e.value = v; });
     const ds = q("#approve details"); if (ds.length === open.length) ds.forEach((d, k) => { d.open = open[k]; });
+    shown.forEach(k => { const e = box.querySelector(`[data-hand="${CSS.escape(k)}"]`); if (e) { e.hidden = false; const g = box.querySelector("#byhand"); if (g) g.hidden = false; } });  // moves you opened by hand stay open
     scroll.forEach(([e, y]) => { e.scrollTop = y; });
     after?.();
     box.querySelector("#approve")?.dispatchEvent(new Event("change"));  // the pads, waveform and slot labels follow the ticks
@@ -1479,7 +1517,7 @@ function bindApprove(c, box, t) {
   box.querySelector("#dk-cue")?.addEventListener("click", () => {  // + Cue: a cue of yours at the playhead, on the nearest beat of Traktor's grid, ticked
     const beat = 60000 / c.bpm, ms = +(c.grid_ms + Math.round((deckTime() * 1000 - c.grid_ms) / beat) * beat).toFixed(3), msg = m => { const e = box.querySelector("#ap-msg"); if (e) e.textContent = m; };
     if (ms < 0) return;
-    const y = myCues(c).find(y => y.status !== "deleted" && Math.abs(y.ms - ms) < 1);
+    const y = shownCues(c, box).find(y => !y.del && Math.abs(y.ms - ms) < 1);  // as moved: a cue moved off this beat leaves it free
     if (y) return msg(`Your ${cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " " + (y.hotcue + 1) : ""} is already on this beat`);
     const tick = () => { const cb = box.querySelector(`#approve input[data-key="h${ms}"]`) || items.map(i => i.kind === "add" && Math.abs(i.data.ms - ms) < 1 && box.querySelector(`#approve input[data-key="${CSS.escape(i.key)}"]`)).find(Boolean);
       if (!cb || cb.disabled) return;
@@ -1488,6 +1526,28 @@ function bindApprove(c, box, t) {
     if (!items.some(i => i.kind === "add" && Math.abs(i.data.ms - ms) < 1)) { HAND.set(c.path, [...(HAND.get(c.path) || []), { ms, name: "Cue" }]); redraw(tick); }
     else { tick(); box.querySelector("#approve")?.dispatchEvent(new Event("change")); }  // a suggestion is already on this beat: tick that one
   });
+  box._cueDrag = (y, ms) => {  // a cue dropped on the waveform at ms (a beat of Traktor's grid)
+    const msg = m => { const e = box.querySelector("#ap-msg"); if (e) e.textContent = m; };
+    if (Math.abs(ms - y.ms) < 1) return;
+    const other = shownCues(c, box).find(o => !o.del && Math.abs(o.ms - ms) < 1);
+    if (other) return msg(`Your ${cueKind(other).toLowerCase()}${other.hotcue >= 0 ? " " + (other.hotcue + 1) : ""} is already on that beat`);
+    if (y.hand) {
+      HAND.set(c.path, (HAND.get(c.path) || []).map(h => Math.abs(h.ms - y.ms) < 1 ? { ...h, ms } : h));
+      return redraw(() => { const cb = box.querySelector(`#approve input[data-key="h${ms}"]`); if (cb && !cb.disabled) cb.checked = true; });
+    }
+    const orig = y.status === "moved" ? y.from_ms : y.ms, key = `m${y.was_hotcue ?? y.hotcue}:${orig}`;
+    if (!items.some(i => i.key === key)) return msg("That one can't be moved by dragging; use its slot's list under Your cues moved by hand");
+    const back = Math.abs(ms - orig) < 1;
+    const m = DRAGMV.get(c.path) || new Map(); DRAGMV.set(c.path, m); if (back) m.delete(key); else m.set(key, ms);
+    redraw(() => {
+      const cb = box.querySelector(`#approve input[data-key="${CSS.escape(key)}"]`), sel = box.querySelector(`select[data-target="${CSS.escape(key)}"]`);
+      if (!cb || !sel) return;
+      cb.checked = !back; if (!back) sel.value = String(ms);
+      const hand = box.querySelector(`[data-hand="${CSS.escape(key)}"]`); if (hand) { hand.hidden = false; const bh = box.querySelector("#byhand"); if (bh) bh.hidden = false; }
+      if (!back) { sel.closest("details")?.setAttribute("open", ""); box._wave?.redraw(); }
+    });
+    msg(back ? "Back where it was: move unticked" : `Cue moved to ${clock(ms / 1000)}: ticked under Your cues moved by hand, press Approve ticked to keep it`);
+  };
   box.querySelectorAll("[data-unhand]").forEach(b => b.addEventListener("click", e => {
     e.preventDefault(); e.stopPropagation();
     HAND.set(c.path, (HAND.get(c.path) || []).filter(h => Math.abs(h.ms - +b.dataset.unhand) >= 1)); redraw();
@@ -1497,7 +1557,7 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === s.dataset.as), ap = c.approved;
     if (!it || !ap || ap.grid_changed || !ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1)) return;
     const add = ap.add.map(a => Math.abs(a.ms - it.data.ms) >= 1 ? a : { ...asData(it), ...(a.slot != null ? { slot: a.slot } : {}) });
-    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: ${it.data.name} → ${s.value === "cue" ? "as a cue point" : "as a loop"}`))
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [], ...(ap.renumber ? { renumber: true } : {}) } }).then(d => refresh(d, `Saved: ${it.data.name} → ${s.value === "cue" ? "as a cue point" : "as a loop"}`))
       .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
   }));
   box.querySelectorAll("#approve select.len").forEach(s => s.addEventListener("change", () => {  // a loop's length: ticks it; approved already, saved now
@@ -1507,7 +1567,7 @@ function bindApprove(c, box, t) {
     redraw(() => { const cb = box.querySelector(`#approve input[data-key="${CSS.escape(k)}"]`); if (cb && !cb.disabled) cb.checked = true; });
     if (!approved) return;
     const add = ap.add.map(a => Math.abs(a.ms - it.data.ms) >= 1 ? a : { ...a, len_ms: +(it.data.len_ms / it.lenOf.bars * +s.value).toFixed(3), name: `Loop ${+s.value}` });
-    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: loop → ${s.value} bars`))
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [], ...(ap.renumber ? { renumber: true } : {}) } }).then(d => refresh(d, `Saved: loop → ${s.value} bars`))
       .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
   }));
   box.querySelectorAll("#approve select.slot").forEach(s => s.addEventListener("change", () => {  // picking a slot ticks the cue
@@ -1515,10 +1575,10 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === s.dataset.slot), ap = c.approved;  // already approved: save the new slot now, so the pads and waveform show it
     if (!it || !ap || ap.grid_changed || !ap.add.some(a => Math.abs(a.ms - it.data.ms) < 1)) return;
     const add = ap.add.map(a => { if (Math.abs(a.ms - it.data.ms) >= 1) return a; const { slot: _, ...rest } = a; return s.value ? { ...rest, slot: +s.value } : rest; });
-    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [] } }).then(d => refresh(d, `Saved: ${it.data.name || "the cue"} → ${s.value ? `slot ${+s.value + 1}` : "slot auto"}`))
+    send("/api/cues/approve", { path: t.path, plan: { add, move: ap.move, remove: ap.remove || [], ...(ap.renumber ? { renumber: true } : {}) } }).then(d => refresh(d, `Saved: ${it.data.name || "the cue"} → ${s.value ? `slot ${+s.value + 1}` : "slot auto"}`))
       .catch(e => { const m = box.querySelector("#ap-msg"); if (m) m.textContent = e.message; });
   }));
-  syncMoves();
+  syncMoves(false);
   box._hover = [];  // the panel was just drawn again: nothing under the mouse yet
   box.querySelectorAll(".pads").forEach(p => {  // so do the pads (your cues, suggestions, loop ideas): a bar, or the loop's length
     let on = null;
@@ -1555,7 +1615,7 @@ function bindApprove(c, box, t) {
     const close = () => { if (!menu) return; menu.remove(); menu = null; light([]); removeEventListener("keydown", esc_); document.removeEventListener("mousedown", out); removeEventListener("scroll", scr, true); };
     const scr = e => { if (menu && !menu.contains(e.target)) close(); };  // it stays put while the page moves
     const esc_ = e => { if (e.key === "Escape") close(); };
-    const out = e => { if (menu && !menu.contains(e.target) && !e.target.closest("button.useas")) close(); };
+    const out = e => { if (menu && !menu.contains(e.target) && !e.target.closest("button.useas, select.target")) close(); };
     box.querySelectorAll("button.useas").forEach(b => b.addEventListener("click", e => {
       e.preventDefault(); e.stopPropagation();
       const was = menu?._for === b; close(); if (was) return;
@@ -1573,6 +1633,31 @@ function bindApprove(c, box, t) {
       });
       menu.addEventListener("mouseleave", () => light([]));
       menu.addEventListener("click", e => { const k = e.target.closest("[data-k]")?.dataset.k; if (!k) return; close(); useAs(b, k); });
+      addEventListener("keydown", esc_); document.addEventListener("mousedown", out); addEventListener("scroll", scr, true);
+    }));
+    // a cue's "move to bar…" list the same way: hovering a bar lights it (and the cue where it is now) on the waveform
+    box.querySelectorAll("select.target").forEach(sel => sel.addEventListener("mousedown", e => {
+      if (e.button) return;
+      e.preventDefault(); sel.focus();  // no native list: it can't report the option under the mouse
+      const was = menu?._for === sel; close(); if (was) return;
+      const it = items.find(i => i.key === sel.dataset.target), bar = c.bar_seconds, from = it.data.from_ms / 1000;
+      menu = document.createElement("div"); menu.className = "usemenu"; menu._for = sel;
+      menu.innerHTML = [...sel.options].map((o, k) => `<div data-i="${k}"${o.selected ? ' class="on"' : ""}>${esc(o.textContent)}</div>`).join("");
+      document.body.append(menu);
+      const r = sel.getBoundingClientRect(), h = menu.offsetHeight;
+      menu.style.left = `${Math.max(8, Math.min(r.left, innerWidth - menu.offsetWidth - 8))}px`;
+      menu.style.top = `${r.bottom + 2 + h > innerHeight ? Math.max(8, r.top - 2 - h) : r.bottom + 2}px`;
+      menu.querySelector(".on")?.scrollIntoView({ block: "nearest" });
+      menu.addEventListener("mouseover", e => {
+        const k = e.target.closest("[data-i]")?.dataset.i; if (k == null) return;
+        const to = +sel.options[k].value / 1000;
+        light([[from, from + bar], [to, to + bar]]);
+      });
+      menu.addEventListener("mouseleave", () => light([]));
+      menu.addEventListener("click", e => {
+        const k = e.target.closest("[data-i]")?.dataset.i; if (k == null) return;
+        close(); sel.selectedIndex = +k; sel.dispatchEvent(new Event("change", { bubbles: true }));
+      });
       addEventListener("keydown", esc_); document.addEventListener("mousedown", out); addEventListener("scroll", scr, true);
     }));
   }
@@ -1614,7 +1699,13 @@ function bindApprove(c, box, t) {
     await refresh({}, S.smoothLoops ? "Loop points smoothed" : "Exact loop points");
   });
   box.querySelector("#ap-fixall")?.addEventListener("click", e => { e.preventDefault(); box.querySelectorAll('#fixes input[data-key^="m"]').forEach(i => { i.checked = true; }); syncMoves(); });
-  box.querySelector("#ap-clear")?.addEventListener("click", () => go(null));
+  box.querySelector("#ap-clear")?.addEventListener("click", () => { RENUM.delete(c.path); go(null); });
+  box.querySelector("#ap-renum")?.addEventListener("click", e => {  // pressed: the pads show the new numbers; Approve ticked keeps it
+    const on = !renumOn(c); RENUM.set(c.path, on);
+    e.currentTarget.classList.toggle("primary", on); e.currentTarget.setAttribute("aria-pressed", on);
+    box.querySelector("#approve")?.dispatchEvent(new Event("change"));
+    const m = box.querySelector("#ap-msg"); if (m) m.textContent = on ? "Cues numbered in the order they play: press Approve ticked to keep it" : "Numbering left as it is";
+  });
 }
 // ---------- deck: play the track and jump around like on a Traktor deck ----------
 const DECK = { audio: new Audio(), path: null, c: null, box: null, loop: null, raf: 0, loaded: false,
@@ -1853,6 +1944,8 @@ document.addEventListener("keydown", e => {
 const LOOP_BARS = [1, 2, 4, 8, 16];
 const LOOP_LEN = new Map();  // path -> Map(loop idea key -> bars you picked for it in the menu)
 const loopLen = path => { if (!LOOP_LEN.has(path)) LOOP_LEN.set(path, new Map()); return LOOP_LEN.get(path); };
+const RENUM = new Map();  // path -> true while "Number cues in order" is pressed for that track (saved with Approve ticked)
+const DRAGMV = new Map();  // path -> Map("m<slot>:<from_ms>" -> ms): moves of your cues made by dragging them on the waveform
 const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
 let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
 const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
@@ -2062,7 +2155,7 @@ function drawWave(c, box) {
       const x = Math.round(OX(y.ms / 1000)), col = y.status === "new" ? "#4cd17a" : y.status === "moved" ? "#ffd23f" : "#fff";
       g.fillStyle = col; g.fillRect(x, OV0, 1, OV1 - OV0);
       if (y.type === "loop" && y.bars) g.fillRect(x, OV1 - 3, Math.max(3, OX(y.bars * c.bar_seconds)), 3);
-      const label = y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "";
+      const to = pendSlot(y, pend), label = to != null && to >= 0 ? String(to + 1) : y.hotcue >= 0 ? String(y.hotcue + 1) : y.type === "loop" ? "L" : "";
       if (label) { g.fillStyle = col; g.fillRect(x + 1, OV0, 9, 10); g.fillStyle = "#0c0c0e"; g.fillText(label, x + 3, OV0 + 8); }
     }
     for (const y of pend?.adds || []) {  // pending new cues on the overview: dashed, outlined number
@@ -2092,15 +2185,27 @@ function drawWave(c, box) {
   }, { passive: false });
   cv.ondblclick = e => zoomAt(timeAt(e.offsetX), e.shiftKey ? 2 : 0.5);
   let drag = null;
+  const cueAt = (x, yy) => {  // a cue of yours (not approved yet, not marked for deletion) under the mouse in the big waveform
+    if (SNAP || yy >= OV0) return null;
+    const pend = box._pending?.path === c.path ? box._pending : null;
+    const all = [...shownCues(c, box).filter(y => !y.del && y.status !== "new" && y.type !== "fade-in" && y.type !== "fade-out" && y.type !== "load"),
+      ...(pend?.adds || []).filter(a => a.hand && a.type === "cue").map(a => ({ ...a, status: "pending" }))];
+    return all.map(y => ({ y, d: Math.abs(X(y.ms / 1000) - x) })).filter(o => o.d <= 5).sort((a, b) => a.d - b.d)[0]?.y || null;
+  };
   cv.onmousedown = e => {
+    const hit = cueAt(e.offsetX, e.offsetY);
+    if (hit) { drag = { cue: hit, x: e.clientX, ms: hit.ms, moved: false }; return; }
     if (e.offsetY >= OV0) { const t = e.offsetX / W * dur, h = (st.v1 - st.v0) / 2; setView(t - h, t + h); drag = { ov: true }; return; }
     drag = { x: e.clientX, v0: st.v0, v1: st.v1, moved: false };
   };
   cv.onmouseup = e => {  // a click (not a drag) on the waveform jumps there, like Traktor
-    if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting || !DECK.loaded, null);
+    if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting, null);  // a click moves the playhead; it only keeps playing if it already was
   };
   WAVE_UP?.abort(); WAVE_UP = new AbortController();  // drawWave runs on every redraw: drop the last one's listener
-  window.addEventListener("mouseup", () => { drag = null; cv.style.cursor = ""; }, { signal: WAVE_UP.signal });
+  window.addEventListener("mouseup", () => {
+    if (drag?.cue && drag.moved) { const { cue, ms } = drag; drag = null; bh.style.display = "none"; cv.style.cursor = ""; box._cueDrag?.(cue, ms); return; }
+    drag = null; cv.style.cursor = "";
+  }, { signal: WAVE_UP.signal });
   // page zoom or a resize: draw again at the new size and pixel ratio, once per frame at most
   let sized = 0;
   const resized = () => { if (!sized) sized = requestAnimationFrame(() => { sized = 0; if (cv.isConnected) { render(); refine(); } }); };
@@ -2113,6 +2218,15 @@ function drawWave(c, box) {
   cv.onmousemove = e => {
     const x = e.offsetX;
     if (drag && drag.ov) { const t = x / W * dur, h = (st.v1 - st.v0) / 2; setView(t - h, t + h); return; }
+    if (drag?.cue) {  // dragging a cue: a line on the beat it would land on
+      if (Math.abs(drag.x - e.clientX) > 3) drag.moved = true;
+      if (!drag.moved) return;
+      const bm = 60000 / c.bpm, ms = +(c.grid_ms + Math.round((timeAt(Math.max(0, Math.min(W, x))) * 1000 - c.grid_ms) / bm) * bm).toFixed(3);
+      drag.ms = Math.max(0, Math.min(ms, dur * 1000 - 1));
+      cv.style.cursor = "grabbing"; bh.style.left = Math.round(X(drag.ms / 1000)) + "px"; bh.style.display = "block";
+      tip.textContent = `Move to ${clock(drag.ms / 1000)}`; tip.style.display = "block"; return;
+    }
+    if (!drag) cv.style.cursor = cueAt(x, e.offsetY) ? "grab" : "";
     if (drag && Math.abs(drag.x - e.clientX) > 3) drag.moved = true;
     if (drag && drag.moved) { const d = (drag.x - e.clientX) / W * (drag.v1 - drag.v0); cv.style.cursor = "grabbing"; setView(drag.v0 + d, drag.v1 + d); }
     if (e.offsetY >= OV0) { hl.style.display = "none"; tip.textContent = "Click or drag to move the view"; tip.style.display = "block"; return; }
