@@ -117,7 +117,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's
   `readJSON` copes with a non-JSON answer. `tempo_report` refuses a BPM without a view (`tempo.report` would create
   an empty data/at-<bpm>). The `/audit-web` skill checks all of this live, plus phone width and light/dark. `--export` / /export = snapshot: page + `window.SNAPSHOT` (every tab's data,
-  hype in 3 orders filtered client-side as hype.find does, default-rule mix suggestions per track, mix JSONs only).
+  hype in 3 orders filtered client-side as hype.find does, default-rule mix suggestions per track, mix JSONs only). The Tracks filters/sort/scroll survive a refresh in sessionStorage (`ta-tf`, `ta-scroll`), the open track in the address (`#tracks/<path>`, `hashTrack`).
 - `jobs.py`: the web page's Setup tab. `setup_status()` (models, tools, Traktor counts cached per NML mtime, scanned /
   not-scanned / changed-on-disk-since-scan, models' mtimes, tempo views, last `traktor --undo` backup) and a one-at-a-time
   job runner: `python -m dj_track_analyzer.jobs <cli args>` (= cli.main; a str SystemExit is sent as one ERROR_MARK
@@ -287,7 +287,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `color_guess` (`collection.add_guesses`); `collection.unchecked_guesses(traktor colours)` = those Traktor still has.
   `colors train` (`usable_labels`) leaves them out; changing one in Traktor, `set_colors` (review --apply: said yes),
   `colors guessed --accept TEXT|all` or the page (POST /api/colours/accept, `web.colour_guesses` → `colour_guess` on
-  /api/tracks, "?" mark, All checks → Colour, selection bar / panel button) make it yours. Bundles store `labels`
+  /api/tracks, "?" mark, All tracks → Colour, selection bar / panel button) make it yours. Bundles store `labels`
   ({path: COLOR} for colours; {path: (grid key, cues)} for cues, `cues._label_key`; make_starter drops them);
   `colors.new_labels` / `cues.new_labels` = added/changed/removed vs those, None for starters and older bundles;
   `jobs._new_labels` (cached per NML/models/db mtime) → setup `colours.new` / `cues.new`, shown on the Setup steps.
