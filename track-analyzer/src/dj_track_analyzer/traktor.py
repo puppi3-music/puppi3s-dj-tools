@@ -672,9 +672,11 @@ def _set_or_drop_info(entry: str, name: str, value: str) -> str:
     return entry[:info_m.start()] + re.sub(rf'\s{name}="[^"]*"', "", info_m.group(0)) + entry[info_m.end():]
 
 
-def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = False, remove: bool = False) -> dict:
+def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = False, remove: bool = False,
+               comment2_only: bool = False) -> dict:
     """Put 'Hype NN' into the Comment of scanned tracks, after any text already there, and take any
-    old 'Hype NN' out of Comment 2. remove=True takes the Hype part out again everywhere."""
+    old 'Hype NN' out of Comment 2. remove=True takes the Hype part out again everywhere;
+    comment2_only=True only takes the old one out of Comment 2."""
     path = find_collection(nml)
     refuse_if_tempo_view(path)
     if not dry_run and traktor_running():
@@ -701,7 +703,7 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
         if old2 and HYPE_RE.search(old2):  # left over from when hype went into Comment 2
             entry = _set_or_drop_info(entry, "RATING", with_hype(old2, None))
             stats["moved_out_of_comment2"] += 1
-        if want_hype is None and not remove:
+        if comment2_only or (want_hype is None and not remove):
             return entry
         cur = info.get("COMMENT")
         new = with_hype(cur, want_hype)
@@ -710,6 +712,10 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
                 stats["already_up_to_date"] += 1
             return entry
         entry = _set_or_drop_info(entry, "COMMENT", new)
+        # Mark Traktor as up to date with the file, or a tag re-read replaces Comment with the file's comment.
+        stamp = next((s for s in map(file_stamp, paths) if s), None)
+        if stamp and stamp != entry_stamp(entry):
+            entry = set_entry_stamp(entry, stamp)
         stats["comment_updated"] += 1
         stats["kept_your_text"] += bool(HYPE_RE.sub("", cur or "").strip())
         if len(examples) < 15:
