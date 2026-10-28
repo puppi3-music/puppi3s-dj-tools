@@ -30,9 +30,9 @@ phone emulation: Chrome's own `--window-size` stops at ~500 px, so a CLI screens
 Look at the screenshots yourself (Read the PNGs). Chrome follows macOS dark mode unless forced, so check the
 "light" shots are really light.
 
-Baselines (2026-10-25 after the fixes, 469 tracks, views at-135 and at-145):
-- endpoints warm: tracks 15-20 ms / ~540 KB per library, hype ~20-40 ms, colours/explain ~250 ms (reads the NML +
-  History every call), setup 30 ms (90 cold), everything else < 25 ms. Cold hype 450 ms (module load).
+Baselines (2026-10-28 after the fixes, 473 tracks, views at-135 and at-145):
+- endpoints warm: tracks 20-35 ms / ~540 KB per library (60 ms when `gridfix.results` re-classified every grid each call), hype ~20-40 ms, colours/explain ~250 ms (reads the NML +
+  History every call), setup ~85 ms (~850 cold: the new-labels count), everything else < 25 ms. Cold hype 450 ms (module load).
 - tracks: /api/cues 30-70 ms warm; `_saved_db` 3 ms (the sample-folder walk runs once per server run, was
   29 ms per call); whole-track /api/wave 0.7-1.6 s, 180-310 KB (decode; first zoom only); suggest < 15 ms.
 - errors: all ok (JSON 4xx). hosts: all refused (400), foreign Origin 403.
@@ -45,6 +45,9 @@ Baselines (2026-10-25 after the fixes, 469 tracks, views at-135 and at-145):
   hype-badge text; Mixes/Setup scrolled sideways at phone width; a crashed correction count re-polled forever;
   deck-audio cleanup could delete another request's .tmp.flac; `saved_file` accepted `..\` (Windows);
   /api/tempo/report?bpm=<no view> created an empty data/at-<bpm> (a new library in the menu).
+- Fixed 2026-10-28: Tick all corrections ticked moves of cues ticked for deletion and didn't update pads/slots
+  (set `checked` in code → dispatch `change` on `#approve`); an ignore/rescan/loop-length save reset an unsaved
+  Number cues in order (`RENUM` cleared only in `save`); two requests both recounted corrections (`_fixes_lock`).
 
 ## 2. Read the code with this checklist
 
