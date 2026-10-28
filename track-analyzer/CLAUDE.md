@@ -310,7 +310,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   sound (+0.36) and energy (+0.30), not colour (−0.07) or drop size (~0); stars weren't predictable from audio
   (CV 0.56 vs 0.58 baseline), so there's a hype score instead of an auto-rating.
 - `--traktor` writes "Hype NN" into **Comment = INFO COMMENT** (moved from Comment 2 = INFO RATING on 2026-10-28; stars = INFO RANKING, 51 per star), appended after
-  existing text with " · "; `--remove` strips it. Any "Hype NN" still in INFO RATING is stripped on every write. Traktor re-reads COMMENT from the file tag when the file mtime ≠ ENTRY MODIFIED stamp, and "Write Tags" copies it into the file.
+  existing text with " · "; `--remove` strips it. Any "Hype NN" still in INFO RATING is stripped on every write (`--clean-comment2` does only that). Traktor re-reads COMMENT from the file tag when the file mtime ≠ ENTRY MODIFIED stamp, so changed entries get the file's mtime stamped (as `tempo load`); "Write Tags" would copy it into the file. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
