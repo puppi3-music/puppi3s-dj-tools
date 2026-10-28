@@ -245,18 +245,27 @@ def check(nml: str | None = None, workers: int | None = None, rescan: bool = Fal
             "next": "Review them on the web page (Tracks → a track → Beat grid), then grids apply."}
 
 
+_classified: dict[str, tuple[str, dict]] = {}  # cache key -> (stored reading, its verdict): classify() is ~75% of a list
+
+
 def results(nml: str | None = None, g: dict | None = None) -> dict[str, dict]:
     """{path: cached measurement} for Traktor's tracks as their grids are now (no audio-length check: for lists).
-    g: cues.grids() if already read."""
+    g: cues.grids() if already read. Read only: the verdicts are shared between calls."""
     from . import cues
 
     con = _cache()
     try:
         out = {}
+        if len(_classified) > 5000:
+            _classified.clear()
         for p, d in cues._one_path_each(g if g is not None else cues.grids(nml)):
-            row = con.execute("SELECT data FROM gridcheck WHERE k=?", (_key(p, d["bpm"], d["grid_ms"]),)).fetchone()
+            k = _key(p, d["bpm"], d["grid_ms"])
+            row = con.execute("SELECT data FROM gridcheck WHERE k=?", (k,)).fetchone()
             if row:
-                out[p] = classify(json.loads(row[0]))
+                hit = _classified.get(k)
+                if not hit or hit[0] != row[0]:
+                    hit = _classified[k] = (row[0], classify(json.loads(row[0])))
+                out[p] = hit[1]
         return out
     finally:
         con.close()
