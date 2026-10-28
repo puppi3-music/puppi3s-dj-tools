@@ -5,7 +5,7 @@ Hype: how hype each track is, as 1-10 ranked against your own collection (10 = t
   uv run dj-track-analyzer hype --least                 the least hype (chill) tracks
   uv run dj-track-analyzer hype --colour Yellow --bpm 126 --key 8A
   uv run dj-track-analyzer hype --gems                  very hype, but 3-4 stars or hardly played
-  uv run dj-track-analyzer hype --traktor [--dry-run]   write "Hype NN" into Comment 2 in Traktor
+  uv run dj-track-analyzer hype --traktor [--dry-run]   write "Hype NN" into Comment in Traktor
 
 Hype = half "rave sound" (how much the style model hears Trance / Hard Trance / Hands Up / Hardstyle /
 Tech Trance, minus Deep Techno / Tech House / Deep House / Downtempo) and half energy (loudness, the
@@ -148,7 +148,7 @@ def find_text(d: dict) -> str:
 
 
 def to_traktor(nml: str | None = None, dry_run: bool = False, remove: bool = False, progress=log) -> dict:
-    """Write 'Hype NN' into Comment 2 (after your own text there), or take it out again."""
+    """Write 'Hype NN' into Comment (after your own text there), or take it out again."""
     hype = {} if remove else compute(progress=progress)
     out = traktor.write_hype(hype, nml, dry_run=dry_run, remove=remove)
     if not remove:

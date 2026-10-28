@@ -35,7 +35,7 @@ def pick_library(args) -> None:
         return
     note = f"Library: normal, each track at its own tempo ({DB})"
     if bpm:
-        note += (f"\n  Note: Traktor has the {bpm:g} BPM view loaded, so its Genre/Colour/Comment 2 show "
+        note += (f"\n  Note: Traktor has the {bpm:g} BPM view loaded, so its Genre/Colour/Comment show "
                  f"{bpm:g} BPM values, not these")
     log(note)
 
@@ -152,7 +152,7 @@ def main() -> None:
                     help="guessed: these guessed colours are right, learn from them: the tracks whose path contains TEXT "
                          "(at most 10), or `all`")
     co.add_argument("--json", action="store_true", help="explain: print JSON instead of tables")
-    hy = sub.add_parser("hype", help="find tracks by how hype they are (1-10), optionally write it to Traktor's Comment 2")
+    hy = sub.add_parser("hype", help="find tracks by how hype they are (1-10), optionally write it to Traktor's Comment")
     hy.add_argument("--least", action="store_true", help="least hype (chill) first")
     hy.add_argument("--colour", "--color", dest="colour", default=None, help="only this colour (yours, else predicted)")
     hy.add_argument("--bpm", type=float, default=None, help="only tracks near this BPM")
@@ -160,8 +160,8 @@ def main() -> None:
     hy.add_argument("--key", default=None, help="only tracks that mix with this Camelot key, e.g. 8A")
     hy.add_argument("--gems", action="store_true", help="hype 8+ but rated 4 stars or less, or played at most once")
     hy.add_argument("--limit", type=int, default=25)
-    hy.add_argument("--traktor", action="store_true", help="write 'Hype NN' into Comment 2 (Traktor closed)")
-    hy.add_argument("--remove", action="store_true", help="with --traktor: take the Hype part out of Comment 2 again")
+    hy.add_argument("--traktor", action="store_true", help="write 'Hype NN' into Comment (Traktor closed)")
+    hy.add_argument("--remove", action="store_true", help="with --traktor: take the Hype part out of Comment again")
     hy.add_argument("--dry-run", action="store_true", help="with --traktor: show what would change")
     hy.add_argument("--nml", default=None, help="path to collection.nml")
     hy.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")

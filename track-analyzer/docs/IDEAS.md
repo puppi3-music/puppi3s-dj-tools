@@ -21,7 +21,7 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 | What each colour means: sound, playlists, sets, artists | `colors explain` | ✅ |
 | Colour new tracks in Traktor in one step | `colors apply` | ✅ |
 | Find tracks by hype (1–10), filter by colour/BPM/key, underrated "gems" | `hype` | ✅ |
-| Hype score in Traktor's Comment 2 | `hype --traktor` | ✅ |
+| Hype score in Traktor's Comment | `hype --traktor` | ✅ |
 | Ask a local LLM (LM Studio / Open WebUI) about the collection | `serve` (MCP) | ✅ |
 | Mix suggestions: compatible key + BPM | via the LLM tools | ✅ |
 | Timeline of a DJ mix (genre per 2 min) | `analyze` on a file over 12 min | ✅ |

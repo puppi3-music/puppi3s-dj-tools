@@ -5,7 +5,7 @@ Talks to Lexicon's Local API (Lexicon running, Settings → Integrations → Loc
 Per track it switches the same things as in Traktor:
   genre      the genres heard at the view's tempo
   color      YOUR Lexicon colour moved by the view's shift (uncoloured tracks stay uncoloured)
-  comment    its "Hype NN" part becomes the view's hype (Lexicon has no Comment 2; your text is kept)
+  comment    its "Hype NN" part becomes the view's hype (your text is kept)
   energy     the view's hype, 1-10 (replaces Lexicon's own energy while loaded)
 plus a smartlist folder "Genres @145 (Track Analyzer)" (deleted again on native).
 Your values are remembered in data/tempo-loaded-lexicon.json; `native` restores a field
