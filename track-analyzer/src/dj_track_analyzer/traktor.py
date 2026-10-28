@@ -649,28 +649,40 @@ def _save(path: Path, text: str, new_text: str, stats: dict, dry_run: bool, pref
     return stats
 
 
-# Comment 2 in Traktor's track list is the INFO RATING attribute (stars are RANKING).
+# Hype goes into Traktor's Comment (INFO COMMENT). It used to go into Comment 2 (INFO RATING; stars are
+# RANKING), so a "Hype NN" still found there is taken out on the next write.
 HYPE_RE = re.compile(r"\s*(?:·\s*)?Hype \d{2}\s*$")
 
 
-def with_hype(comment2: str | None, hype: int | None) -> str:
-    """Comment 2 with its 'Hype NN' part replaced (or removed when hype is None); other text is kept."""
-    rest = HYPE_RE.sub("", comment2 or "").strip()
+def with_hype(comment: str | None, hype: int | None) -> str:
+    """The comment with its 'Hype NN' part replaced (or removed when hype is None); other text is kept."""
+    rest = HYPE_RE.sub("", comment or "").strip()
     if hype is None:
         return rest
     return f"{rest} · Hype {hype:02d}" if rest else f"Hype {hype:02d}"
 
 
+def _set_or_drop_info(entry: str, name: str, value: str) -> str:
+    """Set an INFO attribute, or drop it when value is empty instead of leaving NAME=""."""
+    if value:
+        return _set_info_attr(entry, name, value)[0]
+    info_m = re.search(r"<INFO\b[^>]*>", entry)
+    if not info_m:
+        return entry
+    return entry[:info_m.start()] + re.sub(rf'\s{name}="[^"]*"', "", info_m.group(0)) + entry[info_m.end():]
+
+
 def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = False, remove: bool = False) -> dict:
-    """Put 'Hype NN' into Comment 2 of scanned tracks, after any text already there.
-    remove=True takes the Hype part out again everywhere."""
+    """Put 'Hype NN' into the Comment of scanned tracks, after any text already there, and take any
+    old 'Hype NN' out of Comment 2. remove=True takes the Hype part out again everywhere."""
     path = find_collection(nml)
     refuse_if_tempo_view(path)
     if not dry_run and traktor_running():
         raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
                          "and would undo these changes.")
     text = path.read_text(encoding="utf-8")
-    stats = {"collection": str(path), "comment2_updated": 0, "already_up_to_date": 0, "kept_your_text": 0}
+    stats = {"collection": str(path), "comment_updated": 0, "already_up_to_date": 0, "kept_your_text": 0,
+             "moved_out_of_comment2": 0}
     examples = []
 
     def fix_entry(m: re.Match) -> str:
@@ -683,20 +695,22 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
             want_hype = None
         else:
             want_hype = next((hype[p] for p in paths if p in hype), None)
-            if want_hype is None:
-                return entry
         info_m = re.search(r"<INFO\b[^>]*>", entry)
-        cur = attrs(info_m.group(0)).get("RATING") if info_m else None
+        info = attrs(info_m.group(0)) if info_m else {}
+        old2 = info.get("RATING")
+        if old2 and HYPE_RE.search(old2):  # left over from when hype went into Comment 2
+            entry = _set_or_drop_info(entry, "RATING", with_hype(old2, None))
+            stats["moved_out_of_comment2"] += 1
+        if want_hype is None and not remove:
+            return entry
+        cur = info.get("COMMENT")
         new = with_hype(cur, want_hype)
         if new == (cur or ""):
             if want_hype is not None:
                 stats["already_up_to_date"] += 1
             return entry
-        if new:
-            entry, _old = _set_info_attr(entry, "RATING", new)
-        else:  # nothing left: drop the attribute instead of leaving RATING=""
-            entry = entry[:info_m.start()] + re.sub(r'\sRATING="[^"]*"', "", info_m.group(0)) + entry[info_m.end():]
-        stats["comment2_updated"] += 1
+        entry = _set_or_drop_info(entry, "COMMENT", new)
+        stats["comment_updated"] += 1
         stats["kept_your_text"] += bool(HYPE_RE.sub("", cur or "").strip())
         if len(examples) < 15:
             examples.append(f"{Path(paths[0]).name}: {cur or '(empty)'} → {new or '(empty)'}")

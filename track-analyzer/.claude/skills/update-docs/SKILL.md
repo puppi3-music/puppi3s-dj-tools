@@ -42,7 +42,7 @@ The script can't see these; check them against the code:
 - **Safety claims**: which commands refuse while Traktor runs (callers of `traktor.traktor_running()`), which
   refuse while a tempo view is loaded (`refuse_if_tempo_view`), what `--undo`/`native`/`untag` restore,
   backup names and locations, `--force` meaning. These must be exactly right; a wrong one costs the user data.
-- **What gets written where**: INFO GENRE / COLOR / RATING (Comment 2) vs INFO COMMENT (never touched),
+- **What gets written where**: INFO GENRE / COLOR / COMMENT (hype; Comment 2 = RATING no longer written),
   file tags, Smartlist folder names, Lexicon fields, `data/` files.
 - **Output examples**: run a cheap read-only command (`stats`, `tempo status`, `hype --limit 5`,
   `colors review`) and make sure the docs' sample output and field names match. Don't run `scan`,
@@ -59,7 +59,7 @@ dropping a section), ask the user first; they prefer to decide.
   how to undo. Explanations of *why* come after, briefly.
 - **Every command is copy-pasteable** from the project folder: `uv run dj-track-analyzer …`, real flags, no placeholders
   except obvious ones (`<track>`). Show `--dry-run` first for anything that writes.
-- **Plain language**, short sentences, the user's words (banger, hype, Smartlist, Comment 2, "at 145").
+- **Plain language**, short sentences, the user's words (banger, hype, Smartlist, Comment, "at 145").
   Define a term the first time (Camelot, LUFS, Smartlist, tempo view). No marketing tone.
 - **Warnings where they matter**: "Quit Traktor first", "changes your files", "undo with …", placed right
   before the command, not in a footnote.

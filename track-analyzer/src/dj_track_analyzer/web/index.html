@@ -551,7 +551,7 @@ function libNote() {
   $("#libwrap").style.visibility = usesLib ? "visible" : "hidden";
   loadedChips();
   const parts = [], shown = S.lib !== "native" ? +S.lib.replace("at-", "") : null;
-  if (v) parts.push(`Traktor has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment 2 show ${v} BPM values.`);
+  if (v) parts.push(`Traktor has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
   if (usesLib && shown) parts.push(`This page shows <b>every track at ${esc(shown)} BPM</b>: as heard stretched to that tempo with key lock.`);
   if (!SNAP && usesLib && shown && shown !== v) parts.push(`Traktor itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
@@ -562,7 +562,7 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
   if (SNAP) return;
   const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
   el.innerHTML = chip("Traktor", L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
-  el.dataset.tip = `Traktor: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment 2 as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment 2 are each track's own, at its own BPM"}`
+  el.dataset.tip = `Traktor: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
     + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
 }
@@ -2274,7 +2274,7 @@ const HF = { colour: "", bpm: "", tolerance: 4, key: "", gems: false, least: fal
 async function pageHype(main) {
   main.innerHTML = `
     <div class="page-head"><div><h2>Hype</h2><div class="muted">1-10 within your collection: rave sound and energy. Uses the scores from the last scan.</div></div>
-      <div class="spacer"></div>${SNAP ? "" : `<button id="h-write" data-tip="Adds 'Hype 07' to Comment 2 in Traktor, after your own text (shows what changes first)">Write to Traktor's Comment 2…</button>`}</div>
+      <div class="spacer"></div>${SNAP ? "" : `<button id="h-write" data-tip="Adds 'Hype 07' to Comment in Traktor, after your own text (shows what changes first)">Write to Traktor's Comment…</button>`}</div>
     <div class="filters">
       <select id="h-colour"><option value="">Any colour</option>${COLOURS.map(c => `<option ${c === HF.colour ? "selected" : ""}>${c}</option>`).join("")}</select>
       <label class="inline">BPM <input type="number" id="h-bpm" value="${esc(HF.bpm)}" placeholder="any"> ± <input type="number" id="h-tol" value="${HF.tolerance}" style="width:56px">%</label>
@@ -2677,7 +2677,7 @@ async function pageSetup(main) {
       ${w("wr-traktor", "Genres, colours and Smartlists in Traktor", `Puts the genre tags into Traktor's collection, sets the predicted colour on tracks you haven't coloured (yours are never changed),
         and adds a "Genres (Track Analyzer)" Smartlist folder.`,
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>`, (noScan || !tk.collection) && "disabled")}
-      ${w("wr-hype", "Hype in Traktor's Comment 2", `Adds "Hype 07" after anything already in Comment 2 (never your own Comment), so you can sort and search by it in Traktor.`,
+      ${w("wr-hype", "Hype in Traktor's Comment", `Adds "Hype 07" after anything already in Comment (an old Hype in Comment 2 is moved), so you can sort and search by it in Traktor.`,
         `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !tk.collection) && "disabled")}
       ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in Traktor and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !tk.collection && "disabled") : ""}
       ${cm.model ? w("wr-recolour", "Recolour clear disagreements", "Recolours the few tracks whose colour clearly disagrees with how they sound (gap 2.5+ colours, confidence 75%+; the Colours tab lists them). Tracks you keep always are skipped.", "", !tk.collection && "disabled") : ""}

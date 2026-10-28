@@ -81,7 +81,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   [--track TEXT]` (+ `readme_shots.mjs`, headless Chrome) from the real library, with titles/artists/albums/paths
   swapped for made-up ones in the page's fetch answers and text. Retake after visible page changes; look at every PNG
   for leftover names before committing.
-- `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment 2).
+- `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment).
 - `tempo.py`: `tempo` command, the catalogue as heard at one tempo (default 145, `--bpm` for any).
 - `lexicon.py`: `tempo load/native --lexicon` via Lexicon's Local API.
 - `clips.py`: `clips <analysis.json> --video <final.mp4>`: cuts `analyze --highlights --offset` suggestions (video
@@ -309,8 +309,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   never re-analyses). Stored in collection.db `hype`. Rationale: on a test collection, star ratings followed rave
   sound (+0.36) and energy (+0.30), not colour (−0.07) or drop size (~0); stars weren't predictable from audio
   (CV 0.56 vs 0.58 baseline), so there's a hype score instead of an auto-rating.
-- `--traktor` writes "Hype NN" into **Comment 2 = INFO RATING** (stars = INFO RANKING, 51 per star), appended after
-  existing text with " · "; `--remove` strips it (byte-identical round trip). Never touch INFO COMMENT.
+- `--traktor` writes "Hype NN" into **Comment = INFO COMMENT** (moved from Comment 2 = INFO RATING on 2026-10-28; stars = INFO RANKING, 51 per star), appended after
+  existing text with " · "; `--remove` strips it. Any "Hype NN" still in INFO RATING is stripped on every write. Traktor re-reads COMMENT from the file tag when the file mtime ≠ ENTRY MODIFIED stamp, and "Write Tags" copies it into the file.
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
@@ -330,7 +330,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Psy gate: sped up, the models hear Psy-Trance 0.6-0.9 in house that scores 0.0-0.1 at its own tempo (a tempo
   shortcut, not the BPM rules). In a view Psy-Trance/Goa are capped at 1.5 × the track's own-tempo psy
   (`tempo.view_genres`, in the scan loop and `tempo refresh`).
-- `load`/`native` = carry-over swap: only INFO GENRE/COLOR/RATING, the genre Smartlist folder (@<bpm> folder takes
+- `load`/`native` = carry-over swap: only INFO GENRE/COLOR/COMMENT (views loaded before 2026-10-28 remembered RATING; `native` restores whatever field is stored), the genre Smartlist folder (@<bpm> folder takes
   the native folder's place, `traktor.swap_root_folder`), each changed entry's MODIFIED_DATE/TIME and the clock
   change. State in `data/tempo-loaded.json` as {VOLUME|DIR|FILE: {field: [yours, view]}}; `native`
   restores a field only if it still holds the view's value (clock always). Colour in view = user's colour +
@@ -339,7 +339,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Backups: `collection.nml.before-tempo-view-…`, `Traktor Settings.tsi.before-tempo-view-…` (`traktor --undo`
   ignores them). `traktor.refuse_if_tempo_view` blocks sync/write_hype/set_colors/undo while loaded.
 - Traktor re-reads file tags on deck load / Check Consistency when the file's mtime ≠ ENTRY MODIFIED_DATE/TIME
-  (UTC date + seconds into that day); the file's genre/colour then replace INFO GENRE/COLOR (Comment 2 survives).
+  (UTC date + seconds into that day); the file's genre/colour then replace INFO GENRE/COLOR (and COMMENT, from the file comment tag).
   So `load` stamps changed entries with the file's mtime (`traktor.file_stamp`, field "MODIFIED") and refuses while
   `FileAccess.TagsSerialization` ≠ 0 in Traktor Settings.tsi (`--force` overrides). Not yet confirmed in real Traktor.
 - `load` sets `Status.Master Tempo` in the .tsi to the view BPM (`traktor.set_setting`). Traktor saves no deck Sync

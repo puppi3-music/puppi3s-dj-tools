@@ -20,7 +20,7 @@ collection.nml). Models and your colour model are shared with the normal analysi
   Genre      the genres heard at 145
   Colour     YOUR colour, moved by how much the colour model thinks the track shifts at 145
              (tracks you haven't coloured stay uncoloured)
-  Comment 2  its "Hype NN" part becomes the hype at 145 (your own text in it is kept)
+  Comment    its "Hype NN" part becomes the hype at 145 (your own text in it is kept)
   Smartlists "Genres (Track Analyzer)" is swapped for "Genres @145 (Track Analyzer)"
 The values they replace are remembered in data/tempo-loaded.json. Everything else Traktor
 saves while the view is loaded (cue points, plays, History, new tracks) carries over both ways. If you
@@ -51,7 +51,7 @@ BASE_CACHE_VERSION = analysis.CACHE_VERSION
 BASE_DB = collection.DB
 STATE = HOME / traktor.TEMPO_STATE
 BACKUP_PREFIX = "collection.nml.before-tempo-view-"
-FIELDS = ("GENRE", "COLOR", "RATING")  # Genre, Colour, Comment 2
+FIELDS = ("GENRE", "COLOR", "COMMENT")  # Genre, Colour, Comment
 VIEW_EXTRA = [("source_bpm", "REAL"), ("native_color_position", "REAL")]
 
 # Sped up to ~145, the Discogs-trained models hear psytrance in almost any rolling four-on-the-floor
@@ -591,7 +591,7 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
             want["COLOR"] = str(at)
             stats["colours_moved" if at != yours else "colours_same"] += 1
         if r["hype"] is not None:
-            want["RATING"] = traktor.with_hype(cur.get("RATING"), r["hype"])
+            want["COMMENT"] = traktor.with_hype(cur.get("COMMENT"), r["hype"])
         changed = {}
         for field, value in want.items():
             if value != cur.get(field):
@@ -606,7 +606,7 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
                 entry = traktor.set_entry_stamp(entry, stamp)
             remembered[key] = changed
             stats["genres_set"] += "GENRE" in changed
-            stats["hype_set"] += "RATING" in changed
+            stats["hype_set"] += "COMMENT" in changed
             if len(examples) < 12 and ("GENRE" in changed or "COLOR" in changed):
                 bits = [f"{(changed[f][0] if f != 'COLOR' else COLOR_NAMES[int(changed[f][0]) - 1]) or '(empty)'} → "
                         f"{changed[f][1] if f != 'COLOR' else COLOR_NAMES[int(changed[f][1]) - 1]}"

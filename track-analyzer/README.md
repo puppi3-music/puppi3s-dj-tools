@@ -237,13 +237,13 @@ The writers are there too, each with **Preview…** first (the command's `--dry-
 |---|---|---|
 | Genre tags in your files | `tag` (`--multi` when "close runner-up genres" is ticked) | `untag` |
 | Genres, colours and Smartlists in Traktor | `traktor` (`--no-colors` when "colours too" is off) | `traktor --undo` |
-| Hype in Traktor's Comment 2 | `hype --traktor` | `traktor --undo`, or **Take it out…** (`hype --traktor --remove`) |
+| Hype in Traktor's Comment | `hype --traktor` | `traktor --undo`, or **Take it out…** (`hype --traktor --remove`) |
 | Colour new tracks | `colors apply` | `traktor --undo` |
 | Recolour clear disagreements | `colors review --apply --yes` (also on the Colours tab) | `traktor --undo` |
 | Load into Traktor (tempo view) | `tempo load` (`--lexicon` when ticked; also on the Tempo view tab) | `tempo native` |
 | Undo the last change to Traktor | `traktor --undo` (refuses if Traktor saved since; no `--force` from the page) | |
 
-The Traktor writers refuse while Traktor is open, exactly as in a terminal; the preview says so and offers **Check again**. The Hype tab has the Comment 2 button as well.
+The Traktor writers refuse while Traktor is open, exactly as in a terminal; the preview says so and offers **Check again**. The Hype tab has the Comment button as well.
 
 **Hold a track's genre or colour.** In **Tracks**, tick tracks (the header box ticks every track shown) and choose **Hold genre** or **Hold colour**, or use the switches in a track's panel. A held genre or colour stays as it is in your files, Traktor and Lexicon: `tag`, `scan --write-tags`, `traktor` (also with `--overwrite-colors`), `colors review --apply` and `tempo load` skip it and count it as `genre_held` / `colour_held`. Holding writes nothing at the time; it only changes the analyzer's own list. Release a track the same way. The colour hold is the same list as `colors review`'s "keep always". From a terminal:
 
@@ -458,17 +458,17 @@ uv run dj-track-analyzer hype --gems                         # hype 8+ but 4 sta
 | `--limit 50` | How many tracks to show | 25 |
 | `--json` | Raw output | off |
 
-### Hype in Traktor's Comment 2
+### Hype in Traktor's Comment
 
 > **Quit Traktor first.**
 
 ```bash
 uv run dj-track-analyzer hype --traktor --dry-run      # preview
-uv run dj-track-analyzer hype --traktor                # write "Hype 08" into Comment 2
+uv run dj-track-analyzer hype --traktor                # write "Hype 08" into Comment
 uv run dj-track-analyzer hype --traktor --remove       # take it out again (this is the undo)
 ```
 
-It's added after any text already in Comment 2 ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. Your normal Comment field is never touched. In Traktor, show the **Comment 2** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
+It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment from older versions is taken out. In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
 
 ---
 
@@ -503,11 +503,11 @@ uv run dj-track-analyzer tempo native                # switch back (this is the 
 While loaded, Traktor shows per track:
 - **Genre**: the genres heard at the view tempo.
 - **Colour**: *your* colour, moved by how far the model thinks the track shifts at that tempo (your Blue, one step harder → Green). Uncoloured tracks stay uncoloured.
-- **Comment 2**: the "Hype NN" part becomes the hype at that tempo; your own text there stays.
+- **Comment**: the "Hype NN" part becomes the hype at that tempo; your own text there stays.
 - **Smartlists**: "Genres (Track Analyzer)" is replaced by "Genres @145 (Track Analyzer)" (@ the view tempo).
 - **Clock tempo**: set to the view tempo. Tracks follow it only with Sync on and the clock as master, which Traktor doesn't save.
 
-`native` puts back only those fields, so cue points, plays, History and tracks added meanwhile carry over. If you changed a genre, colour or Comment 2 yourself while the view was loaded, `native` keeps your change and lists it under `kept`. The clock always goes back to your tempo.
+`native` puts back only those fields, so cue points, plays, History and tracks added meanwhile carry over. If you changed a genre, colour or Comment yourself while the view was loaded, `native` keeps your change and lists it under `kept`. The clock always goes back to your tempo.
 
 While the view is loaded, `hype`, `stats` and `export` use the view's data (hype at the view tempo); add `--native` for each track at its own tempo.
 
@@ -544,7 +544,7 @@ uv run dj-track-analyzer tempo load --lexicon
 uv run dj-track-analyzer tempo native --lexicon
 ```
 
-Per track it changes Lexicon's **genre**, **colour** (moved by the same shift; shades other than Lexicon's 7 main colours are left alone), **comment** ("Hype NN" after your text, since Lexicon has no Comment 2) and **energy** (the hype at the view tempo, 1–10, replacing Lexicon's own), and adds a "Genres @145 (Track Analyzer)" smartlist folder. Its smartlists match a whole genre entry, so "Trance" doesn't catch "Hard Trance". If Traktor already has the view, `load --lexicon` only switches Lexicon; `native --lexicon` switches both back, restoring a field only if it still holds the view's value.
+Per track it changes Lexicon's **genre**, **colour** (moved by the same shift; shades other than Lexicon's 7 main colours are left alone), **comment** ("Hype NN" after your text) and **energy** (the hype at the view tempo, 1–10, replacing Lexicon's own), and adds a "Genres @145 (Track Analyzer)" smartlist folder. Its smartlists match a whole genre entry, so "Trance" doesn't catch "Hard Trance". If Traktor already has the view, `load --lexicon` only switches Lexicon; `native --lexicon` switches both back, restoring a field only if it still holds the view's value.
 
 While Lexicon has the view, **don't sync Lexicon → Traktor or import from Traktor into Lexicon**. Syncing to a USB is fine; sync again after `native`.
 
