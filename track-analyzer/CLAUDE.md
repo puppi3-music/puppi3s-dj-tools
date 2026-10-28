@@ -206,7 +206,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Traktor's timeline (bins by time: 44.1 samples/ms; integer 44 drifted 0.7 s by 5 min), folded on the grid lines;
   attack = where the fold rises past 30% from floor to peak within ±150 ms (steepest rise read +20 ms on a track
   Traktor grids right). The cache holds raw readings (`measure`); `classify()` makes the verdict when read, so
-  thresholds change without measuring again. Offset = all stretches folded together; stretches only check it (2/3
+  thresholds change without measuring again (`results()` keeps each verdict while its stored reading is unchanged: classifying
+  every grid on each /api/tracks was 3/4 of its time). Offset = all stretches folded together; stretches only check it (2/3
   within AGREE_MS 12 of their median: a two-part attack reads 47 or 60 ms; > 25 ms from the whole = no kick there,
   left out); a steady line fit ≥ 15 ms = `drift` (BPM off, not fixable by a shift). States on / off (≥ PROPOSE_MS 10)
   / drift / unclear; `preview_ms` = an agreeing stretch (the click preview). Test collection 2026-10-26 (grid-3):

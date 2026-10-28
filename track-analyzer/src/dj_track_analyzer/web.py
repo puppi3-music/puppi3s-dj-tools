@@ -243,6 +243,7 @@ def traktor_nml() -> Path:
 
 
 _fixes: dict = {"key": None, "counts": None, "sigs": {}, "busy": False}
+_fixes_lock = threading.Lock()
 FIXES_FILE = HOME / "cue-corrections.json"  # the last count, reused while the model and collection are unchanged
 FIXES_SYNC = 30  # this many tracks or fewer to count again (a write to Traktor, Traktor saving): counted in the request
 
@@ -284,8 +285,25 @@ def correction_counts() -> dict[str, int] | None:
         return {}
     if _fixes["key"] == key:
         return _fixes["counts"]
-    if _fixes["busy"]:
-        return None
+    with _fixes_lock:  # two requests at once (the page after a write to Traktor) would both count
+        if _fixes["busy"]:
+            return None
+        if _fixes["key"] == key:  # another request has just counted
+            return _fixes["counts"]
+        _fixes["busy"] = True
+    counts, ok = None, False
+    try:
+        counts, ok = _count_changed(key, g), True
+        return counts
+    finally:
+        if not ok or counts is not None:  # counted here, or failed; None = a thread counts on and clears busy when done
+            _fixes["busy"] = False
+
+
+def _count_changed(key: tuple, g: dict) -> dict[str, int] | None:
+    """correction_counts() while it holds busy: the changed tracks counted here, or None when a thread counts them."""
+    from . import cues
+
     if _fixes["counts"] is None:  # counted before, by an earlier run of the server
         try:
             saved = json.loads(FIXES_FILE.read_text())
@@ -315,7 +333,6 @@ def correction_counts() -> dict[str, int] | None:
                 log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
         finish(fresh)
         return _fixes["counts"]
-    _fixes["busy"] = True
 
     def work():
         fresh = {}

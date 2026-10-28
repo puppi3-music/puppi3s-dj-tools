@@ -1385,7 +1385,6 @@ function bindApprove(c, box, t) {
       if ("corrections" in d) { if (d.corrections) x.corrections = d.corrections; else delete x.corrections; }
     }
     const fresh = await api("cues", { path: t.path });
-    RENUM.delete(t.path);  // the button follows what's saved now
     for (const list of Object.values(S.tracks)) for (const x of list) if (x.path === t.path) {  // the list's approved chip
       const ap = fresh.approved; if (ap) x.cues_approved = { add: ap.add.length, move: ap.move.length, remove: (ap.remove || []).length, renumber: ap.renumber ? 1 : 0 }; else delete x.cues_approved;
     }
@@ -1394,7 +1393,8 @@ function bindApprove(c, box, t) {
     const msg = box.querySelector("#ap-msg"); if (msg && msgText) msg.textContent = msgText;
     if (S.page === "tracks") S.redrawTracks?.();
   };
-  const save = async plan => { const d = await send("/api/cues/approve", { path: t.path, plan }); await refresh(d, d.approved ? `${d.approved} approved` : "Approval cleared"); };
+  const save = async plan => { const d = await send("/api/cues/approve", { path: t.path, plan }); RENUM.delete(t.path);  // the button follows what's saved now (not after an ignore or a rescan: those keep it as pressed)
+    await refresh(d, d.approved ? `${d.approved} approved` : "Approval cleared"); };
   box.querySelectorAll("[data-ignore]").forEach(b => b.addEventListener("click", async e => {
     e.preventDefault(); e.stopPropagation();
     const it = items.find(i => i.key === b.dataset.ignore);
@@ -1698,7 +1698,8 @@ function bindApprove(c, box, t) {
     if (DECK.src && DECK.loop) deckLoop(DECK.loop[0], DECK.loop[1]);  // hear the change straight away
     await refresh({}, S.smoothLoops ? "Loop points smoothed" : "Exact loop points");
   });
-  box.querySelector("#ap-fixall")?.addEventListener("click", e => { e.preventDefault(); box.querySelectorAll('#fixes input[data-key^="m"]').forEach(i => { i.checked = true; }); syncMoves(); });
+  box.querySelector("#ap-fixall")?.addEventListener("click", e => { e.preventDefault(); box.querySelectorAll('#fixes input[data-key^="m"]:not(:disabled)').forEach(i => { i.checked = true; });  // not the moves of cues ticked for deletion
+    box.querySelector("#approve")?.dispatchEvent(new Event("change")); });  // the moves, pads and slot labels follow the ticks
   box.querySelector("#ap-clear")?.addEventListener("click", () => { RENUM.delete(c.path); go(null); });
   box.querySelector("#ap-renum")?.addEventListener("click", e => {  // pressed: the pads show the new numbers; Approve ticked keeps it
     const on = !renumOn(c); RENUM.set(c.path, on);
