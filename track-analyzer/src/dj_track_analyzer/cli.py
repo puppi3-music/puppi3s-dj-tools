@@ -165,6 +165,8 @@ def main() -> None:
     hy.add_argument("--clean-comment2", action="store_true",
                     help="with --traktor: only take old 'Hype NN' out of Comment 2 (your own text there stays)")
     hy.add_argument("--dry-run", action="store_true", help="with --traktor: show what would change")
+    hy.add_argument("--force", action="store_true",
+                    help="with --traktor: write even though Traktor is set to write tags into your files")
     hy.add_argument("--nml", default=None, help="path to collection.nml")
     hy.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
     hy.add_argument("--json", action="store_true", help="print JSON instead of a table")
@@ -338,7 +340,8 @@ def main() -> None:
         from . import hype
 
         if args.traktor:
-            out = hype.to_traktor(args.nml, dry_run=args.dry_run, remove=args.remove, clean_comment2=args.clean_comment2)
+            out = hype.to_traktor(args.nml, dry_run=args.dry_run, remove=args.remove, clean_comment2=args.clean_comment2,
+                                   force=args.force)
             print(json.dumps(out, indent=2, ensure_ascii=False))
             say_if_nothing(out, args.dry_run)
             return

@@ -148,13 +148,13 @@ def find_text(d: dict) -> str:
 
 
 def to_traktor(nml: str | None = None, dry_run: bool = False, remove: bool = False,
-               clean_comment2: bool = False, progress=log) -> dict:
+               clean_comment2: bool = False, force: bool = False, progress=log) -> dict:
     """Write 'Hype NN' into Comment (after your own text there), or take it out again.
     clean_comment2 only takes an old 'Hype NN' out of Comment 2."""
     if clean_comment2:
         return traktor.write_hype({}, nml, dry_run=dry_run, comment2_only=True)
     hype = {} if remove else compute(progress=progress)
-    out = traktor.write_hype(hype, nml, dry_run=dry_run, remove=remove)
+    out = traktor.write_hype(hype, nml, dry_run=dry_run, remove=remove, force=force)
     if not remove:
         collection.export_csv(collection.DEFAULT_CSV)
     out["undo"] = "uv run dj-track-analyzer traktor --undo   (or: uv run dj-track-analyzer hype --traktor --remove)"

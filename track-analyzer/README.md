@@ -484,7 +484,7 @@ uv run dj-track-analyzer hype --traktor                # write "Hype 08" into Co
 uv run dj-track-analyzer hype --traktor --remove       # take it out again (this is the undo)
 ```
 
-It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment 2 from older versions is taken out; to do only that, run `hype --traktor --clean-comment2`. Each track whose Comment changes is marked as up to date with its file, so Traktor doesn't re-read the file's comment tag over it. In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
+It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment 2 from older versions is taken out; to do only that, run `hype --traktor --clean-comment2`. Each track is marked as up to date with its file, so Traktor doesn't re-read the file's comment tag over it, unless the file's title, artist, album or comment were edited since Traktor last read them: those tracks are skipped and listed under `skipped_examples`, so Traktor still picks up your edits. Open Traktor, load them (or run **Check Consistency**), quit, and run it again. It refuses while Traktor is set to write tags into your files (Preferences → File Management), since Traktor would then copy "Hype NN" into the files; turn that off, or add `--force`. In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
 
 ---
 

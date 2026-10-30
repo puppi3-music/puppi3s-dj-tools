@@ -28,6 +28,7 @@ import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 import uuid
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -472,6 +473,81 @@ def set_entry_stamp(entry: str, stamp: str | None) -> str:
     return tag + entry[m.end():]
 
 
+def file_tags(path: str) -> dict | None:
+    """Title, artist, album and comment from the file's own tags (None when it can't be read)."""
+    import mutagen
+    from mutagen.id3 import ID3
+    from mutagen.mp4 import MP4Tags
+
+    try:
+        f = mutagen.File(path)
+    except Exception:
+        return None
+    if f is None:
+        return None
+    t = f.tags
+    if t is None:
+        return {}
+
+    def first(*keys):
+        for k in keys:
+            try:
+                v = t.get(k)
+            except (KeyError, ValueError):
+                v = None
+            v = getattr(v, "text", v)
+            if v:
+                return str(v[0] if isinstance(v, list) else v)
+        return None
+
+    if isinstance(t, ID3):
+        comm = next((fr for fr in t.getall("COMM") if not fr.desc and fr.text), None)  # not iTunNORM etc.
+        return {"title": first("TIT2"), "artist": first("TPE1"), "album": first("TALB"),
+                "comment": str(comm.text[0]) if comm else None}
+    if isinstance(t, MP4Tags):
+        return {"title": first("\xa9nam"), "artist": first("\xa9ART"), "album": first("\xa9alb"),
+                "comment": first("\xa9cmt")}
+    return {"title": first("title"), "artist": first("artist"), "album": first("album"),
+            "comment": first("comment", "description")}
+
+
+def tags_match(entry: str, path: str) -> bool:
+    """Does Traktor still show the file's title, artist, album and comment? False means the file's tags were
+    edited since Traktor read them. Only fields the file has are compared (Traktor fills a missing title from
+    the file name, and a comment typed in Traktor needn't be in the file); genre isn't, since `traktor` puts
+    genres into Traktor that aren't in the files. The Hype part of a comment is ignored on both sides."""
+    tags = file_tags(path)
+    if tags is None:
+        return True  # unreadable: nothing for Traktor to pick up either
+    m = re.match(r"<ENTRY\b[^>]*>", entry)
+    e = attrs(m.group(0)) if m else {}
+    album_m = re.search(r"<ALBUM\b[^>]*>", entry)
+    info_m = re.search(r"<INFO\b[^>]*>", entry)
+    ours = {"title": e.get("TITLE"), "artist": e.get("ARTIST"),
+            "album": attrs(album_m.group(0)).get("TITLE") if album_m else None,
+            "comment": attrs(info_m.group(0)).get("COMMENT") if info_m else None}
+
+    def norm(s):
+        return unicodedata.normalize("NFC", HYPE_RE.sub("", s or "")).strip()
+
+    return all(norm(v) == norm(ours[k]) for k, v in tags.items() if norm(v))
+
+
+def stamp_if_unchanged(entry: str, paths: list[str]) -> tuple[str, str]:
+    """Mark Traktor as up to date with the file (MODIFIED_DATE/TIME = its mtime), so a tag re-read on deck load
+    doesn't replace what we wrote, but only when the file's tags still match the entry: tags edited elsewhere
+    are left for Traktor to read. Returns (entry, "" | "stamped" | "tags_changed")."""
+    p = next((p for p in paths if file_stamp(p)), None)
+    if p is None:
+        return entry, ""
+    stamp = file_stamp(p)
+    if stamp == entry_stamp(entry):
+        return entry, ""
+    if not tags_match(entry, p):
+        return entry, "tags_changed"
+    return set_entry_stamp(entry, stamp), "stamped"
+
+
 def collection_tracks(nml: str | None = None) -> tuple[Path, list[Path], int]:
     """Every audio file in Traktor's collection that exists on disk.
     Returns (collection path, files, number of tracks Traktor lists but that are missing)."""
@@ -718,17 +794,23 @@ def _set_or_drop_info(entry: str, name: str, value: str) -> str:
 
 
 def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = False, remove: bool = False,
-               comment2_only: bool = False) -> dict:
+               comment2_only: bool = False, force: bool = False) -> dict:
     """Put 'Hype NN' into the Comment of scanned tracks, after any text already there, and take any
     old 'Hype NN' out of Comment 2. remove=True takes the Hype part out again everywhere;
     comment2_only=True only takes the old one out of Comment 2."""
     path = find_collection(nml)
     refuse_if_tempo_view(path)
     check_closed(dry_run)
+    tag_warning = None
+    if not comment2_only and tag_writing_on(path):
+        tag_warning = ("Traktor is set to write tags to your files (Preferences → File Management), so it would "
+                       "write 'Hype NN' into your files' comment tags. Turn that off first, or pass --force.")
+        if not dry_run and not force:
+            raise SystemExit(tag_warning)
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "comment_updated": 0, "already_up_to_date": 0, "kept_your_text": 0,
-             "moved_out_of_comment2": 0}
-    examples = []
+             "moved_out_of_comment2": 0, "restamped": 0, "skipped_file_tags_changed": 0}
+    examples, skipped = [], []
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
@@ -750,15 +832,21 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
             return entry
         cur = info.get("COMMENT")
         new = with_hype(cur, want_hype)
-        if new == (cur or ""):
-            if want_hype is not None:
-                stats["already_up_to_date"] += 1
+        if new == (cur or "") and want_hype is None:
             return entry
-        entry = _set_or_drop_info(entry, "COMMENT", new)
         # Mark Traktor as up to date with the file, or a tag re-read replaces Comment with the file's comment.
-        stamp = next((s for s in map(file_stamp, paths) if s), None)
-        if stamp and stamp != entry_stamp(entry):
-            entry = set_entry_stamp(entry, stamp)
+        # Also for a Hype that's already right: its stamp may have gone stale since (a sync or tagger touched it).
+        stamped, how = stamp_if_unchanged(entry, paths)
+        if how == "tags_changed" and not remove:  # Traktor should read those tags first; Hype would be lost
+            stats["skipped_file_tags_changed"] += 1
+            if len(skipped) < 15:
+                skipped.append(Path(paths[0]).name)
+            return entry
+        if new == (cur or ""):
+            stats["already_up_to_date"] += 1
+            stats["restamped"] += how == "stamped"
+            return stamped
+        entry = _set_or_drop_info(stamped, "COMMENT", new)
         stats["comment_updated"] += 1
         stats["kept_your_text"] += bool(HYPE_RE.sub("", cur or "").strip())
         if len(examples) < 15:
@@ -771,6 +859,13 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
         raise SystemExit(f"{path} doesn't look like a Traktor collection (no COLLECTION section).")
     body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
     stats["examples"] = examples
+    if skipped:
+        stats["skipped_examples"] = skipped
+        stats["skipped_why"] = ("These files' tags (title, artist, album or comment) were edited since Traktor read "
+                                "them. Open Traktor, load them or run Check Consistency so it reads the new tags, "
+                                "quit, and run this again.")
+    if tag_warning:
+        stats["warning"] = tag_warning
     return _save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
 
 
