@@ -1367,6 +1367,8 @@ def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = No
     dirs = [Path(d).expanduser().resolve() for d in (logs or [])] or [LOGS]
     url = f"http://{host}:{port}/"
     log(f"Puppi3's Track Analyzer web page on {url}  (Ctrl-C to stop)")
+    if traktor.CONTAINER:
+        log("Running in Docker, which is experimental: back up your Traktor collection and check each change before relying on it.")
     # numpy's OpenBLAS on one thread for good: forking a subprocess (ffmpeg, Rubber Band) runs its atfork handler,
     # which waits for its worker threads, and with a matrix product running in another request those never came
     # back; the fork holds the GIL meanwhile, so the whole page hung. Same bits (checked at 1 vs 10 threads).

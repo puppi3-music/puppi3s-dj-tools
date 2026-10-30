@@ -376,6 +376,7 @@ dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--
   <div class="libnote" id="libnote" hidden></div>
   <div class="jobbar" id="jobbar" hidden></div>
   <div class="banner" id="setupnote" hidden></div>
+  <div class="banner" id="dockernote" hidden><b>Docker is experimental.</b> This copy runs in a container, which is less tested than the Mac and Linux launcher. Keep a backup of your Traktor collection and check each change before relying on it.</div>
 </header>
 <main id="main"><div class="loading">Loading…</div></main>
 <aside class="drawer" id="drawer" aria-hidden="true"><div id="drawer-body"></div></aside>
@@ -2587,6 +2588,7 @@ async function refreshSetupNote() {
   const todo = !setupReady(st), n = $("#setupnote"), link = document.querySelector('#nav a[href="#setup"]');
   link.innerHTML = `Setup${todo ? `<span class="dot" data-tip="Not set up yet"></span>` : ""}`;
   n.hidden = !todo || S.page === "setup";
+  $("#dockernote").hidden = !st.container;
   n.innerHTML = !st.models.ready ? `<b>New here?</b> Nothing is set up yet: the analysis models aren't downloaded and nothing is scanned. <a href="#setup">Set it up →</a>`
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }

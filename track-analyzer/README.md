@@ -110,7 +110,9 @@ Everything that works on your music files works on Linux (x86_64 only; Essentia 
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
-### Docker (Linux, or Windows from a WSL2 terminal)
+### Docker (Linux, or Windows from a WSL2 terminal) — experimental
+
+> **Experimental.** The Docker version is new and much less tested than the launcher above. Back up your Traktor collection (`Documents/Native Instruments/Traktor <version>/collection.nml`) before writing to it from Docker, check each change in Traktor, and prefer the launcher where you can. Problems: open an issue.
 
 The same Linux build in a container, with ffmpeg and Rubber Band included, so nothing else needs installing. Run it from the project folder:
 
