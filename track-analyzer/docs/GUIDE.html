@@ -120,6 +120,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <a class="sub" href="#cues">Cue points</a>
   <a class="sub" href="#grids">Beat grids</a>
   <a class="sub" href="#hype">Finding hype tracks</a>
+  <a class="sub" href="#sets">Sets and crates</a>
   <a class="sub" href="#genres">Genres</a>
   <a class="sub" href="#tempo">At your play tempo</a>
   <a class="sub" href="#mixes">Recorded mixes</a>
@@ -288,6 +289,14 @@ li > figure.shot { margin: 12px 0 4px; }
   <li><b>In Traktor:</b> quit Traktor, press <b>Write to Traktor's Comment…</b>, then show the <b>Comment</b> column in Traktor's track list (right-click the column header) and sort by it. Your own text in Comment stays in front. <b>Take it out…</b> on the Setup tab removes only the Hype part again.</li>
 </ul>
 
+<h3 id="sets">Planning a set, and warm-up / peak / closing crates</h3>
+<p>These run from a terminal for now (no button on the page yet): see <a href="#cli-sets">Planning a set and making crates</a>.</p>
+<ul>
+  <li><b>A set:</b> pick an arc (warm-up, peak, journey, closing, or your own like <code>Magenta/3,Red/9</code>) and how many tracks. Every slot in the set gets a target colour (hard ↔ pretty) and hype (chill ↔ peak); the planner picks the order that stays closest to them with keys that mix from track to track.</li>
+  <li><b>Crates:</b> <b>Warm-up</b> (Green…Magenta, hype 1–5), <b>Peak</b> (Red…Yellow, hype 8+) and <b>Closing</b> (Blue…Magenta, hype 6+), made from your colours and hype.</li>
+  <li><b>In Traktor:</b> both can be written as playlists, into a <b>Sets (Track Analyzer)</b> and a <b>Crates (Track Analyzer)</b> folder. Your own playlists aren't touched.</li>
+</ul>
+
 <h3 id="genres">Genres for Traktor and Navidrome</h3>
 <ol>
   <li>Scan first, so new tracks have genres: Setup tab, <b>Scan Traktor's collection</b>.</li>
@@ -378,7 +387,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Played at 145 BPM with key lock, a 124 BPM house track sounds different. <code>tempo scan</code> stretches each track to the target tempo with Rubber Band (pitch kept, like Traktor's key lock) and runs the same analysis again, stored separately in <code>data/at-145/</code>. Your colour is shifted by how much the colour model thinks the track changes, not replaced.</p>
 
 <h3 id="how-write">6. Writing to Traktor</h3>
-<p>Traktor keeps its own copy of track info in <code>collection.nml</code>. The app makes small text edits there (genre, colour, Comment and a Smartlist folder) rather than rewriting the file, so everything else stays byte-for-byte the same. A backup is taken first, and <code>--undo</code> refuses if Traktor changed the file since, so it can't throw away your newer work.</p>
+<p>Traktor keeps its own copy of track info in <code>collection.nml</code>. The app makes small text edits there (genre, colour, Comment, a Smartlist folder, and its own folders of set and crate playlists) rather than rewriting the file, so everything else stays byte-for-byte the same. A backup is taken first, and <code>--undo</code> refuses if Traktor changed the file since, so it can't throw away your newer work.</p>
 
 
 <!-- ───────────────────────────── -->
@@ -388,6 +397,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tbody>
 <tr><td>Wrote genres, colours, recolourings, cues or grid fixes into Traktor</td><td><b>Undo</b> in the dialog, or <b>Undo the last change to Traktor</b> (Setup)</td><td><code>traktor --undo</code></td><td>Restores collection.nml from the backup taken before the change; again to step further back. Traktor must be closed. Refuses if Traktor saved the file since (only the terminal's <code>--force</code> restores anyway, and loses those changes). The page's Undo after writing cues or grids also brings your approvals back.</td></tr>
 <tr><td>Wrote hype into Comment</td><td><b>Take it out…</b> (Setup)</td><td><code>hype --traktor --remove</code></td><td>Takes only the Hype part out of Comment; your own text stays.</td></tr>
+<tr><td>Wrote a set or crates as Traktor playlists</td><td>(terminal only)</td><td><code>set --remove "&lt;name&gt;"</code> / <code>crates --remove</code></td><td>Takes out only those playlists, so it works while a tempo view is loaded too; the folder goes when it's empty. <code>traktor --undo</code> doesn't undo these.</td></tr>
 <tr><td>Loaded a tempo view</td><td><b>Switch Traktor back…</b></td><td><code>tempo native</code> (add <code>--lexicon</code> for Lexicon)</td><td>Puts back your genres, colours, Comment and genre Smartlists; everything else Traktor saved meanwhile stays. In Lexicon: genre, colour, comment and energy where they still hold the view's value. Last resort for Lexicon: the copies in <code>lexicon-backups/</code>.</td></tr>
 <tr><td>Wrote genre tags into your files</td><td><b>Put original tags back…</b> (Setup)</td><td><code>untag</code></td><td>Restores the genre/BPM/key tags each file had before its first change.</td></tr>
 </tbody></table></div>
@@ -417,7 +427,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>lexicon-backups/</code></td><td>A copy of Lexicon's library taken before every <code>tempo load --lexicon</code> / <code>native --lexicon</code> (newest 10). Last resort: quit Lexicon, copy one over <code>~/Library/Application Support/lexicon/main.db</code>, delete <code>main.db-wal</code> and <code>main.db-shm</code></td></tr>
 <tr><td><code>tempo-loaded-lexicon.json</code></td><td>Only while a tempo view is loaded in Lexicon: your Lexicon values, for <code>tempo native --lexicon</code>. Don't delete it</td></tr>
 </tbody></table></div>
-<p>Traktor backups sit next to <code>collection.nml</code> in <code>~/Documents/Native Instruments/Traktor &lt;version&gt;/</code>, named <code>collection.nml.before-track-analyzer-&lt;date-time&gt;</code>.</p>
+<p>Traktor backups sit next to <code>collection.nml</code> in <code>~/Documents/Native Instruments/Traktor &lt;version&gt;/</code>, named <code>collection.nml.before-track-analyzer-&lt;date-time&gt;</code> (for set and crate playlists: <code>collection.nml.before-set-&lt;date-time&gt;</code>).</p>
 <p>A track is only re-analysed if the file's audio changes, or it moves or gets renamed. Tagging, by this app or another tagger, doesn't count.</p>
 
 
@@ -549,6 +559,27 @@ li > figure.shot { margin: 12px 0 4px; }
 </ul>
 
 
+<h3 id="cli-sets">Planning a set and making crates</h3>
+<ul>
+  <li><b>A warm-up set of 20 tracks:</b> the table shows each slot's aim (colour/hype), the track picked for it, its key (✗ where it doesn't mix with the track before) and the set's length if every track played in full. Nothing is written.
+    <div class="cmd"><pre>uv run dj-track-analyzer set</pre></div></li>
+  <li><b>Other shapes:</b> <code>--arc peak</code>, <code>journey</code> (pretty → hard peak → back), <code>closing</code>, or your own colour/hype points, spaced evenly. <code>--tracks</code> sets the length.
+    <div class="cmd"><pre>uv run dj-track-analyzer set --arc Magenta/3,Red/9,Violet/6 --tracks 30</pre></div></li>
+  <li><b>At your play tempo:</b> if you play everything at 145 with key lock, plan with the colours and hype heard at 145 (needs that <a href="#tempo">tempo view</a>). Keys stay the tracks' own.
+    <div class="cmd"><pre>uv run dj-track-analyzer set --tempo 145</pre></div></li>
+  <li><b>Mixing by BPM instead:</b> each next track within 3% of the last, the set rising from 124 to 132 BPM.
+    <div class="cmd"><pre>uv run dj-track-analyzer set --arc peak --bpm-step 3 --bpm 124-132</pre></div></li>
+  <li><b>From one crate, with a fixed opener:</b> <code>--playlist</code> takes the tracks of one Traktor playlist; <code>--start</code> / <code>--end</code> pin the first and last track; <code>--exclude</code> leaves tracks out.
+    <div class="cmd"><pre>uv run dj-track-analyzer set --playlist "My crate" --start "part of the name"</pre></div></li>
+  <li><b>The set in Traktor:</b> <span class="stop">Traktor closed</span> writes it as a playlist in <b>Sets (Track Analyzer)</b>, named <code>Set &lt;date&gt; &lt;arc&gt;</code> unless you pass <code>--name</code> (the same name is replaced). <code>--dry-run</code> first to preview; <code>set --remove "&lt;name&gt;"</code> takes it out again.
+    <div class="cmd"><pre>uv run dj-track-analyzer set --traktor --name "Friday warm-up"</pre></div></li>
+  <li><b>The crates:</b> Warm-up (most approachable first), Peak (most hype, hardest first) and Closing (most hype, prettiest first). Change the hype limits with <code>--warmup-max-hype</code>, <code>--peak-min-hype</code>, <code>--closing-min-hype</code>; <code>--limit</code> shows more per crate.
+    <div class="cmd"><pre>uv run dj-track-analyzer crates</pre></div></li>
+  <li><b>The crates in Traktor:</b> <span class="stop">Traktor closed</span> playlists in <b>Crates (Track Analyzer)</b>; run it again after scanning or recolouring to refresh them. With <code>--tempo 145</code> they're named "Warm-up @145" and so on, next to the normal ones. <code>crates --remove</code> takes them out (add <code>--tempo 145</code> for those).
+    <div class="cmd"><pre>uv run dj-track-analyzer crates --traktor</pre></div></li>
+</ul>
+
+
 <h3 id="cli-genres">Genres for Traktor and Navidrome</h3>
 <ol>
   <li>Analyse new or changed tracks:
@@ -642,6 +673,8 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>colors guessed</code></td><td>Colours the app guessed into Traktor that nobody has checked; <code>--accept TEXT</code> or <code>all</code>: they're right, learn from them</td><td>Nothing; with <code>--accept</code>: app database</td></tr>
 <tr><td><code>hype</code></td><td>Lists tracks by hype (1–10), with filters</td><td>App database</td></tr>
 <tr><td><code>hype --traktor</code></td><td>Writes "Hype NN" into Comment, after your own text there</td><td class="changes">Traktor<br><small>undo: <code>hype --traktor --remove</code></small></td></tr>
+<tr><td><code>set</code></td><td>Plans a set along an arc of colour and hype, with keys that mix</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>set --remove "&lt;name&gt;"</code></small></td></tr>
+<tr><td><code>crates</code></td><td>Warm-up, peak and closing crates from colour and hype</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>crates --remove</code></small></td></tr>
 <tr><td><code>tempo scan</code></td><td>Analyses every scanned track stretched to your play tempo (145 unless <code>--bpm</code>), key lock</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
 <tr><td><code>tempo report</code></td><td>What changes at the view tempo: genres, colours, hype</td><td>Nothing</td></tr>
 <tr><td><code>tempo export</code> / <code>tempo nml</code></td><td>The view as a spreadsheet / as a standalone collection.nml</td><td>Files in <code>at-&lt;bpm&gt;/</code></td></tr>
@@ -664,8 +697,8 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="table-wrap"><table id="opt-table">
 <thead><tr><th>Option</th><th>Works with</th><th>What it does</th></tr></thead>
 <tbody>
-<tr><td><code>--dry-run</code></td><td><code>tag</code>, <code>untag</code>, <code>traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code>, <code>tempo native</code></td><td>Preview only, changes nothing</td></tr>
-<tr><td><code>--nml &lt;path&gt;</code></td><td><code>scan</code>, <code>traktor</code>, <code>colors</code>, <code>hype</code>, <code>tempo</code></td><td>Use a different collection.nml (default: the newest Traktor folder)</td></tr>
+<tr><td><code>--dry-run</code></td><td><code>tag</code>, <code>untag</code>, <code>traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>set --traktor</code>, <code>crates --traktor</code>, <code>--remove</code> of both, <code>tempo load</code>, <code>tempo native</code></td><td>Preview only, changes nothing</td></tr>
+<tr><td><code>--nml &lt;path&gt;</code></td><td><code>scan</code>, <code>traktor</code>, <code>colors</code>, <code>hype</code>, <code>set</code>, <code>crates</code>, <code>tempo</code></td><td>Use a different collection.nml (default: the newest Traktor folder)</td></tr>
 <tr><td><code>--rescan</code></td><td><code>scan</code>, <code>tempo scan</code></td><td>Re-analyse everything, even unchanged files (slow)</td></tr>
 <tr><td><code>--exclude &lt;folder&gt;</code></td><td><code>scan</code></td><td>Leave a folder out (repeat for several)</td></tr>
 <tr><td><code>--include-recordings</code></td><td><code>scan</code></td><td>Also scan your Traktor recordings and samples (skipped by default)</td></tr>
@@ -700,10 +733,18 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--no-deep</code></td><td><code>colors train</code></td><td>Skip the MAEST, mood and instrument features (faster, less accurate)</td></tr>
 <tr><td><code>--least</code> / <code>--gems</code></td><td><code>hype</code></td><td>Chill first / hype tracks with few stars or plays</td></tr>
 <tr><td><code>--colour Red</code>, <code>--bpm 126</code>, <code>--key 8A</code></td><td><code>hype</code></td><td>Filter by colour (yours, else predicted), BPM (±4%, change with <code>--bpm-tolerance</code>) and keys that mix with 8A</td></tr>
-<tr><td><code>--limit 50</code></td><td><code>hype</code></td><td>Show more tracks (default 25)</td></tr>
+<tr><td><code>--limit 50</code></td><td><code>hype</code>, <code>crates</code></td><td>Show more tracks (default 25; crates 15 each, all are written)</td></tr>
 <tr><td><code>--remove</code></td><td><code>hype --traktor</code></td><td>Take the "Hype NN" part out of Comment again</td></tr>
 <tr><td><code>--clean-comment2</code></td><td><code>hype --traktor</code></td><td>Only take an old "Hype NN" out of Comment 2 (from older versions); your own text there stays</td></tr>
 <tr><td><code>--force</code></td><td><code>hype --traktor</code></td><td>Write even though Traktor is set to write tags into your files (it would copy "Hype NN" into them)</td></tr>
+<tr><td><code>--arc warmup</code></td><td><code>set</code></td><td>The set's shape: <code>warmup</code> (default), <code>peak</code>, <code>journey</code>, <code>closing</code>, <code>mine</code> (the average of your Traktor History sessions; with sets that mix hard and pretty throughout it comes out almost flat), or points like <code>Magenta/3,Red/9</code></td></tr>
+<tr><td><code>--tracks 20</code></td><td><code>set</code></td><td>How many tracks (default 20)</td></tr>
+<tr><td><code>--tempo 145</code></td><td><code>set</code>, <code>crates</code></td><td>Use the colours and hype of that tempo view</td></tr>
+<tr><td><code>--bpm-step 3</code> / <code>--bpm 124-132</code></td><td><code>set</code> (<code>--bpm</code> also <code>crates</code>)</td><td>Each next track within 3% of the last one's BPM / only tracks in that range (with <code>--bpm-step</code> the set's BPM rises across it)</td></tr>
+<tr><td><code>--playlist "name"</code>, <code>--genre</code>, <code>--min-stars 4</code>, <code>--exclude TEXT</code></td><td><code>set</code>, <code>crates</code></td><td>Only tracks in that Traktor playlist / with that genre / with that many stars; leave tracks matching TEXT out</td></tr>
+<tr><td><code>--start TEXT</code> / <code>--end TEXT</code></td><td><code>set</code></td><td>Open / end with the track matching TEXT</td></tr>
+<tr><td><code>--name "Friday"</code></td><td><code>set --traktor</code></td><td>The playlist's name (default <code>Set &lt;date&gt; &lt;arc&gt;</code>); one of that name in the folder is replaced</td></tr>
+<tr><td><code>--warmup-max-hype 5</code> / <code>--peak-min-hype 8</code> / <code>--closing-min-hype 6</code></td><td><code>crates</code></td><td>The hype limits of each crate (these are the defaults)</td></tr>
 <tr><td><code>--bpm 140</code></td><td><code>tempo …</code> (not <code>native</code>, <code>status</code>)</td><td>The tempo of the view (default 145). Each tempo keeps its own folder, e.g. <code>at-140/</code></td></tr>
 <tr><td><code>--out &lt;file&gt;</code></td><td><code>tempo export</code>, <code>tempo nml</code></td><td>Write somewhere else than <code>at-&lt;bpm&gt;/</code></td></tr>
 <tr><td><code>--limit 30</code></td><td><code>tempo report</code></td><td>Tracks per list (default 15)</td></tr>
@@ -711,7 +752,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--host 0.0.0.0</code> / <code>--port 8765</code></td><td><code>serve --http</code></td><td>Listen on your network (for Open WebUI in Docker or on another machine) / another port</td></tr>
 <tr><td><code>--export set.html</code></td><td><code>web</code></td><td>Save a read-only snapshot of the page as one file instead of opening it</td></tr>
 <tr><td><code>--logs &lt;folder&gt;</code> / <code>--no-open</code></td><td><code>web</code></td><td>Where the Mixes and Files tabs look for saved JSON (default <code>logs/</code>; repeat for several) / don't open the browser</td></tr>
-<tr><td><code>--json</code></td><td><code>colors explain</code>, <code>hype</code>, <code>tempo report</code></td><td>Raw numbers instead of tables</td></tr>
+<tr><td><code>--json</code></td><td><code>colors explain</code>, <code>hype</code>, <code>set</code>, <code>crates</code>, <code>tempo report</code></td><td>Raw numbers instead of tables</td></tr>
 </tbody></table></div>
 
 

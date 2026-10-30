@@ -92,6 +92,20 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   undo byte-identical, web 409/Host checks; ~1 min emulated), also CI `.github/workflows/docker.yml`. Develop
   against real models: `docker compose run --rm dev` (test image, ./src + ./scripts mounted, page on 8767).
 - `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment).
+- `setplan.py`: `set` command. Arc = points (x 0..1, colour 1 Red..7 Magenta, hype 1-10): `ARCS` presets, `parse_arc`
+  ("Magenta/3,Red/9"), `mine` = `learned_arc` (mean colour/hype per fifth of History sessions with 8+ known public
+  plays; nearly flat on the test collection). `library()`: native collection.db (colour = traktor_color else
+  color_position, Traktor's BPM/key first, stars from the NML); `--tempo` reads the view's collection.db directly
+  (`tempo.view_colours`, view hype; no global swap). `plan()`: beam search (BEAM 256, PER_STATE 24), cost =
+  colour² + (hype/HYPE_STEP)² − stars bonus + transitions (KEY_CLASH, KEY_UNKNOWN, SAME_ARTIST, BPM_JUMP with
+  --bpm-step). `--traktor`: playlist in the "Sets (Track Analyzer)" root folder (`_with_playlist`, same name
+  replaced), backup prefix `collection.nml.before-set-` so `traktor --undo` never restores it; undo = `set --remove
+  NAME` (surgical; write + remove is byte-identical), so it works while a tempo view is loaded.
+  `crates` command (same module): `CRATES` rules (colour zone + hype range; Warm-up Green…Magenta ≤5 by
+  approachability, Peak Red…Yellow ≥8, Closing Blue…Magenta ≥6; hype bounds are options), a track can be in several;
+  playlists in "Crates (Track Analyzer)", " @<bpm>" with --tempo, replaced in place on re-run; `crates --remove
+  [--tempo]` = undo. History (2026-10-30, 15 sessions, 367 plays) doesn't predict set position (|ρ| ≤ 0.14 for
+  colour, hype, approachability, energy arc), so crates are rules, not learned.
 - `tempo.py`: `tempo` command, the catalogue as heard at one tempo (default 145, `--bpm` for any).
 - `lexicon.py`: `tempo load/native --lexicon` via Lexicon's Local API.
 - `clips.py`: `clips <analysis.json> --video <final.mp4>`: cuts `analyze --highlights --offset` suggestions (video

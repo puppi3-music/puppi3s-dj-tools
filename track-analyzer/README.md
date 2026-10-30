@@ -25,6 +25,7 @@ For every MP3, WAV, FLAC, AIFF or M4A:
 | **Mood, instruments, vocals** | Aggressive / happy / party / relaxed / sad, the strongest instruments, and how much of the track has a voice. |
 | **Colour** | A Traktor colour for uncoloured tracks, learned from the tracks you've already coloured (Traktor's 7 colours read as a scale, Red … Magenta). |
 | **Hype** | 1–10 within your collection, from the rave sound and energy. |
+| **Sets and crates** | A set planned along an arc of colour and hype with keys that mix, and warm-up / peak / closing crates, as Traktor playlists if you like. |
 | **DJ mixes** | Files over 12 minutes get a timeline in 2-minute segments. With `--tracklist`, a recorded mix is checked track by track against Traktor's history of that session. |
 
 When a track is in your Traktor collection, Traktor's own BPM and key are stored too, and they win for search, mix suggestions, hype filters and tag writes (you may have fixed the beatgrid by hand).
@@ -35,7 +36,7 @@ When a track is in your Traktor collection, Traktor's own BPM and key are stored
 2. [Scan your collection](#2-scan-your-collection)
 3. [Genres in your files and in Traktor](#3-genres-in-your-files-and-in-traktor)
 4. [Colours: learned from your colour-coding](#4-colours-learned-from-your-colour-coding)
-5. [Hype (1–10)](#5-hype-110)
+5. [Hype (1–10), sets and crates](#5-hype-110-sets-and-crates)
 6. [Your catalogue at your play tempo](#6-your-catalogue-at-your-play-tempo-tempo-view)
 7. [How the analysis works](#7-how-the-analysis-works)
 8. [Ask a local LLM](#8-ask-a-local-llm-lm-studio-open-webui)
@@ -105,7 +106,7 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 ### Linux
 
-Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. Without Traktor, scans use the analyzer's own BPM and key.
+Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
@@ -452,7 +453,7 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 
 ---
 
-## 5. Hype (1–10)
+## 5. Hype (1–10), sets and crates
 
 How hype a track is, ranked within your collection: 10 = more hype than 90% of your tracks. Half the score is the "rave" sound (trance, hard trance, hands-up, hardstyle rather than deep or tech house), half is energy (loudness, party and aggressive moods vs relaxed). On a test collection of about 470 house/techno/trance tracks, it matched the star ratings well enough to sort by, but not well enough to guess stars. The style half favours trance and hard dance, so it suits those collections best.
 
@@ -485,6 +486,56 @@ uv run dj-track-analyzer hype --traktor --remove       # take it out again (this
 ```
 
 It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment 2 from older versions is taken out; to do only that, run `hype --traktor --clean-comment2`. Each track is marked as up to date with its file, so Traktor doesn't re-read the file's comment tag over it, unless the file's title, artist, album or comment were edited since Traktor last read them: those tracks are skipped and listed under `skipped_examples`, so Traktor still picks up your edits. Open Traktor, load them (or run **Check Consistency**), quit, and run it again. It refuses while Traktor is set to write tags into your files (Preferences → File Management), since Traktor would then copy "Hype NN" into the files; turn that off, or add `--force`. In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
+
+### Plan a set
+
+A set that follows an arc on two axes at once, colour (hard ↔ pretty) and hype (chill ↔ peak), with keys that mix from track to track. Each slot of the set gets a target colour and hype from the arc; the planner picks the order that stays closest to it, avoiding key clashes (same key, ±1 on the Camelot wheel and the relative major/minor count as mixing), the same artist twice in a row and, with `--bpm-step`, big BPM jumps. More stars help a little. It only reads, unless you add `--traktor`.
+
+```bash
+uv run dj-track-analyzer set                                   # 20 tracks, warm-up arc
+uv run dj-track-analyzer set --arc journey --tracks 30
+uv run dj-track-analyzer set --arc Magenta/3,Red/9,Violet/6    # your own arc: colour/hype points, evenly spaced
+uv run dj-track-analyzer set --tempo 145                       # colours and hype as heard at 145 (needs that tempo view)
+uv run dj-track-analyzer set --arc peak --bpm-step 3 --bpm 124-132   # BPM rising 124 → 132, ≤3% per step
+uv run dj-track-analyzer set --playlist "My crate" --start "Opening track"
+```
+
+| Option | What it does | Default |
+|---|---|---|
+| `--arc NAME` | `warmup` (Magenta/2 → Green/6.5), `peak`, `journey` (pretty → hard peak → back), `closing`, `mine` (the average colour and hype in each fifth of your Traktor History sessions), or your own points like `Magenta/3,Red/9` | `warmup` |
+| `--tracks 20` | How many tracks | 20 |
+| `--tempo 145` | Plan with the colours and hype of that tempo view, for when you play everything at one tempo with key lock (keys stay the tracks' own) | each track at its own tempo |
+| `--bpm-step 3` | Each next track within this many % of the last one's BPM | off |
+| `--bpm 124-132` | Only tracks in this BPM range; with `--bpm-step` the set's BPM also rises across it | all |
+| `--genre NAME` | Only tracks with this genre among their top three | all |
+| `--playlist NAME` | Only tracks in this Traktor playlist | all |
+| `--min-stars 4` | Only tracks with at least this many stars | all |
+| `--start TEXT` / `--end TEXT` | Open / end with the track matching TEXT | |
+| `--exclude TEXT` | Leave out tracks matching TEXT (repeat it for more) | |
+| `--traktor [--name NAME] [--dry-run]` | Also write the set as a playlist in a **Sets (Track Analyzer)** folder in Traktor (Traktor closed). A playlist of the same name there is replaced | off |
+| `--remove NAME` | Take that playlist out of the folder again (the undo) | |
+| `--json` | Raw output | off |
+
+The table shows each slot's aim next to the track chosen for it, ✗ where a key doesn't mix with the track before, and the set's length if every track played in full. Colours marked `?` are the model's guesses for tracks you haven't coloured. Writing the playlist backs up `collection.nml` first (`collection.nml.before-set-…`); undo it with `set --remove NAME` rather than `traktor --undo`, which works while a tempo view is loaded too.
+
+### Warm-up, peak and closing crates
+
+Three crates by rule, from colour and hype:
+
+| Crate | Colours | Hype | Sorted |
+|---|---|---|---|
+| Warm-up | Green … Magenta | 1–5 (`--warmup-max-hype`) | most approachable first |
+| Peak | Red … Yellow | 8–10 (`--peak-min-hype`) | most hype, then hardest first |
+| Closing | Blue … Magenta | 6–10 (`--closing-min-hype`) | most hype, then prettiest first |
+
+```bash
+uv run dj-track-analyzer crates                          # show them (15 per crate; --limit for more)
+uv run dj-track-analyzer crates --tempo 145              # with the 145 view's colours and hype
+uv run dj-track-analyzer crates --traktor --dry-run      # preview, then without --dry-run (Traktor closed)
+uv run dj-track-analyzer crates --remove                 # take them out again (the undo; add --tempo 145 for those)
+```
+
+With `--traktor` each crate becomes a playlist in a **Crates (Track Analyzer)** folder; re-running replaces them, so run it again after scanning or recolouring. With `--tempo 145` the playlists are named "Warm-up @145" and so on, next to the normal ones. A track can be in more than one crate when the hype ranges overlap (with the defaults they don't). `--bpm`, `--genre`, `--playlist`, `--min-stars` and `--exclude` narrow the pool as for `set`. Approachability is a model's guess at how easy a track is to get into; it runs with prettier colours and lower hype.
 
 ---
 
@@ -714,6 +765,8 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `styles` | List the 400 Discogs styles, check `dj_genres.json` | nothing |
 | `colors train\|review\|explain\|apply` | Your colour scale (section 4) | `apply`, `review --apply`: **Traktor** |
 | `hype` | Tracks by hype, with filters (section 5) | app database; `--traktor`: **Traktor** |
+| `crates [--tempo 145] [--traktor] [--remove]` | Warm-up, peak and closing crates from colour and hype (section 5) | nothing; `--traktor`: **Traktor** (undo: `crates --remove`) |
+| `set [--arc …] [--tracks 20] [--tempo 145] …` | Plan a set along an arc of colour and hype, with keys that mix (section 5) | nothing; `--traktor`: **Traktor** (undo: `set --remove NAME`) |
 | `tempo scan\|report\|export\|nml\|refresh\|status\|load\|native` | The tempo view, 145 by default (section 6) | `load`, `native`: **Traktor** (and Lexicon) |
 | `train <folder>` | Your own genres (section 9) | app files |
 | `serve [--http] [--host] [--port]` | MCP server; stdio for LM Studio, HTTP for Open WebUI | nothing |

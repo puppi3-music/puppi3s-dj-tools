@@ -24,6 +24,8 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 | Hype score in Traktor's Comment | `hype --traktor` | ✅ |
 | Ask a local LLM (LM Studio / Open WebUI) about the collection | `serve` (MCP) | ✅ |
 | Mix suggestions: compatible key + BPM | via the LLM tools | ✅ |
+| Set planner: an arc of colour and hype with keys that mix, written as a Traktor playlist | `set` | ✅ |
+| Warm-up / peak / closing crates from colour and hype, as Traktor playlists | `crates` | ✅ |
 | Timeline of a DJ mix (genre per 2 min) | `analyze` on a file over 12 min | ✅ |
 | Clip suggestions from a recorded mix, previews and full-quality clips cut from the finished video | `analyze --highlights`, `clips` | ✅ |
 | Undo changes to Traktor | `traktor --undo` | ✅ |
@@ -38,11 +40,11 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 ## Ideas
 
 ### Set building
-- 💡 **Set planner.** Build a set that moves along the colour scale (e.g. pretty openers toward harder peak tracks) with keys and BPM that mix. Traktor's History can show how a DJ already orders colours: on the test collection, 55% of Magenta plays were in the first third of a set.
+- ✅ **Set planner.** `set` builds a set along an arc of colour and hype (preset, your own points, or the average of your History sessions) with keys that mix, optionally BPM steps, and writes it as a Traktor playlist. On the test collection the History average came out nearly flat (Orange/Yellow, hype 6–7 all the way): sets there mix hard and pretty tracks throughout, so a mean curve hides the shape. Checked 2026-10-30 on the test collection's History (15 sessions of 8+ tracks, 367 plays): nothing predicts where a track is played in a set (position vs colour ρ +0.14, approachability +0.09, hype −0.04, energy-arc measures < 0.1); Red is played evenly and Magenta too (35/35/31% by thirds).
 - 💡 **"What next?"** Given the track playing now, suggest the next one that is one step harder or prettier, in a compatible key.
-- 💡 **Warm-up / peak / closing crates** made automatically from colour, approachability and energy arc.
+- ✅ **Warm-up / peak / closing crates** (`crates`): by rule from colour and hype, warm-up sorted by approachability, as Traktor playlists. Energy arc left out: it didn't separate parts of a set in the History check above.
 - 💡 **Set review.** After a gig, read the History file and show the set's energy curve (colour per track over time).
-- 💡 **Hype in the set planner.** Use colour (hard ↔ pretty) and hype (chill ↔ peak) as two axes.
+- ✅ **Hype in the set planner.** Colour (hard ↔ pretty) and hype (chill ↔ peak) are its two axes.
 
 ### Colours
 - 💡 **Approachability in Traktor.** The best single number for hard ↔ pretty (+0.56 with the test collection's colours). Write it into a Traktor field so a crate can be sorted from hard to pretty.
