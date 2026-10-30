@@ -170,6 +170,53 @@ def main() -> None:
     hy.add_argument("--nml", default=None, help="path to collection.nml")
     hy.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
     hy.add_argument("--json", action="store_true", help="print JSON instead of a table")
+    sp = sub.add_parser("set", help="plan a set along an arc of colour (hard ↔ pretty) and hype, with keys that mix")
+    sp.add_argument("--arc", default="warmup",
+                    help="warmup (default), peak, journey, closing, mine (learned from your Traktor History), "
+                         "or points like Magenta/3,Red/9,Violet/6 (colour/hype, evenly spaced)")
+    sp.add_argument("--tracks", type=int, default=20, help="how many tracks (default 20)")
+    sp.add_argument("--tempo", type=float, default=None,
+                    help="plan with colours and hype as heard at this BPM (its tempo view; you play every track there)")
+    sp.add_argument("--bpm-step", type=float, default=None,
+                    help="each next track within this many %% of the last one's BPM")
+    sp.add_argument("--bpm", default=None, help="only tracks in this BPM range, e.g. 124-132 (with --bpm-step: "
+                                                "the set's BPM rises from the first to the second)")
+    sp.add_argument("--genre", default=None, help="only tracks with this genre (any of their top three)")
+    sp.add_argument("--playlist", default=None, help="only tracks in this Traktor playlist (your crate)")
+    sp.add_argument("--min-stars", type=int, default=None, help="only tracks rated this many stars or more")
+    sp.add_argument("--start", metavar="TEXT", default=None, help="open with the track matching TEXT")
+    sp.add_argument("--end", metavar="TEXT", default=None, help="end with the track matching TEXT")
+    sp.add_argument("--exclude", metavar="TEXT", action="append", default=None,
+                    help="leave out tracks matching TEXT (repeatable)")
+    sp.add_argument("--traktor", action="store_true",
+                    help="also write the set as a playlist in Traktor's 'Sets (Track Analyzer)' folder (Traktor closed)")
+    sp.add_argument("--name", default=None, help="with --traktor: the playlist's name (default 'Set <date> <arc>'); "
+                                                 "a playlist of that name in the folder is replaced")
+    sp.add_argument("--remove", metavar="NAME", default=None,
+                    help="take the playlist NAME out of the 'Sets (Track Analyzer)' folder again")
+    sp.add_argument("--dry-run", action="store_true", help="with --traktor / --remove: show what would change")
+    sp.add_argument("--nml", default=None, help="path to collection.nml")
+    sp.add_argument("--json", action="store_true", help="print JSON instead of a table")
+    cr = sub.add_parser("crates", help="warm-up, peak and closing crates from colour and hype, optionally as Traktor playlists")
+    cr.add_argument("--tempo", type=float, default=None,
+                    help="use colours and hype as heard at this BPM (its tempo view); playlists get ' @<BPM>' in their name")
+    cr.add_argument("--warmup-max-hype", type=int, default=5, help="Warm-up: Green…Magenta with hype up to this (default 5)")
+    cr.add_argument("--peak-min-hype", type=int, default=8, help="Peak: Red…Yellow with hype from this (default 8)")
+    cr.add_argument("--closing-min-hype", type=int, default=6, help="Closing: Blue…Magenta with hype from this (default 6)")
+    cr.add_argument("--bpm", default=None, help="only tracks in this BPM range, e.g. 124-132")
+    cr.add_argument("--genre", default=None, help="only tracks with this genre (any of their top three)")
+    cr.add_argument("--playlist", default=None, help="only tracks in this Traktor playlist")
+    cr.add_argument("--min-stars", type=int, default=None, help="only tracks rated this many stars or more")
+    cr.add_argument("--exclude", metavar="TEXT", action="append", default=None,
+                    help="leave out tracks matching TEXT (repeatable)")
+    cr.add_argument("--limit", type=int, default=15, help="tracks shown per crate (all are written; default 15)")
+    cr.add_argument("--traktor", action="store_true",
+                    help="write the crates as playlists in Traktor's 'Crates (Track Analyzer)' folder (Traktor closed); "
+                         "re-running replaces them")
+    cr.add_argument("--remove", action="store_true", help="take the crate playlists (of --tempo's view, if given) out again")
+    cr.add_argument("--dry-run", action="store_true", help="with --traktor / --remove: show what would change")
+    cr.add_argument("--nml", default=None, help="path to collection.nml")
+    cr.add_argument("--json", action="store_true", help="print JSON instead of tables")
     te = sub.add_parser("tempo", help="your catalogue as heard at one tempo with key lock (default 145 BPM)")
     te.add_argument("action", choices=["scan", "report", "export", "nml", "load", "native", "refresh", "status"],
                     help="scan: analyse every track stretched to --bpm (cached, resumable). report: what changes. "
@@ -348,6 +395,14 @@ def main() -> None:
         out = hype.find(args.nml, least=args.least, colour=args.colour, bpm=args.bpm,
                         bpm_tolerance_pct=args.bpm_tolerance, key=args.key, gems=args.gems, limit=args.limit)
         print(json.dumps(out, indent=2, ensure_ascii=False) if args.json else hype.find_text(out))
+    elif args.cmd == "set":
+        from . import setplan
+
+        setplan.main(args)
+    elif args.cmd == "crates":
+        from . import setplan
+
+        setplan.main_crates(args)
     elif args.cmd == "tempo":
         from . import tempo
 
