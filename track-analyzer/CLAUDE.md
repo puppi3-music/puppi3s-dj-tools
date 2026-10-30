@@ -320,7 +320,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   sound (+0.36) and energy (+0.30), not colour (−0.07) or drop size (~0); stars weren't predictable from audio
   (CV 0.56 vs 0.58 baseline), so there's a hype score instead of an auto-rating.
 - `--traktor` writes "Hype NN" into **Comment = INFO COMMENT** (moved from Comment 2 = INFO RATING on 2026-10-28; stars = INFO RANKING, 51 per star), appended after
-  existing text with " · "; `--remove` strips it. Any "Hype NN" still in INFO RATING is stripped on every write (`--clean-comment2` does only that). Traktor re-reads COMMENT from the file tag when the file mtime ≠ ENTRY MODIFIED stamp, so changed entries get the file's mtime stamped (as `tempo load`); "Write Tags" would copy it into the file. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.
+  existing text with " · "; `--remove` strips it. Any "Hype NN" still in INFO RATING is stripped on every write (`--clean-comment2` does only that). Traktor re-reads COMMENT from the file tag when the file mtime ≠ ENTRY MODIFIED stamp, so entries get the file's mtime stamped (also when the Hype was already right: a stale stamp would still lose it) via
+  `traktor.stamp_if_unchanged`, shared with `tempo load`: only when the file's title/artist/album/comment (`tags_match`;
+  fields the file has, Hype ignored, genre not compared since `traktor` writes genres the files lack) still match the
+  entry, else Traktor should read those edits: hype skips the track (`skipped_file_tags_changed`), load writes it
+  unstamped. Refuses while `tag_writing_on` (would copy Hype into the files) unless `--force`. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
@@ -344,7 +348,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   the native folder's place, `traktor.swap_root_folder`), each changed entry's MODIFIED_DATE/TIME and the clock
   change. State in `data/tempo-loaded.json` as {VOLUME|DIR|FILE: {field: [yours, view]}}; `native`
   restores a field only if it still holds the view's value (clock always). Colour in view = user's colour +
-  (view position − native position), both from the current model. Round trip byte-identical; real Traktor 4
+  (view position − native position), both from the current model. Round trip byte-identical (except an old "Hype NN" in INFO RATING, which `load` strips for good); real Traktor 4
   opened, rewrote and closed a loaded NML and `native` still matched every value.
 - Backups: `collection.nml.before-tempo-view-…`, `Traktor Settings.tsi.before-tempo-view-…` (`traktor --undo`
   ignores them). `traktor.refuse_if_tempo_view` blocks sync/write_hype/set_colors/undo while loaded.

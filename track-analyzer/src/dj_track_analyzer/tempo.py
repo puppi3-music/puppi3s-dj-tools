@@ -564,7 +564,8 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
         raise SystemExit(f"No {bpm:g} BPM analysis yet. Run: uv run dj-track-analyzer tempo scan --bpm {bpm:g}")
     remembered, genres_seen = {}, set()
     stats = {"collection": str(path), "bpm": bpm, "tracks_in_view": 0, "genres_set": 0, "colours_moved": 0,
-             "colours_same": 0, "hype_set": 0, "genre_held": 0, "colour_held": 0}
+             "colours_same": 0, "hype_set": 0, "genre_held": 0, "colour_held": 0, "old_hype_out_of_comment2": 0,
+             "not_stamped_file_tags_changed": 0}
     examples = []
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
 
@@ -592,6 +593,10 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
             stats["colours_moved" if at != yours else "colours_same"] += 1
         if r["hype"] is not None:
             want["COMMENT"] = traktor.with_hype(cur.get("COMMENT"), r["hype"])
+        old2 = cur.get("RATING")
+        if old2 and traktor.HYPE_RE.search(old2):  # old Hype in Comment 2: out for good, as hype --traktor does
+            entry = _set_or_drop(entry, "RATING", traktor.with_hype(old2, None) or None)
+            stats["old_hype_out_of_comment2"] += 1
         changed = {}
         for field, value in want.items():
             if value != cur.get(field):
@@ -599,11 +604,14 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
                 changed[field] = [cur.get(field), value]
         if changed:
             # Mark Traktor as up to date with the file, or it reads the file's tags again on deck load
-            # and they replace the view's genre/colour (seen 2026-10-22).
-            stamp = next((s for s in map(traktor.file_stamp, paths) if s), None)
-            if stamp and stamp != traktor.entry_stamp(entry):
-                changed["MODIFIED"] = [traktor.entry_stamp(entry), stamp]
-                entry = traktor.set_entry_stamp(entry, stamp)
+            # and they replace the view's genre/colour (seen 2026-10-22). Not when the file's tags were
+            # edited since Traktor read them: Traktor should still pick those up (`native` then keeps them).
+            before = traktor.entry_stamp(entry)
+            entry, how = traktor.stamp_if_unchanged(entry, paths)
+            if how == "stamped":
+                changed["MODIFIED"] = [before, traktor.entry_stamp(entry)]
+            elif how == "tags_changed":
+                stats["not_stamped_file_tags_changed"] += 1
             remembered[key] = changed
             stats["genres_set"] += "GENRE" in changed
             stats["hype_set"] += "COMMENT" in changed
