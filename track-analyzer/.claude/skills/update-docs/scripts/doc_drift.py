@@ -12,7 +12,8 @@ from pathlib import Path
 
 ROOT = Path.cwd()
 DOCS = ["README.md", "docs/GUIDE.html", "docs/IDEAS.md"]
-NOT_OURS = {"--directory", "--version", "--project", "--python"}  # uv / tool flags the docs may show
+NOT_OURS = {"--directory", "--version", "--project", "--python", "--extra", "--inexact",  # uv / tool flags the docs may show
+            "--rm"}  # docker compose run --rm
 
 
 class _Captured(Exception):

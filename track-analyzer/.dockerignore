@@ -1,0 +1,13 @@
+# Only what the image needs: pyproject.toml, uv.lock, src/, scripts/
+.git
+.venv
+.ruff_cache
+**/__pycache__
+data
+data-docker
+logs
+dsp
+docs
+.claude
+*.local.*
+CLAUDE*.md
