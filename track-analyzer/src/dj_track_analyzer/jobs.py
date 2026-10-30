@@ -327,6 +327,7 @@ def setup_status() -> dict:
                     "folder": str(analysis.MODELS_DIR)}
     st["tools"] = {"ffmpeg": bool(_tool("ffmpeg")), "rubberband": bool(_tool("rubberband"))}
     st["mac"] = sys.platform == "darwin"
+    st["container"] = traktor.CONTAINER  # the page says Docker is experimental
     st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no Homebrew
     try:
         nml = traktor.find_collection(None)

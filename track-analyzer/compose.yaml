@@ -1,3 +1,5 @@
+# EXPERIMENTAL: much less tested than the launcher. Back up Traktor's collection.nml before writing to it from here.
+#
 # Puppi3's Track Analyzer in Docker, for Linux and Windows (from a WSL2 terminal). On a Mac use the
 # "Start Puppi3's Track Analyzer.command" instead: it runs natively, faster, with the Mac's own Essentia build.
 #
