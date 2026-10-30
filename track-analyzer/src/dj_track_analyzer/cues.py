@@ -1381,9 +1381,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     since you approved, or whose cue was moved since, is left alone. Backup + `traktor --undo`."""
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
-    if not dry_run and traktor.traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo these changes.")
+    traktor.check_closed(dry_run)
     todo = plans()
     if not todo:
         raise SystemExit("Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")

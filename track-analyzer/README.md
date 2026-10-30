@@ -109,6 +109,22 @@ Everything that works on your music files works on Linux (x86_64 only; Essentia 
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
+### Docker (Linux, or Windows from a WSL2 terminal)
+
+The same Linux build in a container, with ffmpeg and Rubber Band included, so nothing else needs installing. Run it from the project folder:
+
+```bash
+MUSIC=~/Music docker compose up -d       # the web page on http://127.0.0.1:8766; its Setup tab downloads the models
+docker compose run --rm app dj-track-analyzer scan ~/Music    # any command, in the same container
+docker compose down                      # stop it
+```
+
+- `MUSIC` is mounted at the same path inside the container, so paths in the database are your real ones. Data (database, models, backups) goes in `data-docker/` (or `TRACK_ANALYZER_DATA`), separate from a native install's `data/`.
+- `TRAKTOR_DIR` mounts the folder holding `Traktor <version>` (your `Documents/Native Instruments`). The container can't see whether Traktor is open, so every write to Traktor asks you to confirm it's closed: the page asks in a dialog, a command asks y/N in a terminal, and without a terminal it needs `TRACK_ANALYZER_TRAKTOR_CLOSED=1`. Traktor on Windows stores `C:` paths, which the analyzer doesn't read yet ([docs/WINDOWS.md](docs/WINDOWS.md)): until then, scan folders rather than `scan --traktor`.
+- The page answers only `127.0.0.1` and `localhost`. To open it from another device, publish the port on more than localhost in `compose.yaml` and list the names in `TRACK_ANALYZER_HOSTS`.
+- Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster, and results come from the Mac's own Essentia build.
+- `docker compose run --rm test` checks everything end to end on a few synthetic tracks (`scripts/make_fixtures.py`, `scripts/docker_smoke.py`), as CI does.
+
 ### Checking a recorded mix
 
 ```bash

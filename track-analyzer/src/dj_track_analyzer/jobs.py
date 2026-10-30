@@ -91,6 +91,8 @@ ACTIONS = {
 UNDO = {"tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
         "colors_recolour": "traktor_undo", "tempo_load": "tempo_native"}
 NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
+TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+                   "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
 _lock = threading.Lock()
 _job: dict | None = None  # the running or last job
@@ -130,6 +132,9 @@ def start(action: str, options: dict | None = None, dry_run: bool = False) -> di
         else:
             cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
         env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
+        if traktor.CONTAINER and action in TOUCHES_TRAKTOR and not dry_run:
+            traktor.check_closed()  # ask the page now, not the job later
+            env[traktor.CLOSED_ENV] = "1"
         _seq += 1
         _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
                 "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,

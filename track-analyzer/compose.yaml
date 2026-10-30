@@ -1,0 +1,46 @@
+# Puppi3's Track Analyzer in Docker, for Linux and Windows (from a WSL2 terminal). On a Mac use the
+# "Start Puppi3's Track Analyzer.command" instead: it runs natively, faster, with the Mac's own Essentia build.
+#
+#   MUSIC=~/Music docker compose up -d        the web page on http://127.0.0.1:8766 (Setup tab downloads the models)
+#   docker compose run --rm app dj-track-analyzer scan ~/Music    any command, in the same container
+#   docker compose run --rm test              smoke test on a synthetic library (models + fixtures built in)
+#   docker compose run --rm dev               a shell in the test image with ./src and ./scripts live from here
+#
+# MUSIC is mounted at the same path inside, so the paths in Traktor's collection and in the database are the real
+# ones. TRAKTOR_DIR is the folder holding "Traktor <version>" (Documents/Native Instruments). Writes to Traktor
+# ask you to confirm it's closed: the container can't see it. Data (database, models, backups): TRACK_ANALYZER_DATA.
+x-image: &image
+  platform: linux/amd64
+  user: "${UID:-1000}:${GID:-1000}"
+
+services:
+  app:
+    <<: *image
+    build: {context: ., target: app}
+    image: track-analyzer:app
+    ports: ["127.0.0.1:8766:8766"]
+    environment:
+      TRACK_ANALYZER_HOSTS: ${TRACK_ANALYZER_HOSTS:-}  # other names the page may be opened by (comma-separated)
+    volumes:
+      - ${TRACK_ANALYZER_DATA:-./data-docker}:/data
+      - ${MUSIC:-./data-docker/no-music}:${MUSIC:-/music}
+      - ${TRAKTOR_DIR:-./data-docker/no-traktor}:/home/dj/Documents/Native Instruments
+
+  test:
+    <<: *image
+    build: {context: ., target: test}
+    image: track-analyzer:test
+    profiles: [test]
+
+  dev:
+    <<: *image
+    build: {context: ., target: test}
+    image: track-analyzer:test
+    profiles: [dev]
+    ports: ["127.0.0.1:8767:8766"]
+    volumes:
+      - ./src:/app/src
+      - ./scripts:/app/scripts
+    stdin_open: true
+    tty: true
+    command: bash

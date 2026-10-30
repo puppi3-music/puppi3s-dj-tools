@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import sys
 import threading
@@ -402,6 +403,8 @@ def write_cues(dry_run: bool) -> dict:
             return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
         try:
             out = cues.apply(dry_run=dry_run)
+        except traktor.ConfirmClosed:  # the page asks and sends it again
+            raise
         except SystemExit as e:
             raise ValueError(str(e)) from None
     out["traktor_running"] = traktor.traktor_running()
@@ -421,6 +424,8 @@ def undo_write() -> dict:
         raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
     try:
         out = traktor.undo()
+    except traktor.ConfirmClosed:  # the page asks and sends it again
+        raise
     except SystemExit as e:
         raise ValueError(str(e)) from None
     try:
@@ -1016,6 +1021,8 @@ def write_grids(dry_run: bool) -> dict:
         return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
     try:
         out = gridfix.apply(dry_run=dry_run)
+    except traktor.ConfirmClosed:  # the page asks and sends it again
+        raise
     except SystemExit as e:
         raise ValueError(str(e)) from None
     out["traktor_running"] = traktor.traktor_running()
@@ -1032,6 +1039,8 @@ def undo_grids() -> dict:
         raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
     try:
         out = gridfix.undo_write()
+    except traktor.ConfirmClosed:  # the page asks and sends it again
+        raise
     except SystemExit as e:
         raise ValueError(str(e)) from None
     _grids["mtime"] = None
@@ -1154,9 +1163,13 @@ LOCAL_HOSTS = ["127.0.0.1", "localhost"]
 def allowed_hosts(host: str) -> list[str]:
     """Host headers the server answers: only this machine's names. A web site whose own name points at 127.0.0.1
     (DNS rebinding) is 'same origin' to the browser, so only the Host header tells it apart. Served on all
-    interfaces (--host 0.0.0.0) for other devices, any name is accepted."""
-    if host in ("0.0.0.0", "::", ""):
+    interfaces (--host 0.0.0.0) for other devices, any name is accepted; in a container, which always listens on
+    0.0.0.0, only the names in TRACK_ANALYZER_HOSTS (comma-separated, * = any)."""
+    if host in ("0.0.0.0", "::", "") and not traktor.CONTAINER:
         return ["*"]
+    if traktor.CONTAINER:  # 0.0.0.0 only for Docker's port forwarding: still this machine's names, plus any given
+        extra = [h.strip() for h in os.environ.get("TRACK_ANALYZER_HOSTS", "").split(",") if h.strip()]
+        return ["*"] if "*" in extra else sorted({*LOCAL_HOSTS, *extra})
     return sorted({*LOCAL_HOSTS, host})
 
 
@@ -1171,6 +1184,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
 
     def failed(e: BaseException) -> JSONResponse:
         """Every failure as JSON {error}: the page reads each answer with .json()."""
+        if isinstance(e, traktor.ConfirmClosed):  # in a container: the page asks whether Traktor is closed
+            return JSONResponse({"error": str(e.code or e), "confirm": "traktor_closed"}, status_code=409)
         if isinstance(e, SystemExit):  # expected problems come with advice
             return JSONResponse({"error": str(e.code or e)}, status_code=409)
         if isinstance(e, (ValueError, OSError, KeyError, TypeError, AttributeError)):  # bad input, missing file
@@ -1266,6 +1281,11 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         return request.headers.get("content-type", "").split(";")[0] == "application/json" and \
             not (origin and origin.split("://", 1)[-1] != request.headers.get("host"))
 
+    def answered(fn, body: dict):
+        """fn(body) with the page's answer to "Is Traktor closed?" (only asked in a container)."""
+        with traktor.page_answer(body.get("traktor_closed") is True):
+            return fn(body)
+
     def post(fn):
         """A change from this page: JSON body, checked origin, run in a worker thread."""
         async def endpoint(request: Request):
@@ -1275,7 +1295,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
                 body = await request.json()
                 if not isinstance(body, dict):
                     raise ValueError("the body must be a JSON object")
-                return JSONResponse(await run_in_threadpool(fn, body))
+                return JSONResponse(await run_in_threadpool(answered, fn, body))
             except (Exception, SystemExit) as e:
                 return failed(e)
         return endpoint

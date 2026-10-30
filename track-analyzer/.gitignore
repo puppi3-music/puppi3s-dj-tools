@@ -20,3 +20,6 @@ CLAUDE.local.md
 
 # Databases, models, caches and backups (TRACK_ANALYZER_HOME default)
 data/
+
+# Docker data (compose.yaml, TRACK_ANALYZER_DATA default)
+data-docker/

@@ -18,6 +18,8 @@ stays byte-for-byte the same. A timestamped backup is made next to it first.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import glob
 import html
 import os
@@ -124,6 +126,51 @@ def traktor_running() -> bool:
         return bool(out.stdout.strip())
     except FileNotFoundError:
         return False
+
+
+# In a container (the Dockerfile sets TRACK_ANALYZER_CONTAINER=1) pgrep sees only the container, never the Traktor on
+# the computer, so a write asks instead: in a terminal once per run, otherwise TRACK_ANALYZER_TRAKTOR_CLOSED=1 (jobs
+# started from the page get it) or the page's own answer (`page_answer`).
+CONTAINER = os.environ.get("TRACK_ANALYZER_CONTAINER") == "1"
+CLOSED_ENV = "TRACK_ANALYZER_TRAKTOR_CLOSED"
+_page_closed: contextvars.ContextVar[bool | None] = contextvars.ContextVar("page_closed", default=None)
+
+
+class ConfirmClosed(SystemExit):
+    """A write in a container nobody has said Traktor is closed for. The web page asks and sends the request again."""
+
+
+@contextlib.contextmanager
+def page_answer(closed: bool):
+    """The page's answer to "Is Traktor closed?" while it handles one request (no terminal to ask in)."""
+    token = _page_closed.set(closed)
+    try:
+        yield
+    finally:
+        _page_closed.reset(token)
+
+
+def closed_confirmed() -> bool:
+    return not CONTAINER or os.environ.get(CLOSED_ENV) == "1" or bool(_page_closed.get())
+
+
+def check_closed(dry_run: bool = False, what: str = "these changes") -> None:
+    """Refuse to write collection.nml while Traktor is open: it rewrites the file when it closes and would undo it."""
+    if dry_run:
+        return
+    if traktor_running():
+        raise SystemExit(f"Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
+                         f"and would undo {what}.")
+    if closed_confirmed():
+        return
+    if _page_closed.get() is None and sys.stdin.isatty():
+        sys.stderr.write("This runs in a container, which can't see whether Traktor is open. Is Traktor closed? [y/N] ")
+        sys.stderr.flush()
+        if sys.stdin.readline().strip().lower() in ("y", "yes"):
+            os.environ[CLOSED_ENV] = "1"  # once per run
+            return
+    raise ConfirmClosed(f"This runs in a container, which can't see whether Traktor is open. Quit Traktor, then "
+                        f"answer y when asked in a terminal (docker compose run), or set {CLOSED_ENV}=1.")
 
 
 # ----------------------------------------------------------------------------
@@ -504,9 +551,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
 
     path = find_collection(nml)
     refuse_if_tempo_view(path)
-    if not dry_run and traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo these changes.")
+    check_closed(dry_run)
     text = path.read_text(encoding="utf-8")
     con = collection.db()
     scanned = {r["path"] for r in con.execute("SELECT path FROM tracks")}
@@ -679,9 +724,7 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
     comment2_only=True only takes the old one out of Comment 2."""
     path = find_collection(nml)
     refuse_if_tempo_view(path)
-    if not dry_run and traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo these changes.")
+    check_closed(dry_run)
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "comment_updated": 0, "already_up_to_date": 0, "kept_your_text": 0,
              "moved_out_of_comment2": 0}
@@ -738,9 +781,7 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
 
     path = find_collection(nml)
     refuse_if_tempo_view(path)
-    if not dry_run and traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo these changes.")
+    check_closed(dry_run)
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "colours_changed": 0, "skipped_changed_since": 0}
     examples, done, changed = [], set(), []
@@ -798,8 +839,7 @@ def undo(nml: str | None = None, force: bool = False) -> dict:
     (plays, cue points, new tracks, your own edits)."""
     path = find_collection(nml)
     refuse_if_tempo_view(path)
-    if traktor_running():
-        raise SystemExit("Quit Traktor first.")
+    check_closed()
     backups = sorted(b for b in path.parent.glob(BACKUP_PREFIX + "*")
                      if not b.name.endswith(".restored") and not b.name.endswith(WRITTEN_SUFFIX))
     if not backups:

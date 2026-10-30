@@ -542,9 +542,7 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
         if not scale:
             raise SystemExit("--apply needs a scale model (this one treats colours as classes).")
         if ask and changes and not dry_run:
-            if traktor.traktor_running():  # say so before the questions, not after them
-                raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it "
-                                 "closes and would undo these changes.")
+            traktor.check_closed()  # say so before the questions, not after them
             names = {t["path"]: t["file"] for t in tracks}
             asked = changes
             changes, out["kept_your_colour"], forever = _ask_each(changes, names)
@@ -898,9 +896,7 @@ def apply(nml: str | None = None, dry_run: bool = False, min_confidence: float =
     tracks that don't have one. Colours you set are never changed. Genres and Smartlists are left alone."""
     if analysis.color_model() is None:
         raise SystemExit("No colour model yet. Run: uv run dj-track-analyzer colors train")
-    if not dry_run and traktor.traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo the colours. (Or use --dry-run to preview.)")
+    traktor.check_closed(dry_run, "the colours. (Or use --dry-run to preview.)")
     scan = collection.scan([], workers=workers, traktor_nml=nml, use_traktor=True)
     nml_path, colors, _n = read_traktor_colors(nml)
     con = collection.db()

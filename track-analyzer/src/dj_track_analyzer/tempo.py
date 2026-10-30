@@ -634,12 +634,6 @@ def loaded() -> dict | None:
     return json.loads(STATE.read_text()) if STATE.exists() else None
 
 
-def _check_closed(dry_run: bool) -> None:
-    if not dry_run and traktor.traktor_running():
-        raise SystemExit("Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
-                         "and would undo these changes.")
-
-
 def write_nml(bpm: float = DEFAULT_BPM, nml: str | None = None, out: str | None = None) -> dict:
     """A standalone copy of your collection with the view's values. Traktor itself is not touched."""
     path = traktor.find_collection(nml)
@@ -656,7 +650,7 @@ def write_nml(bpm: float = DEFAULT_BPM, nml: str | None = None, out: str | None 
 
 def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False, force: bool = False) -> dict:
     path = traktor.find_collection(nml)
-    _check_closed(dry_run)
+    traktor.check_closed(dry_run)
     tag_warning = None
     if traktor.tag_writing_on(path):
         tag_warning = ("Traktor is set to write tags to your files (Preferences → File Management). While the view "
@@ -694,7 +688,7 @@ def unload(nml: str | None = None, dry_run: bool = False) -> dict:
     if not st:
         raise SystemExit("No tempo view is loaded; Traktor already has your normal values.")
     path = traktor.find_collection(nml or st["collection"])
-    _check_closed(dry_run)
+    traktor.check_closed(dry_run)
     bpm, tracks = st["bpm"], st["tracks"]
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "bpm": bpm, "restored": 0, "kept_your_changes": 0}

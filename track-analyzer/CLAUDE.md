@@ -2,7 +2,7 @@
 
 Local music-analysis tool for DJs: BPM, key/Camelot, subgenre, mood, a learned Traktor colour scale and a hype
 score, synced into Traktor Pro 4 (optionally Lexicon), plus an MCP server for local LLMs (LM Studio, Open WebUI).
-macOS and Linux x86_64 (Linux has no Traktor: those steps say so), Python 3.11 via `uv`. Data dir: `data/` (`TRACK_ANALYZER_HOME`).
+macOS and Linux x86_64 (Linux has no Traktor: those steps say so; also as a Docker image), Python 3.11 via `uv`. Data dir: `data/` (`TRACK_ANALYZER_HOME`).
 
 Docs: README.md (install + full reference), docs/GUIDE.html (task-first guide, self-contained, opened in a browser),
 docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs). Keep them in sync when commands, options or numbers change: the
@@ -16,7 +16,7 @@ details go there, never in this file.
 - Ask before design decisions; make new behaviour optional behind flags.
 - Anything that writes to files, Traktor or Lexicon gets `--dry-run`, a backup and an undo path.
 - Real Essentia models can't be downloaded in sandboxes; tests there use stand-ins for the TF models.
-  Real-model behaviour is only verified by runs on a Mac.
+  Real-model behaviour is only verified by runs on a Mac, or in the Docker test image (below), which has them.
 
 ## Files
 Code is the package `src/dj_track_analyzer/` (relative imports; uv installs it editable). Run it as
@@ -64,7 +64,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (genres again from cached scores + current dj_genres.json; reproduces scan exactly).
 - `traktor.py`: `traktor` command. Surgical text edits of collection.nml (never a full XML rewrite),
   timestamped backups + `--undo` (refuses if the NML changed since our write, via a `.written-sha1` file next to
-  the backup; `--force` overrides), refuses while Traktor runs. Sets INFO GENRE, INFO COLOR (only where
+  the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer:
+  in a container, `CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor, so it needs a y in a terminal,
+  TRACK_ANALYZER_TRAKTOR_CLOSED=1, or the page's answer (`page_answer`; else `ConfirmClosed` → web 409
+  {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE, INFO COLOR (only where
   missing unless `--overwrite-colors`), and a "Genres (Track Analyzer)" Smartlist folder, only for
   `known_genres()` = dj_genres.json names + trained genres (shop tags like "melodic techno, indie dance" would
   otherwise become ~100 Smartlists). `track_info()` reads Traktor's TEMPO BPM and MUSICAL_KEY (0-11 = C..B major,
@@ -81,6 +84,13 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   [--track TEXT]` (+ `readme_shots.mjs`, headless Chrome) from the real library, with titles/artists/albums/paths
   swapped for made-up ones in the page's fetch answers and text. Retake after visible page changes; look at every PNG
   for leftover names before committing.
+- Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (no Linux arm64 Essentia; on Apple
+  Silicon it runs emulated, TF included). Target `app` (web on 0.0.0.0, HOME=/home/dj so Traktor's folder mounts at
+  ~/Documents/Native Instruments, data /data, any uid) and `test` (+ `setup` models baked in, never published:
+  licence; + `scripts/make_fixtures.py` library: 4 synthetic tracks 124-145 BPM, MP3/FLAC/WAV, NML with grid, 5 cues,
+  a loop). `docker compose run --rm test` = `scripts/docker_smoke.py` (scan BPM/key exact, Traktor refusal, write +
+  undo byte-identical, web 409/Host checks; ~1 min emulated), also CI `.github/workflows/docker.yml`. Develop
+  against real models: `docker compose run --rm dev` (test image, ./src + ./scripts mounted, page on 8767).
 - `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment).
 - `tempo.py`: `tempo` command, the catalogue as heard at one tempo (default 145, `--bpm` for any).
 - `lexicon.py`: `tempo load/native --lexicon` via Lexicon's Local API.
@@ -113,7 +123,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   load` writes it; held stays yours; `web.colours`, `hype.find(colours=)`), not the view db's unshifted copy. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
   tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Writes: POST /api/hold, cue/sample endpoints (all JSON
   body + Origin check against CSRF, `from_this_page`), and jobs (below). Host header must be 127.0.0.1/localhost
-  (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0): against DNS rebinding, which passes the Origin check.
+  (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0, except in a container: + TRACK_ANALYZER_HOSTS): against DNS rebinding, which passes the Origin check.
   Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's
   `readJSON` copes with a non-JSON answer. `tempo_report` refuses a BPM without a view (`tempo.report` would create
   an empty data/at-<bpm>). The `/audit-web` skill checks all of this live, plus phone width and light/dark. `--export` / /export = snapshot: page + `window.SNAPSHOT` (every tab's data,
