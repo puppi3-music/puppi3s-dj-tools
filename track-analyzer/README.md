@@ -393,6 +393,23 @@ uv run dj-track-analyzer regenre      # genres again from the saved scores, in s
 
 Your files and Traktor only change when you then run `tag --multi` and `traktor`.
 
+### Keys of tracks scanned earlier
+
+Tracks scanned before the key model came in have only Essentia's key. `keys` adds the model's key without a full rescan (about a second per track per core) and compares the keys:
+
+```bash
+uv run dj-track-analyzer keys          # key for tracks without one, then the comparison
+```
+
+| Option | What it does | Default |
+|---|---|---|
+| `--rescan` | Measure every track again | only tracks without one |
+| `--workers 4` | Tracks measured at once | all cores but two |
+| `--show 20` | How many of the least confident keys to list | 20 |
+| `--json` | JSON instead of the report | off |
+
+The report shows how often each key agrees with Traktor's, by kind of mistake (a fifth apart, relative or parallel major/minor, other), and the tracks the model was least sure of.
+
 ---
 
 ## 4. Colours: learned from your colour-coding
@@ -764,6 +781,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `tag` / `untag` | Genres (and BPM/key) into file tags / put the old tags back | **your files** |
 | `traktor` | Genres, colours and genre Smartlists into Traktor | **Traktor** (undo: `traktor --undo`) |
 | `regenre` | Genres again from saved scores after editing `dj_genres.json` | app database, CSV |
+| `keys` | The key model's key for tracks scanned before it, compared with Essentia's and Traktor's (see [Keys of tracks scanned earlier](#keys-of-tracks-scanned-earlier)) | app database |
 | `styles` | List the 400 Discogs styles, check `dj_genres.json` | nothing |
 | `colors train\|review\|explain\|apply` | Your colour scale (section 4) | `apply`, `review --apply`: **Traktor** |
 | `hype` | Tracks by hype, with filters (section 5) | app database; `--traktor`: **Traktor** |
@@ -826,7 +844,7 @@ dj-track-analyzer/
 
 ## Good to know
 
-- **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. Our key agreed with Traktor's on about 57% of tracks in testing (relative major/minor is a common mix-up); neither is ground truth, and Traktor's wins where it has one. Genres and colours are model predictions: read the scores as confidence.
+- **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA): it agreed with Traktor's key on 75% of a test collection of about 470 tracks, Essentia's key-finder on 58% (it mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
 - **Surround (5.1) files** are mixed down to stereo with ffmpeg, so install ffmpeg to analyse them (`brew install ffmpeg` on a Mac). Without it, those files fail with a message saying how to install it (the web page's Setup tab can install it too).
-- **Licences.** This project and Essentia are AGPL; the Discogs models are CC BY-NC-SA (non-commercial). The resampler in `dsp/` contains libsamplerate's filter table (BSD). Personal use is fine.
+- **Licences.** This project and Essentia are AGPL; the Discogs models are CC BY-NC-SA (non-commercial). The resampler in `dsp/` contains libsamplerate's filter table (BSD). The key model's weights come from [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA), based on [a1ex90/MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN) (both MIT; the KeyNet design of Korzeniowski & Widmer, 2018). Personal use is fine.
 - **Uninstall.** Delete this folder and `data`.

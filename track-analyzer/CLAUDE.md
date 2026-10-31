@@ -253,19 +253,29 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Skipped by `_wanted` (tag, scan --write-tags), `traktor.sync` (genre and colour, even --overwrite-colors),
   `colors review --apply`, `tempo.build_view` and `lexicon.build` (held genre keeps its Smartlist); stats
   `genre_held` / `colour_held`.
+- `keycnn.py`: key from MusicalKeyCNN (puppi3-music/MusicalKeyCNN-CKA, from a1ex90/MusicalKeyCNN; MIT): KeyNet in
+  numpy (`forward`; weights `starter/keynet.npz`, BN folded, made by `scripts/convert_keynet.py` from keynet.pt),
+  input = librosa CQT exactly as the repo trained on (hence the librosa pin). Checked: same key as torch on 32/32
+  (probabilities within 2e-7) and as the repo's own pipeline on 459/459. `analysis.key_cnn` → `cnn_key`,
+  `cnn_camelot`, `cnn_confidence` (tracks and tempo views; mix segments still use Essentia).
+  `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
+  The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
 - `dj_genres.json`: maps Discogs styles to DJ genre names (rules with "needs" groups + BPM range); a user copy in
   `data/dj_genres.json` wins.
 
 ## How the analysis works
 - Decode once → stereo (loudness EBU R128), mono 44.1k (BPM via RhythmExtractor2013 multifeature, used raw,
-  folded into 85–220; key via KeyExtractor `edma` → Camelot), mono 16k (models).
+  folded into 85–220; key via the CNN (`keycnn.py`) and KeyExtractor `edma` → Camelot), mono 16k (models).
+- Our key = `cnn_camelot`, else Essentia's (`collection.OUR_CAMELOT_SQL`, `our_camelot`, `our_key`); Essentia's
+  key/camelot/key_strength stay stored because the colour model was trained on them.
 - **BPMs are whole numbers everywhere**: `analysis.round_bpm()` at measurement, Traktor's value as read
   (`load_traktor_info`), genre_bpm, the tempo view's source BPM, displays and CSVs (`collection.csv_value`).
   Traktor's own BPM/grid are never written.
 - Traktor's BPM/key: `scan` stores them as `traktor_bpm` / `traktor_camelot` and passes Traktor's BPM to
   `analyze_file(genre_bpm=…)` for the genre rules. Search, mix suggestions, hype filters and BPM/key tag writes
   use COALESCE(Traktor's, ours) (`collection.BPM_SQL` / `CAMELOT_SQL`). The colour model uses our BPM.
-  Our key matched Traktor's on 57% of a test collection; neither is ground truth.
+  Key vs Traktor's on a test collection: CNN 75.1% (MIREX 78.4), Essentia 57.6% (64.3, parallel errors 18.8%);
+  neither is ground truth.
 - Genre: Discogs-EffNet (400 styles) averaged over the **main section** (windows within 6 dB of the loud part) +
   MAEST-519 on the 3 loudest 30 s blocks, blended 60% MAEST / 40% EffNet → `dj_genres.json` rules → `dj_genre`
   (top 3). Out-of-range BPM fades the score to 60% over `BPM_MARGIN` (3 BPM), not a cliff. The ×1.35 multi-group
@@ -453,6 +463,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   stays a substring search over genres, styles and the genre tag.
 
 ## Tried, no gain (don't retry without a new idea)
+- CNN key (2026-10-31, 469 tracks vs Traktor, CNN 75.1%): tuning-corrected CQT 74.6%; averaging ±1/±2 semitone
+  pitch-shifted inputs 74.6/74.4%; when the CNN disagrees, Traktor's key is in its top 2 only 13% (top 5 31%), so
+  rescoring its runner-ups can't help. CKA ideas (collection chroma templates, CKA choosing among the CNN's top keys,
+  the original CKA's suggestions: 63.1%) are on branch `cka`.
 - MAEST on mix segments (2026-10-25, 65-min set at ~145, 33 two-minute segments, all 30 s patches, no psy gate):
   3/33 segment genres changed; agreement with the playing track's @145 view genre 8/33 either way (own tempo 1 vs
   0); +125 s on a 72 s analysis. Both models hear the tempo as psy; the tracklist's psy gate is what fixes that.

@@ -346,7 +346,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <ul>
   <li><b>Colours:</b> a <b>?</b> after a colour means it's predicted, not set by you. <b>Confidence</b> is how often tracks placed at that spot really had that colour, on tracks the model hadn't seen; most are 0.2–0.3, because neighbouring colours are close to a coin flip from the sound alone. The ends of the scale are clearly apart.</li>
   <li><b>Hype</b> is 1–10 within your own collection: 10 = more hype than 90% of your tracks. Half the euphoric "rave" sound (trance, hard trance, hands-up, hardstyle rather than deep or tech house), half energy (loud, party, aggressive, not relaxed). It can shift a step when you add many tracks.</li>
-  <li><b>BPM and key:</b> Traktor's where it has them (you may have fixed the grid by hand), ours beside them. In the Tracks list, a dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both); the filter <b>Our key doesn't mix with Traktor's</b> lists the tracks where the two keys don't mix, to check by ear. Our key agreed with Traktor's on about 57% of a test collection; neither is ground truth.</li>
+  <li><b>BPM and key:</b> Traktor's where it has them (you may have fixed the grid by hand), ours beside them. In the Tracks list, a dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both); the filter <b>Our key doesn't mix with Traktor's</b> lists the tracks where the two keys don't mix, to check by ear. Our key agreed with Traktor's on about 75% of a test collection; neither is ground truth.</li>
   <li><b>Instruments</b> come from a tagger trained on non-club music: compare tracks, don't read the numbers as absolute amounts.</li>
 </ul>
 
@@ -367,7 +367,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <h3 id="how-listen">1. Listening to each track</h3>
 <p><code>scan</code> decodes every file once and measures it with <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library:</p>
 <ul>
-  <li><b>BPM and key</b>, rounded to whole BPM and shown as Camelot. Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beatgrid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
+  <li><b>BPM and key</b>, rounded to whole BPM and shown as Camelot. The key comes from a small neural network trained on electronic music (<a href="https://github.com/puppi3-music/MusicalKeyCNN-CKA">MusicalKeyCNN</a>), which agreed with Traktor more often than Essentia's key-finder (75% vs 58% of a test collection). Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beatgrid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
   <li><b>Loudness</b> and how the energy rises and falls through the track.</li>
   <li><b>Style</b>: two AI models trained on Discogs (one hears 400 styles, the other 519) listen to the main, loudest part of the track and their opinions are blended.</li>
   <li><b>Mood, instruments and vocals</b>: smaller models on top say how aggressive, happy, party, relaxed or sad it sounds, which instruments they hear and whether there are vocals.</li>
@@ -665,6 +665,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>tag</code></td><td>Writes the genre (optionally BPM/key) into the audio files' tags</td><td class="changes">Your files<br><small>undo: <code>untag</code></small></td></tr>
 <tr><td><code>untag</code></td><td>Puts back the tags files had before <code>tag</code></td><td class="changes">Your files</td></tr>
 <tr><td><code>regenre</code></td><td>Genres of every scanned track again from the saved analysis, after editing dj_genres.json (seconds)</td><td>App database + CSV</td></tr>
+<tr><td><code>keys</code></td><td>The key model's key for tracks scanned before it came in, and how it compares with Essentia's and Traktor's (<code>--rescan</code>, <code>--workers</code>, <code>--show 20</code>, <code>--json</code>)</td><td>App database</td></tr>
 <tr><td><code>traktor</code></td><td>Genres, colours for uncoloured tracks, and the genre Smartlists into Traktor</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
 <tr><td><code>colors train</code></td><td>Learns your colour scale from your coloured tracks</td><td>App files only</td></tr>
 <tr><td><code>colors review</code></td><td>Tracks whose sound disagrees most with the colour you gave them</td><td>Nothing; with <code>--apply</code>: <span class="changes">Traktor</span></td></tr>
@@ -763,7 +764,8 @@ li > figure.shot { margin: 12px 0 4px; }
 <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
 <tbody>
 <tr><td><code>bpm</code></td><td>Tempo, as a whole number. <code>bpm_confidence</code> above 3.5 is very reliable. <code>genre_bpm</code> is Traktor's BPM, shown when genres were judged by it instead</td></tr>
-<tr><td><code>key</code>, <code>camelot</code></td><td>Key (e.g. "A minor") and Camelot code (8A). Can confuse relative major/minor; agreed with Traktor's key on about 57% of tracks in testing</td></tr>
+<tr><td><code>cnn_key</code>, <code>cnn_camelot</code></td><td>Key (e.g. "A minor") and Camelot code (8A) from the key model, the key used for mixing; agreed with Traktor's key on about 75% of tracks in testing. <code>cnn_confidence</code> is how sure it was (0-1)</td></tr>
+<tr><td><code>key</code>, <code>camelot</code></td><td>Essentia's key, kept for the colour model. Often confuses major and minor; agreed with Traktor's on about 58%</td></tr>
 <tr><td><code>loudness</code></td><td><code>integrated_lufs</code> (overall loudness) and <code>loudness_range_lu</code> (how much it varies)</td></tr>
 <tr><td><code>energy_curve</code></td><td>Loudness in 16 steps through the track: intro, build, peak, breakdown</td></tr>
 <tr><td><code>dj_genre</code></td><td>Top 3 DJ genres with scores</td></tr>

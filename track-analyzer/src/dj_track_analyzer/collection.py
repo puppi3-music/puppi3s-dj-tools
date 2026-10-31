@@ -34,6 +34,8 @@ COLUMNS = [
     ("type", "TEXT"), ("duration_sec", "REAL"),
     ("bpm", "REAL"), ("bpm_confidence", "REAL"), ("key", "TEXT"), ("camelot", "TEXT"),
     ("key_strength", "REAL"), ("traktor_bpm", "REAL"), ("traktor_camelot", "TEXT"),
+    # MusicalKeyCNN's key (keycnn.py): our key (OUR_CAMELOT_SQL); Essentia's above stays for the colour model
+    ("cnn_key", "TEXT"), ("cnn_camelot", "TEXT"), ("cnn_confidence", "REAL"),
     ("lufs", "REAL"), ("loudness_range", "REAL"),
     ("genre", "TEXT"), ("genre_score", "REAL"), ("genre_2", "TEXT"), ("genre_3", "TEXT"),
     ("genre_2_score", "REAL"), ("genre_3_score", "REAL"),
@@ -47,16 +49,28 @@ NAMES = [c for c, _ in COLUMNS]
 
 # What the user mixes with: Traktor's BPM/key where Traktor has one (possibly corrected by hand),
 # else our own measurement. Used for search, mix suggestions, hype filters and tag writing.
+# Our key is MusicalKeyCNN's where it was measured (75% same as Traktor's on a test collection vs 58% for
+# Essentia's), else Essentia's; `key`/`camelot` stay Essentia's, which the colour model was trained on.
 BPM_SQL = "COALESCE(traktor_bpm, bpm)"
-CAMELOT_SQL = "COALESCE(traktor_camelot, camelot)"
+OUR_CAMELOT_SQL = "COALESCE(cnn_camelot, camelot)"
+CAMELOT_SQL = "COALESCE(traktor_camelot, cnn_camelot, camelot)"
 
 
 def mix_bpm(row) -> float | None:
     return row["traktor_bpm"] or row["bpm"]
 
 
+def our_camelot(row) -> str | None:
+    return row["cnn_camelot"] or row["camelot"]
+
+
+def our_key(row) -> str | None:
+    """'A minor': the CNN's where measured, else Essentia's."""
+    return row["cnn_key"] or row["key"]
+
+
 def mix_camelot(row) -> str | None:
-    return row["traktor_camelot"] or row["camelot"]
+    return row["traktor_camelot"] or our_camelot(row)
 
 
 # Held tracks: the writers (tag, scan --write-tags, traktor, colors review --apply, tempo load, Lexicon) leave
@@ -262,7 +276,9 @@ def camelot_to_key(code: str) -> str | None:
 
 def _wanted(row: dict, fields: list[str]) -> dict:
     wanted = {}
-    bpm, cam = row.get("traktor_bpm") or row.get("bpm"), row.get("traktor_camelot") or row.get("camelot")
+    our = row.get("cnn_key") or row.get("key")
+    bpm = row.get("traktor_bpm") or row.get("bpm")
+    cam = row.get("traktor_camelot") or row.get("cnn_camelot") or row.get("camelot")
     if "genre" in fields and row.get("genre") and row.get("path") not in held("genre"):
         wanted["genre"] = row["genre"]
     if "bpm" in fields and bpm:
@@ -272,8 +288,8 @@ def _wanted(row: dict, fields: list[str]) -> dict:
             k = camelot_to_key(row["traktor_camelot"])
             if k:
                 wanted["initialkey"] = k
-        elif row.get("key"):
-            k, scale = row["key"].split(" ", 1)
+        elif our:
+            k, scale = our.split(" ", 1)
             wanted["initialkey"] = k + STD_KEY.get(scale, "")
     if "camelot" in fields and cam:
         wanted["initialkey"] = cam
@@ -602,6 +618,7 @@ def to_row(p: Path, r: dict | None, err: str | None) -> dict:
             duration_sec=sum(int(x) * 60 ** i for i, x in enumerate(reversed(dur))),
             bpm=r.get("bpm"), bpm_confidence=r.get("bpm_confidence"),
             key=r.get("key"), camelot=r.get("camelot"), key_strength=r.get("key_strength"),
+            cnn_key=r.get("cnn_key"), cnn_camelot=r.get("cnn_camelot"), cnn_confidence=r.get("cnn_confidence"),
             lufs=r["loudness"]["integrated_lufs"], loudness_range=r["loudness"]["loudness_range_lu"],
             genre=g[0]["genre"] if g else None, genre_score=g[0]["score"] if g else None,
             genre_2=g[1]["genre"] if len(g) > 1 else None, genre_3=g[2]["genre"] if len(g) > 2 else None,
@@ -643,8 +660,8 @@ def _worker_init():
     analysis.es()
 
 
-# Come from Traktor, not the analysis; hype is a rank within the collection, recomputed after a scan
-# (kept meanwhile so a stopped scan doesn't leave tracks without one).
+# Come from Traktor, not the analysis; hype and the Cross-Key Analysis are judged within the collection,
+# recomputed after a scan (kept meanwhile so a stopped scan doesn't leave tracks without them).
 KEEP_ON_RESCAN = ("traktor_color", "traktor_bpm", "traktor_camelot", "hype")
 
 
@@ -801,7 +818,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
             colour = row.get("color") or "-"
             if row.get("color_confidence") is not None:
                 colour += f' ({row["color_confidence"]:.2f})'
-            info = (f'{row.get("bpm") or "-":>6} {row.get("camelot") or "-":>3}  {colour:14s} '
+            info = (f'{row.get("bpm") or "-":>6} {row.get("cnn_camelot") or row.get("camelot") or "-":>3}  {colour:14s} '
                     f'{genres or row.get("error") or ""}')
             log(f"[{done}/{len(todo)}  ~{analysis.fmt_time(eta)} left] {name[:44]:44s} {info[:80]}")
     except KeyboardInterrupt:
@@ -929,8 +946,8 @@ def camelot_neighbors(code: str) -> list[str]:
 SHOW = ["artist", "title", "filename", "bpm", "camelot", "key", "genre", "genre_2", "my_genre",
         "traktor_color", "color", "lufs", "duration_sec", "path"]
 # bpm/camelot are shown as the user mixes with them (Traktor's where it has them)
-SHOW_SQL = [f"CAST(ROUND({BPM_SQL}) AS INTEGER) AS bpm" if c == "bpm" else f"{CAMELOT_SQL} AS camelot" if c == "camelot" else c
-            for c in SHOW]
+SHOW_SQL = [f"CAST(ROUND({BPM_SQL}) AS INTEGER) AS bpm" if c == "bpm" else f"{CAMELOT_SQL} AS camelot" if c == "camelot"
+            else "COALESCE(cnn_key, key) AS key" if c == "key" else c for c in SHOW]
 # Traktor colour number for ordering: the user's own colour first, else the predicted position
 COLOR_ORDER_SQL = ("COALESCE(CASE traktor_color " + " ".join(f"WHEN '{n}' THEN {i}" for i, n in
                    enumerate(analysis.COLOR_NAMES, 1)) + " END, color_position)")

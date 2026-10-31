@@ -12,6 +12,8 @@ dependencies = [
     "joblib>=1.3",
     "mutagen>=1.47",
     "numpy<2",
+    # MusicalKeyCNN's key and Cross-Key Analysis (keycnn.py, cka.py): the CQT and chroma the model was trained on.
+    "librosa==0.10.2.post1",
     # Rust copies of Essentia steps (dsp/), bit for bit, faster. Prebuilt by CI, so no Rust needed.
     "track-analyzer-dsp==0.3.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]

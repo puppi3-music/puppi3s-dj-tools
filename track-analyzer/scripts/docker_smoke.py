@@ -1,7 +1,7 @@
 """Smoke test in the Docker test image (`docker compose run --rm test`, and CI): the real models on the synthetic
 library from make_fixtures.py, end to end.
 
-  1. scan --traktor: every track analysed, BPM and key as made, Traktor's BPM and key read
+  1. scan --traktor: every track analysed, BPM and key as made, Traktor's BPM and key read; CNN key (`keys`)
   2. traktor: refused without "Traktor is closed", written with it, undone byte for byte
   3. web: answers, asks the page to confirm a Traktor job, refuses a foreign Host header
 
@@ -81,6 +81,18 @@ def main() -> None:
             fail(f"{path}: BPM {bpm} / Traktor {traktor_bpm}, made at {want['bpm']}")
         if key != want["key"]:
             fail(f"{path}: key {key}, made in {want['key']}")
+
+    step("keys: MusicalKeyCNN's key")
+    cnn = {r[0]: r[1:] for r in con.execute("SELECT path, cnn_camelot, cnn_confidence FROM tracks")}
+    for path in expected:
+        cam, conf = cnn[path]
+        print(f"  {Path(path).name}: CNN {cam} ({conf})")
+        if not cam or conf is None:
+            fail(f"{path}: scan left no CNN key ({cam}, {conf})")
+    out = json.loads(cli("keys", "--json").stdout)
+    if out["this_run"]["analyzed"] or out["tracks_with_cnn_key"] != len(expected):
+        fail(f"keys: {json.dumps(out)[:400]}")
+    print(f"  CNN vs Essentia: {out['cnn_against_essentia']}")
 
     step("traktor: refused until Traktor is said to be closed")
     before = NML.read_bytes()

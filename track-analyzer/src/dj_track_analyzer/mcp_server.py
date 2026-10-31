@@ -80,8 +80,8 @@ def build_mcp():
                 rows.append({
                     "file": f.name,
                     "bpm": r.get("bpm"),
-                    "camelot": r.get("camelot"),
-                    "key": r.get("key"),
+                    "camelot": r.get("cnn_camelot") or r.get("camelot"),
+                    "key": r.get("cnn_key") or r.get("key"),
                     "lufs": r["loudness"]["integrated_lufs"],
                     "genre": (r.get("dj_genre") or [{}])[0].get("genre"),
                     "top_style": (r.get("discogs_styles") or [{}])[0].get("style"),
