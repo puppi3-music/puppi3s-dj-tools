@@ -314,6 +314,8 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
                 t["key_check"] += " (fits key lock off for this track)"
         if p.get("library_genre"):
             t["library_genre"] = p["library_genre"]
+        if p.get("path"):
+            t["path"] = p["path"]  # the page looks up its hype and colour in the library by it
         if have_model and b - a >= MIN_MAIN:
             heard = _acts(acts, duration, a, b)
             bpm = p.get("played_bpm") or own

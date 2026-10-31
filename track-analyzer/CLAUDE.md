@@ -135,7 +135,14 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   restores them (the saved globals are read inside the lock, or a view's stayed for good). In a view the Tracks tab,
   Overview colours and hype show `tempo.view_colours` (your colour from the NATIVE db + the model's shift, as `tempo
   load` writes it; held stays yours; `web.colours`, `hype.find(colours=)`), not the view db's unshifted copy. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
-  tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Writes: POST /api/hold, cue/sample endpoints (all JSON
+  tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Mixes' **Analyse a mix…** = job `analyze_mix` (`analyze <file> --out
+  <first logs folder>/<stem>.json`, `jobs.MIX_DIR`; replaces an earlier one, via a .part file so a failed run keeps it), its list from /api/recordings (`web.recordings`: Browser.Dir.Recordings
+  + the default folder, one row per stem, lossless preferred, > MIX_THRESHOLD_SEC). A dropped file: POST /api/recordings/find
+  (name + size → that recording's path, no copy), else /api/mix-upload streams it to data/uploads/ (header
+  X-Track-Analyzer: upload + Origin check instead of a JSON body; refused while a job runs), deleted when the job ends. Timeline: hype view (default, `ta-mix-view`) = per 2-min segment the
+  library hype (time-weighted) + Traktor colour (longest) of the tracks playing, from `web.played_tracks` (saved_file adds
+  `library`, by path, which tracklist output carries since 2026-10-31, else artist+title; native db) and the tracks'
+  start + blend lag; not measured from the mix audio (at 145 the models hear psy, as in the psy gate). Writes: POST /api/hold, cue/sample endpoints (all JSON
   body + Origin check against CSRF, `from_this_page`), and jobs (below). Host header must be 127.0.0.1/localhost
   (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0, except in a container: + TRACK_ANALYZER_HOSTS): against DNS rebinding, which passes the Origin check.
   Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's

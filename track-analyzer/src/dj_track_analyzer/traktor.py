@@ -392,10 +392,10 @@ def mac_path(value: str) -> str | None:
 SKIP_SETTINGS = ("Browser.Dir.Recordings", "Browser.Dir.Loops")
 
 
-def recording_dirs(nml: str | None = None) -> list[str]:
+def recording_dirs(nml: str | None = None, settings: tuple[str, ...] = SKIP_SETTINGS) -> list[str]:
     """Folders to leave out of scans: Traktor's mix recordings (its default Recordings folder and
     the one set in Preferences, Browser.Dir.Recordings in Traktor Settings.tsi) and its sample/loop
-    folder (Browser.Dir.Loops)."""
+    folder (Browser.Dir.Loops). `settings=("Browser.Dir.Recordings",)`: the recordings only."""
     dirs = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*/Recordings")))
     bases = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*")))
     if nml:
@@ -406,7 +406,7 @@ def recording_dirs(nml: str | None = None) -> list[str]:
                 text = Path(tsi).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            for name in SKIP_SETTINGS:
+            for name in settings:
                 m = re.search(rf'<Entry\s+Name="{re.escape(name)}"[^>]*\sValue="([^"]*)"', text)
                 d = mac_path(m.group(1)) if m else None
                 if d and d != "/":
