@@ -468,6 +468,12 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   pitch-shifted inputs 74.6/74.4%; when the CNN disagrees, Traktor's key is in its top 2 only 13% (top 5 31%), so
   rescoring its runner-ups can't help. CKA ideas (collection chroma templates, CKA choosing among the CNN's top keys,
   the original CKA's suggestions: 63.1%) are on branch `cka`.
+  Pooling the last map over part of the track (2026-10-31, 443 tracks, mean of all 76.7%): loudest 75/50% of
+  columns 76.3/75.6%, tonal by CQT flatness 76.5%, by chroma peakiness 77.0% (1 fixed, 0 broken), loud AND tonal
+  76.1%, intro/outro trimmed 76.3%, loudness-weighted 76.1%, one vote per column 75.6%. The key doesn't hide in parts.
+  madmom's CNNKeyRecognitionProcessor as a second model (same day, 443 tracks): alone 75.4%; averaged with ours
+  (arithmetic or geometric, madmom weight 0.25-0.75) 75.6-76.1%, always more broken than fixed. It gives our key
+  on 97.5% of tracks (same KeyNet family), so there's nothing to combine; ~12.5 s/track. Not added.
 - MAEST on mix segments (2026-10-25, 65-min set at ~145, 33 two-minute segments, all 30 s patches, no psy gate):
   3/33 segment genres changed; agreement with the playing track's @145 view genre 8/33 either way (own tempo 1 vs
   0); +125 s on a 72 s analysis. Both models hear the tempo as psy; the tracklist's psy gate is what fixes that.
