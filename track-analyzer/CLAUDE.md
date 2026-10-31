@@ -256,7 +256,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - `keycnn.py`: key from MusicalKeyCNN (puppi3-music/MusicalKeyCNN-CKA, from a1ex90/MusicalKeyCNN; MIT): KeyNet in
   numpy (`forward`; weights `starter/keynet.npz`, BN folded, made by `scripts/convert_keynet.py` from keynet.pt),
   input = librosa CQT exactly as the repo trained on (hence the librosa pin). Checked: same key as torch on 32/32
-  (probabilities within 2e-7) and as the repo's own pipeline on 459/459. `analysis.key_cnn` → `cnn_key`,
+  (probabilities within 2e-7) and as the repo's own pipeline on 459/459. `_conv` is im2col (one matmul per layer,
+  0.35 vs 0.78 s/track; same key and 3-decimal confidence as the per-position loop on 443/443). `analysis.key_cnn` → `cnn_key`,
   `cnn_camelot`, `cnn_confidence` (tracks and tempo views; mix segments still use Essentia).
   `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
   The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
