@@ -1,9 +1,12 @@
 """
-Key from MusicalKeyCNN (github.com/puppi3-music/MusicalKeyCNN-CKA, from a1ex90/MusicalKeyCNN; both MIT): KeyNet of
-Korzeniowski & Widmer (2018) on a log-magnitude CQT of the whole track. The forward pass is numpy, with weights
-converted from the PyTorch checkpoint by scripts/convert_keynet.py (starter/keynet.npz), so no torch is needed.
+Key from MusicalKeyCNN (github.com/a1ex90/MusicalKeyCNN, via the fork github.com/puppi3-music/MusicalKeyCNN-CKA):
+KeyNet of Korzeniowski & Widmer (2018) on a log-magnitude CQT of the whole track. The forward pass is numpy, with
+weights converted from the PyTorch checkpoint by scripts/convert_keynet.py (starter/keynet.npz), so no torch is needed.
 
-Stored next to Essentia's key (`cnn_camelot`, `cnn_key`, `cnn_confidence`); the key used for mixing is unchanged.
+Model, weights and the input pipeline reimplemented here: Copyright (c) 2025 Alexander Sommer, MIT License (full text
+in starter/keynet.LICENSE).
+
+`cnn_camelot`, `cnn_key`, `cnn_confidence`: our key (collection.OUR_CAMELOT_SQL); Essentia's stays stored next to it.
 """
 
 from __future__ import annotations
