@@ -460,6 +460,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Loop cuts (`web._cut`, page loops and saved samples): `-ss` straight to the loop start starts the MP3 decoder cold and
   its first ~660 samples (15 ms) came out wrong, a click every time round. Decode from 0.5 s earlier and cut with an
   output `-ss`: identical to the whole decoded track (0 diff, MP3 + FLAC, also at 0.2 s).
+- LoudnessEBUR128 (Essentia, so also our bit-identical Rust copy) reads 96 kHz as silence (-70 LUFS, range 0) and 192 kHz
+  ~3 LU loud; 22.05-88.2 kHz are right. `analysis.loudness` resamples above `LOUDNESS_MAX_SR` (88.2k) to 48 kHz first
+  (`resample_medium`). Found on a 96 kHz Traktor recording (2026-10-31); no collection track was affected.
 - `mix_suggestions` same genre = exact genre name (genre/genre_2/my_genre, the columns it always searched), as the Smartlists; `search(genre=)`
   stays a substring search over genres, styles and the genre tag.
 
