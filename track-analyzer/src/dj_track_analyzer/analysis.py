@@ -1449,7 +1449,13 @@ def key_cnn(mono44: np.ndarray) -> dict:
     return {"cnn_key": k["key"], "cnn_camelot": k["camelot"], "cnn_confidence": round(k["confidence"], 3)}
 
 
+LOUDNESS_MAX_SR = 88200  # LoudnessEBUR128 reads 96 kHz as silence (-70 LUFS) and 192 kHz ~3 LU loud; 22.05-88.2 kHz are right
+
+
 def loudness(stereo: np.ndarray, sr: float):
+    if sr > LOUDNESS_MAX_SR:  # e.g. a 96 kHz Traktor recording: measure it at 48 kHz (same short-term timing)
+        stereo = np.stack([resample_medium(stereo[:, c], sr, 48000) for c in range(stereo.shape[1])], axis=1)
+        sr = 48000
     if m := dsp():  # Essentia's LoudnessEBUR128, bit for bit, ~7x faster
         short, integrated, lra = m.loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
         return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
