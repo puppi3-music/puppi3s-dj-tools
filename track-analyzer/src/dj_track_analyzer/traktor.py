@@ -286,20 +286,44 @@ def _node_span(text: str, start: int) -> int:
 
 
 ROOT_RE = re.compile(r'<NODE TYPE="FOLDER" NAME="\$ROOT">\s*<SUBNODES COUNT="(\d+)">')
+SUBNODES_RE = re.compile(r'<SUBNODES COUNT="(\d+)">')
+
+
+def _parent_subnodes(text: str, i: int) -> re.Match | None:
+    """The <SUBNODES COUNT=…> tag that directly holds the node starting at `i`: the root's, or that of a folder of
+    yours it was moved into. None when it isn't in the playlist tree."""
+    m = ROOT_RE.search(text)
+    if not m:
+        return None
+    sub, folder_end = SUBNODES_RE.search(text, m.start()), _node_span(text, m.start())
+    j = sub.end()
+    while (j := text.find("<NODE ", j)) != -1 and j < folder_end:
+        if j == i:
+            return sub
+        end = _node_span(text, j)
+        if j < i < end:  # inside this folder: look among its children
+            sub = SUBNODES_RE.search(text, j, end)
+            if not sub:
+                return None
+            j, folder_end = sub.end(), end
+            continue
+        j = end
+    return None
 
 
 def remove_root_folder(text: str, folder: str) -> tuple[str, str | None]:
-    """Take a folder out from under the playlist root. Returns (text, the removed node's text or None)."""
+    """Take a folder out of the playlist tree (from under the root, or from the folder of yours you moved it into;
+    that one's count goes down). Returns (text, the removed node's text or None)."""
     i = text.find(f'<NODE TYPE="FOLDER" NAME="{esc(folder)}">')
     if i == -1:
         return text, None
     end = _node_span(text, i)
     node = text[i:end]
+    parent = _parent_subnodes(text, i)
     text = text[:i] + text[end:]
-    m = ROOT_RE.search(text)
-    if m:
-        head = m.group(0).replace(f'COUNT="{m.group(1)}"', f'COUNT="{max(0, int(m.group(1)) - 1)}"')
-        text = text[:m.start()] + head + text[m.end():]
+    if parent:  # it comes before the node, so its place didn't move
+        head = f'<SUBNODES COUNT="{max(0, int(parent.group(1)) - 1)}">'
+        text = text[:parent.start()] + head + text[parent.end():]
     return text, node
 
 

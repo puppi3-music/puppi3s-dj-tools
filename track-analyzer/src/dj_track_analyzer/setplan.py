@@ -283,7 +283,7 @@ def plan(tracks: list[dict], tc: np.ndarray, th: np.ndarray, bpm_step: float | N
                 if len(beam) == BEAM:
                     break
         if not beam:
-            raise SystemExit("No set fits these rules (try a smaller --bpm-step or a bigger pool).")
+            raise SystemExit("No set fits these rules (check --start and --end).")
     cost, seq = beam[0]
     return seq, float(cost)
 
@@ -337,6 +337,8 @@ def build(arc: str = "warmup", n: int = 20, tempo_bpm: float | None = None, bpm_
           bpm_range: str | None = None, genre: str | None = None, playlist: str | None = None,
           min_stars: int | None = None, start: str | None = None, end: str | None = None,
           exclude: list[str] | None = None, nml: str | None = None) -> dict:
+    if n < 1:
+        raise SystemExit("--tracks: at least 1")
     tracks = library(tempo_bpm, nml)
     if not tracks:
         raise SystemExit("Nothing scanned with colour and hype yet. Run `uv run dj-track-analyzer scan --traktor`.")
@@ -353,6 +355,8 @@ def build(arc: str = "warmup", n: int = 20, tempo_bpm: float | None = None, bpm_
     bt = np.linspace(lo, hi, n) if (bpm_step and lo is not None and hi > lo) else None
     first = _find(tracks, start, "--start") if start else None
     last = _find(tracks, end, "--end") if end else None
+    if first is not None and last is not None and (first == last or n == 1):
+        raise SystemExit("--start and --end need two different tracks and --tracks 2 or more.")
     t0 = time.time()
     seq, cost = plan(tracks, tc, th, bpm_step, bt, first, last)
     log(f"Planned {n} tracks from {len(tracks)} in {time.time() - t0:.1f} s")
@@ -410,8 +414,9 @@ def text(d: dict) -> str:
 # ----------------------------------------------------------------------------
 
 
-def _playlist_node(name: str, keys: list[str]) -> str:
-    uid = uuid.uuid5(traktor.UUID_NS, "set:" + name).hex
+def _playlist_node(name: str, keys: list[str], folder: str = FOLDER) -> str:
+    # The folder is part of the UUID: a set and a crate of the same name must not share one
+    uid = uuid.uuid5(traktor.UUID_NS, ("set:" if folder == FOLDER else folder + ":") + name).hex
     entries = "".join(f'<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="{traktor.esc(k)}"></PRIMARYKEY>\n</ENTRY>\n' for k in keys)
     return (f'<NODE TYPE="PLAYLIST" NAME="{traktor.esc(name)}"><PLAYLIST ENTRIES="{len(keys)}" TYPE="LIST" '
             f'UUID="{uid}">{entries}</PLAYLIST>\n</NODE>\n')
@@ -555,8 +560,8 @@ def crates_to_traktor(d: dict, nml: str | None = None, dry_run: bool = False) ->
     for c in d["crates"]:
         keys = [by_path.get(t["path"]) for t in c["tracks"]]
         missing += keys.count(None)
-        new = _with_playlist(new, c["crate"], _playlist_node(c["crate"], [k for k in keys if k]), CRATE_FOLDER,
-                             first=False)[0]
+        new = _with_playlist(new, c["crate"], _playlist_node(c["crate"], [k for k in keys if k], CRATE_FOLDER),
+                             CRATE_FOLDER, first=False)[0]
         written[c["crate"]] = len(keys) - keys.count(None)
     out = traktor._save(path, text_, new, {"folder": CRATE_FOLDER, "playlists": written,
                                            "not_in_traktor": missing}, dry_run, BACKUP_PREFIX)
@@ -617,4 +622,4 @@ def main(args) -> None:
         verb = "Would write" if t["dry_run"] else "Wrote"
         log(f"{verb} playlist '{t['playlist']}' ({t['tracks']} tracks"
             + (f", {len(t['not_in_traktor'])} not in Traktor's collection" if t["not_in_traktor"] else "")
-            + ")" + ("" if t["dry_run"] else f". Undo: {t['undo']}"))
+            + ")" + ("" if t["dry_run"] or not t.get("changed") else f". Undo: {t['undo']}"))
