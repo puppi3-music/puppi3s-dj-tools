@@ -71,6 +71,8 @@ def main() -> None:
     a.add_argument("--clip-length", type=float, default=40.0, metavar="SECONDS",
                    help="length of each --highlights clip (default 40)")
     a.add_argument("--json-only", action="store_true", help="for a mix: leave out the readable summary after the JSON")
+    a.add_argument("--out", default=None, metavar="FILE.json",
+                   help="save the JSON in this file instead of printing it (replaced once the analysis is done)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
     cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")
@@ -316,7 +318,14 @@ def main() -> None:
             if args.chapters:
                 result["chapters"] = tl.chapters(result, offset)
             tl.describe_highlights(result, offset)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if args.out:
+            out = Path(args.out).expanduser()
+            tmp = out.with_name(f".{out.name}.part")  # a run that fails or is stopped leaves the old file alone
+            tmp.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            tmp.replace(out)
+            log(f"Saved: {args.out}")
+        else:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         if result.get("type") == "dj_mix" and not args.json_only:
             from .tracklist import summary
 

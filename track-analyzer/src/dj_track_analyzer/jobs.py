@@ -22,6 +22,10 @@ from .analysis import HOME, log
 BREW = analysis.find_tool("brew")
 ERROR_MARK = "\x1eTRACK-ANALYZER-ERROR "  # the child's last line when it stops with a message (SystemExit)
 PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)\s+~(.+?) left\]")  # "[12/470  ~31m left] …" from scan, tempo scan, cues, colours, Lexicon loads
+STAGE = re.compile(r"^\[\s*[\d.]+s\] (.+)")  # "[ 25.1s] measuring loudness": analyze_file's stages
+# A mix analysis has no [n/total] lines; its stages (in analyze_file's order, roughly even in time) stand in for them
+STEPS = {"analyze_mix": ("decoding", "measuring loudness", "running the style model", "moods, instruments",
+                         "building the timeline", "checking against the tracklist")}
 KEEP_LINES = 3000
 
 
@@ -55,6 +59,23 @@ def _scan(o: dict) -> list[str]:
     return args
 
 
+MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
+
+
+def _analyze_mix(o: dict) -> list[str]:
+    if not str(o.get("file") or "").strip():
+        raise ValueError("Pick a recording")
+    p = Path(str(o["file"]).strip()).expanduser()
+    if not p.is_absolute() or not p.is_file():
+        raise ValueError(f"No such file: {o.get('file')} (give the full path)")
+    if p.suffix.lower() not in analysis.AUDIO_EXTS:
+        raise ValueError(f"{p.name} isn't an audio file")
+    MIX_DIR.mkdir(parents=True, exist_ok=True)
+    out = MIX_DIR / f"{p.stem}.json"  # analysed before: replaced by the new result
+    return ["analyze", str(p.resolve()), *(["--tracklist"] if o.get("tracklist", True) else []),
+            *(["--highlights"] if o.get("highlights", True) else []), "--json-only", "--out", str(out)]
+
+
 def _tool_install(o: dict) -> list[str]:
     if o.get("tool") not in ("ffmpeg", "rubberband"):
         raise ValueError("unknown tool")
@@ -74,6 +95,7 @@ ACTIONS = {
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),
     "regenre": ("Genres again from the saved scores", lambda o: ["regenre"], False),
+    "analyze_mix": ("Analyse a mix", _analyze_mix, False),
     "install": ("Install a tool", _tool_install, False),
     "tag": ("Write genres into your files' tags", lambda o: ["tag", *(["--multi"] if o.get("multi", True) else [])], True),
     "untag": ("Put your files' original tags back", lambda o: ["untag"], True),
@@ -120,6 +142,8 @@ def start(action: str, options: dict | None = None, dry_run: bool = False) -> di
         raise ValueError(f"unknown action {action!r}")
     label, build, writes = ACTIONS[action]
     args = build(options or {})
+    if action == "analyze_mix":
+        label = f"Analysing {Path(args[1]).name}"
     if dry_run:
         if not writes or action in NO_DRY_RUN:
             raise ValueError(f"{label} has no preview")
@@ -139,7 +163,8 @@ def start(action: str, options: dict | None = None, dry_run: bool = False) -> di
         _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
                 "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,
                 "returncode": None, "lines": [], "dropped": 0, "progress": None, "live": None, "result": None, "error": None,
-                "stopping": False}
+                "stopping": False, "stage": None,
+                "steps": [x for x in STEPS.get(action, ()) if "--tracklist" in args or "tracklist" not in x]}
         _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                  env=env, cwd=str(Path(__file__).resolve().parents[2]), start_new_session=True)
         job, proc = _job, _proc
@@ -176,6 +201,10 @@ def _read_err(job: dict, proc: subprocess.Popen) -> None:
                     job["error"] = json.loads(err)
                 if (m2 := PROGRESS.match(line)):
                     job["progress"] = {"done": int(m2[1]), "total": int(m2[2]), "eta": m2[3]}
+                elif (m2 := STAGE.match(line)):
+                    job["stage"] = m2[1]
+                    if (i := next((i for i, x in enumerate(job["steps"]) if m2[1].startswith(x)), None)) is not None:
+                        job["progress"] = {"done": i, "total": len(job["steps"]), "eta": None}
                 if line or not err:
                     _add(job, line)
             after_cr = cr

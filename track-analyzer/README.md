@@ -228,7 +228,7 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
-- **Mixes**: saved `analyze` results of recorded mixes, with the timeline, tracklist check, clip suggestions and chapters.
+- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness), tracklist check, clip suggestions and chapters. **Analyse a mix…** lists Traktor's recordings and analyses the one you pick in the background.
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
@@ -314,7 +314,7 @@ On the test collection 403 of 473 grids were on the kicks (median 0 ms), 62 off,
 
 **Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From a terminal: `uv run dj-track-analyzer web --export set.html`.
 
-The Mixes and Files tabs read `logs/`. Save a mix's analysis there with `analyze <mix> --tracklist --json-only > logs/<name>.json`, or drop a JSON file onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
+The Mixes and Files tabs read `logs/`. Analyse a mix from the Mixes tab (**Analyse a mix…**: one of Traktor's recordings, or drop any mix file on it; saved as `logs/<recording>.json`, replacing an earlier analysis of it), save one there yourself with `analyze <mix> --tracklist --out logs/<name>.json`, or drop a JSON file saved elsewhere onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
 
 ---
 
@@ -770,7 +770,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | Command | What it does | Changes |
 |---|---|---|
 | `setup [--no-maest]` | Download or check the models | model files |
-| `analyze <file> [--segments 60] [--json-only]` | One track as JSON; mixes get a timeline (`--segments`: step in seconds) and a readable summary after the JSON, on stderr (`--json-only` leaves it out) | nothing |
+| `analyze <file> [--segments 60] [--json-only] [--out FILE]` | One track as JSON; mixes get a timeline (`--segments`: step in seconds) and a readable summary after the JSON, on stderr (`--json-only` leaves it out); `--out` saves the JSON in a file instead (replacing it) | nothing, or the `--out` file |
 | `analyze <mix> --highlights [N] [--clip-length 40] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
 | `clips <analysis.json> --video <final.mp4> [--pick 1 4] [--height 1440] [--bitrate 16M] [--out DIR] [--previews DIR] [--force]` | 720p previews of the clip suggestions in `/tmp/clip-previews/`; with `--pick`, the chosen clips (numbers or ranges like `20:30-21:10`) at full quality next to the video. Needs ffmpeg | new video files |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |

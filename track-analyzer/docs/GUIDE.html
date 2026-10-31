@@ -320,7 +320,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="note"><p><b>Keep in mind:</b> the genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so stretched to 145 a rolling house track sounds to them like the trance and psytrance they <i>did</i> hear at that tempo. Read the view as how the models hear the sped-up track, not as facts. Psytrance, the worst case, is held back: in the view, psy only counts as much as the track already had at its own tempo. Rubber Band also isn't Traktor's own stretcher, so it sounds close but not identical. While a view is loaded in Traktor, the other Traktor writers and colour training refuse to run; switch back first.</p></div>
 
 <h3 id="mixes">My recorded mixes</h3>
-<p>The Mixes tab shows a recorded set's genre and mood, a loudness timeline, a check of the tracklist against Traktor's history (key heard vs Traktor's, the tempo each track was played at, key lock), and clip ideas. Analysing the recording is a terminal step for now (<a href="#cli-mix">recorded mixes</a>); save the result in <code>logs/</code> and it appears on the tab, or drop the saved file onto the tab.</p>
+<p>The Mixes tab shows a recorded set's genre and mood, a timeline of the set (each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness), a check of the tracklist against Traktor's history (key heard vs Traktor's, the tempo each track was played at, key lock), and clip ideas. Press <b>Analyse a mix…</b>, pick one of Traktor's recordings (or drop any other mix file on it), and it runs in the background; the result is saved in <code>logs/</code> (replacing an earlier analysis of that recording) and opens on the tab. The same from a terminal: <a href="#cli-mix">recorded mixes</a>. A result saved somewhere else can be dropped onto the tab.</p>
 
 <h3 id="llm">Asking a local LLM about my music</h3>
 <ol>
@@ -713,6 +713,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--chapters --offset 0:14</code></td><td><code>analyze --tracklist</code></td><td>YouTube chapter lines, for a video where the first track starts 14 seconds in (read it off the finished video)</td></tr>
 <tr><td><code>--highlights</code> / <code>--clip-length 40</code></td><td><code>analyze</code> (mix)</td><td>Suggest 2 (or N) of the best 40-second stretches for short clips, each ranked (#1 best); video times with <code>--offset</code></td></tr>
 <tr><td><code>--json-only</code></td><td><code>analyze</code></td><td>For a mix, leave out the readable summary printed after the JSON</td></tr>
+<tr><td><code>--out &lt;file.json&gt;</code></td><td><code>analyze</code></td><td>Save the JSON in this file instead of printing it (replacing it)</td></tr>
 <tr><td><code>--start 22:00:00</code></td><td><code>analyze --tracklist</code></td><td>When the recording began, for recordings not named by Traktor</td></tr>
 <tr><td><code>--multi</code></td><td><code>tag</code></td><td>Two or three genres when a track sits between them: <code>Acid Trance; Hard Trance</code></td></tr>
 <tr><td><code>--multi-ratio 0.7</code> / <code>--max-genres 3</code></td><td><code>tag --multi</code></td><td>How close a runner-up must score (share of the top score) / the most genres per track</td></tr>
