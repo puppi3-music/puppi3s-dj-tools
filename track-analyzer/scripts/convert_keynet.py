@@ -6,7 +6,8 @@ scale = gamma / sqrt(running_var + eps), shift = beta - running_mean * scale. Ne
     pip install torch numpy
     python scripts/convert_keynet.py <MusicalKeyCNN-CKA checkout> [commit]
 
-Writes src/dj_track_analyzer/starter/keynet.npz.
+Writes src/dj_track_analyzer/starter/keynet.npz. The weights are MusicalKeyCNN's (Copyright (c) 2025 Alexander Sommer,
+MIT): keep starter/keynet.LICENSE next to them.
 """
 
 import sys
