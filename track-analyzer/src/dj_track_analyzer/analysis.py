@@ -1441,6 +1441,14 @@ def key_of(mono44: np.ndarray):
     return key, scale, float(strength)
 
 
+def key_cnn(mono44: np.ndarray) -> dict:
+    """MusicalKeyCNN's key (keycnn.py), the key we mix with; Essentia's stays stored for the colour model."""
+    from . import keycnn
+
+    k = keycnn.key_cnn(mono44)
+    return {"cnn_key": k["key"], "cnn_camelot": k["camelot"], "cnn_confidence": round(k["confidence"], 3)}
+
+
 def loudness(stereo: np.ndarray, sr: float):
     if m := dsp():  # Essentia's LoudnessEBUR128, bit for bit, ~7x faster
         short, integrated, lra = m.loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
@@ -1618,6 +1626,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         result["key"] = f"{k} {s}"
         result["camelot"] = camelot(k, s)
         result["key_strength"] = round(strength, 2)
+        result.update(key_cnn(mono44))
         result["energy_curve"] = energy_curve(short, duration)
     elif not is_mix:
         say("detecting BPM and key")
@@ -1630,6 +1639,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         result["key"] = f"{k} {s}"
         result["camelot"] = camelot(k, s)
         result["key_strength"] = round(strength, 2)
+        result.update(key_cnn(mono44))
         result["energy_curve"] = energy_curve(short, duration)
 
     # Style model (needs the downloaded models)

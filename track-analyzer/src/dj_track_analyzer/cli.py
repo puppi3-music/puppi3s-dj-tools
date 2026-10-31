@@ -15,7 +15,7 @@ from .mcp_server import protect_stdout, build_mcp
 # Commands that follow the tempo view loaded in Traktor (if any); --native forces the normal library.
 VIEW_CMDS = {"hype", "stats", "export"}
 # Commands that always use the normal analysis (each track at its own tempo).
-NATIVE_CMDS = {"analyze", "scan", "tag", "untag", "traktor", "colors", "regenre"}
+NATIVE_CMDS = {"analyze", "scan", "tag", "untag", "traktor", "colors", "regenre", "keys"}
 
 
 def pick_library(args) -> None:
@@ -255,6 +255,12 @@ def main() -> None:
     gr.add_argument("--rescan", action="store_true", help="check: measure again even if measured")
     gr.add_argument("--dry-run", action="store_true", help="apply: show what would be written, change nothing")
     sub.add_parser("regenre", help="recompute the genres of scanned tracks from the cache (after editing dj_genres.json)")
+    ky = sub.add_parser("keys", help="MusicalKeyCNN's key for scanned tracks without one, compared with Essentia's "
+                                     "and Traktor's keys")
+    ky.add_argument("--rescan", action="store_true", help="measure every track again, not only those without a CNN key")
+    ky.add_argument("--workers", type=int, default=None, help="tracks measured at once (default: all cores but two)")
+    ky.add_argument("--show", type=int, default=20, help="how many least confident CNN keys to list (default 20)")
+    ky.add_argument("--json", action="store_true", help="print JSON instead of the report")
     ex = sub.add_parser("export", help="write the scanned collection to a CSV spreadsheet")
     ex.add_argument("out", nargs="?", default=None)
     ex.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
@@ -421,6 +427,11 @@ def main() -> None:
         out = collection.regenre()
         print(json.dumps(out, indent=2, ensure_ascii=False))
         say_if_nothing(out)
+    elif args.cmd == "keys":
+        from . import keys
+
+        out = keys.run(args.rescan, args.workers, args.show)
+        print(json.dumps(out, indent=2, ensure_ascii=False) if args.json else keys.report_text(out))
     elif args.cmd == "export":
         from . import collection
 

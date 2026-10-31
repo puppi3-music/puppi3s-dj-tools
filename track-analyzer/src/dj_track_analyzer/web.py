@@ -27,7 +27,7 @@ LOGS = Path(__file__).resolve().parents[2] / "logs"  # where the docs suggest sa
 # collection.DB, the cache and the tempo-view state are module globals: one request at a time swaps them
 _lock = threading.RLock()
 TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", "duration_sec", "bpm", "traktor_bpm",
-              "key", "camelot", "traktor_camelot", "lufs", "loudness_range", "genre", "genre_score", "genre_2",
+              "key", "camelot", "cnn_key", "cnn_camelot", "traktor_camelot", "lufs", "loudness_range", "genre", "genre_score", "genre_2",
               "genre_2_score", "genre_3", "genre_3_score", "my_genre", "my_genre_confidence", "tag_genre", "styles",
               "traktor_color", "color", "color_position", "color_confidence", "mood_aggressive", "mood_happy",
               "mood_party", "mood_relaxed", "mood_sad", "instruments", "approachability", "hype", "error",
@@ -123,6 +123,8 @@ def tracks(lib: str = "native") -> dict:
         if r["path"] in g:  # how many cue points / loops you set in Traktor
             r["own_cues"] = len(g[r["path"]]["cues"])  # as the CLI shows them: whole BPMs, Traktor's value where it has one
         r["mix_bpm"] = analysis.round_bpm(r.get("traktor_bpm") or r.get("bpm"))
+        # "ours" on the page = our key (the CNN's where measured, as collection.our_camelot)
+        r["key"], r["camelot"] = r.get("cnn_key") or r.get("key"), r.get("cnn_camelot") or r.get("camelot")
         r["mix_camelot"] = r.get("traktor_camelot") or r.get("camelot")
         if r["path"] in genre_held:
             r["held_genre"] = True
