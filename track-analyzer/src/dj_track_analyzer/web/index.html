@@ -2794,11 +2794,12 @@ async function pageMixes(main, id) {
   if (me !== S.routeId) return;
   if (!id && mixes.length) id = mixes[0].id;
   const all = id === "~all", sets = new Set(mixes.map(f => f.recording || f.id)).size;  // the overview counts each recording once
+  const seen = new Set(), older = new Set(mixes.filter(f => f.recording && (seen.has(f.recording) || !seen.add(f.recording))).map(f => f.id));  // newest first: a later save of the same recording
   main.innerHTML = `<div class="split">
     <div class="card list" id="drop" style="padding:8px"><div class="filters" style="padding:4px 10px 8px;margin:0"><h3 style="margin:0">Mixes</h3><div class="spacer"></div>
         ${sets > 1 ? `<button id="mx-all" class="${all ? "on" : ""}" data-tip="What your mixes add up to: keys to check, mood as played, your sets by fifth">All ${sets} mixes</button>` : ""}
         ${SNAP ? "" : `<button class="primary" id="mx-new">Analyse a mix…</button>`}</div>
-      ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
+      ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}${older.has(f.id) ? ` <span class="chip warn small" data-tip="The same recording is saved again, newer: All ${sets} mixes counts that one. Open this one and delete it if you don't need it.">older copy</span>` : ""}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
     </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
       `Analyse a recorded DJ mix to see its genre, mood, a loudness timeline, a tracklist check against Traktor's history and clip ideas.
@@ -2813,6 +2814,17 @@ async function pageMixes(main, id) {
     const me = S.routeId;  // a newer click wins over a slower earlier answer
     try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId) $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
     catch (e) { if (me === S.routeId) $("#mix").innerHTML = errBox(e); }
+    const f = mixes.find(x => x.id === id), head = $("#mix .page-head");
+    if (f && head && !SNAP && me === S.routeId) {
+      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div><button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(f.folder.split("/").pop())}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
+      $("#mx-del").onclick = async () => {
+        if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}/deleted/. The recording itself isn't touched.`)) return;
+        try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
+        LOGS = null;
+        const left = mixes.filter(x => x.id !== id);
+        location.hash = left.length ? `#mixes/${encodeURIComponent(left[0].id)}` : "#mixes";
+      };
+    }
   }
 }
 // Pick one of Traktor's recordings and analyse it as a job; the result is saved where the Mixes tab looks.
