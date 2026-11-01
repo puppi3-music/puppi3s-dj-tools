@@ -2841,7 +2841,7 @@ async function mixDialog(file) {
       <input type="checkbox" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
-    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against Traktor's history of that session</label><br>
+    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against Traktor's history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
@@ -3113,6 +3113,7 @@ function renderMix(d) {
   };
   return `
     <div class="page-head"><div><h2>${esc(mixTitle({ recording: (d.file || "").split("/").pop() }))}</h2><div class="muted">${REC_NAME.test(d.file || "") ? `${esc(d.file.split("/").pop())} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
+    ${d.tracklist_skipped ? `<div class="note" style="margin-bottom:12px"><b>No tracklist check.</b> ${esc(d.tracklist_skipped)}</div>` : ""}
     <div class="grid">
       <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score, sel: { kind: "genre", label: g.genre }, on: isOn("genre", g.genre) })))}
         ${d.genre_basis?.dj_genre ? `<div class="note">${esc(d.genre_basis.dj_genre)}</div>` : ""}
@@ -3134,7 +3135,7 @@ function renderMix(d) {
       <div class="legend">${sel ? `<span><i style="background:var(--accent)"></i>${esc(selName)}: ${sel.kind === "genre" ? "the segment's genre" : sel.kind === "mood" ? "brighter = more of the segment sounds it, against the most" : "brighter = higher among the segment's top 3 styles, against the highest"}${str.every(v => !v) ? " (in no segment)" : ""}</span>` : ""}
         ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your Traktor colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
         ${view === "hype" && plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}
-        ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${canHype || d.tracklist ? "" : `<span>Analyse it with the tracklist check to see the hype and colours of what you played.</span>`}</div>
+        ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${canHype || d.tracklist ? "" : `<span>${d.tracklist_skipped ? "No tracklist check (see above), so no hype or colours of what you played." : "Analyse it with the tracklist check to see the hype and colours of what you played."}</span>`}</div>
       <details style="margin-top:10px"><summary class="small muted">Table</summary>${table([{ h: "Time", f: s => `${esc(s.start)}–${esc(s.end)}` }, { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") },
         { h: "LUFS", r: 1, f: s => fmt(s.lufs, 1) }, ...(canHype ? [{ h: "Hype", r: 1, f: s => { const pl = plays[tl.indexOf(s)]; return pl.hype == null ? "–" : `${sw(pl.colour, pl.guessed)} ${fmt(pl.hype, 1)}`; } }] : []), { h: "Genre", f: s => esc(s.dj_genre || "–") }, { h: "Styles", f: s => `<span class="small">${esc((s.styles || []).join(", "))}</span>` }, { h: "Tracks", f: s => `<span class="small">${esc((s.tracks || []).join(" · "))}</span>` }], tl)}</details></div>` : ""}
     ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against Traktor's history</span></h3>

@@ -60,7 +60,7 @@ def main() -> None:
     a.add_argument("--segments", type=float, default=None, help="timeline segment length in seconds")
     a.add_argument("--tracklist", nargs="?", const="auto", default=None, metavar="HISTORY.nml",
                    help="for a recorded mix: check it against Traktor's history file of that session "
-                        "(default: found from the recording's date)")
+                        "(default: found from the recording's date; when none is found, the mix is analysed without it)")
     a.add_argument("--chapters", action="store_true",
                    help="with --tracklist: YouTube chapter lines for the video's description (needs --offset)")
     a.add_argument("--offset", default=None, metavar="SECONDS",
@@ -307,18 +307,26 @@ def main() -> None:
         print("\n".join(sorted(set(names))))
         check_rules()
     elif args.cmd == "analyze":
-        tracklist = None
+        tracklist = skipped = None
         if args.chapters and not args.tracklist:
             raise SystemExit("--chapters needs --tracklist (the chapters are the tracks you played)")
         if args.chapters and args.offset is None:
             raise SystemExit("--chapters needs --offset: how many seconds into the finished video the first "
                              "track starts (check it in your video editor), e.g. --offset 0:14")
         if args.tracklist:
-            from .tracklist import prepare
+            from .tracklist import NoHistory, prepare
 
-            tracklist = prepare(args.file, args.tracklist, args.start)
+            try:
+                tracklist = prepare(args.file, args.tracklist, args.start)
+            except NoHistory as e:
+                if args.chapters or args.tracklist != "auto":  # the chapters need it; a file given has to work
+                    raise
+                skipped = str(e.code)
+                log(f"No tracklist check: {skipped}")
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
                               highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood)
+        if skipped and result.get("type") == "dj_mix":
+            result["tracklist_skipped"] = skipped
         if result.get("type") == "dj_mix":
             from . import tracklist as tl
 

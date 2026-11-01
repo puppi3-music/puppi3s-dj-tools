@@ -124,7 +124,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - `tracklist.py`: `analyze <mix> --tracklist`: Traktor history NML (COLLECTION entries joined to PLAYLIST
   ENTRY/PRIMARYKEY KEY = VOLUME+DIR+FILE; EXTENDEDDATA STARTDATE = y<<16|m<<8|d, STARTTIME = seconds of day,
   DURATION = deck run time, which includes faded-out tails, so plays overlap ~70% of a mix). Recording start from
-  Traktor's `Recording_YYYY-MM-DD_HHhMMmSSs` name or `--start`. Main stretch = start → next start, shifted by a
+  Traktor's `Recording_YYYY-MM-DD_HHhMMmSSs` name or `--start`. No start or no covering history with `--tracklist` auto → `NoHistory` (a SystemExit): `analyze`
+  carries on without the check and saves `tracklist_skipped` (the reason; page note + summary line); a named file or `--chapters` still stops. Main stretch = start → next start, shifted by a
   measured blend lag (0-150 s, the one where most keys match), middle 60% judged. Key lock on unless off wins by
   ≥2 tracks. Sped >4%: genre = mix acts at played BPM with PSY_GATE vs native acts per track
   (speed-up and stems/effects both really change the genre, only the psy shortcut is

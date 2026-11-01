@@ -55,6 +55,10 @@ SPEED_GENRE = 0.04   # tempo changed by more than this: judge the genre at the t
 # ----------------------------------------------------------------------------
 
 
+class NoHistory(SystemExit):
+    """No history file to check against: `analyze --tracklist` (found automatically) carries on without it."""
+
+
 def recording_start(path: str | Path) -> datetime | None:
     """Start time from a Traktor recording's name (Recording_2026-10-12_16h27m17s.wav)."""
     m = RECORDING_RE.search(Path(path).name)
@@ -553,13 +557,13 @@ def prepare(recording: str, history: str, start_text: str | None) -> tuple[list[
     elif named:
         start = named
     else:
-        raise SystemExit(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
+        raise NoHistory(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
                          "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
                          "the time of day the recording began.")
     if history == "auto":
         found = find_history(start, analysis._audio_length(rec) or 6 * 3600)
         if not found:
-            raise SystemExit(f"No Traktor history file covers a recording starting {start:%Y-%m-%d %H:%M:%S} "
+            raise NoHistory(f"No Traktor history file covers a recording starting {start:%Y-%m-%d %H:%M:%S} "
                              f"(looked in {HISTORY_GLOB}). Traktor saves one per session when it closes: quit "
                              "Traktor once after the set, or pass the file: --tracklist /path/to/history_….nml")
         path = found
@@ -611,6 +615,8 @@ def _runs(timeline: list[dict], field: str) -> list[str]:
 def summary(result: dict) -> str:
     """A readable report of an analysed DJ mix (with or without --tracklist), for the terminal."""
     lines = [f"DJ mix: {Path(result['file']).name} ({result['duration']})", ""]
+    if result.get("tracklist_skipped"):
+        lines += [f"  No tracklist check: {result['tracklist_skipped']}", ""]
     lines.append(f"  Genre      {_genres(result.get('dj_genre'))}")
     if result.get("dj_genre_uncorrected"):
         lines.append(f"             without the psy limit: {_genres(result['dj_genre_uncorrected'])}")
@@ -681,7 +687,8 @@ def summary(result: dict) -> str:
         if not report:
             lines += ["", "  Timeline (key)"]
             lines += [f"    {r}" for r in _runs(tl, "camelot")]
-            lines += ["", "  Add --tracklist to check this against Traktor's history of the session."]
+            if not result.get("tracklist_skipped"):
+                lines += ["", "  Add --tracklist to check this against Traktor's history of the session."]
     return "\n".join(lines)
 
 

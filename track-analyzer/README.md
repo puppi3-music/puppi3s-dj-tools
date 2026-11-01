@@ -138,7 +138,9 @@ Traktor saves a history file for every session (`Documents/Native Instruments/Tr
 track played, on which deck, when it started. Its own recordings are named after the time they started, so
 `--tracklist` finds the right history file and places each track in the recording. For a recording with
 another name add `--start 22:00:00`; to use a particular history file, pass its path after `--tracklist`.
-If no history file covers the recording, it says so: Traktor writes the file when it closes.
+If no history file covers the recording (Traktor writes it when it closes), or the recording's start can't be told
+(another app's recording without `--start`), the mix is analysed without the check and the result says why, so
+`--tracklist` works on any file. A history file you name, or `--chapters`, has to work, or it stops.
 
 After the JSON, a mix gets a readable summary (genre, tempo, loudness, mood, key lock, a table of the tracks
 with their keys and genres, and the timeline's genres); `--json-only` leaves it out. In the JSON, under
