@@ -2472,7 +2472,7 @@ async function jobPoll() {
   }
   JOB.listeners.forEach(f => f());
   jobBar();
-  if (j && j.running) JOB.timer = setTimeout(jobPoll, 1000);
+  if (j && (j.running || j.queued?.length)) JOB.timer = setTimeout(jobPoll, 1000);
 }
 // Start a job; resolves with the finished job (its result, or its error message).
 async function startJob(action, options = {}, dry_run = false) {
@@ -2510,8 +2510,8 @@ function jobBar() {
   if (SNAP || !j) { bar.hidden = true; return; }
   if (j.running) {
     bar.className = "jobbar"; bar.hidden = false;
-    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
-      ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>`;
+    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
+      ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : j.queued?.length ? "Stop all" : "Stop"}</button>`;
     $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll);
   } else if (JOB.flash && JOB.flash.id === j.id) {
     bar.className = `jobbar ${j.error ? "bad" : "good"}`; bar.hidden = false;
@@ -2824,14 +2824,14 @@ async function mixDialog(file) {
   try { R = await api("recordings"); } catch (e) { dlg.innerHTML = `<h3>Analyse a mix</h3>${errBox(e)}<div class="filters" style="margin-top:12px"><button data-close>Close</button></div>`; dlg.querySelector("[data-close]").onclick = () => dlg.close(); return; }
   const recs = R.recordings, first = recs.findIndex(r => !r.saved.length);
   dlg.innerHTML = `<h3>Analyse a mix</h3>
-    <div class="small muted" title="${esc(R.folders.join("\n"))}">Traktor's recordings longer than 12 minutes${R.folders.length ? "" : " (no Recordings folder found)"}:</div>
+    <div class="small muted" title="${esc(R.folders.join("\n"))}">Traktor's recordings longer than 12 minutes${R.folders.length ? "" : " (no Recordings folder found)"}; tick several to analyse them one after another${recs.some(r => !r.saved.length) ? ` · <a href="#" id="mx-new-all">tick all not analysed yet</a>` : ""}</div>
     <div class="list" style="max-height:300px;overflow-y:auto;margin:6px 0">${recs.map((r, i) => `<label class="inline" style="display:flex;padding:4px 2px;white-space:normal">
-      <input type="radio" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
+      <input type="checkbox" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
-    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check it against Traktor's history of that session</label><br>
+    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against Traktor's history of that session</label><br>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
-    <div class="note">Takes a minute or two for an hour of music. It only reads the recording; the result is added to your mixes and opens when it's done.</div>
+    <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
   dlg.querySelector("[data-close]").onclick = () => dlg.close();
   let dropped = null;  // a File from the drop zone (the browser gives its contents, never its path)
@@ -2841,6 +2841,7 @@ async function mixDialog(file) {
     if (!isAudio(f)) { $("#mx-msg").innerHTML = `<span class="err">${esc(f.name)} isn't an audio file</span>`; return; }
     dropped = f; $("#mx-msg").textContent = "";
     dlg.querySelectorAll("input[name=mx-rec]").forEach(r => { r.checked = false; });
+    count();
     zone.innerHTML = `✓ <b>${esc(f.name)}</b> <span class="dim small">${(f.size / 1e6).toFixed(0)} MB</span> · <a href="#" id="mx-pick">choose another</a>`;
     $("#mx-pick").onclick = e => { e.preventDefault(); input.click(); };
   };
@@ -2849,16 +2850,24 @@ async function mixDialog(file) {
   zone.ondragover = e => { e.preventDefault(); zone.classList.add("over"); };
   zone.ondragleave = () => zone.classList.remove("over");
   zone.ondrop = e => { e.preventDefault(); zone.classList.remove("over"); choose(e.dataTransfer.files[0]); };
+  const picked = () => [...dlg.querySelectorAll("input[name=mx-rec]:checked")].map(r => recs[+r.value].path);
+  const count = () => { const n = dropped ? 1 : picked().length; $("#mx-go").textContent = n > 1 ? `Analyse ${n} mixes` : "Analyse"; $("#mx-go").disabled = !n; };
   dlg.querySelectorAll("input[name=mx-rec]").forEach(r => r.addEventListener("change", () => {
-    dropped = null; zone.innerHTML = zoneText;
-    $("#mx-pick").onclick = e => { e.preventDefault(); input.click(); };
+    if (dropped) { dropped = null; zone.innerHTML = zoneText; $("#mx-pick").onclick = e => { e.preventDefault(); input.click(); }; }
+    count();
   }));
-  choose(file);
+  choose(file); count();
+  $("#mx-new-all")?.addEventListener("click", e => {
+    e.preventDefault();
+    dlg.querySelectorAll("input[name=mx-rec]").forEach(r => { r.checked = !recs[+r.value].saved.length; });
+    if (dropped) { dropped = null; zone.innerHTML = zoneText; $("#mx-pick").onclick = ev => { ev.preventDefault(); input.click(); }; }
+    count();
+  });
   $("#mx-go").onclick = async () => {
-    const pick = dlg.querySelector("input[name=mx-rec]:checked"), go = $("#mx-go"), msg = $("#mx-msg");
-    if (!dropped && !pick) return;
+    const files = dropped ? [] : picked(), go = $("#mx-go"), msg = $("#mx-msg");
+    if (!dropped && !files.length) return;
     go.disabled = true; msg.textContent = "Starting…";
-    let file = pick ? recs[+pick.value].path : "";
+    let file = files[0] || "";
     if (dropped) {
       try {
         file = (await postJSON("/api/recordings/find", { name: dropped.name, size: dropped.size })).path
@@ -2868,7 +2877,14 @@ async function mixDialog(file) {
     const running = () => { if (JOB.job?.action === "analyze_mix" && JOB.job.running) dlg.close(); };  // the bar at the top shows it from here
     JOB.listeners.add(running); dlg.addEventListener("close", () => JOB.listeners.delete(running));
     let j;
-    try { j = await startJob("analyze_mix", { file, tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked }); }
+    const queued = jobRunning() && JOB.job.action === "analyze_mix";  // goes after the one running: no waiting here
+    const opts = { ...(files.length > 1 ? { files } : { file }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked };
+    if (queued) {
+      try { await postJSON("/api/jobs/start", { action: "analyze_mix", options: opts }); await jobPoll(); dlg.close(); }
+      catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+      return;
+    }
+    try { j = await startJob("analyze_mix", opts); }
     catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
     if (j.error) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(j.error)}</span>`; return; }  // shown here if it failed at once
     if (S.page !== "mixes") return;

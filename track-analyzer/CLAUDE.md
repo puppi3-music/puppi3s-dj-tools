@@ -167,7 +167,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   stderr line) in its own process group, stdin DEVNULL (so `colors review --apply` never asks; the page passes `--yes`
   after a dry-run preview). Only `ACTIONS` (name → label, argv builder that validates options, writes?) can run; writers
   get `--dry-run` for the preview; `UNDO` maps writer → undo action. Stop = SIGINT to the group (scans save), SIGTERM
-  after 20 s; `web.serve` stops a running job on exit. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
+  after 20 s; `web.serve` stops a running job on exit. `analyze_mix` queues: `options.files` = several recordings, run one
+  after another by `_wait` (also past a failure); an analyze_mix started while one runs joins `_queue`; `busy()` counts
+  the queue; Stop clears it; `state()` lists it as `job.queued`. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
   installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers. Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
