@@ -118,7 +118,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   the 6th percentile of movement (checked: static), audio #4 at the 97th (lively).
 - `mixreport.py`: `mixes` command + /api/mixes-report (Mixes tab `#mixes/~all`, `renderMixReport`; in snapshots): saved mix
   JSONs (newest per recording) added up: `keys` (heard = our CNN key ≠ Traktor's, key lock on, any heard model), `view`
-  (heard_mood vs own_mood / view_mood, mean and mean abs distance; genre as heard = view's / own), `arc` (timeline segment
+  (heard_mood vs own_mood / view_mood, mean and mean abs distance; genre as heard = view's / own), `shape` (each set in 20 equal slices: hype time-weighted over the tracks playing via
+  `web.played_tracks` + blend lag, colour played longest, LUFS; per mix and mean, drawn by `shapeTimeline`), `arc` (timeline segment
   mood by fifth, each mix once), transitions (CNN-keyed mixes only). Read-only.
 - `tracklist.py`: `analyze <mix> --tracklist`: Traktor history NML (COLLECTION entries joined to PLAYLIST
   ENTRY/PRIMARYKEY KEY = VOLUME+DIR+FILE; EXTENDEDDATA STARTDATE = y<<16|m<<8|d, STARTTIME = seconds of day,
