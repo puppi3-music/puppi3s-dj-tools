@@ -112,6 +112,8 @@ main { padding: 20px; max-width: 1400px; margin: 0 auto; }
 .cols .c:hover, .bars .row-h:hover .fill { background: var(--accent); filter: brightness(1.15); }
 .bars .go, .cols .go { cursor: pointer; }
 .bars .lab.go:hover { color: var(--accent); }
+.bars .lab.on { color: var(--accent); font-weight: 600; }
+.bars.has-on .track:not(.on) .fill { opacity: .35; }
 .cols-x { display: flex; gap: 2px; font-size: 11px; color: var(--text-3); }
 .cols-x span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
 
@@ -266,6 +268,8 @@ details.fold .sub:first-child { margin-top: 0; }
 .tl-clips { display: flex; gap: 2px; margin-top: 3px; }
 .tl-clips span { flex: 1; height: 4px; border-radius: 2px; }
 .tl-clips span.on { background: var(--text); }
+.tl-sel span { background: var(--accent); }
+.nowrap { white-space: nowrap; }
 .seg-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
 .seg-toggle button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12px; background: transparent; }
 .seg-toggle button.on { background: var(--accent); color: #fff; }
@@ -457,6 +461,7 @@ function snapApi(path, p) {
     case "cues": return D.cues?.[p.path] || { error: "No cue suggestions for this track in this snapshot." };
     case "saved": return { files: D.saved, folders: ["this snapshot"] };
     case "saved-file": return D.files[p.id];
+    case "mixes-report": return D.mixes_report || { error: "This snapshot was made before the report across mixes existed." };
   } })();
   if (!res) throw new Error("Not in this snapshot.");
   if (res.error) throw new Error(res.error);
@@ -502,9 +507,10 @@ function bars(items, { max, fmtVal = v => fmt(v), colourLabels = false } = {}) {
   if (!items.length) return `<div class="dim">Nothing yet.</div>`;
   const m = max ?? Math.max(...items.map(i => i.value || 0), 1e-9);
   // an item with `go` (a Tracks filter) opens the Tracks tab filtered that way when clicked
-  const go = i => i.go ? ` go" data-go="${esc(JSON.stringify(i.go))}` : "";
-  const tipOf = i => esc((i.tip || `${i.label}: ${fmtVal(i.value)}`) + (i.go ? "\nClick to show these tracks" : ""));
-  return `<div class="bars">${items.map(i => `
+  // one with `sel` (a mix's genre, style or mood) shows where it is in the mix (`on` = the one shown)
+  const go = i => i.go ? ` go" data-go="${esc(JSON.stringify(i.go))}` : i.sel ? ` go${i.on ? " on" : ""}" data-mixsel="${esc(JSON.stringify(i.sel))}` : "";
+  const tipOf = i => esc((i.tip || `${i.label}: ${fmtVal(i.value)}`) + (i.go ? "\nClick to show these tracks" : i.sel ? `\nClick to ${i.on ? "stop showing it" : "show where it is in the mix"}` : ""));
+  return `<div class="bars${items.some(i => i.on) ? " has-on" : ""}">${items.map(i => `
     <div class="lab${go(i)}" title="${esc(i.label)}">${colourLabels ? sw(i.label) : ""}${esc(i.label)}</div>
     <div class="track row-h${go(i)}" data-tip="${tipOf(i)}"><div class="fill" style="width:${Math.max(0, (i.value || 0) / m * 100)}%"></div></div>
     <div class="val">${i.valText ?? fmtVal(i.value)}</div>`).join("")}</div>`;
@@ -2491,7 +2497,7 @@ function jobBar() {
   if (SNAP || !j) { bar.hidden = true; return; }
   if (j.running) {
     bar.className = "jobbar"; bar.hidden = false;
-    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${progressBar(j)}<span class="muted">${progressText(j)}</span>
+    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
       ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>`;
     $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll);
   } else if (JOB.flash && JOB.flash.id === j.id) {
@@ -2774,9 +2780,11 @@ async function pageMixes(main, id) {
   const me = S.routeId, L = await getLogs(true), mixes = L.files.filter(f => f.kind === "mix");
   if (me !== S.routeId) return;
   if (!id && mixes.length) id = mixes[0].id;
+  const all = id === "~all";
   main.innerHTML = `<div class="split">
     <div class="card list" id="drop" style="padding:8px"><div class="filters" style="padding:4px 10px 8px;margin:0"><h3 style="margin:0">Mixes</h3><div class="spacer"></div>
         ${SNAP ? "" : `<button class="primary" id="mx-new">Analyse a mix…</button>`}</div>
+      ${mixes.length > 1 ? `<a href="#mixes/~all" class="${all ? "on" : ""}"><div><b>Across your mixes</b></div><div class="k">keys to check, mood as played, your sets by fifth</div></a>` : ""}
       ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
     </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
@@ -2789,7 +2797,7 @@ async function pageMixes(main, id) {
     SNAP ? null : mixDialog);  // a recording dropped on the list: analyse it
   if (id) {
     const me = S.routeId;  // a newer click wins over a slower earlier answer
-    try { const d = await api("saved-file", { id }); if (me === S.routeId) $("#mix").innerHTML = renderMix(d); }
+    try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId) $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
     catch (e) { if (me === S.routeId) $("#mix").innerHTML = errBox(e); }
   }
 }
@@ -2894,9 +2902,12 @@ function keyChip(t) {
 }
 // Which of the set's tracks plays in each timeline segment, from the tracklist: a track is the main one from its start
 // (+ the measured blend lag) to the next one's. Per segment: hype weighted by time, the colour of the track there longest.
-function segmentPlays(d) {
+function trackSpans(d) {
   const tracks = d.tracklist?.tracks || [], lib = d.library || {}, lag = d.tracklist?.keylock?.blend_lag_seconds || 0;
-  const spans = tracks.map((t, i) => ({ t, lib: lib[t.n], a: toSec(t.start) + lag, b: i + 1 < tracks.length ? toSec(tracks[i + 1].start) + lag : Infinity }));
+  return tracks.map((t, i) => ({ t, lib: lib[t.n], a: toSec(t.start) + lag, b: i + 1 < tracks.length ? toSec(tracks[i + 1].start) + lag : Infinity }));
+}
+function segmentPlays(d) {
+  const spans = trackSpans(d);
   return (d.timeline || []).map(s => {
     const a = toSec(s.start), b = toSec(s.end);
     const here = spans.map(x => ({ ...x, o: Math.min(b, x.b) - Math.max(a, x.a) })).filter(x => x.o > 0 && x.lib);
@@ -2907,12 +2918,81 @@ function segmentPlays(d) {
   });
 }
 let MIX_SHOWN = null;  // the mix on screen, drawn again when the timeline's view changes
+let MIX_SEL = null;  // the genre, style or mood clicked in it: {kind: "genre" | "style" | "mood", label}
+const toMax = v => { const m = Math.max(0, ...v.filter(x => x != null)); return v.map(x => x == null ? null : m ? x / m : 0); };
+// How strongly each timeline segment has it, 0-1 against the strongest segment (null: not measured there): genre = the
+// segment's own; style = its score among the segment's top 3; mood = the share of the segment that sounds it
+const segSelValue = (s, sel) => sel.kind === "genre" ? (s.dj_genre ? +(s.dj_genre === sel.label) : null)
+  : sel.kind === "mood" ? s.mood?.[sel.label] ?? null
+  : s.styles ? +((s.styles.map(x => x.match(/^(.*) ([\d.]+)$/)).find(m => m && m[1] === sel.label) || [])[2] || 0) : null;
+const mixSelStrength = (d, sel) => toMax((d.timeline || []).map(s => segSelValue(s, sel)));
+// Each tracklist row's: its heard genre for a genre, else the segments' values over its main stretch, time-weighted
+// (`value`, as in the segments), against the strongest track (`strength`)
+function trackSelStrength(d, sel) {
+  const tl = d.timeline || [];
+  const value = trackSpans(d).map(({ t, a, b }) => {
+    if (sel.kind === "genre") return +((t.genre || t.library_genre) === sel.label);
+    let w = 0, n = 0;
+    tl.forEach(s => { const o = Math.min(b, toSec(s.end)) - Math.max(a, toSec(s.start)), v = segSelValue(s, sel); if (o > 0 && v != null) { w += o; n += o * v; } });
+    return w ? n / w : null;
+  });
+  return { value, strength: toMax(value) };
+}
 const mixView = () => { try { return localStorage.getItem("ta-mix-view") || "hype"; } catch (e) { return "hype"; } };
+// Draw the mix again in place: the open folds (Table, Raw JSON) stay open, and the clicked element's tip goes
+function redrawMix(b) {
+  const box = b.closest("#mix, #fview"); if (!box) return;
+  const open = [...box.querySelectorAll("details")].map(x => x.open);
+  box.innerHTML = renderMix(MIX_SHOWN);
+  box.querySelectorAll("details").forEach((x, i) => { if (open[i]) x.open = true; });
+  tip.style.display = "none";
+}
 document.addEventListener("click", e => {
   const b = e.target.closest("[data-mixview]"); if (!b || !MIX_SHOWN) return;
   try { localStorage.setItem("ta-mix-view", b.dataset.mixview); } catch (err) {}
-  const box = b.closest("#mix, #fview"); if (box) box.innerHTML = renderMix(MIX_SHOWN);
+  redrawMix(b);
 });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-mixsel]"); if (!b || !MIX_SHOWN) return;
+  const sel = JSON.parse(b.dataset.mixsel);
+  MIX_SEL = MIX_SEL && MIX_SEL.kind === sel.kind && MIX_SEL.label === sel.label ? null : sel;
+  redrawMix(b);
+});
+// A track's mood as played (top two), with the tempo view's and its own-tempo moods in the tip
+function moodCell(t) {
+  const h = t.heard_mood; if (!h) return "";
+  const top = Object.entries(h).sort((a, b) => b[1] - a[1]).slice(0, 2);
+  const line = (name, m) => m ? `\n${name}: ${Object.entries(m).map(([k, v]) => `${k} ${pct(v)}`).join(" · ")}` : "";
+  return `<span class="small" data-tip="${esc(`Mood as played${line("as played", h)}${line(`tempo view${t.view_bpm ? ` (${t.view_bpm} BPM)` : ""}`, t.view_mood)}${line("own tempo", t.own_mood)}${t.view_genre ? `\nview genre: ${t.view_genre}` : ""}`)}">${top.map(([k, v]) => `${esc(k)} ${pct(v)}`).join("<br>")}</span>`;
+}
+// What the analysed mixes add up to (mixreport.py)
+function renderMixReport(r) {
+  const old = r.mixes.filter(m => !m.mood_timeline).length, k = r.keys, v = r.view, a = r.arc;
+  const moodRows = Object.entries(v.moods);
+  return `
+    <div class="page-head"><div><h2>Across your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
+    <div class="card"><h3>Keys Traktor may have wrong <span class="dim small">(heard in your mixes = our key, not Traktor's; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
+      ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || f.path.split("/").pop())}<div class="dim small">${esc(f.artist || "")}</div>` },
+        { h: "Traktor", f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
+        : `<div class="dim">None${k.mixes ? "" : " yet: needs mixes analysed with the CNN reading the heard key, played with key lock on"}.</div>`}
+      <div class="note">A track heard in one mix only is a hint; the same key in several mixes is a good reason to check it in Traktor.</div></div>
+    <div class="card"><h3>Mood as played vs the track alone <span class="dim small">(${v.tracks} tracks)</span></h3>
+      ${moodRows.length ? table([{ h: "Mood", f: ([m]) => esc(m) }, { h: "As played", r: 1, f: ([, x]) => pct(x.heard) },
+        { h: "Tempo view", r: 1, f: ([, x]) => `${pct(x.view)} <span class="dim small">off by ${pct(x.view_error)}</span>` },
+        { h: "Own tempo", r: 1, f: ([, x]) => `${pct(x.own)} <span class="dim small">off by ${pct(x.own_error)}</span>` }, { h: "Tracks", r: 1, f: ([, x]) => x.tracks }], moodRows)
+        : `<div class="dim">Nothing yet: needs mixes analysed with this version, and a tempo view scanned near the tempo you played.</div>`}
+      ${v.genre.tracks ? `<div class="note">Genre as played is the tempo view's on ${v.genre.same_as_view} of ${v.genre.tracks} tracks, the track's own on ${v.genre.same_as_own}.</div>` : ""}
+      <div class="note">"Off by": the mean distance from what was heard in the mix. The smaller one predicts what you play better. The mix has blends, the other deck and your effects in it, so expect some distance either way.</div></div>
+    <div class="card"><h3>Your sets by fifth <span class="dim small">(mood measured in ${a.mixes} recordings, each counted once)</span></h3>
+      ${a.parts.length ? table([{ h: "Part", f: p => `<span class="nowrap">${p.part} of 5</span>` }, ...[...new Set(a.parts.flatMap(p => Object.keys(p.mood)))].map(m => ({ h: m, r: 1, f: p => pct(p.mood[m]) })), { h: "LUFS", r: 1, f: p => fmt(p.lufs, 1) }, { h: "Mixes", r: 1, f: p => p.mixes }], a.parts)
+        : `<div class="dim">Nothing yet: needs mixes analysed with this version.</div>`}
+      <div class="note">At the tempo you play, the models may hear sped-up tracks as more aggressive or party than they are alone; compare with the table above before reading much into it.</div></div>
+    <div class="card"><h3>Changes of track <span class="dim small">(key to key as heard)</span></h3>
+      ${Object.keys(r.transitions).length ? `<div>${Object.entries(r.transitions).map(([t, n]) => `<span class="chip ${t === "clash" ? "bad" : t === "two steps" ? "warn" : "good"}">${n} ${esc(t)}</span>`).join(" ")}</div>` : `<div class="dim">Nothing yet.</div>`}
+      ${table([{ h: "Mix", f: m => esc(mixTitle({ recording: m.file })) }, { h: "Tracks", r: 1, f: m => m.tracks }, { h: "Key lock", f: m => esc(m.keylock || "–") },
+        { h: "Blend lag", f: m => m.blend_lag_seconds == null ? "–" : `${m.blend_lag_seconds} s${m.matches_per_lag ? ` <span class="dim small">${Object.entries(m.matches_per_lag).map(([l, n]) => `${l}:${n}`).join(" ")}</span>` : ""}` },
+        { h: "Changes", f: m => m.transitions ? esc(Object.entries(m.transitions).map(([t, n]) => `${n} ${t}`).join(", ")) : "–" }, { h: "Keys heard by", f: m => m.key_model ? esc(m.key_model) : `<span class="dim small" data-tip="Analysed before the model was saved with it: Essentia before 1 Nov 2026, the CNN since">not saved</span>` }], r.mixes)}</div>`;
+}
 function renderMix(d) {
   const tl = d.timeline || [], tlist = d.tracklist, hl = d.highlights || [];
   const lufs = tl.map(s => s.lufs ?? -40), lo = Math.min(...lufs) - 2, hi = Math.max(...lufs);
@@ -2920,48 +3000,69 @@ function renderMix(d) {
   const segHl = s => hlSecs.some(([a, b]) => toSec(s.start) < b && toSec(s.end) > a);
   const everyX = Math.ceil(tl.length / 10);
   const kl = tlist?.keylock;
+  if (MIX_SHOWN !== d) MIX_SEL = null;
   MIX_SHOWN = d;
+  const sel = MIX_SEL, isOn = (kind, label) => !!sel && sel.kind === kind && sel.label === label;
+  const str = sel ? mixSelStrength(d, sel) : null, trackStr = sel && tlist ? trackSelStrength(d, sel) : null;
+  const segMood = tl.some(s => s.mood);
+  const selName = sel ? `${sel.label}${sel.kind === "mood" ? " (mood)" : ""}` : "";
+  // a segment without it fades; with it, fully there (a style or mood in proportion)
+  const fade = i => !str || str[i] == null ? "" : `opacity:${(0.12 + 0.88 * str[i] ** 2).toFixed(2)};`;
   const plays = segmentPlays(d), canHype = plays.some(x => x.hype != null), view = canHype ? mixView() : "loudness";
   const lib = d.library || {};
   const segBar = (s, i) => {
-    const pl = plays[i], tip = `${s.start}–${s.end}\n${pl.hype != null ? `hype ${pl.hype.toFixed(1)} · ` : ""}${s.lufs} LUFS\n${s.dj_genre || "–"} · ${s.bpm ?? "–"} BPM · ${s.camelot || "–"} (${s.key || ""})\n${(s.styles || []).join(", ")}${pl.tracks.length ? "\n♪ " + pl.tracks.join("\n♪ ") : s.tracks?.length ? "\n♪ " + s.tracks.join("\n♪ ") : ""}`;
-    if (view === "loudness") return `<div class="seg" style="height:${((s.lufs ?? lo) - lo) / (hi - lo || 1) * 100}%" data-tip="${esc(tip)}"></div>`;
-    return pl.hype == null ? `<div class="seg none" data-tip="${esc(tip)}"></div>`
-      : `<div class="seg ${pl.guessed ? "pred" : ""}" style="height:${pl.hype * 10}%;${pl.colour ? `background:var(--c-${pl.colour.toLowerCase()})` : ""}" data-tip="${esc(tip)}"></div>`;
+    const pl = plays[i], tip = `${s.start}–${s.end}${str?.[i] != null && sel.kind !== "genre" ? `\n${selName}: ${sel.kind === "mood" ? pct(s.mood[sel.label]) : `${Math.round(str[i] * 100)}% of its strongest segment`}` : ""}\n${pl.hype != null ? `hype ${pl.hype.toFixed(1)} · ` : ""}${s.lufs} LUFS\n${s.dj_genre || "–"} · ${s.bpm ?? "–"} BPM · ${s.camelot || "–"} (${s.key || ""})\n${(s.styles || []).join(", ")}${s.mood ? `\nmood: ${Object.entries(s.mood).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${pct(v)}`).join(" · ")}` : ""}${pl.tracks.length ? "\n♪ " + pl.tracks.join("\n♪ ") : s.tracks?.length ? "\n♪ " + s.tracks.join("\n♪ ") : ""}`;
+    const colour = pl.colour ? `background:var(--c-${pl.colour.toLowerCase()});` : "";
+    if (view === "loudness") return `<div class="seg ${pl.guessed && !str ? "pred" : ""}" style="height:${((s.lufs ?? lo) - lo) / (hi - lo || 1) * 100}%;${colour}${fade(i)}" data-tip="${esc(tip)}"></div>`;
+    return pl.hype == null ? `<div class="seg none" style="${fade(i)}" data-tip="${esc(tip)}"></div>`
+      : `<div class="seg ${pl.guessed && !str ? "pred" : ""}" style="height:${pl.hype * 10}%;${colour}${fade(i)}" data-tip="${esc(tip)}"></div>`;
   };
   return `
     <div class="page-head"><div><h2>${esc(mixTitle({ recording: (d.file || "").split("/").pop() }))}</h2><div class="muted">${REC_NAME.test(d.file || "") ? `${esc(d.file.split("/").pop())} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
     <div class="grid">
-      <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score })))}
+      <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score, sel: { kind: "genre", label: g.genre }, on: isOn("genre", g.genre) })))}
         ${d.genre_basis?.dj_genre ? `<div class="note">${esc(d.genre_basis.dj_genre)}</div>` : ""}
         ${d.dj_genre_uncorrected ? `<div class="note">Without the psy gate: ${d.dj_genre_uncorrected.map(g => `${esc(g.genre)} ${g.score}`).join(", ")}</div>` : ""}</div>
-      <div class="card"><h3>Mood</h3>${bars(Object.entries(d.mood || {}).map(([k, v]) => ({ label: k, value: v })), { max: 1, fmtVal: pct })}
+      <div class="card"><h3>Mood</h3>${bars(Object.entries(d.mood || {}).map(([k, v]) => ({ label: k, value: v, ...(segMood ? { sel: { kind: "mood", label: k }, on: isOn("mood", k) } : {}) })), { max: 1, fmtVal: pct })}
+        ${tl.length && !segMood ? `<div class="note">Analyse the mix again to see its moods along the timeline.</div>` : ""}
         <div class="note">vocals ${pct(d.vocal_share)} of the mix · approachability ${fmt(d.approachability)}</div></div>
-      <div class="card"><h3>Styles</h3>${bars((d.discogs_styles || []).map(s => ({ label: s.style, value: s.score })))}
+      <div class="card"><h3>Styles</h3>${bars((d.discogs_styles || []).map(s => ({ label: s.style, value: s.score, sel: { kind: "style", label: s.style }, on: isOn("style", s.style) })))}
         ${d.mixing ? `<div class="note">What the mixing (effects, stems, overlap) added: ${[...(d.mixing.up || []), ...(d.mixing.down || [])].map(esc).join(", ") || "nothing notable"}</div>` : ""}</div>
     </div>
-    ${tl.length ? `<div class="card"><div class="filters" style="margin-bottom:8px"><h3 style="margin:0">Timeline <span class="dim small">(${view === "hype" ? "hype and colour of the tracks you played, from your library" : "loudness"} per ${esc(tl[0].start)}–${esc(tl[0].end)} segment; hover for more)</span></h3><div class="spacer"></div>
+    ${tl.length ? `<div class="card"><div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Timeline</h3><div class="spacer"></div>
+        ${sel ? `<button class="chip" data-mixsel="${esc(JSON.stringify(sel))}" data-tip="Stop showing it">${esc(selName)} ✕</button>` : ""}
         ${canHype ? `<div class="seg-toggle"><button data-mixview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-mixview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
+      <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? " and Traktor colour of the tracks you played" : ""} per ${esc(tl[0].start)}–${esc(tl[0].end)} segment; hover for more, click a genre, style or mood above to show where it is</div>
       <div class="timeline">${tl.map(segBar).join("")}</div>
+      ${str ? `<div class="tl-clips tl-sel">${tl.map((s, i) => `<span style="opacity:${str[i] ?? 0}"></span>`).join("")}</div>` : ""}
       ${hl.length ? `<div class="tl-clips">${tl.map(s => `<span class="${segHl(s) ? "on" : ""}"></span>`).join("")}</div>` : ""}
       <div class="tl-x">${tl.map((s, i) => `<span>${i % everyX ? "" : esc(s.start)}</span>`).join("")}</div>
-      <div class="legend">${view === "hype" ? `<span>height = hype 1-10 · colour = your Traktor colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}</span>${plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}` : ""}
+      <div class="legend">${sel ? `<span><i style="background:var(--accent)"></i>${esc(selName)}: ${sel.kind === "genre" ? "the segment's genre" : sel.kind === "mood" ? "brighter = more of the segment sounds it, against the most" : "brighter = higher among the segment's top 3 styles, against the highest"}${str.every(v => !v) ? " (in no segment)" : ""}</span>` : ""}
+        ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your Traktor colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
+        ${view === "hype" && plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}
         ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${canHype || d.tracklist ? "" : `<span>Analyse it with the tracklist check to see the hype and colours of what you played.</span>`}</div>
       <details style="margin-top:10px"><summary class="small muted">Table</summary>${table([{ h: "Time", f: s => `${esc(s.start)}–${esc(s.end)}` }, { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") },
         { h: "LUFS", r: 1, f: s => fmt(s.lufs, 1) }, ...(canHype ? [{ h: "Hype", r: 1, f: s => { const pl = plays[tl.indexOf(s)]; return pl.hype == null ? "–" : `${sw(pl.colour, pl.guessed)} ${fmt(pl.hype, 1)}`; } }] : []), { h: "Genre", f: s => esc(s.dj_genre || "–") }, { h: "Styles", f: s => `<span class="small">${esc((s.styles || []).join(", "))}</span>` }, { h: "Tracks", f: s => `<span class="small">${esc((s.tracks || []).join(" · "))}</span>` }], tl)}</details></div>` : ""}
     ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against Traktor's history</span></h3>
       <dl class="facts"><dt>History</dt><dd class="mono" style="word-break:break-all">${esc(tlist.history)}</dd><dt>Recording start</dt><dd>${esc(tlist.recording_start)}</dd>
       ${kl ? `<dt>Key lock</dt><dd><b>${esc(kl.verdict)}</b> · ${esc(kl.summary)} <span class="dim small">(${esc(kl.basis)}; blend lag ${kl.blend_lag_seconds} s)</span></dd>` : ""}
+      ${kl?.matches_per_lag ? `<dt>Blend lag</dt><dd>${Object.entries(kl.matches_per_lag).map(([lag, n]) => `<span class="${+lag === kl.blend_lag_seconds ? "" : "dim"}">${lag} s: ${n}</span>`).join(" · ")} <span class="dim small">keys matching at each lag; a clear winner means the tracks' stretches are placed right</span></dd>` : ""}
+      ${tlist.transitions ? `<dt>Changes</dt><dd>${Object.entries(tlist.transitions).map(([k, n]) => `${n} ${esc(k)}`).join(", ")} <span class="dim small">key to key as heard, on the Camelot wheel</span></dd>` : ""}
       ${tlist.overlap_share != null ? `<dt>Overlap</dt><dd>${pct(tlist.overlap_share)} of the mix has two decks playing</dd>` : ""}</dl>
       ${table([{ h: "#", r: 1, f: t => t.n }, { h: "Start", f: t => esc(t.start) }, { h: "Deck", f: t => esc(t.deck || "") }, { h: "Track", f: trackName },
-        ...(canHype ? [{ h: "Hype", r: 1, f: t => lib[t.n] ? `${sw(lib[t.n].colour, lib[t.n].guessed)} ${lib[t.n].hype ?? "–"}` : "–" }] : []),
+        ...(canHype ? [{ h: "Hype", r: 1, f: t => lib[t.n] ? `<span class="nowrap">${sw(lib[t.n].colour, lib[t.n].guessed)} ${lib[t.n].hype ?? "–"}</span>` : "–" }] : []),
         { h: "BPM", f: t => `${fmt(t.bpm)}${t.played_bpm ? ` → ${t.played_bpm} <span class="dim small">${esc(t.speed || "")}</span>` : ""}` },
-        { h: "Key", f: t => `${esc(t.camelot || "–")}${t.heard_camelot && t.heard_camelot !== t.camelot ? ` <span class="dim small">heard ${esc(t.heard_camelot)}</span>` : ""} ${keyChip(t)}` },
+        { h: "Key", f: t => `${esc(t.camelot || "–")}${t.heard_camelot && t.heard_camelot !== t.camelot ? ` <span class="dim small">heard ${esc(t.heard_camelot)}</span>` : ""} ${keyChip(t)}`
+          + (t.library_camelot && t.library_camelot !== t.camelot ? `<div class="dim small" data-tip="Our key (the CNN's, of the track alone) differs from Traktor's">ours ${esc(t.library_camelot)}</div>` : "")
+          + (t.transition ? `<div class="small"><span class="chip ${t.transition === "clash" ? "bad" : t.transition === "two steps" ? "warn" : "good"}" data-tip="From the track before, key to key as heard">${esc(t.transition)}</span></div>` : "") },
+        ...(tlist.tracks?.some(t => t.heard_mood) ? [{ h: "Mood", f: moodCell }] : []),
         { h: "Genre", f: t => `${esc(t.library_genre || "–")}${t.genre && t.genre !== t.library_genre ? ` → <b>${esc(t.genre)}</b>` : ""}${t.genre_uncorrected && t.genre_uncorrected !== t.genre ? `<div class="dim small">ungated ${esc(t.genre_uncorrected)}</div>` : ""}` },
         { h: "Mixing", f: t => t.mixing ? `<span class="small">${[...(t.mixing.up || []), ...(t.mixing.down || [])].map(esc).join(", ")}</span>` : "" },
-        { h: "Judged on", f: t => `<span class="small dim">${esc(t.judged_on || t.note || "")}</span>` }], tlist.tracks || [])}</div>` : ""}
+        { h: "Judged on", f: t => `<span class="small dim">${esc(t.judged_on || t.note || "")}</span>` }], tlist.tracks || [],
+        { rowAttr: (t, i) => { const k = trackStr?.strength[i]; if (k == null) return ""; const v = trackStr.value[i];
+          return k < 0.5 ? `style="opacity:.45"` : `style="background:color-mix(in srgb, var(--accent) ${Math.round(k ** 2 * 35)}%, transparent)" data-tip="${esc(`${selName}: ${sel.kind === "genre" ? "its genre as heard" : sel.kind === "mood" ? `${pct(v)} over its stretch of the mix` : `${fmt(v, 2)} over its stretch of the mix`}`)}"`; } })}</div>` : ""}
     ${hl.length ? `<div class="card"><h3>Clip suggestions</h3>${table([{ h: "Rank", r: 1, f: h => h.rank }, { h: "Mix time", f: h => `${esc(h.start)}–${esc(h.end)}` },
-        { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, { h: "Track", f: h => esc(h.track || "") }], hl)}
+        { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, ...(hl.some(h => h.energy != null) ? [{ h: "Energy", r: 1, f: h => pct(h.energy) }] : []), { h: "Track", f: h => esc(h.track || "") }], hl)}
       <div class="note">Make previews: <span class="mono">clips &lt;this.json&gt; --video &lt;final.mp4&gt;</span></div></div>` : ""}
     ${d.chapters?.length ? `<div class="card"><h3>YouTube chapters <button style="float:right" onclick="navigator.clipboard.writeText(this.closest('.card').querySelector('textarea').value);this.textContent='Copied'">Copy</button></h3><textarea readonly>${esc(d.chapters.join("\n"))}</textarea></div>` : ""}
     <details class="card"><summary class="muted">Raw JSON</summary><div class="tree" style="margin-top:8px">${tree(d)}</div></details>`;

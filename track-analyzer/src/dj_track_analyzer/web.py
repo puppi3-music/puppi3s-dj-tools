@@ -20,7 +20,7 @@ from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import analysis, collection, jobs, traktor
+from . import analysis, collection, jobs, mixreport, traktor
 from .analysis import COLOR_NAMES, HOME, log
 
 PAGE = Path(__file__).with_name("web") / "index.html"
@@ -1252,6 +1252,7 @@ def snapshot(dirs: list[Path], progress=log) -> str:
         if f["kind"] == "mix":
             data["saved"].append(f)
             data["files"][f["id"]] = saved_file(dirs, f["id"])
+    data["mixes_report"] = _try(mixreport.report, dirs)
     blob = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     page = PAGE.read_text(encoding="utf-8")
     return page.replace("<script>\n\"use strict\";", f"<script>window.SNAPSHOT = {blob};</script>\n<script>\n\"use strict\";", 1)
@@ -1440,6 +1441,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/tempo/report", respond(lambda q: tempo_report(num(q, "bpm", 145.0), int(num(q, "limit", 25))))),
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
+        Route("/api/mixes-report", respond(lambda q: mixreport.report(log_dirs))),
         Route("/api/recordings", respond(lambda q: recordings(log_dirs))),
         Route("/api/recordings/find", post(lambda b: {"path": find_recording(str(b["name"]), int(b["size"]))}), methods=["POST"]),
         Route("/api/mix-upload", mix_upload, methods=["POST"]),

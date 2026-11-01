@@ -374,17 +374,22 @@ def mood_models() -> dict:
     return _moods["loaded"]
 
 
-def run_moods(emb: np.ndarray, mask: np.ndarray) -> dict:
-    """Mood scores 0-1 (share of the main section that sounds aggressive, happy, ...). A head that fails
-    on this track is left out for this track only (the cache then counts it as missing, see deep_missing)."""
+def mood_patches(emb: np.ndarray) -> dict:
+    """{mood: its positive-class probability per EffNet patch}. A head that fails on this track is left out."""
     out = {}
     for m, (model, idx) in mood_models().items():
         try:
-            p = np.asarray(model(emb), dtype=np.float32).reshape(len(emb), -1)
-            out[m] = round(float(p[mask, idx].mean()), 3)
+            out[m] = np.asarray(model(emb), dtype=np.float32).reshape(len(emb), -1)[:, idx]
         except Exception as err:
             log(f"mood model {m} failed on this track ({err})")
     return out
+
+
+def run_moods(emb: np.ndarray, mask: np.ndarray, patches: dict | None = None) -> dict:
+    """Mood scores 0-1 (share of the main section that sounds aggressive, happy, ...). A head that fails
+    on this track is left out for this track only (the cache then counts it as missing, see deep_missing)."""
+    patches = mood_patches(emb) if patches is None else patches
+    return {m: round(float(p[mask].mean()), 3) for m, p in patches.items()}
 
 
 def moods_missing(cached: dict | None) -> bool:
@@ -1586,13 +1591,14 @@ def track_embedding(p: Path):
 def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool = True,
                  genre_bpm: float | None = None, tempo: tuple[float, float] | None = None,
                  progress: bool = False, tracklist: tuple | None = None, highlights: int = 0,
-                 clip_seconds: float = 40.0, own_bpm: float | None = None) -> dict:
+                 clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0) -> dict:
     """tracklist: (plays, history path, recording start) from tracklist.py, for a mix: adds a per-track
     report and judges genres at the tracks' own BPMs. genre_bpm: a BPM to judge the genre rules by instead of the measured one (scan passes
     Traktor's, which the user may have corrected by hand). tempo: (track's BPM, BPM to play it at)
     analyses the track sped up / slowed down with key lock (`tempo scan`). own_bpm: with tempo, the BPM we
     measured at the track's own tempo, for the colour model (trained on those; defaults to tempo[0]). progress: print the stage
-    being worked on to stderr (the `analyze` command)."""
+    being worked on to stderr (the `analyze` command). clip_mood: weight of how party / aggressive a clip sounds in
+    the highlights' score (tracklist.highlights' energy_weight)."""
     def say(msg: str) -> None:
         if progress:
             log(f"[{time.time() - t0:5.1f}s] {msg}")
@@ -1621,8 +1627,6 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         # where a silence-trimmed copy (FLAC/MP3) starts; only a fallback anchor for video times without a
         # tracklist. Where the music starts in the video is the user's --offset, read off the finished video.
         result["first_sound_seconds"] = round(tl.first_sound(mono44), 2)
-        if highlights:
-            result["highlights"] = tl.highlights(short, duration, highlights, clip_seconds)
 
     if not is_mix and tempo:
         # Stretched to a known tempo: no need to measure it. The colour model below gets the track's
@@ -1649,6 +1653,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         result["energy_curve"] = energy_curve(short, duration)
 
     # Style model (needs the downloaded models)
+    mood_p = None
     try:
         say("running the style model (EffNet)")
         emb, acts, emb_mean, acts_mean, coverage, mask = pooled_effnet(mono16)
@@ -1676,7 +1681,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         mine = predict_my_genre(emb_mean)
         if mine:
             result["my_genre"] = mine
-        moods = run_moods(emb, mask)
+        mood_p = mood_patches(emb)
+        moods = run_moods(emb, mask, mood_p)
         if moods:
             result["mood"] = moods
         instruments = run_instruments(emb, mask)
@@ -1702,16 +1708,23 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         emb = acts = scores = None
         result["styles_error"] = str(err)
 
+    if is_mix and highlights:
+        from . import tracklist as tl
+
+        result["highlights"] = tl.highlights(short, duration, highlights, clip_seconds,
+                                             energy=tl.mood_energy(mood_p, duration), energy_weight=clip_mood)
+
     if segment_seconds or (tracklist and is_mix):
         with AudioPool(mono44) as pool:
             if segment_seconds:
                 say(f"building the timeline ({pool.workers} processes)")
-                result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool)
+                result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool,
+                                                      moods=mood_p)
             if tracklist and is_mix:
                 from . import tracklist as tl
 
                 say("checking against the tracklist")
-                tl.check(result, pool, acts, scores, duration, *tracklist)
+                tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p)
 
     result["analysis_seconds"] = round(time.time() - t0, 1)
     return result
@@ -1731,8 +1744,9 @@ def _audio_pool_init(npy: str) -> None:
     _AUDIO["mono44"] = np.load(npy, mmap_mode="r")
 
 
-def _measure(job: tuple[float, float, bool, bool]) -> dict:
-    """job: (start s, end s, want BPM, want key) -> {"bpm": raw BPM, "key": (key, scale, strength)}."""
+def _measure(job: tuple[float, float, bool, bool | str]) -> dict:
+    """job: (start s, end s, want BPM, want key) -> {"bpm": raw BPM, "key": (key, scale, strength)}; want key "cnn"
+    -> "cnn_camelot" instead, MusicalKeyCNN's key (as the library's)."""
     a, b, want_bpm, want_key = job
     x = np.ascontiguousarray(_AUDIO["mono44"][int(a * 44100): int(b * 44100)], dtype=np.float32)
     out = {}
@@ -1741,7 +1755,11 @@ def _measure(job: tuple[float, float, bool, bool]) -> dict:
             out["bpm"] = rhythm(x)[0]
         except Exception:
             pass
-    if want_key:
+    if want_key == "cnn":
+        from . import keycnn
+
+        out["cnn_camelot"] = keycnn.key_cnn(x)["camelot"]
+    elif want_key:
         out["key"] = key_of(x)
     return out
 
@@ -1765,11 +1783,26 @@ class AudioPool:
             self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_audio_pool_init, initargs=(npy,))
         return self
 
-    def measure(self, jobs: list[tuple[float, float, bool, bool]]) -> list[dict]:
+    def measure(self, jobs: list[tuple[float, float, bool, bool | str]], meter=None) -> list[dict]:
+        """Results in the jobs' order. meter(n done) -> a line to show while it runs, kept updated in place (\\r) on
+        stderr, as the page's job bar shows it; the last one stays."""
         if self._pool is None or len(jobs) < 2:
             _AUDIO["mono44"] = self.mono44
-            return [_measure(j) for j in jobs]
-        return self._pool.map(_measure, jobs, chunksize=1)
+            results = (_measure(j) for j in jobs)
+        else:
+            results = self._pool.imap(_measure, jobs, chunksize=1)
+        out = []
+        if meter:
+            sys.stderr.write(f"\r{meter(0)}")
+            sys.stderr.flush()
+        for m in results:
+            out.append(m)
+            if meter:
+                sys.stderr.write(f"\r{meter(len(out))}")
+                sys.stderr.flush()
+        if meter:
+            sys.stderr.write("\n")
+        return out
 
     def __exit__(self, exc_type, *_):
         if self._pool is not None:
@@ -1782,8 +1815,8 @@ class AudioPool:
         _AUDIO.pop("mono44", None)
 
 
-def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None):
-    """Per-segment BPM, key, loudness and style: useful for DJ mixes."""
+def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None, moods: dict | None = None):
+    """Per-segment BPM, key, loudness, style and mood (moods = mood_patches of emb): useful for DJ mixes."""
     timeline = []
     n_seg = max(1, int(np.ceil(duration / seg_sec)))
     have_model = emb is not None and len(emb) > 0
@@ -1791,7 +1824,8 @@ def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPoo
     spans = [(i * seg_sec, min(duration, (i + 1) * seg_sec)) for i in range(n_seg)]
     spans = [(a, b) for a, b in spans if b - a >= 20]
     jobs = [(a, b, True, True) for a, b in spans]
-    measured = pool.measure(jobs) if pool else AudioPool(mono44, workers=1).measure(jobs)
+    meter = lambda n: f"  segments measured: {n}/{len(jobs)}"  # noqa: E731
+    measured = (pool or AudioPool(mono44, workers=1)).measure(jobs, meter)
     for (start, end), m in zip(spans, measured):
         seg = {"start": fmt_time(start), "end": fmt_time(end)}
         if "bpm" in m:
@@ -1816,6 +1850,8 @@ def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPoo
                 probs = model.predict_proba(emb[i0:i1].mean(axis=0).reshape(1, -1))[0]
                 j = int(np.argmax(probs))
                 seg["my_genre"] = f"{model.classes_[j]} {probs[j]:.2f}"
+            if moods:
+                seg["mood"] = {m: round(float(p[i0:i1].mean()), 3) for m, p in moods.items()}
         timeline.append(seg)
     return timeline
 
