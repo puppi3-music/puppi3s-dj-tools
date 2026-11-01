@@ -277,7 +277,17 @@ details.fold .sub:first-child { margin-top: 0; }
 .tl-x span { flex: 1; text-align: left; overflow: hidden; white-space: nowrap; }
 .tl-wrap { position: relative; }
 .tl-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
-.tl-wrap polyline { fill: none; stroke: var(--text); stroke-opacity: .4; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.tl-wrap line, .tl-wrap polyline, .tl-key line { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.tl-wrap .halo, .tl-key .halo { stroke: var(--surface); stroke-width: 3; stroke-opacity: .6; }
+.tl-wrap .range, .tl-key .range { stroke: var(--text); stroke-width: 1.2; stroke-opacity: .7; }
+.tl-wrap polyline.halo { stroke-width: 5; }
+.tl-wrap polyline.one { stroke: var(--accent); stroke-width: 2.5; }
+.tl-key { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--text-2); margin-top: 10px; }
+.tl-key svg { width: 26px; height: 16px; display: block; }
+.tl-key .sw { display: flex; gap: 2px; align-items: flex-end; height: 16px; width: 26px; }
+.tl-key .sw i { flex: 1; border-radius: 2px 2px 0 0; }
+.tl-key .sets { display: flex; gap: 6px; flex-wrap: wrap; }
+.tl-key .sets button { font-size: 12px; padding: 2px 9px; border-radius: 99px; }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 textarea { width: 100%; min-height: 220px; font-family: var(--mono); font-size: 12px; background: var(--surface-2); color: var(--text);
@@ -2970,34 +2980,52 @@ function moodCell(t) {
   return `<span class="small" data-tip="${esc(`Mood as played${line("as played", h)}${line(`tempo view${t.view_bpm ? ` (${t.view_bpm} BPM)` : ""}`, t.view_mood)}${line("own tempo", t.own_mood)}${t.view_genre ? `\nview genre: ${t.view_genre}` : ""}`)}">${top.map(([k, v]) => `${esc(k)} ${pct(v)}`).join("<br>")}</span>`;
 }
 // Your sets stretched to the same length (mixreport.shape): bars = the mean per slice, a faint line per mix
-let SHAPE_SHOWN = null;
+let SHAPE_SHOWN = null, SHAPE_PICK = null;  // SHAPE_PICK: the set whose own line is drawn (its file)
 function shapeTimeline(sh) {
   const n = sh.slices, canHype = sh.hype.some(x => x.value != null), view = canHype ? mixView() : "loudness";
   const key = view === "hype" ? "hype" : "lufs", all = [...sh[key].map(x => x.value), ...sh.mixes.flatMap(m => m[key] || [])].filter(v => v != null);
   const lo = Math.min(...all) - 2, hi = Math.max(...all);
   const h = v => v == null ? null : view === "hype" ? v * 10 : (v - lo) / (hi - lo || 1) * 100;
   const step = 100 / n, val = v => v == null ? "–" : view === "hype" ? fmt(v, 1) : `${fmt(v, 1)} LUFS`;
+  const name = m => mixTitle({ recording: m.file });
   const bar = (x, i) => {
-    const c = sh.colour[i], tip = `${Math.round(i * step)}–${Math.round((i + 1) * step)}% of the set\n${view === "hype" ? "hype" : "loudness"} ${val(x.value)} · mean of ${`${x.mixes} ${x.mixes === 1 ? "mix" : "mixes"}`}${c ? `\nmostly ${c}` : ""}\n`
-      + sh.mixes.map(m => `${mixTitle({ recording: m.file })}: ${val(m[key]?.[i])}${m.colour[i] && view === "hype" ? ` · ${m.colour[i]}` : ""}`).join("\n");
+    const c = sh.colour[i], tip = `${Math.round(i * step)}–${Math.round((i + 1) * step)}% of the set\n${view === "hype" ? "hype" : "loudness"} ${val(x.value)} · average of ${x.mixes} ${x.mixes === 1 ? "set" : "sets"}${c ? `\nmostly ${c}` : ""}\n`
+      + sh.mixes.map(m => `${name(m)}: ${val(m[key]?.[i])}${m.colour[i] && view === "hype" ? ` · ${m.colour[i]}` : ""}`).join("\n");
     return x.value == null ? `<div class="seg none" data-tip="${esc(tip)}"></div>`
       : `<div class="seg" style="height:${h(x.value)}%;${c ? `background:var(--c-${c.toLowerCase()});` : ""}" data-tip="${esc(tip)}"></div>`;
   };
-  // a mix's line, broken where it has no value (a slice before the first track or with only unknown tracks)
+  // per slice, a line from the lowest set to the highest, with caps; a halo keeps it readable on any bar colour
+  const range = i => {
+    const v = sh.mixes.map(m => m[key]?.[i]).filter(x => x != null);
+    if (v.length < 2) return "";
+    const y0 = 100 - h(Math.max(...v)), y1 = 100 - h(Math.min(...v)), x = i + 0.5;
+    const d = `<line x1="${x}" y1="${y0}" x2="${x}" y2="${y1}"/><line x1="${x - 0.12}" y1="${y0}" x2="${x + 0.12}" y2="${y0}"/><line x1="${x - 0.12}" y1="${y1}" x2="${x + 0.12}" y2="${y1}"/>`;
+    return `<g class="halo">${d}</g><g class="range">${d}</g>`;
+  };
+  // the picked set's own line, broken where it has no value (before the first track, or only unknown tracks)
+  const pick = sh.mixes.find(m => m.file === SHAPE_PICK);
   const line = m => (m[key] || []).reduce((runs, v, i) => { if (v == null) runs.push([]); else runs[runs.length - 1].push(`${i + 0.5},${100 - h(v)}`); return runs; }, [[]])
-    .filter(r => r.length > 1).map(r => `<polyline points="${r.join(" ")}"/>`).join("");
-  return `<div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Your sets start to end <span class="dim small">(${`${sh.mixes.length} ${sh.mixes.length === 1 ? "mix" : "mixes"}`} stretched to the same length)</span></h3><div class="spacer"></div>
+    .filter(r => r.length > 1).map(r => `<polyline class="halo" points="${r.join(" ")}"/><polyline class="one" points="${r.join(" ")}"/>`).join("");
+  const used = [...new Set(sh.colour.filter(Boolean))].slice(0, 4);
+  return `<div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Your sets start to end <span class="dim small">(${sh.mixes.length} ${sh.mixes.length === 1 ? "set" : "sets"} stretched to the same length)</span></h3><div class="spacer"></div>
       ${canHype ? `<div class="seg-toggle"><button data-shapeview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-shapeview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
-    <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"} per ${Math.round(step)}% of the set: 50% is the middle of every set, whatever its length; hover for each mix</div>
+    <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype 1-10" : "Loudness"} per ${Math.round(step)}% of the set: 50% is the middle of every set, whatever its length. Hover a bar for each set.</div>
     <div class="tl-wrap"><div class="timeline">${sh[key].map(bar).join("")}</div>
-      <svg viewBox="0 0 ${n} 100" preserveAspectRatio="none" aria-hidden="true">${sh.mixes.map(line).join("")}</svg></div>
+      <svg viewBox="0 0 ${n} 100" preserveAspectRatio="none" aria-hidden="true">${sh[key].map((x, i) => range(i)).join("")}${pick ? line(pick) : ""}</svg></div>
     <div class="tl-x">${sh[key].map((x, i) => `<span>${i % (n / 4) ? "" : `${Math.round(i * step)}%`}</span>`).join("")}</div>
-    <div class="legend"><span>bars = the mean of your mixes${sh.colour.some(Boolean) ? ", coloured by the Traktor colour played longest there" : ""}</span><span><i style="background:var(--text);opacity:.4;height:2px"></i>one mix each</span></div>
-    <div class="note">With a handful of mixes the mean is rough: the lines show whether your sets really share the shape or one set pulls it.</div>`;
+    <div class="tl-key">
+      <div class="sw">${(used.length ? used : [null]).map((c, i) => `<i style="height:${[60, 100, 75, 45][i]}%;background:${c ? `var(--c-${c.toLowerCase()})` : "var(--bar)"}"></i>`).join("")}</div>
+      <div><b>Bar</b>: the average ${view === "hype" ? "hype" : "loudness"} of your sets there${used.length ? `; its colour is the Traktor colour played there most` : ""}</div>
+      <svg viewBox="0 0 26 16" aria-hidden="true"><g class="halo"><line x1="13" y1="2" x2="13" y2="14"/><line x1="9" y1="2" x2="17" y2="2"/><line x1="9" y1="14" x2="17" y2="14"/></g><g class="range"><line x1="13" y1="2" x2="13" y2="14"/><line x1="9" y1="2" x2="17" y2="2"/><line x1="9" y1="14" x2="17" y2="14"/></g></svg>
+      <div><b>Range</b>: from your lowest set to your highest there. Short: your sets agree; long: they don't, so read the bar loosely</div>
+      <svg viewBox="0 0 26 16" aria-hidden="true"><polyline points="1,12 9,5 17,10 25,3" style="fill:none;stroke:var(--accent);stroke-width:2.5"/></svg>
+      <div class="sets"><span>Show one set:</span>${sh.mixes.map(m => `<button data-shapepick="${esc(m.file)}" class="${m.file === SHAPE_PICK ? "on" : ""}">${esc(name(m))}</button>`).join("")}</div>
+    </div>`;
 }
 document.addEventListener("click", e => {
-  const b = e.target.closest("[data-shapeview]"); if (!b || !SHAPE_SHOWN) return;
-  try { localStorage.setItem("ta-mix-view", b.dataset.shapeview); } catch (err) {}
+  const b = e.target.closest("[data-shapeview], [data-shapepick]"); if (!b || !SHAPE_SHOWN) return;
+  if (b.dataset.shapeview) try { localStorage.setItem("ta-mix-view", b.dataset.shapeview); } catch (err) {}
+  if (b.dataset.shapepick) SHAPE_PICK = SHAPE_PICK === b.dataset.shapepick ? null : b.dataset.shapepick;
   b.closest("#shape").innerHTML = shapeTimeline(SHAPE_SHOWN);
   tip.style.display = "none";
 });
