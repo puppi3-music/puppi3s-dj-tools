@@ -1173,13 +1173,31 @@ def clear_uploads() -> None:
     shutil.rmtree(UPLOADS, ignore_errors=True)
 
 
-def saved_file(dirs: list[Path], ident: str):
+def _saved_path(dirs: list[Path], ident: str) -> Path:
     i, _, name = ident.partition("/")
     if not i.isdigit() or int(i) >= len(dirs) or Path(name).name != name or "\\" in name or name.startswith("."):
         raise ValueError("unknown file")
     f = dirs[int(i)] / name
     if not f.is_file():
         raise ValueError("unknown file")
+    return f
+
+
+def delete_saved(dirs: list[Path], ident: str) -> dict:
+    """Move a saved result into its folder's deleted/ (not read by the page; move it back to restore it)."""
+    f = _saved_path(dirs, ident)
+    bin_ = f.parent / "deleted"
+    bin_.mkdir(exist_ok=True)
+    to, n = bin_ / f.name, 2
+    while to.exists():  # an earlier one of the same name stays
+        to, n = bin_ / f"{f.stem} ({n}){f.suffix}", n + 1
+    f.rename(to)
+    log(f"Moved {f.name} to {to}")
+    return {"moved_to": str(to)}
+
+
+def saved_file(dirs: list[Path], ident: str):
+    f = _saved_path(dirs, ident)
     data = _json_in(f)
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
         data["library"] = played_tracks(data["tracklist"]["tracks"])
@@ -1441,6 +1459,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/tempo/report", respond(lambda q: tempo_report(num(q, "bpm", 145.0), int(num(q, "limit", 25))))),
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
+        Route("/api/saved-file/delete", post(lambda b: delete_saved(log_dirs, str(b["id"]))), methods=["POST"]),
         Route("/api/mixes-report", respond(lambda q: mixreport.report(log_dirs))),
         Route("/api/recordings", respond(lambda q: recordings(log_dirs))),
         Route("/api/recordings/find", post(lambda b: {"path": find_recording(str(b["name"]), int(b["size"]))}), methods=["POST"]),
