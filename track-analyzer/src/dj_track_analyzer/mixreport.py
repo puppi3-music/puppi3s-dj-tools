@@ -1,5 +1,5 @@
 """
-Across your recorded mixes (`mixes` command, the Mixes tab's Across your mixes): what the saved analyses of
+Across your recorded mixes (`mixes` command, the Mixes tab's All N mixes button): what the saved analyses of
 `analyze <mix> --tracklist` add up to. Read-only.
 
 - keys: tracks whose key heard in your mixes is our key (the CNN's, of the track alone) but not Traktor's: Traktor's
