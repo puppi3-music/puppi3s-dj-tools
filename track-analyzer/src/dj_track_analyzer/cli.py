@@ -70,6 +70,9 @@ def main() -> None:
                    help="for a mix: suggest the N best stretches for short clips (default 2)")
     a.add_argument("--clip-length", type=float, default=40.0, metavar="SECONDS",
                    help="length of each --highlights clip (default 40)")
+    a.add_argument("--clip-mood", type=float, default=0.0, metavar="LU",
+                   help="with --highlights: also favour clips that sound party / aggressive, worth up to this many LU "
+                        "of loudness (default 0: loudness and rise only; try 3)")
     a.add_argument("--json-only", action="store_true", help="for a mix: leave out the readable summary after the JSON")
     a.add_argument("--out", default=None, metavar="FILE.json",
                    help="save the JSON in this file instead of printing it (replaced once the analysis is done)")
@@ -278,6 +281,11 @@ def main() -> None:
     w.add_argument("--no-open", action="store_true", help="don't open the browser")
     w.add_argument("--export", metavar="FILE.html", default=None,
                    help="save a read-only snapshot of the page as one HTML file instead of serving it")
+    mx = sub.add_parser("mixes", help="what your analysed recorded mixes add up to: keys Traktor may have wrong, "
+                                      "mood as played vs the tempo view, your sets by fifth, key changes")
+    mx.add_argument("--logs", action="append", default=None, metavar="FOLDER",
+                    help="folder with the saved mix analyses (default logs/; repeat for several)")
+    mx.add_argument("--json", action="store_true", help="print the report as JSON")
     ho = sub.add_parser("hold", help="keep tracks' genre or colour as they are when writing to files, Traktor or Lexicon")
     ho.add_argument("--genre", metavar="TEXT", default=None, help="hold the genre of the scanned tracks whose path contains TEXT")
     ho.add_argument("--colour", "--color", dest="colour", metavar="TEXT", default=None,
@@ -310,7 +318,7 @@ def main() -> None:
 
             tracklist = prepare(args.file, args.tracklist, args.start)
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
-                              highlights=args.highlights, clip_seconds=args.clip_length)
+                              highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood)
         if result.get("type") == "dj_mix":
             from . import tracklist as tl
 
@@ -449,6 +457,12 @@ def main() -> None:
         from . import collection
 
         print(json.dumps(collection.summary(), indent=2, ensure_ascii=False))
+    elif args.cmd == "mixes":
+        from . import mixreport
+        from .web import LOGS
+
+        r = mixreport.report([Path(d).expanduser().resolve() for d in (args.logs or [])] or [LOGS])
+        print(json.dumps(r, indent=2, ensure_ascii=False) if args.json else mixreport.text(r))
     elif args.cmd == "web":
         from . import web
 

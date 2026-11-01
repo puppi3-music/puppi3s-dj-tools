@@ -144,10 +144,15 @@ After the JSON, a mix gets a readable summary (genre, tempo, loudness, mood, key
 with their keys and genres, and the timeline's genres); `--json-only` leaves it out. In the JSON, under
 `tracklist`, per track:
 
-- **Key:** Traktor's key against the key heard in the middle of the track's main stretch (from its start to
+- **Key:** Traktor's key against the key heard (by the same key CNN as your library) in the middle of the track's main stretch (from its start to
   the next track's start). Long blends and effects are normal, so the tool measures how long after Traktor
   logs a start a track takes over (`blend_lag_seconds`) as the delay at which most keys match. A mismatch
-  can still be the other deck; a track with under 30 s of its own gets no verdict.
+  can still be the other deck; a track with under 30 s of its own gets no verdict. `matches_per_lag` shows how
+  clearly that lag won. `library_camelot` is our key of the track alone; `transition` rates the change from the
+  track before, key to key as heard (same key, one step, two steps or clash on the Camelot wheel), totalled in
+  `transitions`.
+- **Mood:** `heard_mood` is the track's mood as played (its stretch of the mix), next to `own_mood` (the track
+  alone at its own tempo) and, with a tempo view near the tempo played, `view_mood` and `view_genre`.
 - **Key lock:** history files don't record it. It's taken as on, unless the keys fit the pitch-shifted
   keys (key lock off) clearly better.
 - **Tempo:** the track's own BPM, the BPM it was played at and the change (`speed`).
@@ -228,7 +233,7 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
-- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness), tracklist check, clip suggestions and chapters. **Analyse a mix…** lists Traktor's recordings and analyses the one you pick in the background.
+- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness; click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist), tracklist check (with each track's mood as played and the key change from the track before), clip suggestions and chapters; **Across your mixes** adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the one you pick in the background.
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
@@ -771,7 +776,8 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 |---|---|---|
 | `setup [--no-maest]` | Download or check the models | model files |
 | `analyze <file> [--segments 60] [--json-only] [--out FILE]` | One track as JSON; mixes get a timeline (`--segments`: step in seconds) and a readable summary after the JSON, on stderr (`--json-only` leaves it out); `--out` saves the JSON in a file instead (replacing it) | nothing, or the `--out` file |
-| `analyze <mix> --highlights [N] [--clip-length 40] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
+| `analyze <mix> --highlights [N] [--clip-length 40] [--clip-mood 0] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best) and `energy` (how party / aggressive it sounds, 0-1); `--clip-mood 3` also favours energetic clips, worth up to 3 LU of loudness (default 0: loudness only; untested against clips you liked). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
+| `mixes [--logs DIR] [--json]` | What your saved mix analyses add up to: keys Traktor may have wrong (heard in your mixes = our key, not Traktor's), mood as played vs each track alone and in the tempo view, your sets' mood by fifth, and key changes between tracks. Also the Mixes tab's **Across your mixes** | nothing |
 | `clips <analysis.json> --video <final.mp4> [--pick 1 4] [--height 1440] [--bitrate 16M] [--out DIR] [--previews DIR] [--force]` | 720p previews of the clip suggestions in `/tmp/clip-previews/`; with `--pick`, the chosen clips (numbers or ranges like `20:30-21:10`) at full quality next to the video. Needs ffmpeg | new video files |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |
 | `analyze <mix> --tracklist [history.nml] [--start HH:MM:SS]` | A recorded mix checked against Traktor's history file: each track's key heard vs Traktor's, the tempo it was played at, key lock, and the mix's genre with the psy-at-speed habit held back (see [Checking a recorded mix](#checking-a-recorded-mix)) | nothing |

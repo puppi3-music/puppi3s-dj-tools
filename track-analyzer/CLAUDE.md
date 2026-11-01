@@ -116,6 +116,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   movement in the same decode (64x36 grey at 2 fps, mean frame diff) → overall rank = mean(audio rank, movement
   rank) among the clips; files named "#overall clip-N MmSSs.mp4" (a new preview run deletes the old ones), --pick still takes N. Test set: audio #2 was at
   the 6th percentile of movement (checked: static), audio #4 at the 97th (lively).
+- `mixreport.py`: `mixes` command + /api/mixes-report (Mixes tab `#mixes/~all`, `renderMixReport`; in snapshots): saved mix
+  JSONs (newest per recording) added up: `keys` (heard = our CNN key ≠ Traktor's, key lock on, any heard model), `view`
+  (heard_mood vs own_mood / view_mood, mean and mean abs distance; genre as heard = view's / own), `arc` (timeline segment
+  mood by fifth, each mix once), transitions (CNN-keyed mixes only). Read-only.
 - `tracklist.py`: `analyze <mix> --tracklist`: Traktor history NML (COLLECTION entries joined to PLAYLIST
   ENTRY/PRIMARYKEY KEY = VOLUME+DIR+FILE; EXTENDEDDATA STARTDATE = y<<16|m<<8|d, STARTTIME = seconds of day,
   DURATION = deck run time, which includes faded-out tails, so plays overlap ~70% of a mix). Recording start from
@@ -124,7 +128,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   ≥2 tracks. Sped >4%: genre = mix acts at played BPM with PSY_GATE vs native acts per track
   (speed-up and stems/effects both really change the genre, only the psy shortcut is
   removed; earlier "native + (mix − view)" and "library genres by time" were dropped). `mixing` = mix − view
-  acts. Fields `*_uncorrected` = no gate. `--chapters`/`--highlights`/`--offset`: video time = recording time −
+  acts. Fields `*_uncorrected` = no gate. Since 2026-11-01 also `key_model: "cnn"`, `keylock.matches_per_lag`, per track
+  `library_camelot`, `heard_mood` (mood_patches over the judged window), `own_mood`, `view_mood`/`view_genre` (the view
+  db near the played tempo), `transition` (`camelot_step` from the previous heard key) + `transitions` totals.
+  Highlights carry `energy` (`mood_energy`: mean of party + aggressive heads per second); `--clip-mood W` adds W × energy
+  to the score (default 0 = the same picks as before, checked). `--chapters`/`--highlights`/`--offset`: video time = recording time −
   first track's start (`anchor()`; `first_sound_seconds` without a tracklist) + offset, offset read off the
   finished video by the user (required for --chapters; never guessed from the audio); highlights from 1 s means
   of EBU short-term loudness, level + 0.5·rise (capped 8 LU), windows touching < −45 LUFS skipped. Missing data → SystemExit saying how to get it.
@@ -142,7 +150,10 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   X-Track-Analyzer: upload + Origin check instead of a JSON body; refused while a job runs), deleted when the job ends. Timeline: hype view (default, `ta-mix-view`) = per 2-min segment the
   library hype (time-weighted) + Traktor colour (longest) of the tracks playing, from `web.played_tracks` (saved_file adds
   `library`, by path, which tracklist output carries since 2026-10-31, else artist+title; native db) and the tracks'
-  start + blend lag; not measured from the mix audio (at 145 the models hear psy, as in the psy gate). Writes: POST /api/hold, cue/sample endpoints (all JSON
+  start + blend lag; not measured from the mix audio (at 145 the models hear psy, as in the psy gate). Clicking a mix genre/style/mood
+  bar (`MIX_SEL`) fades the segments without it (style/mood against the strongest segment) and tints tracklist rows (genre = the
+  track's heard genre, else its main stretch's segments time-weighted); segment `mood` = the mood heads over its patches
+  (`mood_patches`, analyses since 2026-11-01; whole-mix `mood` unchanged). Writes: POST /api/hold, cue/sample endpoints (all JSON
   body + Origin check against CSRF, `from_this_page`), and jobs (below). Host header must be 127.0.0.1/localhost
   (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0, except in a container: + TRACK_ANALYZER_HOSTS): against DNS rebinding, which passes the Origin check.
   Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's
@@ -265,7 +276,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   input = librosa CQT exactly as the repo trained on (hence the librosa pin). Checked: same key as torch on 32/32
   (probabilities within 2e-7) and as the repo's own pipeline on 459/459. `_conv` is im2col (one matmul per layer,
   0.35 vs 0.78 s/track; same key and 3-decimal confidence as the per-position loop on 443/443). `analysis.key_cnn` → `cnn_key`,
-  `cnn_camelot`, `cnn_confidence` (tracks and tempo views; mix segments still use Essentia).
+  `cnn_camelot`, `cnn_confidence` (tracks, tempo views and the tracklist check's heard keys, `_measure` want key "cnn"; mix timeline segments still use Essentia).
   `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
   The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
 - `dj_genres.json`: maps Discogs styles to DJ genre names (rules with "needs" groups + BPM range); a user copy in
@@ -306,7 +317,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   is trimmed: identical to the old silence-dropping version on all 469 test tracks, whose silence was all at the end).
 - Files > 12 min are DJ mixes → timeline per 2-min segment (`--tracklist` adds a per-track check). Their BPM/key
   measurements run in `analysis.AudioPool` (spawn workers as `scan`, audio via a memory-mapped .npy, worker
-  stdout → stderr for MCP); output identical to serial, 121 → 71 s on a 65-min mix.
+  stdout → stderr for MCP); output identical to serial, 121 → 71 s on a 65-min mix. `measure(jobs, meter)`
+  keeps a count line updated with \r (segments; the tracklist's tempo and key matching, by track), which the job bar shows as `live`.
 
 ### Colour
 - Traktor INFO COLOR 1..7 = Red, Orange, Yellow, Green, Blue, Violet, Magenta. Treated as an ordered scale; labels
