@@ -275,6 +275,9 @@ details.fold .sub:first-child { margin-top: 0; }
 .seg-toggle button.on { background: var(--accent); color: #fff; }
 .tl-x { display: flex; gap: 2px; font-size: 10px; color: var(--text-3); margin-top: 3px; }
 .tl-x span { flex: 1; text-align: left; overflow: hidden; white-space: nowrap; }
+.tl-wrap { position: relative; }
+.tl-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.tl-wrap polyline { fill: none; stroke: var(--text); stroke-opacity: .4; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-2); margin-top: 6px; flex-wrap: wrap; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 textarea { width: 100%; min-height: 220px; font-family: var(--mono); font-size: 12px; background: var(--surface-2); color: var(--text);
@@ -2780,10 +2783,10 @@ async function pageMixes(main, id) {
   const me = S.routeId, L = await getLogs(true), mixes = L.files.filter(f => f.kind === "mix");
   if (me !== S.routeId) return;
   if (!id && mixes.length) id = mixes[0].id;
-  const all = id === "~all";
+  const all = id === "~all", sets = new Set(mixes.map(f => f.recording || f.id)).size;  // the overview counts each recording once
   main.innerHTML = `<div class="split">
     <div class="card list" id="drop" style="padding:8px"><div class="filters" style="padding:4px 10px 8px;margin:0"><h3 style="margin:0">Mixes</h3><div class="spacer"></div>
-        ${mixes.length > 1 ? `<button id="mx-all" class="${all ? "on" : ""}" data-tip="What your mixes add up to: keys to check, mood as played, your sets by fifth">All ${mixes.length} mixes</button>` : ""}
+        ${sets > 1 ? `<button id="mx-all" class="${all ? "on" : ""}" data-tip="What your mixes add up to: keys to check, mood as played, your sets by fifth">All ${sets} mixes</button>` : ""}
         ${SNAP ? "" : `<button class="primary" id="mx-new">Analyse a mix…</button>`}</div>
       ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
@@ -2966,12 +2969,46 @@ function moodCell(t) {
   const line = (name, m) => m ? `\n${name}: ${Object.entries(m).map(([k, v]) => `${k} ${pct(v)}`).join(" · ")}` : "";
   return `<span class="small" data-tip="${esc(`Mood as played${line("as played", h)}${line(`tempo view${t.view_bpm ? ` (${t.view_bpm} BPM)` : ""}`, t.view_mood)}${line("own tempo", t.own_mood)}${t.view_genre ? `\nview genre: ${t.view_genre}` : ""}`)}">${top.map(([k, v]) => `${esc(k)} ${pct(v)}`).join("<br>")}</span>`;
 }
+// Your sets stretched to the same length (mixreport.shape): bars = the mean per slice, a faint line per mix
+let SHAPE_SHOWN = null;
+function shapeTimeline(sh) {
+  const n = sh.slices, canHype = sh.hype.some(x => x.value != null), view = canHype ? mixView() : "loudness";
+  const key = view === "hype" ? "hype" : "lufs", all = [...sh[key].map(x => x.value), ...sh.mixes.flatMap(m => m[key] || [])].filter(v => v != null);
+  const lo = Math.min(...all) - 2, hi = Math.max(...all);
+  const h = v => v == null ? null : view === "hype" ? v * 10 : (v - lo) / (hi - lo || 1) * 100;
+  const step = 100 / n, val = v => v == null ? "–" : view === "hype" ? fmt(v, 1) : `${fmt(v, 1)} LUFS`;
+  const bar = (x, i) => {
+    const c = sh.colour[i], tip = `${Math.round(i * step)}–${Math.round((i + 1) * step)}% of the set\n${view === "hype" ? "hype" : "loudness"} ${val(x.value)} · mean of ${`${x.mixes} ${x.mixes === 1 ? "mix" : "mixes"}`}${c ? `\nmostly ${c}` : ""}\n`
+      + sh.mixes.map(m => `${mixTitle({ recording: m.file })}: ${val(m[key]?.[i])}${m.colour[i] && view === "hype" ? ` · ${m.colour[i]}` : ""}`).join("\n");
+    return x.value == null ? `<div class="seg none" data-tip="${esc(tip)}"></div>`
+      : `<div class="seg" style="height:${h(x.value)}%;${c ? `background:var(--c-${c.toLowerCase()});` : ""}" data-tip="${esc(tip)}"></div>`;
+  };
+  // a mix's line, broken where it has no value (a slice before the first track or with only unknown tracks)
+  const line = m => (m[key] || []).reduce((runs, v, i) => { if (v == null) runs.push([]); else runs[runs.length - 1].push(`${i + 0.5},${100 - h(v)}`); return runs; }, [[]])
+    .filter(r => r.length > 1).map(r => `<polyline points="${r.join(" ")}"/>`).join("");
+  return `<div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Your sets start to end <span class="dim small">(${`${sh.mixes.length} ${sh.mixes.length === 1 ? "mix" : "mixes"}`} stretched to the same length)</span></h3><div class="spacer"></div>
+      ${canHype ? `<div class="seg-toggle"><button data-shapeview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-shapeview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
+    <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"} per ${Math.round(step)}% of the set: 50% is the middle of every set, whatever its length; hover for each mix</div>
+    <div class="tl-wrap"><div class="timeline">${sh[key].map(bar).join("")}</div>
+      <svg viewBox="0 0 ${n} 100" preserveAspectRatio="none" aria-hidden="true">${sh.mixes.map(line).join("")}</svg></div>
+    <div class="tl-x">${sh[key].map((x, i) => `<span>${i % (n / 4) ? "" : `${Math.round(i * step)}%`}</span>`).join("")}</div>
+    <div class="legend"><span>bars = the mean of your mixes${sh.colour.some(Boolean) ? ", coloured by the Traktor colour played longest there" : ""}</span><span><i style="background:var(--text);opacity:.4;height:2px"></i>one mix each</span></div>
+    <div class="note">With a handful of mixes the mean is rough: the lines show whether your sets really share the shape or one set pulls it.</div>`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-shapeview]"); if (!b || !SHAPE_SHOWN) return;
+  try { localStorage.setItem("ta-mix-view", b.dataset.shapeview); } catch (err) {}
+  b.closest("#shape").innerHTML = shapeTimeline(SHAPE_SHOWN);
+  tip.style.display = "none";
+});
 // What the analysed mixes add up to (mixreport.py)
 function renderMixReport(r) {
   const old = r.mixes.filter(m => !m.mood_timeline).length, k = r.keys, v = r.view, a = r.arc;
   const moodRows = Object.entries(v.moods);
+  SHAPE_SHOWN = r.shape?.mixes.length ? r.shape : null;
   return `
     <div class="page-head"><div><h2>All your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
+    ${SHAPE_SHOWN ? `<div class="card" id="shape">${shapeTimeline(SHAPE_SHOWN)}</div>` : ""}
     <div class="card"><h3>Keys Traktor may have wrong <span class="dim small">(heard in your mixes = our key, not Traktor's; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
       ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || f.path.split("/").pop())}<div class="dim small">${esc(f.artist || "")}</div>` },
         { h: "Traktor", f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
@@ -2984,10 +3021,10 @@ function renderMixReport(r) {
         : `<div class="dim">Nothing yet: needs mixes analysed with this version, and a tempo view scanned near the tempo you played.</div>`}
       ${v.genre.tracks ? `<div class="note">Genre as played is the tempo view's on ${v.genre.same_as_view} of ${v.genre.tracks} tracks, the track's own on ${v.genre.same_as_own}.</div>` : ""}
       <div class="note">"Off by": the mean distance from what was heard in the mix. The smaller one predicts what you play better. The mix has blends, the other deck and your effects in it, so expect some distance either way.</div></div>
-    <div class="card"><h3>Your sets by fifth <span class="dim small">(mood measured in ${a.mixes} recordings, each counted once)</span></h3>
+    <div class="card"><details${SHAPE_SHOWN ? "" : " open"}><summary><h3 style="display:inline">Mood by fifth of the set</h3> <span class="dim small">(measured in ${a.mixes} recordings, each counted once)</span></summary>
       ${a.parts.length ? table([{ h: "Part", f: p => `<span class="nowrap">${p.part} of 5</span>` }, ...[...new Set(a.parts.flatMap(p => Object.keys(p.mood)))].map(m => ({ h: m, r: 1, f: p => pct(p.mood[m]) })), { h: "LUFS", r: 1, f: p => fmt(p.lufs, 1) }, { h: "Mixes", r: 1, f: p => p.mixes }], a.parts)
         : `<div class="dim">Nothing yet: needs mixes analysed with this version.</div>`}
-      <div class="note">At the tempo you play, the models may hear sped-up tracks as more aggressive or party than they are alone; compare with the table above before reading much into it.</div></div>
+      <div class="note">At the tempo you play, the models may hear sped-up tracks as more aggressive or party than they are alone; compare with the table above before reading much into it.</div></details></div>
     <div class="card"><h3>Changes of track <span class="dim small">(key to key as heard)</span></h3>
       ${Object.keys(r.transitions).length ? `<div>${Object.entries(r.transitions).map(([t, n]) => `<span class="chip ${t === "clash" ? "bad" : t === "two steps" ? "warn" : "good"}">${n} ${esc(t)}</span>`).join(" ")}</div>` : `<div class="dim">Nothing yet.</div>`}
       ${table([{ h: "Mix", f: m => esc(mixTitle({ recording: m.file })) }, { h: "Tracks", r: 1, f: m => m.tracks }, { h: "Key lock", f: m => esc(m.keylock || "–") },

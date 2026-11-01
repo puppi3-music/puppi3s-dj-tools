@@ -7,6 +7,8 @@ Across your recorded mixes (`mixes` command, the Mixes tab's All N mixes button)
   with Essentia), since agreeing with our key is the test.
 - view: each track's mood (and genre) as heard in the mix against the track alone, at its own tempo and in the tempo
   view near the tempo you played: does the view predict what you played?
+- shape: your sets stretched to the same length, in 5% slices: hype and Traktor colour of what you played (from the
+  library, as the Mixes tab's timeline draws a mix) and loudness, per mix and the mean (each mix counts once).
 - arc: the mood of your sets by fifth, measured in the recordings (each mix counts once).
 - transitions: each change of track, key to key as heard, on the Camelot wheel.
 
@@ -26,6 +28,7 @@ import numpy as np
 from .analysis import MOODS
 
 PARTS = 5  # the arc: fifths of a set
+SLICES = 20  # the shape: 5% of a set each
 
 
 def load(dirs: list[Path]) -> list[dict]:
@@ -120,6 +123,56 @@ def view(mixes: list[dict]) -> dict:
     return {"tracks": len(rows), "moods": moods, "genre": genre}
 
 
+def shape(mixes: list[dict]) -> dict:
+    """Each set in SLICES equal slices of its length: per slice the hype (weighted by time, over the tracks playing:
+    a track from its start + the blend lag to the next one's), the colour played longest and the loudness of the
+    timeline segments in it; per mix and the mean over the mixes that have it."""
+    from .web import played_tracks
+
+    per_mix = []
+    for d in mixes:
+        segs = d.get("timeline") or []
+        if not segs:
+            continue
+        end = max(_secs(s["end"]) for s in segs)
+        tracks = (d.get("tracklist") or {}).get("tracks") or []
+        lib = played_tracks(tracks) if tracks else {}
+        lag = ((d.get("tracklist") or {}).get("keylock") or {}).get("blend_lag_seconds") or 0
+        spans = [(_secs(t["start"]) + lag, _secs(tracks[i + 1]["start"]) + lag if i + 1 < len(tracks) else np.inf,
+                  lib.get(t["n"])) for i, t in enumerate(tracks)]
+        hype, colour, lufs = [], [], []
+        for i in range(SLICES):
+            a, b = end * i / SLICES, end * (i + 1) / SLICES
+            here = [(min(b, y) - max(a, x), L) for x, y, L in spans if L and min(b, y) > max(a, x)]
+            rated = [(o, L["hype"]) for o, L in here if L["hype"] is not None]
+            w = sum(o for o, _ in rated)
+            hype.append(round(sum(o * h for o, h in rated) / w, 2) if w else None)
+            by = Counter()
+            for o, L in here:
+                if L["colour"]:
+                    by[L["colour"]] += o
+            colour.append(by.most_common(1)[0][0] if by else None)
+            ov = [(min(b, _secs(s["end"])) - max(a, _secs(s["start"])), s["lufs"]) for s in segs
+                  if s.get("lufs") is not None and min(b, _secs(s["end"])) > max(a, _secs(s["start"]))]
+            w = sum(o for o, _ in ov)
+            lufs.append(round(sum(o * v for o, v in ov) / w, 2) if w else None)
+        per_mix.append({"file": Path(d.get("file") or "").name, "duration": d.get("duration"),
+                        "hype": hype if any(h is not None for h in hype) else None, "colour": colour, "lufs": lufs})
+
+    def mean(key):
+        out = []
+        for i in range(SLICES):
+            xs = [m[key][i] for m in per_mix if m[key] and m[key][i] is not None]
+            out.append({"value": round(float(np.mean(xs)), 2) if xs else None, "mixes": len(xs)})
+        return out
+
+    colours = []
+    for i in range(SLICES):
+        c = Counter(m["colour"][i] for m in per_mix if m["colour"][i])
+        colours.append(c.most_common(1)[0][0] if c else None)
+    return {"slices": SLICES, "mixes": per_mix, "hype": mean("hype"), "lufs": mean("lufs"), "colour": colours}
+
+
 def arc(mixes: list[dict]) -> dict:
     """Per fifth of the set: the mean mood and loudness of its timeline segments; each mix counts once."""
     per = [[] for _ in range(PARTS)]
@@ -165,7 +218,7 @@ def report(dirs: list[Path]) -> dict:
                         "keylock": kl.get("verdict"), "blend_lag_seconds": kl.get("blend_lag_seconds"),
                         "matches_per_lag": kl.get("matches_per_lag"), "transitions": tl.get("transitions"),
                         "mood_timeline": any(s.get("mood") for s in d.get("timeline", []))})
-    return {"mixes": per_mix, "keys": keys(mixes), "view": view(mixes), "arc": arc(mixes),
+    return {"mixes": per_mix, "keys": keys(mixes), "view": view(mixes), "shape": shape(mixes), "arc": arc(mixes),
             "transitions": {k: steps[k] for k in ("same key", "one step", "two steps", "clash") if steps[k]}}
 
 
@@ -195,6 +248,14 @@ def text(r: dict) -> str:
     if g["tracks"]:
         lines.append(f"  genre as played = the view's on {g['same_as_view']}/{g['tracks']}, "
                      f"= the track's own on {g['same_as_own']}/{g['tracks']}")
+    sh = r["shape"]
+    lines += ["", f"Your sets start to end ({len(sh['mixes'])} mixes stretched to the same length; "
+                  f"per {100 // sh['slices']}% of the set)"]
+    for name, key, f in (("hype", "hype", "{:.1f}"), ("LUFS", "lufs", "{:.0f}")):
+        if any(x["value"] is not None for x in sh[key]):
+            lines.append(f"  {name:<5} " + " ".join("–" if x["value"] is None else f.format(x["value"]) for x in sh[key]))
+    if not sh["mixes"]:
+        lines.append("  nothing yet")
     a = r["arc"]
     lines += ["", f"Your sets by fifth ({a['mixes']} mixes; mood measured in the recordings)"]
     for p in a["parts"]:
