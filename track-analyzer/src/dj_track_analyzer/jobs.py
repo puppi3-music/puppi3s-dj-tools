@@ -120,6 +120,7 @@ _lock = threading.Lock()
 _job: dict | None = None  # the running or last job
 _proc: subprocess.Popen | None = None
 _seq = 0
+_queue: list[tuple[str, str, list[str]]] = []  # mixes to analyse after the running one: (action, label, args)
 on_finish = []  # callbacks after a job ends (the web page's caches)
 
 
@@ -133,41 +134,61 @@ def command_line(args: list[str]) -> str:
 
 
 def busy() -> bool:
-    return bool(_job and _job["running"])
+    return bool(_job and _job["running"] or _queue)
 
 
 def start(action: str, options: dict | None = None, dry_run: bool = False) -> dict:
-    global _job, _proc, _seq
+    """Run a job. analyze_mix takes several recordings (`files`): the first runs now, the rest one after another;
+    a mix asked for while another is analysed waits its turn too."""
     if action not in ACTIONS:
         raise ValueError(f"unknown action {action!r}")
     label, build, writes = ACTIONS[action]
-    args = build(options or {})
+    options = options or {}
+    many = action == "analyze_mix" and isinstance(options.get("files"), list)
+    runs = [build({**options, "file": f}) for f in options["files"]] if many else [build(options)]
+    if not runs:
+        raise ValueError("Pick a recording")
     if action == "analyze_mix":
-        label = f"Analysing {Path(args[1]).name}"
+        runs = [(f"Analysing {Path(a[1]).name}", a) for a in runs]
+    else:
+        runs = [(label, runs[0])]
     if dry_run:
         if not writes or action in NO_DRY_RUN:
             raise ValueError(f"{label} has no preview")
-        args.append("--dry-run")
+        runs[0][1].append("--dry-run")
     with _lock:
         if busy():
-            raise ValueError(f"Busy with: {_job['label']}. Wait for it or stop it first.")
-        if args[0] == BREW:
-            cmd = args
-        else:
-            cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
-        if traktor.CONTAINER and action in TOUCHES_TRAKTOR and not dry_run:
-            traktor.check_closed()  # ask the page now, not the job later
-            env[traktor.CLOSED_ENV] = "1"
-        _seq += 1
-        _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
-                "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,
-                "returncode": None, "lines": [], "dropped": 0, "progress": None, "live": None, "result": None, "error": None,
-                "stopping": False, "stage": None,
-                "steps": [x for x in STEPS.get(action, ()) if "--tracklist" in args or "tracklist" not in x]}
-        _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 env=env, cwd=str(Path(__file__).resolve().parents[2]), start_new_session=True)
-        job, proc = _job, _proc
+            if action != "analyze_mix" or _job["action"] != "analyze_mix":
+                raise ValueError(f"Busy with: {_job['label']}. Wait for it or stop it first.")
+            _queue.extend((action, lb, a) for lb, a in runs)
+            log(f"Job queued: {', '.join(lb for lb, _ in runs)}")
+            return state()
+        _queue.extend((action, lb, a) for lb, a in runs[1:])
+        _launch(action, *runs[0], dry_run)
+    return state()
+
+
+def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> None:
+    """Start the job's process (holding _lock, nothing running)."""
+    global _job, _proc, _seq
+    writes = ACTIONS[action][2]
+    if args[0] == BREW:
+        cmd = args
+    else:
+        cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
+    if traktor.CONTAINER and action in TOUCHES_TRAKTOR and not dry_run:
+        traktor.check_closed()  # ask the page now, not the job later
+        env[traktor.CLOSED_ENV] = "1"
+    _seq += 1
+    _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
+            "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,
+            "returncode": None, "lines": [], "dropped": 0, "progress": None, "live": None, "result": None, "error": None,
+            "stopping": False, "stage": None,
+            "steps": [x for x in STEPS.get(action, ()) if "--tracklist" in args or "tracklist" not in x]}
+    _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             env=env, cwd=str(Path(__file__).resolve().parents[2]), start_new_session=True)
+    job, proc = _job, _proc
     out: list[str] = []
     readers = [threading.Thread(target=_read_err, args=(job, proc), daemon=True),
                threading.Thread(target=_read_out, args=(job, proc, out, args[0] == BREW), daemon=True)]
@@ -175,7 +196,6 @@ def start(action: str, options: dict | None = None, dry_run: bool = False) -> di
         t.start()
     threading.Thread(target=_wait, args=(job, proc, out, readers), daemon=True).start()
     log(f"Job started: {job['command']}")
-    return state()
 
 
 def _add(job: dict, line: str) -> None:
@@ -243,11 +263,19 @@ def _wait(job: dict, proc: subprocess.Popen, out: list[str], readers: list[threa
             fn(job)
         except Exception as err:  # a cache refresh must never break the job runner
             log(f"  after-job refresh failed: {err}")
+    with _lock:  # the next queued mix, also after one failed; Stop empties the queue
+        while _queue and not (_job and _job["running"]):
+            action, label, args = _queue.pop(0)
+            try:
+                _launch(action, label, args)
+            except Exception as err:  # e.g. the recording was moved meanwhile: on to the next
+                log(f"  queued job didn't start ({label}): {err}")
 
 
 def stop() -> dict:
     """Ctrl-C for the job (scans save what they have); harder if it hasn't stopped after 20 s."""
     proc, job = _proc, _job
+    _queue.clear()
     if not (proc and job and job["running"]):
         return state()
     job["stopping"] = True
@@ -285,7 +313,7 @@ def state(since: int = 0) -> dict:
         return {"job": None}
     first = j["dropped"]
     lines = j["lines"][max(0, since - first):]
-    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "line_from": max(since, first),
+    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "queued": [lb for _, lb, _ in _queue], "line_from": max(since, first),
                     "line_to": first + len(j["lines"]), "lines": lines,
                     "elapsed": (j["ended"] or time.time()) - j["started"]}}
 

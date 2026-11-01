@@ -233,7 +233,7 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
-- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness; click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist), tracklist check (with each track's mood as played and the key change from the track before), clip suggestions and chapters; **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the one you pick in the background.
+- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness; click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist), tracklist check (with each track's mood as played and the key change from the track before), clip suggestions and chapters; **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another (a mix asked for while one is analysed waits its turn; **Stop all** empties the queue).
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
