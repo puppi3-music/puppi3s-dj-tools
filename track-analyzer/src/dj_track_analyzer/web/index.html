@@ -2783,8 +2783,8 @@ async function pageMixes(main, id) {
   const all = id === "~all";
   main.innerHTML = `<div class="split">
     <div class="card list" id="drop" style="padding:8px"><div class="filters" style="padding:4px 10px 8px;margin:0"><h3 style="margin:0">Mixes</h3><div class="spacer"></div>
+        ${mixes.length > 1 ? `<button id="mx-all" class="${all ? "on" : ""}" data-tip="What your mixes add up to: keys to check, mood as played, your sets by fifth">All ${mixes.length} mixes</button>` : ""}
         ${SNAP ? "" : `<button class="primary" id="mx-new">Analyse a mix…</button>`}</div>
-      ${mixes.length > 1 ? `<a href="#mixes/~all" class="${all ? "on" : ""}"><div><b>Across your mixes</b></div><div class="k">keys to check, mood as played, your sets by fifth</div></a>` : ""}
       ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
     </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
@@ -2792,6 +2792,7 @@ async function pageMixes(main, id) {
       ${SNAP ? "" : `<div style="margin:12px 0"><button class="primary" id="mx-new2">Analyse a mix…</button></div>Or in a terminal:<br>`}
       <span class="mono">uv run dj-track-analyzer analyze &lt;mix.wav&gt; --tracklist --out logs/mix.json</span>`)}</div></div>`;
   $("#mx-new")?.addEventListener("click", () => mixDialog());
+  $("#mx-all")?.addEventListener("click", () => { location.hash = all && mixes.length ? `#mixes/${encodeURIComponent(mixes[0].id)}` : "#mixes/~all"; });
   $("#mx-new2")?.addEventListener("click", () => mixDialog());
   dropZone($("#drop"), $("#file"), $("#pick"), data => { $("#mix").innerHTML = data.type === "dj_mix" ? renderMix(data) : `<div class="card tree">${tree(data)}</div>`; },
     SNAP ? null : mixDialog);  // a recording dropped on the list: analyse it
@@ -2970,7 +2971,7 @@ function renderMixReport(r) {
   const old = r.mixes.filter(m => !m.mood_timeline).length, k = r.keys, v = r.view, a = r.arc;
   const moodRows = Object.entries(v.moods);
   return `
-    <div class="page-head"><div><h2>Across your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
+    <div class="page-head"><div><h2>All your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
     <div class="card"><h3>Keys Traktor may have wrong <span class="dim small">(heard in your mixes = our key, not Traktor's; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
       ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || f.path.split("/").pop())}<div class="dim small">${esc(f.artist || "")}</div>` },
         { h: "Traktor", f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
