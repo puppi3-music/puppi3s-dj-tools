@@ -3,6 +3,19 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.0.1 (2026-11-02)
+
+**Fixes**
+- **Windows: Traktor's collection not found** when Documents isn't `C:\Users\<you>\Documents`, for example when
+  OneDrive backs it up or it was moved to another drive. The analyzer now looks in Windows' real Documents folder and
+  OneDrive's, for the collection, Traktor's History and its recordings.
+- **Choose the collection yourself**: if it still isn't found, or you want another one, the Setup tab's Traktor step
+  has **Browse…** (your computer's own file dialog) and a field to paste its path. **Find automatically** goes back.
+- After a Traktor update, the Setup tab offers the new version's collection. A copied folder such as
+  "Traktor 4.5.0 copy" is no longer picked over the real one.
+- A Traktor version newer than the analyzer has been tested with (4.5.0) is marked "not verified yet" on the Setup
+  tab and in every write's preview. It should still work; every write is backed up and can be undone.
+
 ## 1.0.0 (2026-11-02)
 
 The first release. Puppi3's Track Analyzer analyses a DJ library on your own computer and puts the results into

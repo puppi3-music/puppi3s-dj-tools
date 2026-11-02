@@ -869,6 +869,90 @@ def _show(p: Path, select: bool) -> None:
         subprocess.run(["xdg-open", str(p.parent if select else p)], check=False)
 
 
+PICK_TITLE = "Choose Traktor's collection.nml"
+_PS_PICK = r"""
+Add-Type -AssemblyName System.Windows.Forms
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+$d = New-Object System.Windows.Forms.OpenFileDialog
+$d.Title = $env:TA_PICK_TITLE
+$d.Filter = "Traktor collection (collection.nml)|collection.nml|All files (*.*)|*.*"
+if ($env:TA_PICK_DIR) { $d.InitialDirectory = $env:TA_PICK_DIR }
+$owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false}
+if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }
+"""
+
+
+def _pick_command(start: Path | None) -> tuple[list[str], dict] | None:
+    """The system's own open-file dialog (it gives the real path, which a browser never tells a page), or None."""
+    import shutil
+
+    if traktor.CONTAINER:
+        return None
+    env = {**os.environ, "TA_PICK_TITLE": PICK_TITLE, "TA_PICK_DIR": str(start or "")}
+    if sys.platform == "darwin":
+        where = f' default location (POSIX file "{start}")' if start and '"' not in str(start) else ""
+        return ["osascript", "-e", f'POSIX path of (choose file with prompt "{PICK_TITLE}"{where})'], env
+    if sys.platform == "win32":
+        return ["powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", _PS_PICK], env
+    if shutil.which("zenity"):
+        return ["zenity", "--file-selection", f"--title={PICK_TITLE}", "--file-filter=collection.nml | *.nml",
+                *([f"--filename={start}{os.sep}"] if start else [])], env
+    if shutil.which("kdialog"):
+        return ["kdialog", "--title", PICK_TITLE, "--getopenfilename", str(start or Path.home()), "*.nml"], env
+    return None
+
+
+def can_browse() -> bool:
+    return _pick_command(None) is not None
+
+
+def _pick_start() -> Path | None:
+    """Where the dialog opens: the current collection's folder, else the first Native Instruments (or Documents) folder."""
+    try:
+        return traktor.find_collection(None).parent
+    except SystemExit:
+        pass
+    dirs = traktor.documents_dirs()
+    return next((d / "Native Instruments" for d in dirs if (d / "Native Instruments").is_dir()),
+                next((d for d in dirs if d.is_dir()), None))
+
+
+def pick_file() -> str | None:
+    """Open the system's file dialog on this computer; the chosen path, or None when cancelled."""
+    import subprocess
+
+    cmd = _pick_command(_pick_start())
+    if cmd is None:
+        raise ValueError("No file dialog here: paste the path of collection.nml instead.")
+    argv, env = cmd
+    try:
+        r = subprocess.run(argv, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ValueError(f"The file dialog didn't open ({e}): paste the path of collection.nml instead.") from e
+    path = r.stdout.strip()
+    return path if r.returncode == 0 and path else None  # cancelled: osascript/zenity/kdialog exit 1, PowerShell prints nothing
+
+
+def set_collection(b: dict) -> dict:
+    """The Setup tab's choice of Traktor's collection: {browse: true} (the system's file dialog), {path: "…"} (pasted),
+    or {auto: true} (find it automatically again). Not while a job runs: it reads or writes the collection."""
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before changing Traktor's collection.")
+    if b.get("auto"):
+        path = None
+    elif b.get("browse"):
+        path = pick_file()
+        if path is None:
+            return {"cancelled": True}
+    else:
+        path = str(b.get("path") or "")
+        if not path.strip():
+            raise ValueError("Give the path of Traktor's collection.nml.")
+    now = traktor.choose_collection(path)
+    _guesses["key"] = _grids["mtime"] = _fixes["key"] = None  # read the (other) collection again
+    return {"collection": str(now) if now else None}
+
+
 def reveal_sample(file: str | None = None, folder: str | None = None) -> dict:
     """Show a saved sample (or a sample folder) in the file manager. Only inside Traktor's sample folder."""
     root = sample_root().resolve()
@@ -1104,7 +1188,9 @@ def undo_grids() -> dict:
 
 def setup_status() -> dict:
     with library("native"):
-        return jobs.setup_status()
+        st = jobs.setup_status()
+    st["traktor"]["can_browse"] = can_browse()  # else the page offers only the paste field
+    return st
 
 
 def to_learn() -> dict:
@@ -1542,6 +1628,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
         Route("/api/jobs", respond(lambda q: jobs.state(int(num(q, "since", 0))))),
         Route("/api/jobs/start", post(start_job), methods=["POST"]),

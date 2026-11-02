@@ -121,3 +121,22 @@ def test_genres_only_in_traktor(library, fake_analysis):
     assert {f: f.read_bytes() for f in library["files"]} == files  # no file touched
     cli("traktor", "--undo")
     assert nml.read_bytes() == before
+
+
+def test_collection_found_in_moved_documents(tmp_path, monkeypatch):
+    """Windows' Documents moved (OneDrive backup, another drive): Traktor's folder is there, not in ~/Documents."""
+    moved = tmp_path / "OneDrive" / "Documents"
+    for v in ("4.1.0", "4.10.2"):
+        d = moved / "Native Instruments" / f"Traktor {v}"
+        d.mkdir(parents=True)
+        (d / "collection.nml").write_text("<NML/>", encoding="utf-8")
+    monkeypatch.setattr(traktor.sys, "platform", "win32")
+    monkeypatch.setattr(traktor, "_windows_documents", lambda: str(moved))
+    monkeypatch.setattr(traktor.os.path, "expanduser", lambda p: p.replace("~", str(tmp_path / "nobody"), 1))
+    assert traktor.find_collection() == moved / "Native Instruments" / "Traktor 4.10.2" / "collection.nml"
+    assert moved in traktor.documents_dirs()
+
+
+@pytest.mark.skipif(not WINDOWS, reason="asks Windows itself")
+def test_windows_knows_its_documents_folder():
+    assert traktor._known_documents()  # the raising version: CI shows Windows' error if it fails
