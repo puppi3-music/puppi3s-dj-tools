@@ -2858,7 +2858,7 @@ async function pageSetup(main) {
   const nmlAct = `${tk.collection ? jb("su-nml-change", "Change…") : ""}${tk.chosen ? jb("su-nml-auto", "Find automatically") : ""}${nmlPick}`;
   const newer = tk.newer ? `<div class="small" style="margin-top:6px"><b>Traktor has a newer collection</b> (it makes a new folder when it updates): <span class="mono">${esc(tk.newer)}</span>
       ${jb("su-nml-newer", "Use the newer one", true)}</div>` : "";
-  const V = tk.version || {}, issue = `<a href="https://github.com/puppi3-music/dj-tools/issues" target="_blank" rel="noopener">report it</a>`;
+  const V = tk.version || {}, issue = `<a href="https://github.com/puppi3-music/puppi3s-dj-tools/issues" target="_blank" rel="noopener">report it</a>`;
   const untested = V.untested === "format"
     ? `<b>This collection's file format is new to the analyzer</b> (NML version ${esc(V.format ?? "unknown")}; tested: ${esc(V.tested_formats.join(", "))}${V.traktor ? `, Traktor ${esc(V.traktor)}` : ""}). Reading it may go wrong in places: check each change in Traktor before relying on it. Every write is backed up and can be undone. If something looks wrong, ${issue}.`
     : V.untested === "newer"
