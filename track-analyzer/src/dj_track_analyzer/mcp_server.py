@@ -6,8 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from .analysis import (AUDIO_EXTS, GENRE_MODEL, HOME, analyze_file, dj_rules, models_present,
-                       train)
+from .analysis import AUDIO_EXTS, GENRE_MODEL, HOME, analyze_file, dj_rules, models_present
 
 
 def build_mcp():
@@ -35,7 +34,8 @@ def build_mcp():
             "Results include BPM, key with Camelot notation, loudness, and genre in three layers: "
             "dj_genre (DJ-style names such as Acid Trance or Melodic House & Techno, derived from a "
             "pretrained model, no training needed), discogs_styles (the raw pretrained style scores) and, "
-            "only if the user trained one, my_genre (their own labels; prefer it when present). Scores are "
+            "only if the user trained one and the track clearly sounds like one of them, my_genre (their own "
+            "labels; prefer it when present). Scores are "
             "relative confidence, not probabilities. Long files are treated as DJ mixes and get a timeline. "
             "The user colour-codes tracks with Traktor's 7 colours as a scale from Red (hardest, darkest) "
             "through Orange, Yellow, Green, Blue, Violet to Magenta (prettiest, most beautiful); `color` is "
@@ -100,14 +100,18 @@ def build_mcp():
 
         Layout: one subfolder per genre (folder/Acid Trance/*.mp3, folder/Hard Trance/*.mp3 ...)
         or one .m3u8 playlist per genre named after the genre. Aim for 20-50 tracks per genre.
-        Replaces any previous custom model. Large sets can take several minutes the first time
+        It also learns what the rest of the user's scanned collection sounds like, so only tracks that clearly
+        fit get one of these genres; the collection uses them once the user switches on "Use my genres" (Setup
+        tab of the web page). Replaces any previous custom model. Large sets can take several minutes the first time
         (embeddings are cached afterwards); for big libraries the CLI is better:
         `uv run dj-track-analyzer train <folder>`.
 
         Args:
             folder: Full path to the training folder.
         """
-        return train(folder, progress=lambda *a: None)
+        from . import mygenres
+
+        return mygenres.train(folder, progress=lambda *a: None)
 
     @mcp.tool()
     @friendly
@@ -119,7 +123,11 @@ def build_mcp():
             import joblib
 
             b = joblib.load(GENRE_MODEL)
-            info.update({"my_genres": b["counts"], "trained_at": b["trained_at"], "trained_from": b["source"]})
+            from .analysis import use_my_genres
+
+            info.update({"my_genres": b["counts"], "trained_at": b["trained_at"], "trained_from": b["source"],
+                         # the user's "Use my genres" switch: while off, their collection shows the built-in genres
+                         "my_genres_in_use": use_my_genres()})
         else:
             info["my_genres"] = None
             info["note"] = "No custom genres trained (optional). dj_genre names come from dj_genres.json."

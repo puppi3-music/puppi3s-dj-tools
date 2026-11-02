@@ -13,6 +13,17 @@ module's builds, which installs download by themselves.
   at most every 6 hours; untick **check when the page opens** to turn that off. In a terminal: `update` (`--check`,
   `--dry-run`, `--undo`). A clone is updated with `git pull`.
 - The launchers start the page again after an update, installing its new packages first.
+- **Learn your own genres on the Setup tab**, for genres the built-in ones don't have (like Hyperpop) or your own
+  split. Choose a folder with one subfolder or playlist per genre. It now also learns what the rest of your scanned
+  music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps
+  its built-in genre. It shows how well it did on your own tracks.
+- **Use my genres**: trained genres are no longer used everywhere the moment they're trained. **Preview…** lists the
+  tracks that would change, and the switch puts your genres on the page, in mix suggestions, sets and the LLM, and in
+  your files and Traktor the next time you write genres. It waits for 30 example tracks with at least 10 per genre.
+- A note in the README and guide: the built-in genres don't know hyperpop, and how to teach it.
+
+**Trained your own genres before?** They're kept but not used until you learn them again (so they get "everything
+else") and switch on **Use my genres**. Genres you set by hand aren't affected.
 
 **Updating from 1.0.1:** use **Update now…** on the Setup tab once this release is out. On Windows, close the
 launcher's window afterwards and double-click `Start Puppi3's Track Analyzer.bat` again (the 1.0.1 launcher can't

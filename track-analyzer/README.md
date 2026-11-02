@@ -40,7 +40,7 @@ When a track is in your Traktor collection, Traktor's own BPM and key are stored
 6. [Your catalogue at your play tempo](#6-your-catalogue-at-your-play-tempo-tempo-view)
 7. [How the analysis works](#7-how-the-analysis-works)
 8. [Ask a local LLM](#8-ask-a-local-llm-lm-studio-open-webui)
-9. [Optional: train your own genres](#9-optional-train-your-own-genres)
+9. [Optional: learn your own genres](#9-optional-learn-your-own-genres)
 10. [All commands](#10-all-commands) · [Settings](#settings) · [Project layout](#project-layout) · [Good to know](#good-to-know)
 
 Every command runs from the project folder and starts with `uv run dj-track-analyzer` (it used to be `uv run server.py`; see [Project layout](#project-layout)). Anything that changes your files or Traktor has a `--dry-run` that shows what would happen and changes nothing.
@@ -371,7 +371,7 @@ uv run dj-track-analyzer tag --multi               # 2. write the genre tag
 | `--max-genres 3` | With `--multi`: most genres per track | 3 |
 | `--fields genre,bpm,camelot` | Also write BPM and key. Fields: `genre`, `bpm`, `key` (Am, F#…) or `camelot` (8A…), not both | `genre` |
 | `--min-score 0.3` | Skip weak guesses (see `genre_score` in the CSV); those keep their current genre | 0 |
-| `--use-my-genre` | Write your trained genres instead (section 9) | off |
+| `--use-my-genre` | Write your trained genres instead, where one fits (section 9; **Use my genres** does this always) | off |
 | `--dry-run` | Preview the first 15 changes | off |
 
 With `--multi`, clear-cut tracks keep one genre, and a runner-up that overlaps a chosen genre (Hard Trance + Trance) is left out so Smartlists can still tell them apart. **Navidrome** splits on `;`, lists the track under each genre, and picks the change up on its next library scan.
@@ -700,6 +700,10 @@ The models use Discogs' style names, and some DJ terms don't exist there: "Acid 
 
 There are 42 DJ genres, from Deep House to Speedcore. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house) and **Ambient** (stays part of Downtempo). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
 
+> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it), so none of the 42 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest. It says nothing about the music: out of the box, a hyperpop track gets spread over the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. You can teach it:
+> - **One track at a time:** type **Hyperpop** as the genre in a track's **✎ Edit**. It's kept from then on, through rescans and in Traktor.
+> - **Your whole collection:** learn your own genres (section 9) from a Hyperpop folder of 20–50 example tracks plus at least one other genre, then switch on **Use my genres**. Only tracks that clearly sound like hyperpop get it; the rest keep their built-in genre.
+
 **To change the genres:** copy `dj_genres.json` to `data/dj_genres.json` (so updates don't overwrite it), edit it, run `uv run dj-track-analyzer styles` to list all 400 style names and check for typos, then `regenre`.
 
 ### Moods, instruments and vocals
@@ -781,25 +785,31 @@ Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as P
 
 ---
 
-## 9. Optional: train your own genres
+## 9. Optional: learn your own genres
 
-Only for when the built-in names don't match how *you* split genres. The pretrained models still do the heavy lifting; you teach a small layer on top.
+For genres the built-in ones don't have (Hyperpop, Afro House, Big Room, …) or your own way of splitting them. The pretrained models still do the heavy lifting; you teach a small layer on top.
 
-Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; the name becomes the genre. Finder aliases aren't followed, so use copies or playlists.
+Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; the name becomes the genre. At least two genres. Finder aliases aren't followed, so use copies or playlists.
 
 ```
 ~/Music/Genre Training/
-├── Acid Trance/          20–50 tracks
-├── Hard Trance/
-├── Techno.m3u8           a playlist works too
+├── Hyperpop/             20–50 tracks
+├── Pop/
+├── Afro House.m3u8       a playlist works too
 └── Melodic House/
 ```
+
+On the **Setup** tab, **Learn your genres**: choose the folder (**Browse…**, or paste its path) and press **Learn your genres**. In a terminal:
 
 ```bash
 uv run dj-track-analyzer train ~/Music/"Genre Training"
 ```
 
-You get an accuracy estimate per genre and the pairs it confuses most (`Hard Trance → Acid Trance: 3`). Add examples to weak genres and train again; analysis is cached, so only new tracks are processed. Pick clear, typical examples, keep genres balanced, and aim for 20 (usable) to 50+ (better) per genre. Afterwards `my_genre` appears next to `dj_genre`, and `tag --use-my-genre` writes it.
+**Only where it fits.** Besides your examples it learns what the rest of your scanned collection sounds like (copies of the examples left out), so it needs 30 scanned tracks first. A track gets one of your genres only when it sounds more like that genre than like the rest of your music; every other track keeps its built-in genre. You don't have to train every genre you play.
+
+**Nothing changes until you switch it on.** Afterwards each track's panel shows *Your genre* next to the built-in one, and the Setup step shows how well it did: a cross-validated test on your own tracks (how many examples it recognised, how many of your other tracks it would give one of your genres, and the mix-ups, like `Hyperpop → built-in genre: 3`). **Preview…** lists every track that would change; **Use my genres** then puts your genre on those tracks in the Tracks tab, mix suggestions, sets and the LLM, and in your files and Traktor the next time you write genres (section 3), with a Smartlist per genre. **Stop using them** goes back. Genres you set by hand always stay. The switch needs 30 example tracks with at least 10 in each genre. From a terminal: `train --use on` / `train --use off`.
+
+Add examples to weak genres and learn again; analysis is cached, so only new tracks are processed. Pick clear, typical examples, keep genres balanced, and aim for 20 (usable) to 50+ (better) per genre.
 
 ---
 
@@ -828,7 +838,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `crates [--tempo 145] [--traktor] [--remove]` | Warm-up, peak and closing crates from colour and hype (section 5) | nothing; `--traktor`: **Traktor** (undo: `crates --remove`) |
 | `set [--arc …] [--tracks 20] [--tempo 145] …` | Plan a set along an arc of colour and hype, with keys that mix (section 5) | nothing; `--traktor`: **Traktor** (undo: `set --remove NAME`) |
 | `tempo scan\|report\|export\|nml\|refresh\|status\|load\|native` | The tempo view, 145 by default (section 6) | `load`, `native`: **Traktor** (and Lexicon) |
-| `train <folder>` | Your own genres (section 9) | app files |
+| `train <folder>` | Your own genres (section 9); `--use on\|off` = **Use my genres** | app files |
 | `serve [--http] [--host] [--port]` | MCP server; stdio for LM Studio, HTTP for Open WebUI | nothing |
 | `web [--port 8766] [--logs DIR] [--no-open] [--export FILE.html]` | Everything in a local web page, or a snapshot file to share (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | the hold list only |
 | `cues train\|scan\|show [track] [--workers N] [--rescan]` | Cue points and a mix loop per track, learned from the cues you set yourself (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | app database and model file |
