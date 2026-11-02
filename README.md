@@ -1,4 +1,4 @@
-# DJ tools
+# <img src="puppi3-icon.png" alt="" width="40" align="center"> DJ tools
 
 Small, self-contained tools for DJs. Each tool lives in its own folder with its own README, dependencies and lockfile, so you can use one without installing the others.
 

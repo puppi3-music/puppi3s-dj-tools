@@ -417,16 +417,14 @@ def smartlist_query(genre: str, all_genres: list[str]) -> str:
 
 
 def known_genres() -> set[str]:
-    """Genre names this tool writes: the DJ genres in dj_genres.json, plus the user's trained genres.
+    """Genre names this tool writes: the DJ genres in dj_genres.json, plus the user's trained genres while they're in use.
     Only these get Smartlists; a file's own genre tag ("melodic techno, indie dance", "Électronique")
     is the user's or the shop's, not ours."""
     from . import analysis
 
     names = set(analysis.dj_rules())
-    if analysis.GENRE_MODEL.exists():
-        import joblib
-
-        names |= set(joblib.load(analysis.GENRE_MODEL).get("counts", {}))
+    if analysis.use_my_genres():  # the genre switch on Both or Mine (else nothing carries them)
+        names |= set(analysis.my_genre_bundle().get("counts", {}))
     return names
 
 
@@ -808,6 +806,73 @@ def track_info(nml: str | None = None) -> dict[str, tuple[float | None, str | No
     return out
 
 
+# Folders this app makes in Traktor, and Traktor's own playlists of mix recordings and loops: never offered as genre examples
+OWN_FOLDERS = {FOLDER_NAME, "Sets (Track Analyzer)", "Crates (Track Analyzer)"}
+TRAKTOR_LISTS = {"_RECORDINGS", "_LOOPS"}
+
+
+def _collection_files(root) -> dict[str, tuple[str, dict]]:
+    """{VOLUME+DIR+FILE (a playlist's PRIMARYKEY): (the audio file on disk, its INFO attributes)} for every entry of
+    Traktor's collection whose file exists."""
+    out = {}
+    for e in root.find("COLLECTION").iter("ENTRY"):
+        loc = e.find("LOCATION")
+        if loc is None:
+            continue
+        found = next((c for c in location_paths(loc.attrib) if os.path.isfile(c)), None)
+        if not found or os.path.splitext(found)[1].lower() not in collection.AUDIO_EXTS or "/TraktorContent/" in found:
+            continue
+        info = e.find("INFO")
+        out[loc.get("VOLUME", "") + loc.get("DIR", "") + loc.get("FILE", "")] = (
+            found, dict(info.attrib) if info is not None else {})
+    return out
+
+
+def playlists(nml: str | None = None) -> list[dict]:
+    """Every playlist in Traktor's collection, for learning genres (each ticked playlist = a genre named after it):
+    [{"path": "DJ / Genre Training / Hyperpop", "name": "Hyperpop", "files": [audio files]}], in Traktor's order.
+    This app's own folders, smartlists and empty playlists are left out; tracks missing on disk too."""
+    root = ET.parse(find_collection(nml)).getroot()
+    files = _collection_files(root)
+    out = []
+
+    def walk(node, path: list[str]):
+        subs = node.find("SUBNODES")
+        if subs is None:
+            return
+        for child in subs.findall("NODE"):
+            name = child.get("NAME", "")
+            if child.get("TYPE") == "FOLDER" and name not in OWN_FOLDERS:
+                walk(child, path + [name])
+            elif child.get("TYPE") == "PLAYLIST" and child.find("PLAYLIST") is not None and name not in TRAKTOR_LISTS:
+                keys = [pk.get("KEY", "") for pk in child.find("PLAYLIST").iter("PRIMARYKEY")]
+                found = list(dict.fromkeys(files[k][0] for k in keys if k in files))
+                if found:
+                    out.append({"path": " / ".join(path + [name]), "name": name, "files": found})
+
+    top = root.find("PLAYLISTS/NODE")
+    if top is not None:
+        walk(top, [])
+    return out
+
+
+def genre_field(nml: str | None = None) -> dict:
+    """Traktor's Genre field, for learning genres from it: {"genres": {genre: [audio files]}, "multi": n}. Tracks
+    whose Genre names several ("A; B", "A, B", "A / B") are left out (counted in multi): one example, one genre."""
+    root = ET.parse(find_collection(nml)).getroot()
+    genres: dict[str, list[str]] = {}
+    multi = 0
+    for path, info in _collection_files(root).values():
+        g = (info.get("GENRE") or "").strip()
+        if not g:
+            continue
+        if re.search(r"[;,]| / ", g):
+            multi += 1
+            continue
+        genres.setdefault(g, []).append(path)
+    return {"genres": {g: sorted(set(v)) for g, v in sorted(genres.items())}, "multi": multi}
+
+
 def file_genre(path: str) -> str | None:
     try:
         f, mode = collection._open_tags(Path(path))
@@ -847,7 +912,8 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     if genres_from_analysis:
         hand = {p: f["genre"] for p, f in collection.manual().items() if "genre" in f}
         for r in con.execute("SELECT * FROM tracks WHERE error IS NULL OR error LIKE 'tags:%'"):
-            if (g := hand.get(r["path"]) or collection.multi_genre(dict(r))):
+            # my_genre: your genre per the Setup tab's genre switch (starter: None, so ours)
+            if (g := hand.get(r["path"]) or r["my_genre"] or collection.multi_genre(dict(r))):
                 analysed[r["path"]] = g
     genre_of = analysed.get if genres_from_analysis else file_genre
     predicted = {}

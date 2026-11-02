@@ -1521,27 +1521,89 @@ def check_rules() -> None:
 
 
 _genre_bundle: dict = {}
+# `train` also learns what the rest of your scanned collection sounds like, as this class: a track only gets one
+# of your genres when it sounds more like that genre than like the rest of your music (else it keeps the built-in
+# genre). Without it every track got one of your genres, even a house track when you'd trained Hyperpop and Pop.
+OTHER_GENRE = "∅ everything else"
+MY_GENRES_MIN_TOTAL, MY_GENRES_MIN_EACH = 30, 10  # before your genres can be switched on (Setup tab)
+BACKGROUND_MIN, BACKGROUND_MAX = 30, 1500  # scanned tracks of yours that stand for "everything else"
+SAME_TRACK_COS = 0.995  # a copy of an example (other path or format; 0.99999 measured) vs different tracks (≤ 0.983)
 
 
-def my_genre_model():
-    """The model trained by `train`, loaded once per process (again after a retrain), or None."""
+def my_genre_bundle() -> dict | None:
+    """What `train` saved (model, counts, report, …), loaded once per process (again after a retrain), or None."""
     if not GENRE_MODEL.exists():
+        _genre_bundle.clear()
         return None
     mtime = GENRE_MODEL.stat().st_mtime
     if _genre_bundle.get("mtime") != mtime:
         import joblib
 
-        _genre_bundle.update(mtime=mtime, model=joblib.load(GENRE_MODEL)["model"])
-    return _genre_bundle["model"]
+        _genre_bundle.clear()
+        _genre_bundle.update(joblib.load(GENRE_MODEL), mtime=mtime)
+    return _genre_bundle
 
 
-def predict_my_genre(emb_mean: np.ndarray, top: int = 3):
+def my_genre_model():
+    """The model trained by `train`, or None."""
+    b = my_genre_bundle()
+    return b["model"] if b else None
+
+
+def my_genres_not_ready(b: dict | None = None) -> str | None:
+    """Why your genres can't be switched on (yet), or None when they can."""
+    b = b if b is not None else my_genre_bundle()
+    if not b:
+        return "Learn your genres first."
+    if OTHER_GENRE not in b["model"].classes_:
+        return "Learned with an older version, which gave every track one of your genres: learn them again."
+    counts = b.get("counts") or {}
+    short = [f"{g} has {n}" for g, n in counts.items() if n < MY_GENRES_MIN_EACH]
+    total = sum(counts.values())
+    if total < MY_GENRES_MIN_TOTAL or short:
+        return (f"Needs {MY_GENRES_MIN_TOTAL} example tracks, at least {MY_GENRES_MIN_EACH} in each genre "
+                f"(now {total}{': ' + ', '.join(short) if short else ''}).")
+    return None
+
+
+# The Setup tab's genre switch (setting `my_genres_mode`): built-in genres only; yours where one clearly fits and
+# the built-in genre elsewhere; or yours on every track (the nearest of yours, even when none fits).
+MY_GENRE_MODES = ("starter", "both", "mine")
+
+
+def my_genres_mode() -> str:
+    """The switch as it applies now: "starter" while your genres can't be used (not learned, too few examples)."""
+    mode = app_setting("my_genres_mode", "starter")
+    return mode if mode in MY_GENRE_MODES and my_genres_not_ready() is None else "starter"
+
+
+def use_my_genres() -> bool:
+    """Your genres are in use ("both" or "mine")."""
+    return my_genres_mode() != "starter"
+
+
+def predict_my_genres(X: np.ndarray, top: int = 3, nearest: bool = False) -> list[list[dict] | None]:
+    """Per row (a track's mean EffNet embedding): your trained genres, best first, or None when the track sounds
+    more like the rest of your collection than like any of them (models without that class: never None).
+    `nearest`: your genres best first even then (the switch's "mine only")."""
     clf = my_genre_model()
+    X = np.atleast_2d(X)
     if clf is None:
-        return None
-    probs = clf.predict_proba(emb_mean.reshape(1, -1))[0]
-    order = np.argsort(probs)[::-1][:top]
-    return [{"genre": clf.classes_[i], "confidence": round(float(probs[i]), 3)} for i in order]
+        return [None] * len(X)
+    classes = list(clf.classes_)
+    out = []
+    for p in clf.predict_proba(X):
+        order = np.argsort(p)[::-1]
+        if classes[order[0]] == OTHER_GENRE and not nearest:
+            out.append(None)
+            continue
+        out.append([{"genre": classes[i], "confidence": round(float(p[i]), 3)}
+                    for i in order if classes[i] != OTHER_GENRE][:top])
+    return out
+
+
+def predict_my_genre(emb_mean: np.ndarray, top: int = 3, nearest: bool = False):
+    return predict_my_genres(emb_mean.reshape(1, -1), top, nearest)[0]
 
 
 def track_embedding(p: Path):
@@ -1649,6 +1711,9 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         mine = predict_my_genre(emb_mean)
         if mine:
             result["my_genre"] = mine
+        nearest = predict_my_genre(emb_mean, top=1, nearest=True)
+        if nearest:
+            result["my_genre_nearest"] = nearest[0]
         mood_p = mood_patches(emb)
         moods = run_moods(emb, mask, mood_p)
         if moods:
@@ -1817,9 +1882,9 @@ def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPoo
                 seg["dj_genre"] = g[0]["genre"]
             seg["styles"] = [f'{s["style"]} {s["score"]:.2f}' for s in top_styles(seg_acts, n=3, min_score=0.08)]
             if model is not None:
-                probs = model.predict_proba(emb[i0:i1].mean(axis=0).reshape(1, -1))[0]
-                j = int(np.argmax(probs))
-                seg["my_genre"] = f"{model.classes_[j]} {probs[j]:.2f}"
+                mine = predict_my_genre(emb[i0:i1].mean(axis=0), top=1)
+                if mine:
+                    seg["my_genre"] = f"{mine[0]['genre']} {mine[0]['confidence']:.2f}"
             if moods:
                 seg["mood"] = {m: round(float(p[i0:i1].mean()), 3) for m, p in moods.items()}
         timeline.append(seg)
@@ -1861,68 +1926,124 @@ def collect_training_set(folder: str) -> dict[str, list[Path]]:
     return sets
 
 
-def train(folder: str, progress=log) -> dict:
+def train(folder: str | None = None, progress=log, sets: dict[str, list] | None = None,
+          source: dict | None = None) -> dict:
+    """Learn your genres from `folder` (one subfolder or playlist per genre) or from `sets` ({genre: files}, e.g. a
+    Traktor playlist folder or Traktor's Genre field; `source` says which, so the page can learn again from it)."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     import joblib
 
-    sets = collect_training_set(folder)
+    if sets is None:
+        sets = collect_training_set(folder)
+        source = {"kind": "folder", "folder": str(Path(folder).expanduser())}
+        where = f"inside {folder}"
+    else:
+        sets = {g: [Path(f) for f in files] for g, files in sets.items() if files}
+        source = source or {"kind": "sets"}
+        where = "in what you picked"
     if len(sets) < 2:
         raise ValueError(
             "Need at least 2 genres. Make one subfolder per genre (or one .m3u8 playlist per genre) "
-            f"inside {folder}. Found: {list(sets) or 'nothing'}"
+            f"{where}. Found: {list(sets) or 'nothing'}"
         )
 
-    X, y, failed = [], [], []
+    X, y, used, failed = [], [], [], []
     total = sum(len(v) for v in sets.values())
     done = 0
     for genre, files in sets.items():
         for f in files:
             done += 1
+            progress(f"[{done}/{total}] listening to the examples: {f.name}")
             try:
                 _d, emb_mean, _acts = track_embedding(f)
                 X.append(emb_mean)
                 y.append(genre)
+                used.append(str(f))
             except Exception as err:  # unreadable file etc.
                 failed.append(f"{f.name}: {err}")
-            if done % 10 == 0 or done == total:
-                progress(f"  embedded {done}/{total}")
+    if not X:
+        raise ValueError(f"None of the example tracks {where} could be read.")
     X, y = np.vstack(X), np.array(y)
-
     counts = {g: int((y == g).sum()) for g in sets}
+
+    progress("Learning what the rest of your music sounds like...")
+    B = background_embeddings(used, X)
+    if len(B) < BACKGROUND_MIN:
+        raise ValueError(f"Needs at least {BACKGROUND_MIN} scanned tracks besides the examples, to learn what the rest of "
+                         f"your music sounds like (found {len(B)}). Scan your collection first, then learn your genres again.")
+    Xa = np.vstack([X, B])
+    ya = np.concatenate([y, np.full(len(B), OTHER_GENRE, dtype=object)]).astype(str)
     clf = make_pipeline(
         StandardScaler(),
         LogisticRegression(max_iter=5000, C=0.5, class_weight="balanced"),
     )
 
-    report: dict = {"genres": counts, "tracks_used": int(len(y))}
+    report: dict = {"genres": counts, "tracks_used": int(len(y)), "everything_else": int(len(B))}
     min_count = min(counts.values())
     if min_count >= 3:
+        # Cross-validated: each example and each of your other tracks judged by a model that didn't learn from it
         folds = min(5, min_count)
-        pred = cross_val_predict(clf, X, y, cv=StratifiedKFold(folds, shuffle=True, random_state=0))
-        acc = float((pred == y).mean())
-        report["cross_validated_accuracy"] = round(acc, 3)
-        per = {g: round(float((pred[y == g] == g).mean()), 3) for g in counts}
-        report["accuracy_per_genre"] = per
+        progress("Measuring how well it tells them apart...")
+        pred = cross_val_predict(clf, Xa, ya, cv=StratifiedKFold(folds, shuffle=True, random_state=0))
+        ex, rest = pred[: len(y)], pred[len(y):]
+        report["cross_validated_accuracy"] = round(float((ex == y).mean()), 3)  # examples given their own genre
+        report["accuracy_per_genre"] = {g: round(float((ex[y == g] == g).mean()), 3) for g in counts}
+        report["kept_built_in"] = round(float((ex == OTHER_GENRE).mean()), 3)  # examples it would leave as they are
+        report["others_given_yours"] = round(float((rest != OTHER_GENRE).mean()), 3)  # your other tracks it would relabel
         confusions: dict[str, int] = {}
-        for t, pr in zip(y, pred):
+        for t, pr in zip(y, ex):
             if t != pr:
-                confusions[f"{t} → {pr}"] = confusions.get(f"{t} → {pr}", 0) + 1
+                k = f"{t} → {'built-in genre' if pr == OTHER_GENRE else pr}"
+                confusions[k] = confusions.get(k, 0) + 1
         report["most_confused"] = dict(sorted(confusions.items(), key=lambda kv: -kv[1])[:6])
     else:
         report["cross_validated_accuracy"] = None
         report["note"] = "Add at least 3 tracks per genre to get an accuracy estimate (20+ is better)."
 
-    clf.fit(X, y)
+    clf.fit(Xa, ya)
     HOME.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": clf, "counts": counts, "trained_at": time.strftime("%Y-%m-%d %H:%M"),
-                 "source": str(Path(folder).expanduser())}, GENRE_MODEL)
+                 "source": source.get("folder") if source.get("kind") == "folder" else None,
+                 "source_kind": source, "report": report, "examples": used}, GENRE_MODEL)
     report["saved_to"] = str(GENRE_MODEL)
     if failed:
         report["skipped_files"] = failed[:20]
+    not_ready = my_genres_not_ready({"model": clf, "counts": counts})
+    if not_ready:
+        report["not_usable_yet"] = not_ready
     small = [g for g, c in counts.items() if c < 15]
     if small:
         report["tip"] = f"These genres have few examples and will be less reliable: {', '.join(small)}"
     return report
+
+
+def background_embeddings(examples: list[str], X: np.ndarray) -> np.ndarray:
+    """Mean EffNet embeddings of your scanned tracks (normal library, from the cache), standing for "everything
+    else": not the examples themselves, nor copies of them elsewhere (another path or format: SAME_TRACK_COS).
+    At most BACKGROUND_MAX, picked the same way each time."""
+    from . import collection
+
+    if not collection.NATIVE_DB.exists():
+        return np.empty((0, X.shape[1]), dtype=np.float32)
+    with sqlite3.connect(collection.NATIVE_DB) as con:
+        paths = [p for (p,) in con.execute("SELECT path FROM tracks WHERE type='track' "
+                                           "AND (error IS NULL OR error LIKE 'tags:%') ORDER BY path")]
+    skip = {os.path.normcase(unicodedata.normalize("NFC", p)) for p in examples}
+    rows = []
+    for p in paths:
+        if os.path.normcase(unicodedata.normalize("NFC", p)) in skip or not Path(p).exists():
+            continue
+        hit = cache_get(Path(p))
+        if hit is not None and hit[1].shape == X.shape[1:]:
+            rows.append(hit[1])
+    if not rows:
+        return np.empty((0, X.shape[1]), dtype=np.float32)
+    B = np.vstack(rows)
+    unit = lambda a: a / np.maximum(np.linalg.norm(a, axis=1, keepdims=True), 1e-12)  # noqa: E731
+    B = B[(unit(B) @ unit(X).T).max(axis=1) < SAME_TRACK_COS]
+    if len(B) > BACKGROUND_MAX:
+        B = B[np.sort(np.random.default_rng(0).choice(len(B), BACKGROUND_MAX, replace=False))]
+    return B
