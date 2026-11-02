@@ -8,6 +8,7 @@ on:
     paths: ["track-analyzer/**", ".github/workflows/tests.yml", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
   pull_request:  # every pull request: main requires these checks before a merge
   workflow_dispatch:
+  workflow_call:  # release.yml runs the same tests before a release
 
 jobs:
   test:
