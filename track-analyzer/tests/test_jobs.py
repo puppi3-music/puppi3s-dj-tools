@@ -42,3 +42,31 @@ def test_stop_button_stops_a_job_cleanly(monkeypatch):
     assert job["returncode"] == 130, (job["returncode"], job["lines"])
     assert "stopped cleanly" in "".join(job["lines"])
     assert job["error"] == "Stopped."
+
+
+class Stream:
+    def __init__(self, chunks: list[bytes]):
+        self.chunks = list(chunks)
+
+    def read1(self, n: int) -> bytes:
+        return self.chunks.pop(0) if self.chunks else b""
+
+
+def read_log(chunks: list[bytes]) -> dict:
+    job = {"lines": [], "dropped": 0, "live": None, "error": None, "progress": None, "stage": None, "steps": []}
+    jobs._read_err(job, type("Proc", (), {"stderr": Stream(chunks)})())
+    return job
+
+
+def test_log_lines_with_windows_line_ends(monkeypatch):
+    monkeypatch.setattr(jobs, "WINDOWS", True)
+    # "\r\n" split across two reads; a meter's "\r" updates; the meter's last value ends in "\r\n"
+    job = read_log([b"ready\r\n", b"one\r", b"\ntwo\r\n", b"10%\r50%\r100%\r\n", b"last"])
+    assert job["lines"] == ["ready", "one", "two", "100%", "last"]
+    assert job["live"] is None
+
+
+def test_log_meter_on_mac_and_linux(monkeypatch):
+    monkeypatch.setattr(jobs, "WINDOWS", False)
+    job = read_log([b"start\n", b"10%\r50%\r", b"100%\r", b"\ndone\n"])
+    assert job["lines"] == ["start", "done"] and job["live"] is None

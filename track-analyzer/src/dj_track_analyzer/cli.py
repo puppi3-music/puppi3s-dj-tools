@@ -58,6 +58,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd")
     su = sub.add_parser("setup", help="download the style models")
     su.add_argument("--no-maest", action="store_true", help="skip the larger MAEST genre model")
+    it = sub.add_parser("install", help="install a tool the analyzer needs (Windows: Rubber Band's own build)")
+    it.add_argument("tool", choices=["rubberband"])
     sub.add_parser("styles", help="list the 400 Discogs style names and check dj_genres.json")
     a = sub.add_parser("analyze", help="analyze one file and print JSON")
     a.add_argument("file")
@@ -326,6 +328,10 @@ def main() -> None:
     if args.cmd == "setup":
         download_models(maest=not args.no_maest)
         check_rules()
+    elif args.cmd == "install":
+        from .analysis import install_rubberband
+
+        print(json.dumps(install_rubberband(), indent=2, ensure_ascii=False))
     elif args.cmd == "styles":
         names = [split_style(c)[0] for c in style_classes()]
         print("\n".join(sorted(set(names))))
