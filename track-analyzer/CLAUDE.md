@@ -5,7 +5,8 @@ score, synced into Traktor Pro 4 (optionally Lexicon), plus an MCP server for lo
 macOS and Linux x86_64 (Linux has no Traktor: those steps say so; also as a Docker image), Python 3.11 via `uv`. Data dir: `data/` (`TRACK_ANALYZER_HOME`).
 
 Docs: README.md (install + full reference), docs/GUIDE.html (task-first guide, self-contained, opened in a browser),
-docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs). Keep them in sync when commands, options or numbers change: the
+docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs), docs/RELEASING.md
+(version bump PR, `AFTER` steps, tag `v<version>`). Keep them in sync when commands, options or numbers change: the
 `/update-docs` skill does this (`.claude/skills/update-docs/scripts/doc_drift.py` lists CLI options the docs miss).
 Public docs stay impersonal: numbers come from "a test collection of about 470 tracks", no personal track names.
 
