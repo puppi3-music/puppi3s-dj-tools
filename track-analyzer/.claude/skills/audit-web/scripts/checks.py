@@ -174,8 +174,8 @@ def hosts() -> None:
 
 
 def static() -> None:
-    """index.html: script syntax (node), colours hard-coded outside the theme tokens, listeners added on every redraw."""
-    html = web.PAGE.read_text(encoding="utf-8")
+    """The page (web.page_html(): index.html + style.css + js/*.js): script syntax (node), colours hard-coded outside the theme tokens, listeners added on every redraw."""
+    html = web.page_html()
     script = html[html.index("<script>") + 8:html.rindex("</script>")]
     node = shutil.which("node")
     if node:
@@ -197,7 +197,7 @@ def static() -> None:
         if "signal" in script[m.start():script.find("\n", m.start())]:
             continue  # removable (AbortController): fine inside a per-render function
         line = script[:m.start()].count("\n") + html[:html.index("<script>")].count("\n") + 1
-        print(f"  global listener at index.html:{line}: {m.group(0).strip()}")
+        print(f"  global listener at page line {line} (see the js/ file between the include lines): {m.group(0).strip()}")
     print("  (a global listener inside a function that runs per render, e.g. drawWave, piles up)")
 
 
