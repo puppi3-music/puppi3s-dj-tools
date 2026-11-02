@@ -181,10 +181,7 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
     """Start the job's process (holding _lock, nothing running)."""
     global _job, _proc, _seq
     writes = ACTIONS[action][2]
-    if args[0] == BREW:
-        cmd = args
-    else:
-        cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
+    cmd = _command(args)
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1",
            "PYTHONUTF8": "1"}  # Windows: the job's output and files in UTF-8, as read here (not the ANSI code page)
     if action in TOUCHES_TRAKTOR and not dry_run and traktor.running_state() is None:
@@ -197,7 +194,7 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
             "stopping": False, "stage": None,
             "steps": [x for x in STEPS.get(action, ()) if "--tracklist" in args or "tracklist" not in x]}
     _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             env=env, cwd=str(Path(__file__).resolve().parents[2]), start_new_session=True)
+                             env=env, cwd=str(Path(__file__).resolve().parents[2]), **_own_group())
     job, proc = _job, _proc
     out: list[str] = []
     readers = [threading.Thread(target=_read_err, args=(job, proc), daemon=True),
@@ -206,6 +203,46 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
         t.start()
     threading.Thread(target=_wait, args=(job, proc, out, readers), daemon=True).start()
     log(f"Job started: {job['command']}")
+
+
+def _command(args: list[str]) -> list[str]:
+    return args if args[0] == BREW else [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
+
+
+# Each job runs in its own process group, so a stop reaches its worker processes too and never the page itself.
+WINDOWS = sys.platform == "win32"
+
+
+def _own_group() -> dict:
+    return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {"start_new_session": True}
+
+
+def _interrupt(proc: subprocess.Popen) -> None:
+    """Ctrl-C for the job's group. Windows can only send a group Ctrl-Break, which `child_signals` makes a Ctrl-C."""
+    if WINDOWS:
+        try:
+            os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+        except OSError:  # no console to send it through (or already gone): stop it the hard way
+            _kill(proc)
+    else:
+        os.killpg(proc.pid, signal.SIGINT)
+
+
+def _kill(proc: subprocess.Popen) -> None:
+    """Harder: SIGTERM to the group; on Windows the job and every process it started, at once."""
+    if proc.poll() is not None:
+        return
+    if WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        os.killpg(proc.pid, signal.SIGTERM)
+
+
+def child_signals() -> None:
+    """In a job: Ctrl-Break (Windows' stop, see _interrupt) raises KeyboardInterrupt as Ctrl-C does, so scans save
+    what they have."""
+    if WINDOWS:
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
 
 
 def _add(job: dict, line: str) -> None:
@@ -293,17 +330,16 @@ def stop() -> dict:
         return state()
     job["stopping"] = True
     try:
-        os.killpg(proc.pid, signal.SIGINT)
+        _interrupt(proc)
     except ProcessLookupError:
         return state()
 
     def harder():
         time.sleep(20)
-        if proc.poll() is None:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+        try:
+            _kill(proc)
+        except ProcessLookupError:
+            pass
     threading.Thread(target=harder, daemon=True).start()
     return state()
 
@@ -313,7 +349,7 @@ def stop_on_exit() -> None:
     proc = _proc
     if proc and proc.poll() is None:
         try:
-            os.killpg(proc.pid, signal.SIGINT)
+            _interrupt(proc)
             proc.wait(timeout=15)
         except (ProcessLookupError, subprocess.TimeoutExpired):
             pass
@@ -479,6 +515,7 @@ def setup_status() -> dict:
 if __name__ == "__main__":
     # A job: the CLI with these arguments; its message on SystemExit goes to the page as one marked line.
     sys.argv = ["dj-track-analyzer", *sys.argv[1:]]
+    child_signals()
     from .cli import main
 
     try:

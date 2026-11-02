@@ -744,6 +744,8 @@ def _scan_one(job):
 
 def _worker_init():
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
+    if hasattr(signal, "SIGBREAK"):  # Windows: a stop from the page is a Ctrl-Break (jobs._interrupt)
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
 # Come from Traktor, not the analysis; hype and the Cross-Key Analysis are judged within the collection,
