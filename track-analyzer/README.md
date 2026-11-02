@@ -72,7 +72,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Go to the project folder (wherever you cloned or unpacked it)
 cd ~/puppi3s-dj-tools/track-analyzer
 
-# 3. Install everything: Python 3.11 + Essentia, about 400 MB
+# 3. Install everything: Python 3.11, TensorFlow and the rest, about 1 GB
 uv sync
 
 # 4. Download the models: a few hundred MB, mostly MAEST
@@ -92,15 +92,8 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 - **Model server unreachable?** `setup` tries a few ways, then prints a download link for each file it couldn't get. Open them in a browser, drop the files into `data/models/`, and run `setup` again to confirm.
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
-- **Requirements.** Apple Silicon with macOS 11 or newer, an Intel Mac with macOS 14 or newer, or Linux on x86_64 (see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
-- **Faster analysis.** The install includes a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases) that does loudness and resampling 5–7 times faster, the models' mel input faster too (EffNet 1.2–1.8x), the key 7x and the BPM 6.5x faster. Its results are Essentia's, or a millionth or less off where its maths is more exact, and the same on every platform. Nothing to set up; no Rust needed.
-- **Faster decoding (optional).** `uv sync --extra decode` adds PyAV (current FFmpeg), which reads audio files with
-  exactly Essentia's samples, 1.15x faster for MP3 and 2.4x for FLAC, using a third of the memory on long mixes. It needs
-  macOS 14 or newer on Apple Silicon. A plain `uv sync` removes it again (`Start Puppi3's Track Analyzer.command` runs
-  `uv sync --inexact`, which keeps it).
-- **Models on Python TensorFlow (optional).** `uv sync --inexact --extra nets` adds TensorFlow 2.15 (about 1 GB), the
-  version inside Essentia, and runs the models on it with exactly Essentia's results. Not faster: a step toward
-  Windows ([docs/WINDOWS.md](docs/WINDOWS.md) stage 4), for testing.
+- **Requirements.** Apple Silicon with macOS 14 or newer, an Intel Mac with macOS 11 or newer, or Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
+- **How it measures.** The signal processing (loudness, resampling, the models' mel input, key, BPM) is Essentia's, ported to Rust in a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases): 5–7 times faster, and the same results on every platform. They are Essentia's, or a millionth or less off where its maths is more exact. Audio is decoded with current FFmpeg (PyAV) and the models run on TensorFlow 2.15, the version Essentia used. Nothing to set up; no Rust needed.
 - **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
   which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
   "synth", "no bass" or "drums + bass only", and whether a loop has a kick comes from the drum stem (no bassline in the
@@ -109,7 +102,7 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 ### Linux
 
-Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
+Everything that works on your music files works on Linux (x86_64 only: the Rust module is built for that): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
@@ -128,7 +121,7 @@ docker compose down                      # stop it
 - `MUSIC` is mounted at the same path inside the container, so paths in the database are your real ones. Data (database, models, backups) goes in `data-docker/` (or `TRACK_ANALYZER_DATA`), separate from a native install's `data/`.
 - `TRAKTOR_DIR` mounts the folder holding `Traktor <version>` (your `Documents/Native Instruments`). The container can't see whether Traktor is open, so every write to Traktor asks you to confirm it's closed: the page asks in a dialog, a command asks y/N in a terminal, and without a terminal it needs `TRACK_ANALYZER_TRAKTOR_CLOSED=1`. Traktor on Windows stores `C:` paths, which the analyzer doesn't read yet ([docs/WINDOWS.md](docs/WINDOWS.md)): until then, scan folders rather than `scan --traktor`.
 - The page answers only `127.0.0.1` and `localhost`. To open it from another device, publish the port on more than localhost in `compose.yaml` and list the names in `TRACK_ANALYZER_HOSTS`.
-- Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster, and results come from the Mac's own Essentia build.
+- Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster.
 - `docker compose run --rm test` checks everything end to end on a few synthetic tracks (`scripts/make_fixtures.py`, `scripts/docker_smoke.py`), as CI does.
 
 ### Checking a recorded mix
@@ -860,6 +853,6 @@ dj-track-analyzer/
 ## Good to know
 
 - **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA): it agreed with Traktor's key on 75% of a test collection of about 470 tracks, Essentia's key-finder on 58% (it mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
-- **Surround (5.1) files** are mixed down to stereo with ffmpeg, so install ffmpeg to analyse them (`brew install ffmpeg` on a Mac). Without it, those files fail with a message saying how to install it (the web page's Setup tab can install it too).
+- **Surround (5.1) files** are mixed down to stereo with FFmpeg's standard downmix.
 - **Licences.** This project and Essentia are AGPL. The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results; each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine.
 - **Uninstall.** Delete this folder and `data`.

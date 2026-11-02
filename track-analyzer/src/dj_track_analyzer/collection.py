@@ -657,7 +657,6 @@ def _scan_one(job):
 
 def _worker_init():
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
-    analysis.es()
 
 
 # Come from Traktor, not the analysis; hype and the Cross-Key Analysis are judged within the collection,
@@ -791,7 +790,6 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     pool = None
     try:
         if workers == 1:
-            analysis.es()
             results = map(_scan_one, jobs)
         else:
             import multiprocessing as mp

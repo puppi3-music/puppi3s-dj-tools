@@ -367,7 +367,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Everything runs on your computer; no audio leaves it. The technical details are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md#7-how-the-analysis-works">README.md</a>.</p>
 
 <h3 id="how-listen">1. Listening to each track</h3>
-<p><code>scan</code> decodes every file once and measures it with <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library:</p>
+<p><code>scan</code> decodes every file once and measures it with the methods of <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library (ported to Rust, so they run faster and on every platform):</p>
 <ul>
   <li><b>BPM and key</b>, rounded to whole BPM and shown as Camelot. The key comes from a small neural network trained on electronic music (<a href="https://github.com/a1ex90/MusicalKeyCNN">MusicalKeyCNN</a> by Alexander Sommer, MIT License), which agreed with Traktor more often than Essentia's key-finder (75% vs 58% of a test collection). Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beatgrid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
   <li><b>Loudness</b> and how the energy rises and falls through the track.</li>

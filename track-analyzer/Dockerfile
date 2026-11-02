@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg rubberba
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/local/bin/python3.11 \
     UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH \
     TRACK_ANALYZER_HOME=/data TRACK_ANALYZER_CONTAINER=1 HOME=/home/dj
-# Opt-in extras as on a Mac, e.g. --build-arg EXTRAS="--extra decode --extra stems"
+# Opt-in extras as on a Mac, e.g. --build-arg EXTRAS="--extra stems"
 ARG EXTRAS=""
 WORKDIR /app
 COPY pyproject.toml uv.lock ./

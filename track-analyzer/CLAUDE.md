@@ -27,7 +27,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `color_model()` aliases `sys.modules["colors"]` because bundles trained before the package move pickled
   `colors.BlockWeights` under that name.
 - `dsp/`: Rust (PyO3 + maturin) module `track_analyzer_dsp`, replacing Essentia steps bit for bit, faster
-  (`analysis.dsp()`; Essentia when it isn't installed). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
+  (`analysis.dsp()`, required since stage 7). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
   in the coefficients and `b*x - a*y` to match the arm64 build) and `resample_sinc_medium` (= Resample quality 1,
   libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
   `analysis.resample_medium`) and `resample_linear` (= Resample quality 4, the models' 16 kHz input via
@@ -54,6 +54,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   and key strength 1e-5, key/scale equal; BPM its gate) as "close". Mel tables (window, mel weights, twiddles) from
   `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
   after a check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
+  `uv sync --inexact --group check` (Essentia, the reference; the analyzer itself doesn't use it since stage 7), then
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
   release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
   uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
@@ -63,19 +64,19 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   docs/WINDOWS.md.
   Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
   decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
-  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV when installed (`analysis.pyav()`), bit
+  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV (`analysis.pyav()`), bit
   for bit on 507/508 files (stage 2; the other: FFmpeg 2.8 decoded one MP3's LAME Info frame as 1152 samples of audio,
   current FFmpeg doesn't, as `traktor.audio_offset` assumes); raw frame bytes converted ~1M samples at a time (per-frame
   numpy was slower than Essentia), FLAC/ALAC frame threads; >2 channels via PyAV's resampler = `ffmpeg -ac 2` bits.
   Opus length = sum of packet durations (FFmpeg 2.8's). Every model graph goes through `analysis.Graph` (= TensorflowPredict:
   run({in: x}) → {out: y}; inputs lose size-1 axes after the batch, outputs padded to 4 axes) or `Head` (= TensorflowPredict2D,
-  64 rows per run, the last shorter: one batch per track is off by 2e-6): Python `tensorflow==2.15.0` when installed
-  (`analysis.tensorflow()`, opt-in extra `nets`, which also names tensorflow-macos/-intel: uv's lock misses them), else
-  Essentia; bit-identical, same speed (stage 4; `dsp/check.py --steps nets`). onnxruntime (tf2onnx) isn't identical
+  64 rows per run, the last shorter: one batch per track is off by 2e-6): Python `tensorflow==2.15.0`
+  (`analysis.tensorflow()`; pyproject.toml also names tensorflow-macos/-intel: uv's lock misses them); bit-identical
+  to Essentia's, same speed (stage 4; `dsp/check.py --steps nets`). onnxruntime (tf2onnx) isn't identical
   (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
-  Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).
+  No Essentia at run time (stage 7): `essentia-tensorflow` is only in the `check` dependency group, for dsp/check.py.
 - `collection.py`: `scan` (resumable, parallel spawn workers, SQLite `collection.db`), CSV export,
   `tag`/`untag` (mutagen; originals backed up in `original_tags` table), search, mix suggestions, `regenre`
   (genres again from cached scores + current dj_genres.json; reproduces scan exactly).
@@ -101,7 +102,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   [--track TEXT]` (+ `readme_shots.mjs`, headless Chrome) from the real library, with titles/artists/albums/paths
   swapped for made-up ones in the page's fetch answers and text. Retake after visible page changes; look at every PNG
   for leftover names before committing.
-- Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (no Linux arm64 Essentia; on Apple
+- Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (the dsp wheels and `[tool.uv] environments` cover Linux x86_64 only; on Apple
   Silicon it runs emulated, TF included). Target `app` (web on 0.0.0.0, HOME=/home/dj so Traktor's folder mounts at
   ~/Documents/Native Instruments, data /data, any uid) and `test` (+ `setup` models baked in, never published:
   licence; + `scripts/make_fixtures.py` library: 4 synthetic tracks 124-145 BPM, MP3/FLAC/WAV, NML with grid, 5 cues,
@@ -486,7 +487,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (view-only `source_bpm`/`native_color_position`; `hype` is in `KEEP_ON_RESCAN`).
 - NFC vs NFD paths create duplicate rows (`_drop_decomposed_duplicates`). Syncthing `*.sync-conflict-*` copies are
   skipped by `scan` (and earlier rows dropped). >2-channel files (Essentia's AudioLoader rejects them) are mixed down to
-  stereo by PyAV's resampler (`decode`), or by the ffmpeg command without PyAV (`_load_downmixed`, float; same bits). Rows for files that are gone are dropped by every scan unless they're on
+  stereo by PyAV's resampler (`decode`; = the `ffmpeg -ac 2` bits). Rows for files that are gone are dropped by every scan unless they're on
   a drive that isn't mounted (/Volumes/<disk>; Linux /media, /run/media, /mnt via ismount). `nfc()` composes a
   path on macOS always, on Linux only if that spelling exists (ext4 compares bytes).
 - `scan` recomputes hype after analysing anything (it's a rank within the collection); `hype` is also kept on rescan.

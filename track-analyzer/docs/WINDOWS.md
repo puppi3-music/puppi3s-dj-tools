@@ -6,10 +6,12 @@ marked **verify** are guesses about Traktor, Lexicon or a library on Windows tha
 
 The plan is a **native Windows** port. WSL2 is described at the end as a stopgap, with its downsides.
 
-## The blocker: Essentia
+## The blocker: Essentia (removed, stage 7)
 
-`essentia-tensorflow` has pip wheels for macOS (arm64, x86_64) and Linux x86_64 only, so `uv sync` fails on
-Windows and nothing runs. Essentia doesn't support native Windows builds with TensorFlow. Building it ourselves
+Solved on 2026-11-02: the analyzer no longer uses Essentia (stage 7 below). The rest of this section is how it got there.
+
+`essentia-tensorflow` has pip wheels for macOS (arm64, x86_64) and Linux x86_64 only, so `uv sync` failed on
+Windows and nothing ran. Essentia doesn't support native Windows builds with TensorFlow. Building it ourselves
 (MinGW/MSYS2 against TensorFlow's Windows C library, then a wheel per Python and TF version) would keep results
 identical but means owning a fragile build forever. Not planned.
 
@@ -284,11 +286,27 @@ against Essentia's 150.82, with the set at 149.97 and 150.03 in the two segments
 libm in math.rs instead, bpm.rs gives Essentia's result bit for bit on both. One float step in an onset function
 tips a tracker's close call either way; where it tipped, ours is the BPM the set was playing.
 
-**Stage 7: drop Essentia.** `track-analyzer-dsp` (prebuilt wheels) becomes a required dependency;
-`essentia-tensorflow` moves to an optional dependency group used only by `dsp/check.py` on macOS and Linux;
-`es()` and every fallback go. Before merging, run the end-to-end check from the loudness work: `analyze_file`'s
-full output byte-identical with and without Essentia, on the whole collection and the mixes. Then `uv sync`
-works on Windows, and the rest of this file (Traktor, paths, launcher) is the Windows work.
+**Stage 7: drop Essentia. Done (2026-11-02).** `track-analyzer-dsp` (prebuilt wheels), PyAV and TensorFlow
+2.15 are required dependencies; `essentia-tensorflow` is only in the `check` dependency group (`uv sync --inexact
+--group check`), which nothing but `dsp/check.py` uses. `analysis.es()` and every Essentia fallback are gone (the
+"Essentia otherwise" in the stages above is history). The `check` group stays as the reference the Rust code is
+checked against whenever `dsp/` changes; a normal install never downloads it.
+
+End-to-end check: `analyze_file`'s whole output, new code against the code before stage 7 with the Rust module,
+PyAV and TensorFlow hidden (so Essentia did every step), on all 469 tracks and 41 recordings (mix timelines
+included), each in its own empty cache. 502 of 510 files identical. The other 8:
+- *Chris Lake "Savana"*: the MP3 whose second Info frame FFmpeg 2.8 decoded as audio (stage 2); ours starts where
+  Traktor's timeline does. Style scores up to 0.025, colour position 0.03, same BPM and key.
+- *VDJ- (1).mp3, segment 23*: 150 against 151, the libm tip of stage 6 (ours is the set's tempo).
+- *Two short VDJ recordings (15-17 s) and 5 tracks*: a different BPM on the recordings (113 against 136, 125
+  against 123) and BPM confidence on the tracks (0.01-0.04). Essentia's `RhythmExtractor2013` gives its result
+  only on the first call in a process; later calls carry state over and drift (ten calls on one of the recordings:
+  80 to 172 BPM; on whole tracks the same BPM, confidence 1.146 then 1.11). Ours gives that first call's result
+  bit for bit on every call, so ours doesn't depend on which files a worker analysed before.
+
+Analysis time over the 510 files, both passes run side by side with 2 workers each: Essentia 13,374 s, ours
+9,672 s (28% less). `uv sync` now works on Windows; the rest of this file (Traktor, paths, launcher) is the
+Windows work.
 
 **What changes for users.** On macOS: nothing in the results; analysis gets faster (below). On Linux: the DSP
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
@@ -458,7 +476,7 @@ The Local API itself (localhost:48624) is the same.
 
 ## Order of work
 
-1. **Replace Essentia, on the Mac**, in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
+1. **Replace Essentia, on the Mac** (done 2026-11-02), in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
    front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
    collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
    everywhere.

@@ -241,7 +241,6 @@ def scan(bpm: float = DEFAULT_BPM, workers: int | None = None, rescan: bool = Fa
         pool = None
         try:
             if workers == 1:
-                analysis.es()
                 results = map(_scan_one, jobs)
             else:
                 import multiprocessing as mp
