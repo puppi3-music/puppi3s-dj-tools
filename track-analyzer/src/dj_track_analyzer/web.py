@@ -970,6 +970,13 @@ def set_genre_mode(mode: str) -> dict:
         return mygenres.set_mode(mode)
 
 
+def genres_from_traktor() -> dict:
+    """The Setup tab's Traktor choices for learning genres: playlist folders and the Genre field's genres."""
+    from . import mygenres
+
+    return mygenres.traktor_choices()
+
+
 def my_genres_preview(mode: str) -> dict:
     from . import mygenres
 
@@ -1762,6 +1769,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
+        Route("/api/genres/traktor", respond(lambda q: genres_from_traktor())),
         Route("/api/genres/preview", respond(lambda q: my_genres_preview(q.get("mode", "both")))),
         Route("/api/genres/use", post(lambda b: set_genre_mode(str(b.get("mode", "")))), methods=["POST"]),
         Route("/api/genres/browse", post(lambda b: pick_genre_folder()), methods=["POST"]),

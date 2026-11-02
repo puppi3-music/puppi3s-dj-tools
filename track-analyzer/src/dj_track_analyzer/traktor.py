@@ -806,6 +806,73 @@ def track_info(nml: str | None = None) -> dict[str, tuple[float | None, str | No
     return out
 
 
+# Folders this app makes in Traktor: never offered as genre examples
+OWN_FOLDERS = {FOLDER_NAME, "Sets (Track Analyzer)", "Crates (Track Analyzer)"}
+
+
+def _collection_files(root) -> dict[str, tuple[str, dict]]:
+    """{VOLUME+DIR+FILE (a playlist's PRIMARYKEY): (the audio file on disk, its INFO attributes)} for every entry of
+    Traktor's collection whose file exists."""
+    out = {}
+    for e in root.find("COLLECTION").iter("ENTRY"):
+        loc = e.find("LOCATION")
+        if loc is None:
+            continue
+        found = next((c for c in location_paths(loc.attrib) if os.path.isfile(c)), None)
+        if not found or os.path.splitext(found)[1].lower() not in collection.AUDIO_EXTS or "/TraktorContent/" in found:
+            continue
+        info = e.find("INFO")
+        out[loc.get("VOLUME", "") + loc.get("DIR", "") + loc.get("FILE", "")] = (
+            found, dict(info.attrib) if info is not None else {})
+    return out
+
+
+def playlist_folders(nml: str | None = None) -> list[dict]:
+    """Traktor's playlist folders that hold at least 2 playlists, for learning genres (each playlist = one genre):
+    [{"folder": "Genre Training" (nested: "DJ / Genre Training"), "playlists": {name: [audio files]}}].
+    This app's own folders and smartlists are left out; tracks missing on disk too."""
+    root = ET.parse(find_collection(nml)).getroot()
+    files = _collection_files(root)
+    out = []
+
+    def walk(node, path: list[str]):
+        subs = node.find("SUBNODES")
+        if subs is None:
+            return
+        lists = {}
+        for child in subs.findall("NODE"):
+            name = child.get("NAME", "")
+            if child.get("TYPE") == "FOLDER" and name not in OWN_FOLDERS:
+                walk(child, path + [name])
+            elif child.get("TYPE") == "PLAYLIST" and child.find("PLAYLIST") is not None:
+                keys = [pk.get("KEY", "") for pk in child.find("PLAYLIST").iter("PRIMARYKEY")]
+                lists[name] = list(dict.fromkeys(files[k][0] for k in keys if k in files))
+        if path and len(lists) >= 2:
+            out.append({"folder": " / ".join(path), "playlists": lists})
+
+    top = root.find("PLAYLISTS/NODE")
+    if top is not None:
+        walk(top, [])
+    return out
+
+
+def genre_field(nml: str | None = None) -> dict:
+    """Traktor's Genre field, for learning genres from it: {"genres": {genre: [audio files]}, "multi": n}. Tracks
+    whose Genre names several ("A; B", "A, B", "A / B") are left out (counted in multi): one example, one genre."""
+    root = ET.parse(find_collection(nml)).getroot()
+    genres: dict[str, list[str]] = {}
+    multi = 0
+    for path, info in _collection_files(root).values():
+        g = (info.get("GENRE") or "").strip()
+        if not g:
+            continue
+        if re.search(r"[;,]| / ", g):
+            multi += 1
+            continue
+        genres.setdefault(g, []).append(path)
+    return {"genres": {g: sorted(set(v)) for g, v in sorted(genres.items())}, "multi": multi}
+
+
 def file_genre(path: str) -> str | None:
     try:
         f, mode = collection._open_tags(Path(path))
