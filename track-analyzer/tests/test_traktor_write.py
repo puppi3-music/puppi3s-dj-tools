@@ -37,7 +37,7 @@ def test_write_into_traktor_and_undo(library, fake_analysis, fake_traktor):
     if traktor.running_state():
         pytest.skip("Traktor is running on this computer")
     scan(library)
-    cli("tag")
+    cli("tag", "--multi")  # as the page's "Write genres into your files' tags"
     nml = library["nml"]
     before = nml.read_bytes()
 
@@ -58,7 +58,7 @@ def test_write_into_traktor_and_undo(library, fake_analysis, fake_traktor):
     assert "\r\n" not in text  # Traktor writes LF; so do we
     root = ET.parse(nml).getroot()
     lists = [n.get("NAME") for n in root.iter("NODE") if n.get("TYPE") == "SMARTLIST"]
-    assert {"Deep House", "Tech House", "Trance"} <= set(lists)
+    assert {"Deep House", "Progressive House", "Tech House", "Trance"} <= set(lists)
     assert any(nml.parent.glob(traktor.BACKUP_PREFIX + "*"))
 
     # Traktor open: every write and the undo refuse, and nothing changes
@@ -72,6 +72,14 @@ def test_write_into_traktor_and_undo(library, fake_analysis, fake_traktor):
     # closed again: the undo puts back the collection byte for byte
     fake_traktor.stop()
     cli("traktor", "--undo")
+    assert nml.read_bytes() == before
+
+    # Traktor saved the collection after our write: the undo refuses, --force (the page's "Undo anyway") restores
+    cli("traktor")
+    nml.write_bytes(nml.read_bytes().replace(b'MODIFIED_TIME="40000"', b'MODIFIED_TIME="40001"', 1))
+    r = cli("traktor", "--undo", check=False)
+    assert r.returncode and "--force" in r.stdout + r.stderr
+    cli("traktor", "--undo", "--force")
     assert nml.read_bytes() == before
 
 
