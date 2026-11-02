@@ -6,8 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from .analysis import (AUDIO_EXTS, GENRE_MODEL, HOME, analyze_file, dj_rules, models_present,
-                       train)
+from .analysis import AUDIO_EXTS, GENRE_MODEL, HOME, analyze_file, dj_rules, models_present
 
 
 def build_mcp():
@@ -35,7 +34,8 @@ def build_mcp():
             "Results include BPM, key with Camelot notation, loudness, and genre in three layers: "
             "dj_genre (DJ-style names such as Acid Trance or Melodic House & Techno, derived from a "
             "pretrained model, no training needed), discogs_styles (the raw pretrained style scores) and, "
-            "only if the user trained one, my_genre (their own labels; prefer it when present). Scores are "
+            "only if the user trained one and the track clearly sounds like one of them, my_genre (their own "
+            "labels; prefer it when present). Scores are "
             "relative confidence, not probabilities. Long files are treated as DJ mixes and get a timeline. "
             "The user colour-codes tracks with Traktor's 7 colours as a scale from Red (hardest, darkest) "
             "through Orange, Yellow, Green, Blue, Violet to Magenta (prettiest, most beautiful); `color` is "
@@ -94,20 +94,32 @@ def build_mcp():
 
     @mcp.tool()
     @friendly
-    def train_genres(folder: str) -> dict:
+    def train_genres(folder: str = "", traktor_playlists: list[str] | None = None,
+                     traktor_genres: list[str] | None = None) -> dict:
         """OPTIONAL. Teach the analyzer the user's own genre labels from example tracks.
         Not needed for normal use: dj_genre already works without training.
 
         Layout: one subfolder per genre (folder/Acid Trance/*.mp3, folder/Hard Trance/*.mp3 ...)
         or one .m3u8 playlist per genre named after the genre. Aim for 20-50 tracks per genre.
+        It also learns what the rest of the user's scanned collection sounds like, so only tracks that clearly
+        fit get one of these genres; the collection uses them once the user sets the genre switch (Setup tab of the
+        web page) to Both (theirs where one fits) or Mine only (the nearest of theirs on every track).
         Replaces any previous custom model. Large sets can take several minutes the first time
         (embeddings are cached afterwards); for big libraries the CLI is better:
         `uv run dj-track-analyzer train <folder>`.
 
-        Args:
+        Args (give one):
             folder: Full path to the training folder.
+            traktor_playlists: Traktor playlists (at least 2; in folders as "DJ / Hyperpop"): each is one genre,
+                named after the playlist.
+            traktor_genres: Genres from Traktor's Genre field (at least 2): the tracks with each are its examples.
         """
-        return train(folder, progress=lambda *a: None)
+        from . import mygenres
+
+        if sum(map(bool, (folder, traktor_playlists, traktor_genres))) != 1:
+            raise ValueError("Give one of folder, traktor_playlists or traktor_genres")
+        return mygenres.train(folder or None, progress=lambda *a: None, playlists=traktor_playlists or None,
+                              genres=traktor_genres or None)
 
     @mcp.tool()
     @friendly
@@ -119,7 +131,12 @@ def build_mcp():
             import joblib
 
             b = joblib.load(GENRE_MODEL)
-            info.update({"my_genres": b["counts"], "trained_at": b["trained_at"], "trained_from": b["source"]})
+            from .analysis import my_genres_mode
+
+            info.update({"my_genres": b["counts"], "trained_at": b["trained_at"], "trained_from": b["source"],
+                         # the user's genre switch: starter = their collection shows the built-in genres, both =
+                         # theirs where one fits, mine = the nearest of theirs on every track
+                         "my_genres_mode": my_genres_mode()})
         else:
             info["my_genres"] = None
             info["note"] = "No custom genres trained (optional). dj_genre names come from dj_genres.json."

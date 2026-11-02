@@ -29,7 +29,8 @@ LOGS = Path(__file__).resolve().parents[2] / "logs"  # where the docs suggest sa
 _lock = threading.RLock()
 TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", "duration_sec", "bpm", "traktor_bpm",
               "key", "camelot", "cnn_key", "cnn_camelot", "traktor_camelot", "lufs", "loudness_range", "genre", "genre_score", "genre_2",
-              "genre_2_score", "genre_3", "genre_3_score", "my_genre", "my_genre_confidence", "tag_genre", "styles",
+              "genre_2_score", "genre_3", "genre_3_score", "my_genre", "my_genre_confidence", "trained_genre",
+              "trained_genre_confidence", "nearest_genre", "nearest_genre_confidence", "tag_genre", "styles",
               "traktor_color", "color", "color_position", "color_confidence", "mood_aggressive", "mood_happy",
               "mood_party", "mood_relaxed", "mood_sad", "instruments", "approachability", "hype", "error",
               "scanned_at"]
@@ -873,32 +874,43 @@ PICK_TITLE = "Choose Traktor's collection.nml"
 _PS_PICK = r"""
 Add-Type -AssemblyName System.Windows.Forms
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
-$d = New-Object System.Windows.Forms.OpenFileDialog
-$d.Title = $env:TA_PICK_TITLE
-$d.Filter = "Traktor collection (collection.nml)|collection.nml|All files (*.*)|*.*"
-if ($env:TA_PICK_DIR) { $d.InitialDirectory = $env:TA_PICK_DIR }
 $owner = New-Object System.Windows.Forms.Form -Property @{TopMost = $true; ShowInTaskbar = $false}
-if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }
+if ($env:TA_PICK_FOLDER) {
+  $d = New-Object System.Windows.Forms.FolderBrowserDialog
+  $d.Description = $env:TA_PICK_TITLE
+  if ($env:TA_PICK_DIR) { $d.SelectedPath = $env:TA_PICK_DIR }
+  if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.SelectedPath) }
+} else {
+  $d = New-Object System.Windows.Forms.OpenFileDialog
+  $d.Title = $env:TA_PICK_TITLE
+  $d.Filter = "Traktor collection (collection.nml)|collection.nml|All files (*.*)|*.*"
+  if ($env:TA_PICK_DIR) { $d.InitialDirectory = $env:TA_PICK_DIR }
+  if ($d.ShowDialog($owner) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($d.FileName) }
+}
 """
 
 
-def _pick_command(start: Path | None) -> tuple[list[str], dict] | None:
-    """The system's own open-file dialog (it gives the real path, which a browser never tells a page), or None."""
+def _pick_command(start: Path | None, folder: bool = False, title: str = PICK_TITLE) -> tuple[list[str], dict] | None:
+    """The system's own open-file (or choose-folder) dialog: it gives the real path, which a browser never tells a
+    page. None where there's none (a container, Linux without zenity/kdialog)."""
     import shutil
 
     if traktor.CONTAINER:
         return None
-    env = {**os.environ, "TA_PICK_TITLE": PICK_TITLE, "TA_PICK_DIR": str(start or "")}
+    env = {**os.environ, "TA_PICK_TITLE": title, "TA_PICK_DIR": str(start or ""), "TA_PICK_FOLDER": "1" if folder else ""}
     if sys.platform == "darwin":
         where = f' default location (POSIX file "{start}")' if start and '"' not in str(start) else ""
-        return ["osascript", "-e", f'POSIX path of (choose file with prompt "{PICK_TITLE}"{where})'], env
+        what = "folder" if folder else "file"
+        return ["osascript", "-e", f'POSIX path of (choose {what} with prompt "{title}"{where})'], env
     if sys.platform == "win32":
         return ["powershell", "-NoProfile", "-NonInteractive", "-STA", "-Command", _PS_PICK], env
     if shutil.which("zenity"):
-        return ["zenity", "--file-selection", f"--title={PICK_TITLE}", "--file-filter=collection.nml | *.nml",
+        return ["zenity", "--file-selection", f"--title={title}",
+                *(["--directory"] if folder else ["--file-filter=collection.nml | *.nml"]),
                 *([f"--filename={start}{os.sep}"] if start else [])], env
     if shutil.which("kdialog"):
-        return ["kdialog", "--title", PICK_TITLE, "--getopenfilename", str(start or Path.home()), "*.nml"], env
+        return (["kdialog", "--title", title, "--getexistingdirectory", str(start or Path.home())] if folder
+                else ["kdialog", "--title", title, "--getopenfilename", str(start or Path.home()), "*.nml"]), env
     return None
 
 
@@ -917,20 +929,59 @@ def _pick_start() -> Path | None:
                 next((d for d in dirs if d.is_dir()), None))
 
 
-def pick_file() -> str | None:
-    """Open the system's file dialog on this computer; the chosen path, or None when cancelled."""
+def pick_file(folder: bool = False, start: Path | None = None, title: str = PICK_TITLE,
+              what: str = "collection.nml") -> str | None:
+    """Open the system's file (or folder) dialog on this computer; the chosen path, or None when cancelled."""
     import subprocess
 
-    cmd = _pick_command(_pick_start())
+    cmd = _pick_command(start if folder else _pick_start(), folder, title)
     if cmd is None:
-        raise ValueError("No file dialog here: paste the path of collection.nml instead.")
+        raise ValueError(f"No {'folder' if folder else 'file'} dialog here: paste the path of {what} instead.")
     argv, env = cmd
     try:
         r = subprocess.run(argv, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     except (OSError, subprocess.TimeoutExpired) as e:
-        raise ValueError(f"The file dialog didn't open ({e}): paste the path of collection.nml instead.") from e
+        raise ValueError(f"The {'folder' if folder else 'file'} dialog didn't open ({e}): paste the path of {what} instead.") from e
     path = r.stdout.strip()
+    if folder and len(path) > 1:
+        path = path.rstrip("/\\")  # osascript ends a folder with /
     return path if r.returncode == 0 and path else None  # cancelled: osascript/zenity/kdialog exit 1, PowerShell prints nothing
+
+
+def pick_genre_folder() -> dict:
+    """The Setup tab's Browse… for the folder of example tracks (Learn your genres)."""
+    from . import mygenres
+
+    last = (mygenres.status().get("source") or "")
+    start = Path(last) if last and Path(last).is_dir() else Path.home() / "Music" if (Path.home() / "Music").is_dir() else Path.home()
+    path = pick_file(folder=True, start=start, title="Choose the folder with your example tracks (one subfolder per genre)",
+                     what="the folder with your example tracks")
+    return {"cancelled": True} if path is None else {"path": path}
+
+
+def set_genre_mode(mode: str) -> dict:
+    """The Setup tab's genre switch (starter / both / mine). Not while a job runs (a scan or training writes the
+    same columns)."""
+    from . import mygenres
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before switching your genres on or off.")
+    with library("native"):
+        return mygenres.set_mode(mode)
+
+
+def genres_from_traktor() -> dict:
+    """The Setup tab's Traktor choices for learning genres: playlist folders and the Genre field's genres."""
+    from . import mygenres
+
+    return mygenres.traktor_choices()
+
+
+def my_genres_preview(mode: str) -> dict:
+    from . import mygenres
+
+    with library("native"):
+        return mygenres.preview(mode)
 
 
 def set_collection(b: dict) -> dict:
@@ -1718,6 +1769,10 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
+        Route("/api/genres/traktor", respond(lambda q: genres_from_traktor())),
+        Route("/api/genres/preview", respond(lambda q: my_genres_preview(q.get("mode", "both")))),
+        Route("/api/genres/use", post(lambda b: set_genre_mode(str(b.get("mode", "")))), methods=["POST"]),
+        Route("/api/genres/browse", post(lambda b: pick_genre_folder()), methods=["POST"]),
         Route("/api/update", respond(lambda q: update_status(q.get("force") == "1", q.get("auto") == "1"))),
         Route("/api/update/settings", post(update_settings), methods=["POST"]),
         Route("/api/restart", post(lambda b: restart()), methods=["POST"]),
