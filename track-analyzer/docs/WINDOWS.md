@@ -1,8 +1,9 @@
-# Windows: what a port would take
+# Windows: the port
 
-Puppi3's Track Analyzer runs on macOS and Linux (x86_64). It does not run on Windows yet. These notes list what stands
-in the way, found by reading the code (October 2026); nothing here has been tried on a Windows machine. Items
-marked **verify** are guesses about Traktor, Lexicon or a library on Windows that need a real install to confirm.
+**Done (2026-11-02):** Puppi3's Track Analyzer runs natively on Windows 10/11 x64, Traktor and Lexicon included,
+checked on a real Windows PC with Traktor Pro 4 and by the tests on GitHub's Windows runners. The notes below were
+written as the plan (October 2026) and are kept with what each step found. Items still marked **verify** were not
+seen on a real install (OneDrive Documents, network drives, MODIFIED seconds).
 
 The plan is a **native Windows** port. WSL2 is described at the end as a stopgap, with its downsides.
 
@@ -490,8 +491,8 @@ x64 builds only. `.gitattributes` checks `.bat` files out with CRLF.
 ## Lexicon
 
 Lexicon has a Windows version. `lexicon.py` needs:
-- its database path for the backup before each load: `%APPDATA%\lexicon\main.db` on Windows (confirmed by the
-  user 2026-11-02; done), `~/Library/Application Support/lexicon/main.db` on a Mac;
+- its database path for the backup before each load: `%APPDATA%\lexicon\main.db` on Windows (seen on a
+  Windows install 2026-11-02; done), `~/Library/Application Support/lexicon/main.db` on a Mac;
 - its track locations matched to `collection.db` paths: Windows Lexicon sends `C:/Users/…` with forward slashes
   (seen 2026-11-02 from its Local API); `lexicon._paths` turns them into `C:\Users\…` (done).
 The Local API itself (localhost:48624) is the same.
@@ -528,8 +529,8 @@ the page. What it can't check is real Traktor reading what we wrote; that stays 
    `newline=""` not needed, Traktor writes LF. Tested on the Mac with the Windows files and Windows' path rules;
    a run on Windows itself is step 5.)
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
-   and then open (it must refuse).
-6. Setup tab (job stop, tool installs; done 2026-11-02), launcher (done 2026-11-02), Lexicon.
+   and then open (it must refuse). (Done 2026-11-02 on a Windows PC with Traktor Pro 4.4.2.)
+6. Setup tab (job stop, tool installs), launcher, Lexicon. (All done 2026-11-02.)
 
 ## Stopgap: WSL2
 

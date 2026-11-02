@@ -159,8 +159,9 @@ li > figure.shot { margin: 12px 0 4px; }
 <h2 id="start">Open the web page</h2>
 <ol>
   <li><b>On a Mac:</b> double-click <code>Start Puppi3's Track Analyzer.command</code> in the project folder. The first time, right-click it and choose <b>Open</b> (macOS asks once about apps from the internet). It installs whatever is missing, then opens the page in your browser.</li>
+  <li><b>On Windows:</b> double-click <code>Start Puppi3's Track Analyzer.bat</code> in the project folder. If Windows warns that it's from the internet, choose <b>More info → Run anyway</b>.</li>
   <li><b>On Linux:</b> run <code>./"Start Puppi3's Track Analyzer.command"</code> from a terminal in the project folder.</li>
-  <li>The page lives at <code>http://127.0.0.1:8766/</code> and runs only on this computer; no audio leaves it. Close the Terminal window (or press Ctrl-C in it) to stop it.</li>
+  <li>The page lives at <code>http://127.0.0.1:8766/</code> and runs only on this computer; no audio leaves it. Close the Terminal (on Windows, Command Prompt) window, or press Ctrl-C in it, to stop it.</li>
 </ol>
 
 <figure class="shot">
@@ -337,7 +338,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <h3 id="update">After updating the app</h3>
 <ol>
-  <li>Double-click <code>Start Puppi3's Track Analyzer.command</code> again: it installs new dependencies before opening the page.</li>
+  <li>Double-click <code>Start Puppi3's Track Analyzer.command</code> (on Windows, the <code>.bat</code>) again: it installs new dependencies before opening the page.</li>
   <li>Check the Setup tab: if a new model is needed, <b>Analysis models</b> offers the download.</li>
   <li>Press <b>Your colour scale → Update training</b>. The first run after an update may fill in new data for every track (about 10–15 minutes); later runs take a minute.</li>
   <li>If the update notes say the genre list changed or everything should be analysed again, those are <a href="#cli-update">terminal steps</a>.</li>

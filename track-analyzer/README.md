@@ -51,12 +51,12 @@ Every command runs from the project folder and starts with `uv run dj-track-anal
 
 ### The easy way: no Terminal (Mac)
 
-On Linux, see [Linux](#linux) below: the same launcher runs from a terminal.
+On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-click. On Linux, see [Linux](#linux): the same launcher runs from a terminal.
 
 1. Download or clone this project and open its folder in Finder.
 2. Double-click **`Start Puppi3's Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
 3. A Terminal window opens and does the install for you: it installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
-4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew, if you have it) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
+4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew on a Mac, if you have it; on Windows with winget and Rubber Band's own build) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
 
 Keep the Terminal window open while you use the page; close it to stop. Double-click again any time: if the page is already running, it just opens it.
 
@@ -92,7 +92,7 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 - **Model server unreachable?** `setup` tries a few ways, then prints a download link for each file it couldn't get. Open them in a browser, drop the files into `data/models/`, and run `setup` again to confirm.
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
-- **Requirements.** Apple Silicon with macOS 14 or newer, an Intel Mac with macOS 11 or newer, or Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
+- **Requirements.** Apple Silicon with macOS 14 or newer, an Intel Mac with macOS 11 or newer, Windows 10 or 11 on x64 (see below), or Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below).
 - **How it measures.** The signal processing (loudness, resampling, the models' mel input, key, BPM) is Essentia's, ported to Rust in a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases): 5–7 times faster, and the same results on every platform. They are Essentia's, or a millionth or less off where its maths is more exact. Audio is decoded with current FFmpeg (PyAV) and the models run on TensorFlow 2.15, the version Essentia used. Nothing to set up; no Rust needed.
 - **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
   which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
@@ -106,7 +106,24 @@ Everything that works on your music files works on Linux (x86_64 only: the Rust 
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
-### Docker (Linux, or Windows from a WSL2 terminal) — experimental
+### Windows
+
+Everything works on Windows 10 and 11 (x64), Traktor and Lexicon included, with the same results as on a Mac.
+
+1. Download or clone this project and open its `track-analyzer` folder in File Explorer.
+2. Double-click **`Start Puppi3's Track Analyzer.bat`**. Windows may warn that it's from the internet: choose **More info → Run anyway**.
+3. A Command Prompt window installs **uv**, Python and the analyzer the first time (a few minutes), then the web page opens in your browser. Keep the window open while you use the page; close it to stop.
+4. On the **Setup** tab, **Install with winget** installs ffmpeg, and **Install** under Rubber Band downloads Rubber Band's own Windows build (4.0.0) into the analyzer's `data` folder. Nothing else on your PC changes.
+
+Good to know:
+
+- Scans run at below-normal priority, so the PC stays usable while one uses every core; whatever you're doing comes first.
+- Traktor's collection is found in `Documents\Native Instruments\Traktor <version>`, as on a Mac. Writes to Traktor refuse while Traktor (`Traktor Pro 4.exe`) is running, as on a Mac.
+- A drive letter that isn't plugged in keeps its tracks in the database, as an unplugged drive does on a Mac.
+- Paths longer than 260 characters need Windows' long path support turned on.
+- Windows on Arm runs the x64 build emulated (untested).
+
+### Docker (Linux) — experimental
 
 > **Experimental.** The Docker version is new and much less tested than the launcher above. Back up your Traktor collection (`Documents/Native Instruments/Traktor <version>/collection.nml`) before writing to it from Docker, check each change in Traktor, and prefer the launcher where you can. Problems: open an issue.
 
@@ -224,7 +241,7 @@ uv run dj-track-analyzer scan --traktor ~/Music/Incoming   # both
 uv run dj-track-analyzer web
 ```
 
-Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac does the same). Eight tabs:
+Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac, or `Start Puppi3's Track Analyzer.bat` on Windows, does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts. Click a bar, column or tile to list those tracks.
 - **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both); the filter **Our key doesn't mix with Traktor's** lists the tracks where the two keys don't mix, to check by ear. Each check in the **All tracks** menu shows how many tracks it would list with the other filters you've set. **⇤ Wide** widens the panel for the waveform and cues. A page refresh keeps your filters, sort, scroll position and the open track.
@@ -710,7 +727,7 @@ In LM Studio open the **Program** tab in the right sidebar, choose **Install →
 }
 ```
 
-- On Linux the paths start with `/home/YOUR_NAME/` instead. `which uv` in a terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
+- On Linux the paths start with `/home/YOUR_NAME/` instead. On Windows `command` is `C:\\Users\\YOUR_NAME\\.local\\bin\\uv.exe` (`where uv` in a Command Prompt gives it), with every `\` written as `\\` in JSON. `which uv` in a terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
 - Use a model that's good at tool calling, such as Qwen3, Mistral Small or gpt-oss.
 
 ### Open WebUI
