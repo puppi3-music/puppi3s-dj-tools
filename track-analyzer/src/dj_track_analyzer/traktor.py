@@ -121,24 +121,45 @@ def refuse_if_tempo_view(path: Path) -> None:
                          "Switch back first: uv run dj-track-analyzer tempo native")
 
 
-def traktor_running() -> bool:
+def running_state() -> bool | None:
+    """True/False: Traktor is or isn't running. None: this process can't tell (in a container, or the process list
+    failed), and a write must not assume it's closed."""
+    if CONTAINER:
+        return None
     try:
-        out = subprocess.run(["pgrep", "-i", "-x", "traktor.*"], capture_output=True, text=True)
-        return bool(out.stdout.strip())
-    except FileNotFoundError:
-        return False
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="replace",
+                                 timeout=30)
+            names = [ln.split('","')[0].strip('"') for ln in out.stdout.splitlines() if ln.startswith('"')]
+            if out.returncode or not names:
+                return None
+            return any(re.fullmatch(r"traktor.*\.exe", n, re.I) for n in names)
+        out = subprocess.run(["pgrep", "-i", "-x", "traktor.*"], capture_output=True, text=True, timeout=30)
+        return {0: True, 1: False}.get(out.returncode)  # 2, 3: pgrep failed
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
-# In a container (the Dockerfile sets TRACK_ANALYZER_CONTAINER=1) pgrep sees only the container, never the Traktor on
-# the computer, so a write asks instead: in a terminal once per run, otherwise TRACK_ANALYZER_TRAKTOR_CLOSED=1 (jobs
-# started from the page get it) or the page's own answer (`page_answer`).
+def traktor_running() -> bool:
+    """For the page's warnings; writes go through check_closed, which also stops when it can't tell."""
+    return running_state() is True
+
+
+# When the process list can't be read (in a container, where the Dockerfile sets TRACK_ANALYZER_CONTAINER=1 and pgrep
+# sees only the container; or pgrep/tasklist failing), a write asks instead: in a terminal once per run, otherwise
+# TRACK_ANALYZER_TRAKTOR_CLOSED=1 (jobs started from the page get it) or the page's own answer (`page_answer`).
 CONTAINER = os.environ.get("TRACK_ANALYZER_CONTAINER") == "1"
 CLOSED_ENV = "TRACK_ANALYZER_TRAKTOR_CLOSED"
 _page_closed: contextvars.ContextVar[bool | None] = contextvars.ContextVar("page_closed", default=None)
 
 
 class ConfirmClosed(SystemExit):
-    """A write in a container nobody has said Traktor is closed for. The web page asks and sends the request again."""
+    """A write nobody has said Traktor is closed for, where we can't see. The web page asks and sends it again."""
+
+    def __init__(self, why: str):
+        self.why = why
+        where = "a terminal (docker compose run)" if CONTAINER else "a terminal"
+        super().__init__(f"{why} Quit Traktor, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
 
 
 @contextlib.contextmanager
@@ -152,26 +173,29 @@ def page_answer(closed: bool):
 
 
 def closed_confirmed() -> bool:
-    return not CONTAINER or os.environ.get(CLOSED_ENV) == "1" or bool(_page_closed.get())
+    return os.environ.get(CLOSED_ENV) == "1" or bool(_page_closed.get())
 
 
 def check_closed(dry_run: bool = False, what: str = "these changes") -> None:
-    """Refuse to write collection.nml while Traktor is open: it rewrites the file when it closes and would undo it."""
+    """Refuse to write collection.nml while Traktor is open: it rewrites the file when it closes and would undo it.
+    When we can't tell, ask rather than assume it's closed."""
     if dry_run:
         return
-    if traktor_running():
+    state = running_state()
+    if state:
         raise SystemExit(f"Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
                          f"and would undo {what}.")
-    if closed_confirmed():
+    if state is False or closed_confirmed():
         return
+    why = ("This runs in a container, which can't see whether Traktor is open." if CONTAINER else
+           f"Couldn't check whether Traktor is open ({'tasklist' if sys.platform == 'win32' else 'pgrep'} failed).")
     if _page_closed.get() is None and sys.stdin.isatty():
-        sys.stderr.write("This runs in a container, which can't see whether Traktor is open. Is Traktor closed? [y/N] ")
+        sys.stderr.write(f"{why} Is Traktor closed? [y/N] ")
         sys.stderr.flush()
         if sys.stdin.readline().strip().lower() in ("y", "yes"):
             os.environ[CLOSED_ENV] = "1"  # once per run
             return
-    raise ConfirmClosed(f"This runs in a container, which can't see whether Traktor is open. Quit Traktor, then "
-                        f"answer y when asked in a terminal (docker compose run), or set {CLOSED_ENV}=1.")
+    raise ConfirmClosed(why)
 
 
 # ----------------------------------------------------------------------------

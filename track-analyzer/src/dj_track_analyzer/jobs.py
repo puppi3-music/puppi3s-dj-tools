@@ -186,7 +186,7 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
     else:
         cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
-    if traktor.CONTAINER and action in TOUCHES_TRAKTOR and not dry_run:
+    if action in TOUCHES_TRAKTOR and not dry_run and traktor.running_state() is None:
         traktor.check_closed()  # ask the page now, not the job later
         env[traktor.CLOSED_ENV] = "1"
     _seq += 1

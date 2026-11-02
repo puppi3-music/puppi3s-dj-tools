@@ -1360,8 +1360,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
 
     def failed(e: BaseException) -> JSONResponse:
         """Every failure as JSON {error}: the page reads each answer with .json()."""
-        if isinstance(e, traktor.ConfirmClosed):  # in a container: the page asks whether Traktor is closed
-            return JSONResponse({"error": str(e.code or e), "confirm": "traktor_closed"}, status_code=409)
+        if isinstance(e, traktor.ConfirmClosed):  # can't see Traktor (a container): the page asks whether it's closed
+            return JSONResponse({"error": str(e.code or e), "confirm": "traktor_closed", "why": e.why}, status_code=409)
         if isinstance(e, SystemExit):  # expected problems come with advice
             return JSONResponse({"error": str(e.code or e)}, status_code=409)
         if isinstance(e, (ValueError, OSError, KeyError, TypeError, AttributeError)):  # bad input, missing file
