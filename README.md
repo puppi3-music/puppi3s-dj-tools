@@ -22,4 +22,4 @@ The first time, it installs what it needs (a few minutes), then opens the analyz
 
 ## Licence
 
-GNU Affero General Public License v3 (see [LICENSE](LICENSE)).
+© 2026 puppi3-music (DJ Puppi3). GNU Affero General Public License v3 (see [LICENSE](LICENSE)). Third-party models and code keep their own licences: the track analyzer's are listed in [its README](track-analyzer/README.md) and [`dsp/NOTICE.md`](track-analyzer/dsp/NOTICE.md).
