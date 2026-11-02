@@ -27,4 +27,8 @@ jobs:
           target: smoke  # the smoke test runs as the build's last step (Dockerfile); a failure fails the build
           outputs: type=cacheonly  # nothing to export or load: only the cache is kept
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Only main saves to the cache; pull requests read main's. GitHub keeps 10 GB per repository and drops what
+          # was used longest ago, and a rebuilt layer is a new copy (its bytes differ): with every pull request saving
+          # its own ~2-3 GB, main's big layers (Python packages 1.5 GB, models 350 MB) were dropped, so every run
+          # rebuilt them and saved yet more copies.
+          cache-to: ${{ github.event_name == 'push' && 'type=gha,mode=max' || '' }}
