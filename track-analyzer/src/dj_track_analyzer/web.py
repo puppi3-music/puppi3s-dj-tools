@@ -1198,6 +1198,94 @@ def to_learn() -> dict:
         return jobs.to_learn()
 
 
+# ----------------------------------------------------------------------------
+# Updating the app (update.py): is a newer release out, and the restart after installing it
+# ----------------------------------------------------------------------------
+
+UPDATE_EVERY = 6 * 3600  # GitHub is asked at most this often, unless the page's Check now asks
+_update_cache: dict = {"at": 0.0, "data": None}
+
+
+def update_status(force: bool = False, auto: bool = False) -> dict:
+    """The Setup tab's update card: the installed version, the newest release (cached), steps left after the last
+    update, the version to go back to, and whether checking when the page opens is on. `auto`: the page asking by
+    itself, which only reaches GitHub when that's on."""
+    from . import update
+
+    on = analysis.app_setting("update_check", True) is not False
+    st: dict = {"installed": update.installed_version(), "kind": update.install_kind(), "auto": on,
+                "pending": update.pending_steps(), "restart": can_restart(), "page": update.RELEASES_PAGE}
+    found = update.last_backup()
+    if found and found[1].get("to") == st["installed"]:
+        st["previous"] = found[1]["from"]  # the version Go back would install
+    if auto and not on and not force:
+        return st
+    if force or not _update_cache["data"] or time.time() - _update_cache["at"] > UPDATE_EVERY \
+            or _update_cache["data"].get("installed") != st["installed"]:
+        try:
+            _update_cache["data"] = update.check()
+        except (OSError, ValueError, SystemExit) as e:
+            log(f"Update check failed: {e}")
+            return {**st, "error": "Couldn't reach GitHub to check for updates. Check the internet connection and try again."}
+        _update_cache["at"] = time.time()
+    return {**_update_cache["data"], **st}
+
+
+def update_settings(b: dict) -> dict:
+    from . import update
+
+    if "auto" in b:
+        analysis.save_app_setting("update_check", None if b["auto"] else False)
+    if b.get("seen"):
+        update.mark_seen()
+    return update_status(auto=True)
+
+
+def can_restart() -> bool:
+    """Whether the page can start itself again: under a launcher that loops on RESTART_CODE, or (Mac, Linux) by
+    replacing its own process. Windows' first launchers didn't loop: there it's closing the window and starting again."""
+    return bool(os.environ.get("TRACK_ANALYZER_LAUNCHER")) or sys.platform != "win32"
+
+
+_restart = {"asked": False}
+
+
+def restart() -> dict:
+    """Stop the page so it starts again with the code now on disk (after an update)."""
+    if jobs.busy():
+        raise SystemExit("Wait for the job that's running to finish, then restart.")
+    if not can_restart():
+        raise SystemExit("Close the analyzer's window and double-click its launcher again to start the new version.")
+    if not _server:
+        raise SystemExit("The page wasn't started by `web`: start it again yourself.")
+    _restart["asked"] = True
+    log("Restarting with the new version…")
+    threading.Timer(0.3, lambda: setattr(_server, "should_exit", True)).start()  # after this answer is sent
+    return {"restarting": True}
+
+
+def _start_again(argv: list[str]) -> None:
+    """After the server stopped for a restart: the launcher starts it again (it installs the new packages first);
+    without one, install them here and replace this process with the new version's page."""
+    from . import update
+
+    if os.environ.get("TRACK_ANALYZER_LAUNCHER"):
+        sys.exit(update.RESTART_CODE)
+    import shutil
+    import subprocess
+
+    args = [a for a in argv if a != "--no-open"] + ["--no-open"]
+    uv = shutil.which("uv") or next((str(p) for p in (Path.home() / ".local" / "bin" / "uv",
+                                                      Path.home() / ".cargo" / "bin" / "uv") if p.exists()), None)
+    app = str(update.APP)
+    if uv:
+        log("Installing the new version's packages (uv sync --inexact)…")
+        subprocess.run([uv, "sync", "--inexact"], cwd=app, check=False)
+        os.chdir(app)
+        os.execv(uv, [uv, "run", "dj-track-analyzer", *args])
+    os.execv(sys.executable, [sys.executable, "-m", "dj_track_analyzer", *args])
+
+
 def start_job(b: dict) -> dict:
     with library("native"):  # the options are checked against the normal library
         return jobs.start(str(b["action"]), b.get("options") or {}, bool(b.get("dry_run", False)))
@@ -1630,6 +1718,9 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
+        Route("/api/update", respond(lambda q: update_status(q.get("force") == "1", q.get("auto") == "1"))),
+        Route("/api/update/settings", post(update_settings), methods=["POST"]),
+        Route("/api/restart", post(lambda b: restart()), methods=["POST"]),
         Route("/api/jobs", respond(lambda q: jobs.state(int(num(q, "since", 0))))),
         Route("/api/jobs/start", post(start_job), methods=["POST"]),
         Route("/api/jobs/stop", post(lambda b: jobs.stop()), methods=["POST"]),
@@ -1652,6 +1743,7 @@ def export_file(out: str, logs: list[str] | None = None) -> Path:
 
 
 _blas_limit = None  # serve()'s threadpool limit, kept for the server's life
+_server = None  # the running uvicorn server (restart() stops it)
 
 def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = None, open_browser: bool = True) -> None:
     import uvicorn
@@ -1680,10 +1772,13 @@ def serve(host: str = "127.0.0.1", port: int = 8766, logs: list[str] | None = No
             logging.getLogger("uvicorn.error").setLevel(logging.CRITICAL)
             super().handle_exit(sig, frame)
 
-    server = Server(uvicorn.Config(build_app(dirs, allowed_hosts(host)), host=host, port=port, log_level="warning", timeout_graceful_shutdown=1))
+    global _server
+    server = _server = Server(uvicorn.Config(build_app(dirs, allowed_hosts(host)), host=host, port=port, log_level="warning", timeout_graceful_shutdown=1))
     try:
         server.run()
     except KeyboardInterrupt:
         pass
     jobs.stop_on_exit()  # a scan the page started stops as Ctrl-C would stop it (it continues next time)
+    if _restart["asked"]:
+        _start_again(sys.argv[1:])
     log("Stopped.")
