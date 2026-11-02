@@ -4,7 +4,6 @@ from __future__ import annotations
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import pytest
 from conftest import TMP, WINDOWS, make_audio
@@ -62,7 +61,8 @@ def test_install_buttons(monkeypatch, brew, winget, windows, tool, want, button)
 
 def test_page_shows_the_install_button():
     """The Setup tab draws the button from setup_status()'s `install`, not from whether Homebrew is there."""
-    page = (Path(jobs.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    from dj_track_analyzer.web import page_html
+    page = page_html()  # index.html with style.css and js/*.js put in
     assert "st.install[name] ? jb(`su-install-${name}`, st.install[name])" in page
     assert 'go("install", { tool: "rubberband" })' in page
 
@@ -91,7 +91,8 @@ def test_undo_anyway_passes_force():
     assert build({}) == ["traktor", "--undo"]
     assert build({"force": True}) == ["traktor", "--undo", "--force"]
     assert build({"force": "yes"}) == ["traktor", "--undo"]  # only a real true from the page's button
-    page = (Path(jobs.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    from dj_track_analyzer.web import page_html
+    page = page_html()  # index.html with style.css and js/*.js put in
     assert "write(act, { ...opts, force: true })" in page
 
 

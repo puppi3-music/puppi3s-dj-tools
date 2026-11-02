@@ -1,6 +1,6 @@
 ---
 name: audit-web
-description: Audit the web page (`web` command: web.py + web/index.html) for bugs, slow endpoints, security gaps of a local server, and visual problems in light/dark and at phone width. Use when asked to review, audit, check, speed up or polish the web interface or page.
+description: Audit the web page (`web` command: web.py + web/index.html, style.css, js/*.js) for bugs, slow endpoints, security gaps of a local server, and visual problems in light/dark and at phone width. Use when asked to review, audit, check, speed up or polish the web interface or page.
 ---
 
 # Audit the web page
@@ -72,7 +72,7 @@ Baselines (2026-10-28 after the fixes, 473 tracks, views at-135 and at-145; rech
 - Phone header: ◐ beside the name (`#theme` order 1), library + export on the next line, nav below.
 - Work repeated per request that could be cached by mtime (NML, Settings.tsi); the sample folder walk is once per run.
 
-**Page (index.html)**
+**Page (web/style.css, web/js/*.js; index.html is the shell they are put into)**
 - Every `innerHTML` value from data goes through `esc()` (track tags are user data); `data-tip` too.
 - Listeners on `window`/`document` only at top level or removable (`WAVE_UP` AbortController); per-render ones on
   replaced elements.
