@@ -15,7 +15,7 @@ dependencies = [
     # MusicalKeyCNN's key and Cross-Key Analysis (keycnn.py, cka.py): the CQT and chroma the model was trained on.
     "librosa==0.10.2.post1",
     # Rust copies of Essentia steps (dsp/), bit for bit, faster. Prebuilt by CI, so no Rust needed.
-    "track-analyzer-dsp==0.3.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
+    "track-analyzer-dsp==0.4.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +43,7 @@ track-analyzer-dsp = { index = "dsp" }
 # The wheels attached to the GitHub release (.github/workflows/dsp-wheels.yml); never from PyPI.
 [[tool.uv.index]]
 name = "dsp"
-url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/expanded_assets/dsp-v0.3.0"
+url = "https://github.com/puppi3-music/puppi3s-dj-tools/releases/expanded_assets/dsp-v0.4.0"
 format = "flat"
 explicit = true
 
