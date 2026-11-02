@@ -1,0 +1,38 @@
+# A release of the app: push a tag v<version> (matching `version` in track-analyzer/pyproject.toml and a
+# "## <version>" section in track-analyzer/CHANGELOG.md). The tests run first on Windows and Linux; then the release
+# gets that changelog section as its notes and a zip of the analyzer (launchers included), and becomes "Latest".
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  release:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip and notes
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -qx "version = \"$v\"" track-analyzer/pyproject.toml \
+            || { echo "track-analyzer/pyproject.toml isn't version $v"; exit 1; }
+          awk -v h="## $v " 'index($0, h) == 1 {on = 1; next} on && /^## / {exit} on' track-analyzer/CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "No \"## $v\" section in track-analyzer/CHANGELOG.md"; exit 1; }
+          # the track-analyzer folder as checked in (.bat with CRLF, launchers executable), plus the licence
+          git archive --format=zip --prefix="puppi3s-track-analyzer-$v/" --add-file=LICENSE \
+            -o "puppi3s-track-analyzer-$v.zip" "HEAD:track-analyzer"
+          echo "V=$v" >> "$GITHUB_ENV"
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Puppi3's Track Analyzer ${{ env.V }}
+          body_path: notes.md
+          files: puppi3s-track-analyzer-${{ env.V }}.zip
+          make_latest: true

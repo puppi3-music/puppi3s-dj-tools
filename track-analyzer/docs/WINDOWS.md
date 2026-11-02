@@ -1,15 +1,18 @@
-# Windows: what a port would take
+# Windows: the port
 
-Puppi3's Track Analyzer runs on macOS and Linux (x86_64). It does not run on Windows yet. These notes list what stands
-in the way, found by reading the code (October 2026); nothing here has been tried on a Windows machine. Items
-marked **verify** are guesses about Traktor, Lexicon or a library on Windows that need a real install to confirm.
+**Done (2026-11-02):** Puppi3's Track Analyzer runs natively on Windows 10/11 x64, Traktor and Lexicon included,
+checked on a real Windows PC with Traktor Pro 4 and by the tests on GitHub's Windows runners. The notes below were
+written as the plan (October 2026) and are kept with what each step found. Items still marked **verify** were not
+seen on a real install (OneDrive Documents, network drives, MODIFIED seconds).
 
 The plan is a **native Windows** port. WSL2 is described at the end as a stopgap, with its downsides.
 
-## The blocker: Essentia
+## The blocker: Essentia (removed, stage 7)
 
-`essentia-tensorflow` has pip wheels for macOS (arm64, x86_64) and Linux x86_64 only, so `uv sync` fails on
-Windows and nothing runs. Essentia doesn't support native Windows builds with TensorFlow. Building it ourselves
+Solved on 2026-11-02: the analyzer no longer uses Essentia (stage 7 below). The rest of this section is how it got there.
+
+`essentia-tensorflow` has pip wheels for macOS (arm64, x86_64) and Linux x86_64 only, so `uv sync` failed on
+Windows and nothing ran. Essentia doesn't support native Windows builds with TensorFlow. Building it ourselves
 (MinGW/MSYS2 against TensorFlow's Windows C library, then a wheel per Python and TF version) would keep results
 identical but means owning a fragile build forever. Not planned.
 
@@ -25,6 +28,14 @@ including where Essentia's arm64 build fuses multiply-adds, gives Essentia's exa
 ported **exactly**, not "close". Libraries that compute something similar (librosa, madmom, `samplerate`,
 `rubato`, `symphonia`) are ruled out: they change results.
 
+One exception, decided in November 2026: **accuracy to the real result comes before Essentia's bits**. Where
+Essentia's macOS build calls a float libm function that is a float step off on some inputs (`log10f`, `logf`,
+`exp10f`, `sinf`, `cosf`, `expf`, `atan2f`), the Rust code computes it in double with the `libm` crate (a port of
+musl's) and rounds to float: the nearest float, the same bits on every platform (`dsp/src/math.rs`). Those steps
+then differ from Essentia by a float step on some values, and `dsp/check.py` passes them within a tolerance
+(`TOL`; the BPM within its gate) and counts them as "close". Everything else stays bit for bit, as the check that
+the port has no bugs.
+
 What Essentia bundles, and what each piece needs (versions read from the macOS wheel, `essentia/.dylibs`):
 
 | Job | Essentia now | Replacement | Accuracy target |
@@ -34,10 +45,10 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Mono mix | `MonoMixer` | Rust | bit-identical |
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
 | Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
-| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical (stage 3) |
-| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | bit-identical with TF 2.15 (stage 0) |
-| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | bit-identical |
-| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's codelets for its sizes | bit-identical; gate below |
+| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical but a more exact `log10` (stage 3) |
+| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | **done**: bit-identical (stage 4) |
+| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | **done**: bit-identical but more exact libm (stage 5) |
+| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's plans for every power of two to 2^22 | **done**: bit-identical but more exact libm (stage 6) |
 
 Essentia is AGPL-3.0, and so is this repo, so porting its code line by line is fine. FFTW (GPL-2.0+) can be
 linked into an AGPL program too.
@@ -66,6 +77,7 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
+| Key | 0.10–0.19 s per 5–8-min track, 1.49 s per 63-min mix | Rust: 0.016–0.029 s, 0.24 s | 5.5–8x faster | 5 tracks, 1 mix |
 
 Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
 and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
@@ -162,8 +174,9 @@ Without the Rust module, Essentia does both as before.
   `x*10000 + 1`, `log10f`. Essentia's arm64 build fuses the magnitude and the band sums but not the scale and
   shift (clang's default: within one expression); the same here. The window and filter weights are read off
   Essentia (`dsp/tools/gen_musicnn_tables.py`). macOS's `log10f` isn't correctly rounded: it differs from `log10`
-  in double rounded to float on 249 of the 1.07 billion floats ≥ 1 (an exhaustive scan); those, and 30 more where
-  another platform's `log10` could round the other way, are a table (`dsp/tools/log10f_exceptions.c`).
+  in double rounded to float on 249 of the 1.07 billion floats ≥ 1 (an exhaustive scan). These were first copied
+  from a table; since November 2026 the mels take the more exact `log10` (`dsp/src/math.rs`), a float step from
+  Essentia's on those inputs (17 of 180,000 values on 30 s of noise; EffNet's embeddings then move by about 2e-7).
 - **EffNet's input:** the signal zero-padded so the last batch of 64 patches is full (`padSignal`'s float maths),
   patches of 128 frames every 62, an incomplete last batch dropped, the padding's outputs removed. Its frames come
   from the *streaming* `FrameCutter`, whose default `silentFrames="noise"` does two things to a frame below about
@@ -182,8 +195,20 @@ Without the Rust module, Essentia does both as before.
 - The key and BPM ports need FFTs of other sizes: each size has its own plan and codelets, found and ported the
   same way.
 
-**Stage 4: neural nets.** With stages 1–3, the nets get bit-identical input, so any difference comes from the
-runtime alone.
+**Stage 4: neural nets. Done (November 2026)**: `analysis.Graph` (= `TensorflowPredict`) and `analysis.Head`
+(= `TensorflowPredict2D`) run every graph on Python TensorFlow 2.15 when it's installed, Essentia otherwise. It is an
+opt-in extra (`uv sync --inexact --extra nets`) until stage 7, as PyAV is. Three things Essentia does had to be copied
+to get its bits: the heads run **64 rows at a time**, the last batch shorter (one batch for the whole track differs by
+up to 2e-6); `TensorflowPredict` drops an input's size-1 axes after the batch (EffNet's patches go in as
+(64, 128, 96)) and pads every output to 4 axes. On Apple Silicon and Windows the `tensorflow` package is empty and
+pulls in `tensorflow-macos` / `tensorflow-intel`, which uv's lock misses, so the extra names them. Both TensorFlows
+load in one process without trouble. `dsp/check.py --steps nets` runs each of the 12 graphs both ways (the heads on
+random embeddings of 1-300 rows and on each file's embeddings, EffNet and MAEST on the file's patches): bit-identical
+on the test signals and on all 469 tracks of the test collection. `analyze_file`'s whole output is identical on 4 tracks
+(one 5.1 FLAC) and a mix. Memory: one track's analysis peaks at 2.3 GB vs 2.0 GB with Essentia alone (Essentia's own
+TensorFlow still loads, for key and BPM, until stage 7). The check holds every model twice per process (~5 GB), so
+it runs 2 at a time.
+With stages 1–3, the nets get bit-identical input, so any difference comes from the runtime alone.
 - First choice: Python `tensorflow` 2.15, the same version Essentia bundles: bit-identical in stage 0. Costs:
   Python stays at 3.10-3.11 (no 3.12), and Apple Silicon needs macOS 12 (Essentia's pinned build runs on 11).
 - onnxruntime 1.31 (graphs converted with `tf2onnx` 1.17, opset 17, CPU only) was tried on the same 59 tracks:
@@ -198,29 +223,97 @@ runtime alone.
 - On a different CPU (Windows and Linux on x86_64) the nets' last bits differ from the Mac's whatever runtime
   is used. That's already true of Essentia on Linux today. The DSP stages don't have this problem.
 
-**Stage 5: key** (Rust; about 2,500 lines of C++, much of it profile tables, parameters and the frame cutter
-already ported for loudness: Blackman-Harris window, spectrum, spectral peaks, spectral whitening, HPCP, EDMA
-profile correlation). Simpler than BPM and shares its spectral code, so it goes first.
+**Stage 5: key. Done (November 2026)**: `track_analyzer_dsp.key_edma` (dsp/src/key.rs) is KeyExtractor(profileType
+"edma") of Essentia 2.1b6.dev1177 (commit 1d1cc983, the wheel's: 1177 commits after v2.1_beta5), used by
+`analysis.key_of` when installed. Streaming FrameCutter 4096/4096 (frames start at -2048 + 4096k while inside the
+signal), Hann window (normalized, zero-phase; read off Essentia), the 4096-point FFT (FFTW's plan with `r2cf_128` in
+place of `r2cf_16`, checked against the wheel's `fftwf_execute` on 20,000 frames), SpectralPeaks, SpectralWhitening,
+HPCP (12 bins, 4 harmonics), and the streaming Key's mean HPCP against the edma profiles. Found on the way:
+- clang turned `pow(10, x)` into `exp10f` and `pow(2, x)` into `exp2`, and Essentia's own `log2` is `logf(x) / ln 2`
+  in double; the Rust code calls the same functions.
+- SpectralWhitening's envelope loop was vectorised (4 floats x 4) with in-order sums: inside whole blocks of 16 the
+  product is rounded before it's added, the scalar tail fuses `wavg += energy*weight`. Key's std sums unfused,
+  its correlation fused. Each was found from the data (hundreds to thousands of frames) and then held on all of them.
+- The streaming FrameCutter adds unseeded noise to silent frames, but such a frame's spectrum stays under SpectralPeaks'
+  1e-4 threshold (|X| <= ||x|| * ||w|| < 5e-5, noise included), so it has no peaks and the noise can't reach the key.
+
+`dsp/check.py --steps key`: bit-identical key, scale and strength on 63 test signals and on all 469 tracks and 41 mix
+recordings, every 2-minute segment of the 34 over 12 minutes included. 5.5–8x faster (speed table).
+
+The libm functions it needs (`logf` in `log2`, `log10f`, `cos` in HPCP's weights, `exp10f`) were first macOS's,
+from tables (dsp 0.4.0: 13,590 inputs for `logf`, 506 for `log10f`, 6 for `cos`, and 1.1 million for `exp10f`, whose
+`powf(10, x)` is one float step off on 0.1% of inputs). Since November 2026 they are computed in double with the
+`libm` crate and rounded (`dsp/src/math.rs`), and `log2` is `log2` itself: more exact, the same bits everywhere, and a
+little faster. On 63 test signals the key and scale stay Essentia's and the strength moves by at most 3e-7. The
+constants (HPCP's harmonic table and its `exp2` factors) are stored as Python computes them.
 Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
 0.01, matching the BPM rule; the aim is bit-identical.
 
-**Stage 6: BPM** (Rust; about 2,700 lines of C++ of its own on top of the shared spectral code: five onset
-functions (RMS, complex, mel flux, beat emphasis, information gain), five Degara trackers, TempoTapMaxAgreement,
-BPM from the beat intervals). Gate (decided): the whole-number BPM equals Essentia's on every track and every
-mix segment, and confidence is within 0.01; the aim is bit-identical beats. Once it matches, run the five onset
-functions on separate threads, kept only if the output stays identical.
+**Stage 6: BPM. Done (November 2026)**: `track_analyzer_dsp.rhythm_multifeature` (dsp/src/bpm.rs) is
+RhythmExtractor2013(method "multifeature") of the same Essentia build, used by `analysis.rhythm` when installed: five
+onset functions (RMS, complex, mel flux, beat emphasis, information gain), five TempoTapDegara trackers,
+TempoTapMaxAgreement, and the BPM from the beat intervals. Found on the way:
+- The trackers' autocorrelations (Essentia's unbiased AutoCorrelation: zero-padded to the next power of two of
+  twice the length, r2c, |X|², c2r, divided by the size, then by size − lag) go through FFTs as long as the whole
+  track's onset function. A direct sum in double is not FFTW's rounding and moved the confidence on short files and
+  one track. So `dsp/src/fftw.rs` ports FFTW 3.3.10's `FFTW_ESTIMATE` plans for every power of two from 2 to 2^22
+  (about 3 h 20 min of audio), r2c and c2r, read off the wheel's FFTW with `fftwf_sprint_plan`: direct codelets to
+  128 points, `rdft2-ct-dit` / `rdft-ct-dit/dif` with radix 16 or 32 above, a complex DFT (radix 2 or 4,
+  `dft-ct-dit` with `dftw-genericbuf` for the large radices) from 2^20. The twiddles come from FFTW's own sqrt(n)
+  trig table (macOS libm's doubles, `dsp/tools/gen_bpm_tables.py`). Every size is bit-identical to the wheel's
+  `fftwf_execute` on random inputs, and `dsp/check.py --steps bpm` checks every size again before the files.
+  Longer audio falls back to a direct sum (not bit for bit; the app never gets there).
+- The five trackers draw from the process's `rand()` (seed 1 at the start of each call), and Essentia's scheduler
+  runs them in the order information gain, beat emphasis, mel flux, RMS, complex. On test signals any order gives
+  the same result; on real recordings exactly one of the 120 orders matched.
+- Essentia can't analyse a long mix as a whole (a 127-min one stops with "OnsetDetectionGlobal: output buffer is
+  full"); the app never asks it to (files over 12 min get only the 2-min segments), so the check compares segments.
 
-**Stage 7: drop Essentia.** `track-analyzer-dsp` (prebuilt wheels) becomes a required dependency;
-`essentia-tensorflow` moves to an optional dependency group used only by `dsp/check.py` on macOS and Linux;
-`es()` and every fallback go. Before merging, run the end-to-end check from the loudness work: `analyze_file`'s
-full output byte-identical with and without Essentia, on the whole collection and the mixes. Then `uv sync`
-works on Windows, and the rest of this file (Traktor, paths, launcher) is the Windows work.
+`dsp/check.py --steps bpm`: bit-identical BPM, beats and confidence on the test signals and on all 469 tracks and 41
+mix recordings (every 2-minute segment of those over 12 minutes). 5.5–7x faster (speed table). Gate (decided): the
+whole-number BPM equal on every track and every mix segment, and confidence within 0.01; the aim was bit-identical.
+
+The libm calls were first macOS's, from tables too (`sinf` and `cosf` on [-8, 8] for libc++'s `std::polar`, `expf`
+on [-104, 0] for the trackers' HMM), except `atan2f` (the FFT phase): macOS's is one float step off on about 13% of
+inputs, takes two floats and can't be tabulated. Since November 2026 all of them are computed in double with the
+`libm` crate and rounded (`dsp/src/math.rs`), on every platform: more exact than Essentia's, and the same bits on
+macOS, Linux and Windows, at the same speed. `hypotf` is `sqrt(x*x + y*y)` in double, as macOS computes it. The
+Rayleigh and Gaussian weights are stored as Python's `exp` gives them. On the test signals 5 of 15 differ from
+Essentia in bits, all with the same beats and BPM, the confidence at most 1e-6 off. Real recordings (check of
+2026-11-02, all 476 tracks and 34 mixes): the same whole-number BPM on every track and every mix segment but one.
+The two misses are both a mix's short last segment, where the set ends: VDJ- (1).mp3 segment 23 (63 s), 149.99
+against Essentia's 150.82, with the set at 149.97 and 150.03 in the two segments before; and VDJ-.mp3 segment 29
+(21 s), the same 48 beats and BPM, confidence 2.979 against 2.989. Both come from libm alone: with macOS's float
+libm in math.rs instead, bpm.rs gives Essentia's result bit for bit on both. One float step in an onset function
+tips a tracker's close call either way; where it tipped, ours is the BPM the set was playing.
+
+**Stage 7: drop Essentia. Done (2026-11-02).** `track-analyzer-dsp` (prebuilt wheels), PyAV and TensorFlow
+2.15 are required dependencies; `essentia-tensorflow` is only in the `check` dependency group (`uv sync --inexact
+--group check`), which nothing but `dsp/check.py` uses. `analysis.es()` and every Essentia fallback are gone (the
+"Essentia otherwise" in the stages above is history). The `check` group stays as the reference the Rust code is
+checked against whenever `dsp/` changes; a normal install never downloads it.
+
+End-to-end check: `analyze_file`'s whole output, new code against the code before stage 7 with the Rust module,
+PyAV and TensorFlow hidden (so Essentia did every step), on all 469 tracks and 41 recordings (mix timelines
+included), each in its own empty cache. 502 of 510 files identical. The other 8:
+- *Chris Lake "Savana"*: the MP3 whose second Info frame FFmpeg 2.8 decoded as audio (stage 2); ours starts where
+  Traktor's timeline does. Style scores up to 0.025, colour position 0.03, same BPM and key.
+- *VDJ- (1).mp3, segment 23*: 150 against 151, the libm tip of stage 6 (ours is the set's tempo).
+- *Two short VDJ recordings (15-17 s) and 5 tracks*: a different BPM on the recordings (113 against 136, 125
+  against 123) and BPM confidence on the tracks (0.01-0.04). Essentia's `RhythmExtractor2013` gives its result
+  only on the first call in a process; later calls carry state over and drift (ten calls on one of the recordings:
+  80 to 172 BPM; on whole tracks the same BPM, confidence 1.146 then 1.11). Ours gives that first call's result
+  bit for bit on every call, so ours doesn't depend on which files a worker analysed before.
+
+Analysis time over the 510 files, both passes run side by side with 2 workers each: Essentia 13,374 s, ours
+9,672 s (28% less). `uv sync` now works on Windows; the rest of this file (Traktor, paths, launcher) is the
+Windows work.
 
 **What changes for users.** On macOS: nothing in the results; analysis gets faster (below). On Linux: the DSP
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
 from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
-every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8) for Python TensorFlow
-2.15 and PyAV: about the same size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
+every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8, about 460 MB) for Python
+TensorFlow 2.15 (about 950 MB on Apple Silicon) and PyAV: about twice the size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
 
 **Risks, biggest first.**
 1. *Decoder differences*: one MP3 in the test collection (its header frame, now decoded as Traktor's timeline
@@ -228,7 +321,7 @@ every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2
 2. *TF runtime bits*: none with TF 2.15 (stage 0). onnxruntime differs (stage 4) and isn't used.
 3. *FFTW*: no longer a build risk (stage 3 ports FFTW's codelets instead of building FFTW). The key and BPM
    ports need the plans for their FFT sizes, each checked against the wheel's FFTW.
-4. *Size of the BPM port.* Large but mechanical; the check finds every slip.
+4. *Size of the BPM port.* Done (stage 6): the check found every slip, down to the trackers' `rand()` order.
 
 ### Rust for the parts that get rewritten
 
@@ -237,7 +330,7 @@ Where the time goes now, on an M1 Pro on mains power (each step timed alone, mod
 
 | Step | 3-min track | 5.5-min track | 8.5-min track | 65-min mix | What it is |
 |---|---|---|---|---|---|
-| BPM (`RhythmExtractor2013`) | 1.7 s | 3.1 s | 4.8 s | (per segment) | DSP, single-threaded C++ |
+| BPM (`RhythmExtractor2013`) | 1.7 s | 3.1 s | 4.8 s | (per segment) | DSP, single-threaded C++; Rust 0.5-0.7 s (stage 6) |
 | MAEST | 2.7 s | 2.7 s | 2.7 s | 2.7 s | neural net, always 3 patches of 30 s; cached, so rescans skip it |
 | Loudness (`LoudnessEBUR128`) | 0.8 s | 1.4 s | 2.2 s | 18.4 s | DSP, two IIR filters and windowed means |
 | EffNet + styles | 0.8 s | 1.2 s | 1.5 s | 9.5 s | neural net |
@@ -257,9 +350,9 @@ the natural language for that code: it runs as fast as C++, and PyO3 + maturin b
 (Windows, macOS, Linux) from one source, in CI, without the build pains that rule out Essentia on Windows.
 
 Candidates, best first:
-- **BPM port** (3.1 s on a typical track, the biggest single step). Must be ported for Windows anyway. In Rust it runs at least as fast as Essentia; the five
-  onset functions are independent and can run on separate threads (Essentia runs them one after another).
-  Mixes gain the most: the rhythm runs again for every 2-minute timeline segment.
+- **BPM port: done** (stage 6). Bit-identical, 6.4-6.9x faster on tracks (5 min: 2.76 s → 0.41 s; 8 min:
+  4.56 s → 0.71 s) and 5.5x on a 63-min mix as a whole (36 s → 6.5 s). Mixes gain the most: the rhythm runs
+  again for every 2-minute timeline segment.
 - **Loudness: done** (`dsp/`, `track_analyzer_dsp.loudness_ebur128`, used by `analysis.loudness()`). A line-by-line
   copy of Essentia's LoudnessEBUR128: the same float32 4th-order IIR, frame cutting and in-order sums, with the
   3 s / 400 ms windows computed in parallel. Bit-identical to Essentia on all 469 tracks of the test collection
@@ -310,30 +403,42 @@ Windows x86_64 and attaches them to a release on a `dsp-v*` tag; `pyproject.toml
 Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what a port really adds.
 
 - **Collection location.** `traktor.find_collection()` globs `~/Documents/Native Instruments/Traktor*/collection.nml`.
-  On Windows that's the same relative to the user folder, so `expanduser` finds it (**verify**: OneDrive can move
-  Documents to `~/OneDrive/Documents`, and may keep files there as online-only placeholders). History files
+  On Windows that's the same relative to the user folder, so `expanduser` finds it (seen 2026-11-02:
+  `C:\Users\<user>\Documents\Native Instruments\Traktor 4.4.2`; still open: OneDrive can move Documents to
+  `~/OneDrive/Documents`, and may keep files there as online-only placeholders). History files
   (`tracklist.HISTORY_GLOB`) and recordings (`traktor.recording_dirs()`) use the same base.
 - **Track paths.** `traktor.location_paths()` turns an NML `LOCATION` (`VOLUME`, `DIR="/:Users/:me/:Music/:"`, `FILE`)
-  into `/Users/…` or `/Volumes/<VOLUME>/…`. On Windows `VOLUME` is a drive letter (`VOLUME="C:"`, **verify** the
-  exact form and `VOLUMEID`), so the path is `C:\Users\me\Music\x.mp3`. Every lookup between Traktor's entries
-  and `collection.db` paths goes through this, so get it right first; a wrong mapping means no track matches.
-  Network drives (`\\server\share`) need a rule too.
-- **Case.** Windows paths ignore case; the code compares paths as exact strings. If Traktor stores
-  `Music\House` and the folder is `music\house`, the track doesn't match. Compare with `os.path.normcase`
-  (or a casefolded key column) on Windows.
+  into `/Users/…` or `/Volumes/<VOLUME>/…`. On Windows `VOLUME` is the drive letter with its colon (seen 2026-11-02 in a
+  Traktor Pro 4 collection: `VOLUME="C:" VOLUMEID="f21b7ddb"`, `DIR` in the same `/:` form as on the Mac), so the
+  path is `C:\Users\me\Music\x.mp3`. A playlist's `PRIMARYKEY KEY` is VOLUME + DIR + FILE, as on the Mac:
+  `C:/:Users/:me/:Music/:x.mp3`. Every lookup between Traktor's entries
+  and `collection.db` paths goes through this. **Done** (2026-11-02): a drive-letter `VOLUME` gives the Windows
+  path (decided by the VOLUME, not the platform, so a Mac reads a Windows collection the same way); playlists follow,
+  as their keys are looked up through the collection's own entries. All 417 tracks and every playlist entry of the
+  Windows collection map to their `C:\` paths, and the Mac's results are unchanged (old and new code on the Mac
+  collection: identical). Still open: network drives (`\\server\share`); their `VOLUME` form is unknown.
+- **Case.** Windows paths ignore case. Folder checks (`collection.under()`: excluded folders, recordings, the
+  scan's "gone" check, the page's skip list) ignore case and accept `/` or `\` on Windows (done 2026-11-02). Single
+  tracks are still matched as exact strings: both sides come from the file system's own spelling (Traktor's import,
+  the scan's `os.walk` under a `resolve()`d folder), so they agree. A folder renamed only in case after Traktor
+  imported it would not match until Traktor relocates it.
 - **Settings paths.** `traktor.mac_path()` converts the `.tsi`'s colon paths (`Macintosh HD:Users:Shared:…`). Windows
-  Traktor's form is unknown (**verify**: probably `C:\Users\…` or a colon form with a drive letter). Used for
+  Traktor writes plain Windows paths (seen 2026-11-02: `C:\Users\me\Music\Traktor\Samples`, sometimes with a
+  trailing `\`; Recordings on `D:\DJing\…`). **Done** (2026-11-02): `mac_path` returns them as they are (trailing
+  `\` dropped), and `recording_dirs` never skips a whole drive. The list
+  entry `Browser.Dir.Music` (Type 7) separates its parts with a literal `\b` (`C:\bUsers\bme…`); we don't read it. Used for
   the sample folder (`web.sample_root()`) and the folders `scan --traktor` skips.
-- **Is Traktor running?** `traktor.traktor_running()` uses `pgrep`. On Windows that command doesn't exist, the
-  call fails, and the function returns False: every writer would then edit `collection.nml` while Traktor is
-  open, and Traktor overwrites it on quit. Use `tasklist /FI "IMAGENAME eq Traktor.exe"` (**verify** the process
-  name), and make a failed check refuse to write rather than assume Traktor is closed. Fix this first.
-- **NML text.** The NML is read and written with `Path.read_text()` / `write_text()` without an encoding in many
-  places (18 at the time of writing). Python on Windows defaults to the ANSI code page, so accented
-  names would be garbled or the write would fail. Pass `encoding="utf-8"` everywhere, or run Python in UTF-8
-  mode (`PYTHONUTF8=1`, set in the launcher).
-- **Line endings.** `read_text()` turns `\r\n` into `\n` and writing puts `\n` back. If Windows Traktor writes CRLF
-  (**verify**), every write would change every line ending and the backup/undo SHA-1 check (`.written-sha1`) would
+- **Is Traktor running?** **Done** (2026-11-02): `traktor.running_state()` reads `tasklist /FO CSV /NH` on Windows
+  (any image named `traktor*.exe`; Traktor Pro 4's is `Traktor Pro 4.exe`, seen in Task Manager 2026-11-02) and `pgrep` elsewhere. When the check fails (no process list, an error) it returns None, and
+  `check_closed` treats that like the container: it asks in the terminal or on the page, or needs
+  `TRACK_ANALYZER_TRAKTOR_CLOSED=1`, and refuses otherwise. Before, a failed check meant "closed", so on Windows
+  every writer would have edited `collection.nml` under a running Traktor, which overwrites it on quit.
+- **NML text.** Python on Windows defaults to the ANSI code page, so accented names would be garbled or the
+  write would fail. **Done**: every NML and `.tsi` read and write passes `encoding="utf-8"`, and so do the tempo
+  view's and Lexicon's state files (which hold paths); jobs started from the page run with `PYTHONUTF8=1`, so
+  their output reaches the page as the UTF-8 it's read as. The launcher should set `PYTHONUTF8=1` too.
+- **Line endings.** `read_text()` turns `\r\n` into `\n` and writing puts `\n` back. Windows Traktor Pro 4 writes LF
+  (seen 2026-11-02 in the collection and the `.tsi`; UTF-8, no BOM), so this is safe as it is. Had it been CRLF, every write would change every line ending and the backup/undo SHA-1 check (`.written-sha1`) would
   report every file as changed. Read and write with `newline=""` so the edits stay surgical.
 - **Replacing files.** `os.replace` (the `.tsi` write, `traktor.py`) fails on Windows if another program holds the
   file open without delete sharing: antivirus, OneDrive, maybe Traktor itself. Test with Traktor closed and open;
@@ -343,13 +448,12 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
 
 ## Paths inside the code
 
-Paths are stored as `str(Path)` strings and compared as strings. On Windows that means backslashes, and
-several places assume `/`:
+Paths are stored as `str(Path)` strings and compared as strings. On Windows that means backslashes:
 
-- `collection.py` folder matching: `path.startswith(r.rstrip("/") + "/")` (in `_under`, the scan's exclude list,
-  the "gone" check), `jobs.py` skip check (`d + "/"`).
+- Folder matching (`_under`, the scan's exclude list, the "gone" check, `jobs.py`'s skip check) assumed `/`.
+  **Done** (2026-11-02): all go through `collection.under()`.
 - `collection._missing_for_good()` knows macOS `/Volumes/<disk>` and Linux `/media`, `/run/media`, `/mnt` for
-  unplugged drives. Add drive letters: a missing `E:\` drive means unplugged, not deleted. Network shares too.
+  unplugged drives. **Done**: on Windows a missing drive letter or network share means unplugged, not deleted.
 - `collection.nfc()` composes accented names only where a file has that name (NTFS doesn't normalise),
   so it already behaves on Windows.
 - `clips.py` puts previews in `/tmp` when it exists, else the system temp folder: fine.
@@ -357,45 +461,76 @@ several places assume `/`:
 
 ## The web page's Setup tab
 
-- **Stopping a job.** `jobs.py` starts each job with `start_new_session=True` and stops it with `os.killpg(…, SIGINT)`,
-  then SIGTERM. Windows has neither. Start with `creationflags=CREATE_NEW_PROCESS_GROUP` and send
-  `CTRL_BREAK_EVENT`; the scans' safe stop listens for SIGINT, so they'd need a SIGBREAK handler too.
+- **Stopping a job.** **Done** (2026-11-02): on Windows each job starts with `CREATE_NEW_PROCESS_GROUP` and Stop
+  sends its group `CTRL_BREAK_EVENT` (`jobs._interrupt`); the job turns SIGBREAK into KeyboardInterrupt
+  (`jobs.child_signals`), so a scan saves what it has as with Ctrl-C, and pool workers ignore it as they ignore
+  SIGINT. The hard stop after 20 s is `taskkill /T /F` (the job and everything it started); also the fallback when
+  Ctrl-Break can't be sent (no console). macOS/Linux unchanged: own session, SIGINT, then SIGTERM.
+  `tests/test_jobs.py` checks it on both.
 - **Installing tools.** The Setup tab installs ffmpeg and rubberband with Homebrew; without it, it shows
   `analysis.install_hint()`. **Done:** the Windows hint (`winget install Gyan.FFmpeg`; Rubber Band's Windows build
   from breakfastquay.com/rubberband, 3.0+ for the R3 engine, on PATH), and `analysis.find_tool()` also looks in
-  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). Still open: running winget from `_tool_install`.
-  Every ffprobe call goes through `find_tool` (the page's player and loops, `traktor.audio_offset`), except `clips.py`.
+  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). **Done** (2026-11-02): the Setup tab's buttons
+  run `winget install Gyan.FFmpeg` (ffmpeg 9.0.2, as Homebrew's) and `dj-track-analyzer install rubberband`, which
+  downloads Rubber Band's own Windows build (4.0.0, as Homebrew's; winget doesn't have it), checks its SHA-256 and
+  unpacks it into `data/tools/rubberband`, where `find_tool` looks. Every ffmpeg/ffprobe call goes through
+  `find_tool`, `clips.py` included.
+- **Job logs.** Windows ends lines with `\r\n`; the log reader took the `\r` for a progress meter's update, so on
+  Windows every log line would only have flashed by as the "live" line and the page's log stayed empty. Fixed
+  (2026-11-02, found by the Windows test run): on Windows `\r\n` is a plain line end.
 - **Show in Explorer** (`web._show`) already uses `explorer /select,` on Windows.
 
 ## Launcher
 
-`Start Puppi3's Track Analyzer.command` is bash. Add a `Start Puppi3's Track Analyzer.bat` (or `.ps1`) that installs uv
-(`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`), runs `uv sync` and `uv run dj-track-analyzer web`,
-and sets `PYTHONUTF8=1`.
+`Start Puppi3's Track Analyzer.command` is bash. **Done** (2026-11-02, not yet run on Windows):
+`Start Puppi3's Track Analyzer.bat` does the same: opens the page if 8766 already answers, installs uv if missing
+(`irm https://astral.sh/uv/install.ps1 | iex`), `uv sync --inexact`, `uv run dj-track-analyzer web`, with
+`PYTHONUTF8=1`. On Windows on Arm it asks uv for x64 Python (`UV_PYTHON`), as the dsp wheel and TensorFlow have
+x64 builds only. `.gitattributes` checks `.bat` files out with CRLF.
 
 ## Lexicon
 
-Lexicon has a Windows version (**verify**). `lexicon.py` needs:
-- its database path for the backup before each load (now `~/Library/Application Support/lexicon/main.db`;
-  on Windows probably under `%APPDATA%\lexicon`, **verify**);
-- the location prefix it strips (now `/Volumes/<disk>`; Windows Lexicon likely sends `C:\…`, **verify**) so
-  Lexicon's tracks match `collection.db` paths.
+Lexicon has a Windows version. `lexicon.py` needs:
+- its database path for the backup before each load: `%APPDATA%\lexicon\main.db` on Windows (seen on a
+  Windows install 2026-11-02; done), `~/Library/Application Support/lexicon/main.db` on a Mac;
+- its track locations matched to `collection.db` paths: Windows Lexicon sends `C:/Users/…` with forward slashes
+  (seen 2026-11-02 from its Local API); `lexicon._paths` turns them into `C:\Users\…` (done).
 The Local API itself (localhost:48624) is the same.
+
+## Using the computer while it scans
+
+Each scan worker runs TensorFlow and the Rust code on every core, so a scan takes the whole CPU. On Windows every
+command except `web` and `serve` runs at below-normal priority (`cli.lower_priority`; its workers inherit it), so
+whatever you're doing comes first and the scan gets the rest. Results don't change. Measured 2026-11-02 on two
+tracks: the analysis is bit-identical with TensorFlow and Rust on 1 thread or on all 10 (only the time differs), so
+giving each worker its share of the cores is safe too. Measured on a 10-core M1 Pro (10 tracks, real scan workers):
+5 workers on all cores 60 s, 5 workers x 2 threads 58 s, 10 workers x 1 thread 81 s, results identical in all
+three. No real gain, so not done. On Windows the gain would have to be measured on the PC itself.
+No GPU: TensorFlow 2.15 has no GPU support on Windows and none for Vulkan anywhere; a GPU runtime (ONNX Runtime
+with DirectML, TensorFlow's old DirectML plugin) gives results that aren't bit-identical, so it isn't used.
 
 ## Order of work
 
-1. **Replace Essentia, on the Mac**, in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
+Testing without a Windows PC (2026-11-02): `tests/` runs on GitHub's Windows runners on every push
+(`.github/workflows/tests.yml`): scan, tag, the Traktor write and undo on a collection in Windows Traktor's form,
+the Traktor-running refusal, unplugged drive letters, UTF-8 output through pipes, and the `.bat` launcher opening
+the page. What it can't check is real Traktor reading what we wrote; that stays a check on the PC before a release.
+
+1. **Replace Essentia, on the Mac** (done 2026-11-02), in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
    front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
    collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
    everywhere.
-2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows.
+2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows (done 2026-11-02).
 3. On a Windows machine with Traktor: copy `collection.nml` and `Traktor Settings.tsi` and note the `LOCATION`,
-   `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files.
+   `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files. (Done 2026-11-02 from a
+   Traktor Pro 4.4.2 install; still open: OneDrive Documents, network drives, MODIFIED seconds.)
 4. Path mapping (`location_paths`, `mac_path`, collection search), case-insensitive matching, the `/` assumptions,
-   drive letters for unplugged drives, UTF-8 and `newline=""` on every NML read and write.
+   drive letters for unplugged drives, UTF-8 and `newline=""` on every NML read and write. (Done 2026-11-02;
+   `newline=""` not needed, Traktor writes LF. Tested on the Mac with the Windows files and Windows' path rules;
+   a run on Windows itself is step 5.)
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
-   and then open (it must refuse).
-6. Setup tab (job stop, tool installs), launcher, Lexicon.
+   and then open (it must refuse). (Done 2026-11-02 on a Windows PC with Traktor Pro 4.4.2.)
+6. Setup tab (job stop, tool installs), launcher, Lexicon. (All done 2026-11-02.)
 
 ## Stopgap: WSL2
 

@@ -108,6 +108,84 @@ def set_hold(kind: str, values: dict[str, str | None], on: bool = True) -> int:
     return n
 
 
+# Values set by hand (`edit`, the page's Edit): field → the columns they replace. The analysis rewrites these
+# (scan, regenre, hype, Traktor's BPM), so `apply_manual` puts them back after each; `was` keeps what they
+# replaced, put back when the field is cleared. Colour and key go into Traktor itself, which already wins.
+MANUAL = {"genre": ("genre", "my_genre"), "hype": ("hype",), "bpm": ("traktor_bpm",)}
+
+
+def _manual_table(con) -> None:
+    con.execute("CREATE TABLE IF NOT EXISTS manual (path TEXT, field TEXT, value TEXT, was TEXT, at TEXT, "
+                "PRIMARY KEY (path, field))")
+
+
+def _manual_cols(field: str, value: str) -> tuple:
+    if field == "genre":
+        return value, value  # your genre too, so "your genre, else ours" shows it
+    return (int(value),) if field == "hype" else (float(value),)
+
+
+def manual() -> dict[str, dict[str, str]]:
+    """{path: {field: value}} for the values set by hand."""
+    if not NATIVE_DB.exists():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    with sqlite3.connect(NATIVE_DB) as con:
+        _manual_table(con)
+        for p, f, v in con.execute("SELECT path, field, value FROM manual"):
+            out.setdefault(p, {})[f] = v
+    return out
+
+
+def _is_native(con) -> bool:
+    f = con.execute("PRAGMA database_list").fetchone()[2]
+    return bool(f) and Path(f).resolve() == NATIVE_DB.resolve()
+
+
+def apply_manual(con) -> int:
+    """Put the hand-set values back over what the analysis just wrote (normal library only). Returns how many."""
+    if not _is_native(con):
+        return 0
+    _manual_table(con)
+    n = 0
+    for p, field, value, was in con.execute("SELECT path, field, value, was FROM manual").fetchall():
+        cols = MANUAL[field]
+        cur = con.execute(f"SELECT {', '.join(cols)} FROM tracks WHERE path=?", (p,)).fetchone()
+        want = _manual_cols(field, value)
+        if cur is None or tuple(cur) == want:
+            continue
+        # per column: what the analysis wrote now, or (still the hand value there) what it replaced before
+        was = [c if c != w else o for c, w, o in zip(cur, want, json.loads(was))]
+        con.execute("UPDATE manual SET was=? WHERE path=? AND field=?", (json.dumps(was), p, field))
+        con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?", [*want, p])
+        n += 1
+    con.commit()
+    return n
+
+
+def set_manual(path: str, field: str, value: str | None) -> None:
+    """Set a field by hand, or (None) clear it: the columns get back what the hand value replaced."""
+    cols = MANUAL[field]
+    with sqlite3.connect(NATIVE_DB) as con:
+        _manual_table(con)
+        had = con.execute("SELECT was FROM manual WHERE path=? AND field=?", (path, field)).fetchone()
+        if value is None:
+            if had:
+                con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?",
+                            [*json.loads(had[0]), path])
+                con.execute("DELETE FROM manual WHERE path=? AND field=?", (path, field))
+        else:
+            if not had:
+                cur = con.execute(f"SELECT {', '.join(cols)} FROM tracks WHERE path=?", (path,)).fetchone()
+                con.execute("INSERT INTO manual VALUES (?, ?, ?, ?, ?)",
+                            (path, field, None, json.dumps(list(cur)), time.strftime("%Y-%m-%d %H:%M")))
+            con.execute("UPDATE manual SET value=?, at=? WHERE path=? AND field=?",
+                        (str(value), time.strftime("%Y-%m-%d %H:%M"), path, field))
+            con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?",
+                        [*_manual_cols(field, str(value)), path])
+    log_feedback("manual", [(path, {"field": field, "value": value})])
+
+
 def holds_list() -> dict:
     with _hold_db() as con:
         return {kind: [{"file": Path(r[0]).name, kind: r[1], "since": r[2], "path": r[0]}
@@ -390,10 +468,16 @@ def write_tags(p: Path, row: dict, fields: list[str], con: sqlite3.Connection | 
         return str(err)
 
 
+def under(path: str, folder: str) -> bool:
+    """path is the folder or inside it. On Windows "\\" or "/" and any case, as Windows treats them."""
+    p, d = os.path.normcase(path), os.path.normcase(folder)
+    return p == d or p.startswith(d.rstrip("/" + os.sep) + os.sep)
+
+
 def _under(path: str, roots: list[str] | None) -> bool:
     if not roots:
         return True
-    return any(path == r or path.startswith(r.rstrip("/") + "/") for r in roots)
+    return any(under(path, r) for r in roots)
 
 
 def _refresh_stat(con: sqlite3.Connection, path: str) -> None:
@@ -564,6 +648,9 @@ def _missing_for_good(path: str) -> bool:
     """The file is gone, and not just on a drive that isn't plugged in right now."""
     if os.path.exists(path):
         return False
+    if sys.platform == "win32":  # a drive letter (or network share) that isn't there now: unplugged
+        drive = os.path.splitdrive(path)[0]
+        return not drive or os.path.isdir(drive + os.sep)
     parts = Path(path).parts
     if len(parts) > 2 and parts[1] == "Volumes":  # macOS: another drive
         return os.path.isdir(os.path.join(*parts[:3]))
@@ -657,7 +744,8 @@ def _scan_one(job):
 
 def _worker_init():
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
-    analysis.es()
+    if hasattr(signal, "SIGBREAK"):  # Windows: a stop from the page is a Ctrl-Break (jobs._interrupt)
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
 
 
 # Come from Traktor, not the analysis; hype and the Cross-Key Analysis are judged within the collection,
@@ -687,7 +775,11 @@ def load_traktor_info(nml: str | None = None) -> dict[str, tuple[float | None, s
     except (SystemExit, OSError) as err:
         log(f"(Traktor's BPM/key not used: {err})")
         return {}
-    return {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
+    out = {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
+    for p, f in manual().items():  # a BPM set by hand wins over Traktor's (whose grid is never written)
+        if "bpm" in f:
+            out[p] = (float(f["bpm"]), (out.get(p) or (None, None))[1])
+    return out
 
 
 def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
@@ -702,6 +794,7 @@ def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
                                        "OR traktor_camelot IS NOT NULL") if p not in info]
     con.executemany("UPDATE tracks SET traktor_bpm=NULL, traktor_camelot=NULL WHERE path=?", [(p,) for p in stale])
     con.commit()
+    apply_manual(con)
 
 
 def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
@@ -738,12 +831,12 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
         skip_dirs += traktor.recording_dirs(traktor_nml)
     if skip_dirs:
         before = len(files)
-        files = [f for f in files if not any(str(f) == d or str(f).startswith(d.rstrip("/") + "/") for d in skip_dirs)]
+        files = [f for f in files if not any(under(str(f), d) for d in skip_dirs)]
         if before - len(files):
             log(f"Skipping {before - len(files)} files in excluded folders (recordings, samples, --exclude): "
                 + ", ".join(skip_dirs))
         # and drop results for those folders from earlier scans, so they don't show up in searches
-        old = [p for p in known_all(con) if any(p.startswith(d.rstrip("/") + "/") for d in skip_dirs)]
+        old = [p for p in known_all(con) if any(under(p, d) and p != d for d in skip_dirs)]
         if old:
             con.executemany("DELETE FROM tracks WHERE path = ?", [(x,) for x in old])
             con.commit()
@@ -762,8 +855,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     # Forget files that were deleted or moved out of the scanned folders.
     roots_abs = [str(Path(os.path.expanduser(r)).resolve()) for r in roots]
     present = {str(f) for f in files}
-    gone = [path for path in known_all(con) if any(path.startswith(r.rstrip("/") + "/") or path == r for r in roots_abs)
-            and path not in present]
+    gone = [path for path in known_all(con) if any(under(path, r) for r in roots_abs) and path not in present]
     # tracks scanned before that no longer exist anywhere (a drive that isn't plugged in doesn't count)
     gone += [path for path in known_all(con) if path not in present and path not in gone and _missing_for_good(path)]
     if gone:
@@ -791,7 +883,6 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     pool = None
     try:
         if workers == 1:
-            analysis.es()
             results = map(_scan_one, jobs)
         else:
             import multiprocessing as mp
@@ -838,6 +929,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
             hype.compute(con)
         except SystemExit as err:
             log(f"(hype not scored: {err})")
+    apply_manual(con)  # rescanned tracks got the analysis' genre again
     if csv_out:
         export_csv(csv_out)
     out = summary(con)
@@ -876,6 +968,7 @@ def regenre(csv_out: Path | None = DEFAULT_CSV) -> dict:
                                      g[2]["genre"] if len(g) > 2 else None, g[1]["score"] if len(g) > 1 else None,
                                      g[2]["score"] if len(g) > 2 else None, r["path"]))
     con.commit()
+    apply_manual(con)
     if csv_out:
         export_csv(csv_out)
     return {"tracks": len(rows) - missing, "not_in_cache": missing, "top_genre_changed": sum(changed.values()),

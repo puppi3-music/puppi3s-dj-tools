@@ -58,6 +58,12 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
           path: dist
+      - run: echo "V=${GITHUB_REF_NAME#dsp-v}" >> "$GITHUB_ENV"
       - uses: softprops/action-gh-release@v2
         with:
+          name: track-analyzer-dsp ${{ env.V }} (Rust module, installed automatically)
+          body: >-
+            The analyzer's Rust module, built for every platform. Installs download it by themselves (`uv sync`);
+            there's nothing to download here by hand. The app's own releases are the `v…` ones.
           files: dist/*.whl
+          make_latest: false

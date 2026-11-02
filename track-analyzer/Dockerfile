@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg rubberba
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never UV_PYTHON=/usr/local/bin/python3.11 \
     UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv PATH=/opt/venv/bin:$PATH \
     TRACK_ANALYZER_HOME=/data TRACK_ANALYZER_CONTAINER=1 HOME=/home/dj
-# Opt-in extras as on a Mac, e.g. --build-arg EXTRAS="--extra decode --extra stems"
+# Opt-in extras as on a Mac, e.g. --build-arg EXTRAS="--extra stems"
 ARG EXTRAS=""
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
@@ -27,9 +27,10 @@ EXPOSE 8766
 CMD ["dj-track-analyzer", "web", "--host", "0.0.0.0", "--no-open"]
 
 FROM app AS test
-RUN dj-track-analyzer setup
+# chmod in the same layer that made the files: a later layer changing their mode would hold a second copy of the models
+RUN dj-track-analyzer setup && chmod -R a+rwX /data /home/dj
 COPY scripts ./scripts
 RUN python scripts/make_fixtures.py --music /fixtures/music \
         --nml "/home/dj/Documents/Native Instruments/Traktor 4.0.0/collection.nml" \
-    && chmod -R a+rwX /data /fixtures /home/dj
+    && chmod -R a+rwX /fixtures /home/dj
 CMD ["python", "scripts/docker_smoke.py"]

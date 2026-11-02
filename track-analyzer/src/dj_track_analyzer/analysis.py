@@ -1,8 +1,8 @@
 """
-Core analysis for Puppi3's Track Analyzer: configuration, Essentia models, the analysis cache, analyze_file()
+Core analysis for Puppi3's Track Analyzer: configuration, the models, the analysis cache, analyze_file()
 and custom genre training. The command line is in cli.py, the MCP server in mcp_server.py.
 
-Runs entirely on your machine with Essentia:
+Runs entirely on your machine (the DSP in Rust, track_analyzer_dsp; the models on TensorFlow):
   * BPM (fast-tempo aware), key + Camelot, loudness, energy curve
   * Discogs style classification (400 styles: Hard Trance, Acid, Techno, ...)
   * YOUR OWN genre labels, learned from example tracks you sort into folders
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-# Keep TensorFlow quiet; must be set before essentia-tensorflow loads TF.
+# Keep TensorFlow quiet; must be set before TensorFlow loads.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 import hashlib
@@ -117,52 +117,100 @@ def log(*args) -> None:
 # Essentia loading (lazy, so `--help` and `setup` stay fast)
 # ----------------------------------------------------------------------------
 
-_es = None
-
-
-def es():
-    global _es
-    if _es is None:
-        import essentia
-
-        essentia.log.infoActive = False
-        essentia.log.warningActive = False
-        import essentia.standard as standard
-
-        _es = standard
-    return _es
-
-
-_dsp = False
+_dsp = None
 
 
 def dsp():
-    """The Rust module (dsp/) or None. Its functions give Essentia's results bit for bit, faster; checked
-    over the test collection (docs/WINDOWS.md). Without it Essentia does the same work."""
+    """The Rust module (dsp/): Essentia's DSP steps, ported operation for operation, faster; bit for bit, or where
+    its maths is more exact (libm calls, dsp/src/math.rs) within a float step (docs/WINDOWS.md)."""
     global _dsp
-    if _dsp is False:
-        try:
-            import track_analyzer_dsp as m
-        except ImportError:
-            m = None
-        _dsp = m
+    if _dsp is None:
+        import track_analyzer_dsp
+
+        _dsp = track_analyzer_dsp
     return _dsp
 
 
-_av = False
+_av = None
 
 
 def pyav():
-    """PyAV or None. `decode` reads files with it the way Essentia's AudioLoader does, bit for bit, faster;
-    checked over the test collection (docs/WINDOWS.md stage 2). Without it Essentia decodes."""
+    """PyAV: `decode` reads files with it the way Essentia's AudioLoader did (docs/WINDOWS.md stage 2)."""
     global _av
-    if _av is False:
-        try:
-            import av as m
-        except ImportError:
-            m = None
-        _av = m
+    if _av is None:
+        import av
+
+        _av = av
     return _av
+
+
+_tf = None
+TF_VERSION = "2.15.0"  # the version Essentia bundled; another one may change the models' last bits
+
+
+def tensorflow():
+    """Python TensorFlow 2.15, imported on first use (it takes a few seconds). Graph and Head run the models on it,
+    bit for bit as Essentia's own TensorFlow (docs/WINDOWS.md stage 4)."""
+    global _tf
+    if _tf is None:
+        os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # no start-up chatter on stderr
+        import tensorflow as tf
+
+        if tf.__version__ != TF_VERSION:
+            raise RuntimeError(f"TensorFlow {tf.__version__} is installed; the models need {TF_VERSION} (uv sync)")
+        tf.get_logger().setLevel("ERROR")  # its deprecation notes (tf.GraphDef) are about TensorFlow 1 code, not ours
+        _tf = tf
+    return _tf
+
+
+def _tensor(name: str) -> str:
+    return name if ":" in name else name + ":0"
+
+
+def _session(pb):
+    tf = tensorflow()
+    graph = tf.Graph()
+    with graph.as_default():
+        gd = tf.compat.v1.GraphDef()
+        gd.ParseFromString(Path(pb).read_bytes())
+        tf.import_graph_def(gd, name="")
+    return tf.compat.v1.Session(graph=graph)
+
+
+class Graph:
+    """A frozen model graph with named inputs and outputs, as Essentia's TensorflowPredict: run({input: array})
+    → {output: array}. args: what it was made from, so dsp/check.py can make Essentia's copy."""
+
+    def __init__(self, pb, inputs: list[str], outputs: list[str]):
+        self.args, self.outputs = (pb, list(inputs), list(outputs)), list(outputs)
+        self._sess = _session(pb)
+
+    def run(self, feeds: dict) -> dict:
+        # as TensorflowPredict: inputs lose their size-1 axes after the batch, outputs get size-1 axes after it up
+        # to 4 dimensions
+        got = self._sess.run([_tensor(o) for o in self.outputs],
+                             {_tensor(k): v.reshape(v.shape[:1] + tuple(d for d in v.shape[1:] if d != 1))
+                              for k, v in feeds.items()})
+        return {o: v.reshape(v.shape[:1] + (1,) * (4 - v.ndim) + v.shape[1:]) if v.ndim < 4 else v
+                for o, v in zip(self.outputs, got)}
+
+
+class Head:
+    """A classification head on (rows, features), as Essentia's TensorflowPredict2D: batches of 64 rows, the last
+    one shorter (any other batching changes the last bits)."""
+
+    BATCH = 64
+
+    def __init__(self, pb, input: str, output: str):
+        self.args, self.input, self.output = (pb, input, output), _tensor(input), _tensor(output)
+        self._sess = _session(pb)
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        x = np.ascontiguousarray(x, dtype=np.float32)
+        if not len(x):
+            raise RuntimeError("empty input")  # as TensorflowPredict2D
+        return np.concatenate([self._sess.run(self.output, {self.input: x[i:i + self.BATCH]})
+                               for i in range(0, len(x), self.BATCH)])
 
 
 def models_present() -> bool:
@@ -244,17 +292,11 @@ def style_models():
             "Style models are not downloaded yet. Run:  uv run dj-track-analyzer setup"
         )
     if not _models:
-        e = es()
         pb = str(MODELS_DIR / "discogs-effnet-bs64-1.pb")
-        if _rust_mels():  # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
-            _models["embed"] = e.TensorflowPredict(graphFilename=pb, inputs=[EFFNET_INPUT], outputs=[EFFNET_OUTPUT])
-        else:
-            _models["embed"] = e.TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
-        _models["styles"] = e.TensorflowPredict2D(
-            graphFilename=str(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb"),
-            input="serving_default_model_Placeholder",
-            output="PartitionedCall:0",
-        )
+        # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
+        _models["embed"] = Graph(pb, [EFFNET_INPUT], [EFFNET_OUTPUT])
+        _models["styles"] = Head(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb",
+                                 input="serving_default_model_Placeholder", output="PartitionedCall:0")
         meta = json.loads((MODELS_DIR / "genre_discogs400-discogs-effnet-1.json").read_text())
         _models["classes"] = meta["classes"]
     return _models
@@ -289,7 +331,7 @@ def maest_available() -> bool:
 
 
 def maest_model():
-    """MAEST-519, loaded once as a plain TensorflowPredict so a single run gives both the style
+    """MAEST-519, loaded once as a plain graph (Graph) so a single run gives both the style
     predictions and the layer-7 embeddings. None when it's off, not downloaded, or fails to load.
     Any failure disables it for this process and is reported once in results."""
     if _maest.get("disabled"):
@@ -304,9 +346,7 @@ def maest_model():
             outs = {o.get("output_purpose"): o["name"] for o in meta["schema"]["outputs"]}
             pred = outs.get("predictions", "PartitionedCall/Identity_13")
             emb = outs.get("embeddings", "PartitionedCall/Identity_7")
-            _maest["model"] = es().TensorflowPredict(
-                graphFilename=str(MODELS_DIR / "discogs-maest-30s-pw-519l-2.pb"),
-                inputs=[maest_input_name(meta)], outputs=[pred, emb])
+            _maest["model"] = Graph(MODELS_DIR / "discogs-maest-30s-pw-519l-2.pb", [maest_input_name(meta)], [pred, emb])
             _maest.update(classes=meta["classes"], input=maest_input_name(meta), pred=pred, emb=emb)
         except Exception as err:
             _maest.update(disabled=True, why=f"failed to load: {err}")
@@ -367,24 +407,29 @@ def mood_models() -> dict:
             try:
                 classes = json.loads(js.read_text())["classes"]
                 idx = classes.index(m) if m in classes else 0
-                model = es().TensorflowPredict2D(graphFilename=str(pb), output="model/Softmax")
+                model = Head(pb, input="model/Placeholder", output="model/Softmax")
                 _moods["loaded"][m] = (model, idx)
             except Exception as err:
                 log(f"mood model {m} unavailable ({err})")
     return _moods["loaded"]
 
 
-def run_moods(emb: np.ndarray, mask: np.ndarray) -> dict:
-    """Mood scores 0-1 (share of the main section that sounds aggressive, happy, ...). A head that fails
-    on this track is left out for this track only (the cache then counts it as missing, see deep_missing)."""
+def mood_patches(emb: np.ndarray) -> dict:
+    """{mood: its positive-class probability per EffNet patch}. A head that fails on this track is left out."""
     out = {}
     for m, (model, idx) in mood_models().items():
         try:
-            p = np.asarray(model(emb), dtype=np.float32).reshape(len(emb), -1)
-            out[m] = round(float(p[mask, idx].mean()), 3)
+            out[m] = np.asarray(model(emb), dtype=np.float32).reshape(len(emb), -1)[:, idx]
         except Exception as err:
             log(f"mood model {m} failed on this track ({err})")
     return out
+
+
+def run_moods(emb: np.ndarray, mask: np.ndarray, patches: dict | None = None) -> dict:
+    """Mood scores 0-1 (share of the main section that sounds aggressive, happy, ...). A head that fails
+    on this track is left out for this track only (the cache then counts it as missing, see deep_missing)."""
+    patches = mood_patches(emb) if patches is None else patches
+    return {m: round(float(p[mask].mean()), 3) for m, p in patches.items()}
 
 
 def moods_missing(cached: dict | None) -> bool:
@@ -420,8 +465,7 @@ def _load_head(name: str, default_output: str):
     schema = meta.get("schema", {})
     ins = [i["name"] for i in schema.get("inputs", [])]
     outs = [o["name"] for o in schema.get("outputs", []) if o.get("output_purpose") == "predictions"]
-    model = es().TensorflowPredict2D(graphFilename=str(pb), input=ins[0] if ins else "model/Placeholder",
-                                     output=outs[0] if outs else default_output)
+    model = Head(pb, input=ins[0] if ins else "model/Placeholder", output=outs[0] if outs else default_output)
     return model, list(meta["classes"])
 
 
@@ -709,28 +753,16 @@ MAEST_MEL_MEAN, MAEST_MEL_STD = 2.06755686098554, 1.268292820667291
 MAEST_PATCH, MAEST_PATCH_HOP = 1876, 1875
 
 
-def _rust_mels():
-    """The Rust module if it has musicnn_mels (dsp 0.3.0 on)."""
-    m = dsp()
-    return m if m is not None and hasattr(m, "musicnn_mels") else None
-
-
 def musicnn_mels(x: np.ndarray, streaming: bool = False) -> np.ndarray:
     """Essentia's TensorflowInputMusiCNN on every frame of 16 kHz audio, cut as FrameGenerator(frameSize=512,
-    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (bit for bit; docs/WINDOWS.md
-    stage 3), else Essentia. streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs
-    gives them (a silent first frame comes out as silence); Rust only."""
+    hopSize=256, startFromZero=False): (frames, 96) float32, in Rust (within a float step; docs/WINDOWS.md stage 3).
+    streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs gives them (a silent first
+    frame comes out as silence)."""
+    m = dsp()
     x = np.ascontiguousarray(x, dtype=np.float32)
-    if m := _rust_mels():
-        out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
-        m.musicnn_mels(x, out, streaming=streaming)
-        return out
-    if streaming:
-        raise RuntimeError("streaming mel frames need track_analyzer_dsp 0.3.0 or newer")
-    e = es()
-    mel = e.TensorflowInputMusiCNN()
-    return np.array([mel(fr) for fr in e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)],
-                    dtype=np.float32).reshape(-1, 96)
+    out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
+    m.musicnn_mels(x, out, streaming=streaming)
+    return out
 
 
 def _maest_patches(audio: np.ndarray) -> np.ndarray:
@@ -747,14 +779,10 @@ def run_maest(mono16: np.ndarray) -> tuple[np.ndarray | None, np.ndarray | None]
     m = maest_model()
     if m is None:
         return None, None
-    from essentia import Pool
-
     try:
         preds, embs = [], []
         for patch in _maest_patches(_maest_audio(mono16)):  # the graph takes one patch per run
-            pool = Pool()
-            pool.set(m["input"], patch[None, None, :, :].copy())
-            out = m["model"](pool)
+            out = m["model"].run({m["input"]: patch[None, None, :, :].copy()})
             preds.append(np.asarray(out[m["pred"]], dtype=np.float32).reshape(-1))
             emb = np.asarray(out[m["emb"]], dtype=np.float32)
             embs.append(emb.reshape(-1, emb.shape[-1]).mean(axis=0))  # average over tokens
@@ -1092,8 +1120,13 @@ def cache_put(p: Path, duration: float, emb: np.ndarray, styles: np.ndarray) -> 
 
 
 TOOL_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"]  # Homebrew's, when PATH lacks them
+TOOLS_HOME = HOME / "tools"  # tools the analyzer installed itself (Rubber Band on Windows: `install rubberband`)
 if sys.platform == "win32":  # winget's command links (a new PATH entry reaches only programs started after the install)
-    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links")]
+    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),
+                 str(TOOLS_HOME / "rubberband")]
+# Rubber Band's own Windows build: the same 4.0.0 as Homebrew's on the Mac, checked by its SHA-256
+RUBBERBAND_WINDOWS = ("https://breakfastquay.com/files/releases/rubberband-4.0.0-gpl-executable-windows.zip",
+                      "f2d47fc64dbb42f6cc62edf7933ac4fa89d8f0ef8b9cf97b6afc263a7fe05644")
 APT_NAMES = {"rubberband": "rubberband-cli"}  # Debian/Ubuntu packages named differently from the command
 
 
@@ -1110,10 +1143,44 @@ def install_hint(name: str) -> str:
         return f"brew install {name}"
     if sys.platform == "win32":
         if name == "rubberband":
-            return ("download the Windows build (3.0 or newer) from breakfastquay.com/rubberband and put the folder "
-                    "with rubberband.exe on your PATH")
+            return "uv run dj-track-analyzer install rubberband"
         return "winget install Gyan.FFmpeg"
     return f"sudo apt install {APT_NAMES.get(name, name)} (or your distribution's package manager)"
+
+
+def install_rubberband() -> dict:
+    """Windows: Rubber Band's own build (RUBBERBAND_WINDOWS) into data/tools/rubberband, where find_tool looks.
+    Elsewhere the package manager has it (install_hint)."""
+    import hashlib
+    import shutil
+    import tempfile
+    import zipfile
+
+    if sys.platform != "win32":
+        raise SystemExit(f"Install Rubber Band with: {install_hint('rubberband')}")
+    url, sha256 = RUBBERBAND_WINDOWS
+    dest = TOOLS_HOME / "rubberband"
+    with tempfile.TemporaryDirectory() as tmp:
+        z = Path(tmp) / Path(url).name
+        log(f"Downloading {url}")
+        if not _fetch(url, z):
+            raise SystemExit("Couldn't download Rubber Band. Check the internet connection and try again.")
+        got = hashlib.sha256(z.read_bytes()).hexdigest()
+        if got != sha256:
+            raise SystemExit(f"The Rubber Band download isn't the expected file (SHA-256 {got}); nothing installed.")
+        unpacked = Path(tmp) / "unpacked"
+        with zipfile.ZipFile(z) as zf:
+            zf.extractall(unpacked)
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.mkdir(parents=True)
+        for f in unpacked.rglob("*"):
+            if f.is_file():  # the zip has one folder: rubberband.exe, its sndfile.dll, the licence
+                shutil.copy2(f, dest / f.name)
+    global _rubberband_exe
+    _rubberband_exe = None
+    exe = rubberband()
+    log(f"Rubber Band installed: {exe}")
+    return {"installed": exe}
 
 
 _rubberband_exe: str | None = None
@@ -1204,16 +1271,8 @@ _CHUNK = 1 << 20  # samples per channel gathered as raw bytes before converting 
 
 def decode(p: Path) -> tuple[np.ndarray, float, int]:
     """(stereo float32 (n, 2) at the file's own rate, the rate, the file's channel count), as Essentia's
-    AudioLoader gives it: PyAV if installed (bit for bit, faster), else Essentia."""
-    if m := pyav():
-        return _av_decode(m, p)
-    try:
-        stereo, sr, nch, *_ = es().AudioLoader(filename=str(p))()
-    except RuntimeError as err:
-        if "more than 2 channels" not in str(err):
-            raise
-        stereo, sr, nch, *_ = _load_downmixed(p)
-    return stereo, float(sr), int(nch)
+    AudioLoader gave it, bit for bit, read with PyAV (current FFmpeg)."""
+    return _av_decode(pyav(), p)
 
 
 def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
@@ -1221,7 +1280,7 @@ def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
     decoder (16-bit, clipped; FFmpeg 2.8's default), AAC and Opus keeping the encoder's priming samples (2.8
     didn't trim them; Opus is then cut to its packets' total length, as 2.8 did), mono files in the left channel
     with the right one silent, damaged packets skipped. More than 2 channels: FFmpeg's standard downmix, as
-    `ffmpeg -ac 2` gives it (_load_downmixed). Frames are gathered as raw bytes and converted in chunks into one
+    `ffmpeg -ac 2` gives it. Frames are gathered as raw bytes and converted in chunks into one
     array: per-frame numpy work made it slower than Essentia, this is faster."""
     with av.open(str(p), metadata_errors="replace") as c:  # tags unused; Traktor writes binary into WAV INFO tags
         s = c.streams.audio[0]
@@ -1304,43 +1363,22 @@ def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
     return out, float(sr), min(nch, 2)
 
 
-def _load_downmixed(p: Path):
-    """Files with more than 2 channels (5.1 FLACs): Essentia's AudioLoader refuses them, so ffmpeg mixes
-    them down to stereo with its standard downmix, at the file's own rate, as float (no rounding).
-    Only without PyAV (decode)."""
-    import shutil
-    import subprocess
-    import tempfile
-
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError(f"{p.name} has more than 2 channels; install ffmpeg ({install_hint('ffmpeg')}) to read it")
-    with tempfile.TemporaryDirectory(prefix="track-analyzer-") as tmp:
-        out = Path(tmp) / "stereo.wav"
-        done = subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-map", "0:a:0", "-ac", "2",
-                               "-c:a", "pcm_f32le", str(out)], capture_output=True, text=True)
-        if done.returncode:
-            raise RuntimeError(f"ffmpeg couldn't mix {p.name} down to stereo: {done.stderr.strip()}")
-        return es().AudioLoader(filename=str(out))()
-
-
 def resample_medium(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
-    """Essentia's Resample(quality=1) (libsamplerate's medium sinc), bit for bit; the Rust copy (~5x faster) if
-    installed. Checked on 48 kHz mixes and on 8-192 kHz test signals (docs/WINDOWS.md)."""
-    if m := dsp():
-        x = np.ascontiguousarray(mono, dtype=np.float32)
-        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
-        return out[: m.resample_sinc_medium(x, out, sr, out_sr)]
-    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=1)(mono)
+    """Essentia's Resample(quality=1) (libsamplerate's medium sinc), bit for bit, in Rust (~5x faster). Checked on
+    48 kHz mixes and on 8-192 kHz test signals (docs/WINDOWS.md)."""
+    m = dsp()
+    x = np.ascontiguousarray(mono, dtype=np.float32)
+    out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+    return out[: m.resample_sinc_medium(x, out, sr, out_sr)]
 
 
 def resample_linear(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
-    """Essentia's Resample(quality=4) (libsamplerate's linear converter), bit for bit; the Rust copy if installed.
-    Used for the models' 16 kHz input, as Essentia's model docs do."""
-    if (m := dsp()) and hasattr(m, "resample_linear"):  # dsp 0.1.0 doesn't have it
-        x = np.ascontiguousarray(mono, dtype=np.float32)
-        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
-        return out[: m.resample_linear(x, out, sr, out_sr)]
-    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=4)(mono)
+    """Essentia's Resample(quality=4) (libsamplerate's linear converter), bit for bit, in Rust. Used for the
+    models' 16 kHz input, as Essentia's model docs do."""
+    m = dsp()
+    x = np.ascontiguousarray(mono, dtype=np.float32)
+    out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+    return out[: m.resample_linear(x, out, sr, out_sr)]
 
 
 def mono_mix(stereo: np.ndarray, nch: int) -> np.ndarray:
@@ -1366,18 +1404,14 @@ EFFNET_INPUT, EFFNET_OUTPUT = "serving_default_melspectrogram", "PartitionedCall
 EFFNET_PATCH, EFFNET_PATCH_HOP, EFFNET_BATCH = 128, 62, 64
 
 
-def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
+def effnet_embeddings(mono16: np.ndarray, model: Graph | None = None) -> np.ndarray:
     """Discogs-EffNet's embeddings (patches, 1280), as TensorflowPredictEffnetDiscogs gives them (its defaults:
     patches of 128 mel frames every 62, the last incomplete one dropped, batches of 64 with lastBatchMode "same").
     Like padSignal, the audio is zero-padded so that the last batch is full, and the padding patches' outputs are
     dropped; the arithmetic of its patch count (float, with a double step) is copied as is. Checked identical to
     TensorflowPredictEffnetDiscogs (docs/WINDOWS.md stage 3). No patch (under ~3 s): an empty array, as it gives.
-    Without the Rust module, TensorflowPredictEffnetDiscogs itself."""
-    from essentia import Pool
-
+    model: another EffNet Graph (dsp/check.py)."""
     x = np.ascontiguousarray(mono16, dtype=np.float32)
-    if not _rust_mels():
-        return np.asarray(style_models()["embed"](x), dtype=np.float32)
     f32 = np.float32
     hops = f32((float(f32(len(x))) - 512 / 2.0) / float(f32(256)))
     n_frames = 1 + math.ceil(hops)
@@ -1392,14 +1426,13 @@ def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
     if not len(starts):
         return np.zeros((0,), dtype=np.float32)
     view = np.lib.stride_tricks.sliding_window_view(frames, (EFFNET_PATCH, 96))[::EFFNET_PATCH_HOP, 0]
-    model = style_models()["embed"]
+    model = model or style_models()["embed"]
     out = []
     # whole batches only: an incomplete last one (when the estimate above is a patch off) is dropped, as
     # VectorRealToTensor's lastBatchMode "discard" does; then the padding's patches come off the end
     for b in range(0, len(starts) - EFFNET_BATCH + 1, EFFNET_BATCH):
-        pool = Pool()
-        pool.set(EFFNET_INPUT, np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :]))
-        y = np.asarray(model(pool)[EFFNET_OUTPUT], dtype=np.float32)
+        y = np.asarray(model.run({EFFNET_INPUT: np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :])})[EFFNET_OUTPUT],
+                       dtype=np.float32)
         out.append(y.reshape(-1, y.shape[-1]))
     if not out:
         return np.zeros((0,), dtype=np.float32)
@@ -1425,19 +1458,22 @@ def top_styles(scores: dict[str, float], n: int = 5, min_score: float = 0.05):
     return out
 
 
-def rhythm(mono44: np.ndarray, method: str = "multifeature"):
-    """(BPM, confidence, beat count). The extractor's own BPM is used as it is: a line fit through
-    its beat grid was tried and made things worse (stray off-beat hits in breakdowns counted as
-    beats; checked 2026-10-21 against Traktor's BPMs: 96% within 1 BPM raw vs 50% after the fit)."""
-    e = es()
+def rhythm(mono44: np.ndarray):
+    """(BPM, confidence, beat count): Essentia's RhythmExtractor2013(method="multifeature") in Rust, with more exact
+    libm calls (the same whole-number BPM on every track; docs/WINDOWS.md stage 6) and its rand() from seed 1 on
+    every call. The extractor's own BPM is used as it is: a line fit through its beat grid was tried and made things
+    worse (stray off-beat hits in breakdowns counted as beats; checked 2026-10-21 against Traktor's BPMs: 96% within
+    1 BPM raw vs 50% after the fit)."""
     lo = max(40, min(180, int(BPM_MIN)))
     hi = max(60, min(250, int(BPM_MAX)))
-    bpm, beats, conf, _est, _int = e.RhythmExtractor2013(method=method, minTempo=lo, maxTempo=hi)(mono44)
+    bpm, beats, conf = dsp().rhythm_multifeature(np.ascontiguousarray(mono44, dtype=np.float32), lo, hi)
     return float(bpm), float(conf), len(beats)
 
 
 def key_of(mono44: np.ndarray):
-    key, scale, strength = es().KeyExtractor(profileType="edma", sampleRate=44100)(mono44)
+    """Essentia's KeyExtractor(profileType="edma") on 44.1 kHz mono: (key, scale, strength), in Rust (same key and
+    scale, strength within 1e-5 with more exact libm calls; docs/WINDOWS.md stage 5)."""
+    key, scale, strength = dsp().key_edma(np.ascontiguousarray(mono44, dtype=np.float32))
     return key, scale, float(strength)
 
 
@@ -1449,12 +1485,16 @@ def key_cnn(mono44: np.ndarray) -> dict:
     return {"cnn_key": k["key"], "cnn_camelot": k["camelot"], "cnn_confidence": round(k["confidence"], 3)}
 
 
+LOUDNESS_MAX_SR = 88200  # LoudnessEBUR128 reads 96 kHz as silence (-70 LUFS) and 192 kHz ~3 LU loud; 22.05-88.2 kHz are right
+
+
 def loudness(stereo: np.ndarray, sr: float):
-    if m := dsp():  # Essentia's LoudnessEBUR128, bit for bit, ~7x faster
-        short, integrated, lra = m.loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
-        return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
-    _mom, short, integrated, lra = es().LoudnessEBUR128(sampleRate=sr)(stereo)
-    return np.asarray(short, dtype=np.float32), float(integrated), float(lra)
+    if sr > LOUDNESS_MAX_SR:  # e.g. a 96 kHz Traktor recording: measure it at 48 kHz (same short-term timing)
+        stereo = np.stack([resample_medium(stereo[:, c], sr, 48000) for c in range(stereo.shape[1])], axis=1)
+        sr = 48000
+    # Essentia's LoudnessEBUR128 in Rust, bit for bit, ~7x faster
+    short, integrated, lra = dsp().loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
+    return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
 
 
 def energy_curve(short_term: np.ndarray, duration: float, points: int = 16):
@@ -1580,13 +1620,14 @@ def track_embedding(p: Path):
 def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool = True,
                  genre_bpm: float | None = None, tempo: tuple[float, float] | None = None,
                  progress: bool = False, tracklist: tuple | None = None, highlights: int = 0,
-                 clip_seconds: float = 40.0, own_bpm: float | None = None) -> dict:
+                 clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0) -> dict:
     """tracklist: (plays, history path, recording start) from tracklist.py, for a mix: adds a per-track
     report and judges genres at the tracks' own BPMs. genre_bpm: a BPM to judge the genre rules by instead of the measured one (scan passes
     Traktor's, which the user may have corrected by hand). tempo: (track's BPM, BPM to play it at)
     analyses the track sped up / slowed down with key lock (`tempo scan`). own_bpm: with tempo, the BPM we
     measured at the track's own tempo, for the colour model (trained on those; defaults to tempo[0]). progress: print the stage
-    being worked on to stderr (the `analyze` command)."""
+    being worked on to stderr (the `analyze` command). clip_mood: weight of how party / aggressive a clip sounds in
+    the highlights' score (tracklist.highlights' energy_weight)."""
     def say(msg: str) -> None:
         if progress:
             log(f"[{time.time() - t0:5.1f}s] {msg}")
@@ -1615,8 +1656,6 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         # where a silence-trimmed copy (FLAC/MP3) starts; only a fallback anchor for video times without a
         # tracklist. Where the music starts in the video is the user's --offset, read off the finished video.
         result["first_sound_seconds"] = round(tl.first_sound(mono44), 2)
-        if highlights:
-            result["highlights"] = tl.highlights(short, duration, highlights, clip_seconds)
 
     if not is_mix and tempo:
         # Stretched to a known tempo: no need to measure it. The colour model below gets the track's
@@ -1643,6 +1682,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         result["energy_curve"] = energy_curve(short, duration)
 
     # Style model (needs the downloaded models)
+    mood_p = None
     try:
         say("running the style model (EffNet)")
         emb, acts, emb_mean, acts_mean, coverage, mask = pooled_effnet(mono16)
@@ -1670,7 +1710,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         mine = predict_my_genre(emb_mean)
         if mine:
             result["my_genre"] = mine
-        moods = run_moods(emb, mask)
+        mood_p = mood_patches(emb)
+        moods = run_moods(emb, mask, mood_p)
         if moods:
             result["mood"] = moods
         instruments = run_instruments(emb, mask)
@@ -1696,16 +1737,23 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         emb = acts = scores = None
         result["styles_error"] = str(err)
 
+    if is_mix and highlights:
+        from . import tracklist as tl
+
+        result["highlights"] = tl.highlights(short, duration, highlights, clip_seconds,
+                                             energy=tl.mood_energy(mood_p, duration), energy_weight=clip_mood)
+
     if segment_seconds or (tracklist and is_mix):
         with AudioPool(mono44) as pool:
             if segment_seconds:
                 say(f"building the timeline ({pool.workers} processes)")
-                result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool)
+                result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool,
+                                                      moods=mood_p)
             if tracklist and is_mix:
                 from . import tracklist as tl
 
                 say("checking against the tracklist")
-                tl.check(result, pool, acts, scores, duration, *tracklist)
+                tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p)
 
     result["analysis_seconds"] = round(time.time() - t0, 1)
     return result
@@ -1720,13 +1768,16 @@ def _audio_pool_init(npy: str) -> None:
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
+    if hasattr(signal, "SIGBREAK"):  # Windows: a stop from the page is a Ctrl-Break (jobs._interrupt)
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
     os.dup2(2, 1)  # stray library output to stderr: stdout may be the MCP channel
-    es()
+    dsp()
     _AUDIO["mono44"] = np.load(npy, mmap_mode="r")
 
 
-def _measure(job: tuple[float, float, bool, bool]) -> dict:
-    """job: (start s, end s, want BPM, want key) -> {"bpm": raw BPM, "key": (key, scale, strength)}."""
+def _measure(job: tuple[float, float, bool, bool | str]) -> dict:
+    """job: (start s, end s, want BPM, want key) -> {"bpm": raw BPM, "key": (key, scale, strength)}; want key "cnn"
+    -> "cnn_camelot" instead, MusicalKeyCNN's key (as the library's)."""
     a, b, want_bpm, want_key = job
     x = np.ascontiguousarray(_AUDIO["mono44"][int(a * 44100): int(b * 44100)], dtype=np.float32)
     out = {}
@@ -1735,7 +1786,11 @@ def _measure(job: tuple[float, float, bool, bool]) -> dict:
             out["bpm"] = rhythm(x)[0]
         except Exception:
             pass
-    if want_key:
+    if want_key == "cnn":
+        from . import keycnn
+
+        out["cnn_camelot"] = keycnn.key_cnn(x)["camelot"]
+    elif want_key:
         out["key"] = key_of(x)
     return out
 
@@ -1759,11 +1814,26 @@ class AudioPool:
             self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_audio_pool_init, initargs=(npy,))
         return self
 
-    def measure(self, jobs: list[tuple[float, float, bool, bool]]) -> list[dict]:
+    def measure(self, jobs: list[tuple[float, float, bool, bool | str]], meter=None) -> list[dict]:
+        """Results in the jobs' order. meter(n done) -> a line to show while it runs, kept updated in place (\\r) on
+        stderr, as the page's job bar shows it; the last one stays."""
         if self._pool is None or len(jobs) < 2:
             _AUDIO["mono44"] = self.mono44
-            return [_measure(j) for j in jobs]
-        return self._pool.map(_measure, jobs, chunksize=1)
+            results = (_measure(j) for j in jobs)
+        else:
+            results = self._pool.imap(_measure, jobs, chunksize=1)
+        out = []
+        if meter:
+            sys.stderr.write(f"\r{meter(0)}")
+            sys.stderr.flush()
+        for m in results:
+            out.append(m)
+            if meter:
+                sys.stderr.write(f"\r{meter(len(out))}")
+                sys.stderr.flush()
+        if meter:
+            sys.stderr.write("\n")
+        return out
 
     def __exit__(self, exc_type, *_):
         if self._pool is not None:
@@ -1776,8 +1846,8 @@ class AudioPool:
         _AUDIO.pop("mono44", None)
 
 
-def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None):
-    """Per-segment BPM, key, loudness and style: useful for DJ mixes."""
+def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None, moods: dict | None = None):
+    """Per-segment BPM, key, loudness, style and mood (moods = mood_patches of emb): useful for DJ mixes."""
     timeline = []
     n_seg = max(1, int(np.ceil(duration / seg_sec)))
     have_model = emb is not None and len(emb) > 0
@@ -1785,7 +1855,8 @@ def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPoo
     spans = [(i * seg_sec, min(duration, (i + 1) * seg_sec)) for i in range(n_seg)]
     spans = [(a, b) for a, b in spans if b - a >= 20]
     jobs = [(a, b, True, True) for a, b in spans]
-    measured = pool.measure(jobs) if pool else AudioPool(mono44, workers=1).measure(jobs)
+    meter = lambda n: f"  segments measured: {n}/{len(jobs)}"  # noqa: E731
+    measured = (pool or AudioPool(mono44, workers=1)).measure(jobs, meter)
     for (start, end), m in zip(spans, measured):
         seg = {"start": fmt_time(start), "end": fmt_time(end)}
         if "bpm" in m:
@@ -1810,6 +1881,8 @@ def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPoo
                 probs = model.predict_proba(emb[i0:i1].mean(axis=0).reshape(1, -1))[0]
                 j = int(np.argmax(probs))
                 seg["my_genre"] = f"{model.classes_[j]} {probs[j]:.2f}"
+            if moods:
+                seg["mood"] = {m: round(float(p[i0:i1].mean()), 3) for m, p in moods.items()}
         timeline.append(seg)
     return timeline
 

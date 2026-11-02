@@ -7,6 +7,7 @@ button save a snapshot: one self-contained, read-only HTML file with the data in
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import logging
@@ -19,7 +20,7 @@ from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
 
-from . import analysis, collection, jobs, traktor
+from . import analysis, collection, jobs, mixreport, traktor
 from .analysis import COLOR_NAMES, HOME, log
 
 PAGE = Path(__file__).with_name("web") / "index.html"
@@ -79,6 +80,9 @@ def colours(lib: str) -> dict[str, str]:
 
 
 def tracks(lib: str = "native") -> dict:
+    from . import colors
+
+    colors.sync_traktor_colours()  # a recolour, an undo or a colour set in Traktor since
     with library(lib):
         con = collection.db()
         have = {r[1] for r in con.execute("PRAGMA table_info(tracks)")}
@@ -95,7 +99,9 @@ def tracks(lib: str = "native") -> dict:
                 r.pop("traktor_color", None)
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
+    _unbiased_colours(rows)
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
+    by_hand = collection.manual()
     guessed = colour_guesses()
     from . import cues, gridfix
 
@@ -130,12 +136,38 @@ def tracks(lib: str = "native") -> dict:
             r["held_genre"] = True
         if r["path"] in colour_held:
             r["held_colour"] = True
+        if r["path"] in by_hand:  # {field: value} set by hand (genre, hype, BPM)
+            r["by_hand"] = by_hand[r["path"]]
         if r["path"] in guessed:  # guessed into Traktor by the app, not checked yet: training leaves it out
             r["colour_guess"] = True
     return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
 
 
+def _unbiased_colours(rows: list[dict]) -> None:
+    """For tracks you coloured, the model's colour from training's cross-validation (made without seeing yours),
+    not the final model's, which learned your colour and leans toward it. In a tempo view, plus the view's shift."""
+    from . import colors
+
+    b = analysis.color_model()
+    up = colors.unbiased_positions(b)
+    for r in rows:
+        pos = up.get(r["path"])
+        if pos is not None:
+            if r.get("native_color_position") is not None and r.get("color_position") is not None:
+                pos += r["color_position"] - r["native_color_position"]
+            d = analysis.describe_position(pos)
+            r["color"], r["color_position"], r["colour_unbiased"] = d["color"], d["position"], True
+            r["color_confidence"] = analysis.color_confidence(b, d["position"], d["value"])
+        if b and r.get("color_position") is not None:
+            # the Colours tab's measure: how often tracks placed here were that colour or a neighbour of it
+            d = analysis.describe_position(r["color_position"])
+            r["color_confidence_near"] = analysis.color_confidence(b, d["position"], d["value"], within=1)
+
+
 def stats(lib: str = "native") -> dict:
+    from . import colors
+
+    colors.sync_traktor_colours()
     with library(lib):
         out = collection.summary()
         if lib and lib != "native":  # count the view's colours (yours shifted, else predicted), as the Tracks tab shows them
@@ -162,6 +194,13 @@ def colour_review(limit: int = 200) -> dict:
 
     with library("native"):
         return colors.review(limit=limit)
+
+
+def colour_mark(paths: list[str], action: str | None) -> dict:
+    """Mark review tracks to approve or keep (written together by the job colors_write_marked); None unmarks."""
+    from . import colors
+
+    return colors.set_plan(paths, action)
 
 
 def colour_explain() -> dict:
@@ -200,6 +239,19 @@ def hold(paths: list[str], kind: str, on: bool) -> dict:
     values = {p: r["tag_genre"] if kind == "genre" else r["traktor_color"] for p, r in rows.items()}
     collection.set_hold(kind, values, on)
     return {"kind": kind, "on": on, "tracks": len(values), "held": len(collection.held(kind))}
+
+
+def edit_track(path: str, changes: dict, clear: list[str], traktor_genre: str | None = None) -> dict:
+    """Colour, key, genre, hype or BPM set by hand (edit.edit: into Traktor too). The answer's `undo` puts it back."""
+    from . import edit
+
+    if jobs.busy():
+        raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
+    if not isinstance(changes, dict) or not isinstance(clear, list):
+        raise ValueError("changes is an object, clear a list")
+    with library("native"):
+        return edit.edit(path, changes, [str(f) for f in clear],
+                         traktor_genre=None if traktor_genre is None else str(traktor_genre))
 
 
 def accept_colours(paths: list[str]) -> dict:
@@ -1055,6 +1107,11 @@ def setup_status() -> dict:
         return jobs.setup_status()
 
 
+def to_learn() -> dict:
+    with library("native"):
+        return jobs.to_learn()
+
+
 def start_job(b: dict) -> dict:
     with library("native"):  # the options are checked against the normal library
         return jobs.start(str(b["action"]), b.get("options") or {}, bool(b.get("dry_run", False)))
@@ -1064,6 +1121,11 @@ def _after_job(job: dict) -> None:
     """A job may have changed collection.nml, the scans or the models: read them again next time."""
     _grids["mtime"] = None
     _wave_src.clear()
+    if job.get("action") == "analyze_mix":
+        import shlex
+
+        if any(Path(a).parent == UPLOADS for a in shlex.split(job.get("command") or "")):
+            clear_uploads()  # the copy of a dropped mix, analysed now (not one being uploaded for the next run)
     if job.get("action") == "cues_train" and not job.get("dry_run"):  # a new cue model: count the proposed corrections now, not when the Tracks tab is next opened
         threading.Thread(target=lambda: correction_counts(), daemon=True).start()
 
@@ -1100,14 +1162,124 @@ def saved_files(dirs: list[Path]) -> list[dict]:
     return sorted(out, key=lambda x: -x["modified"])
 
 
-def saved_file(dirs: list[Path], ident: str):
+_rec_len: dict = {}  # (path, size, mtime) → length in seconds, so the Mixes tab doesn't reread every file
+
+
+REC_FORMATS = (".wav", ".aiff", ".aif", ".flac")  # the one to analyse when a recording was saved in several formats
+
+
+def recordings(dirs: list[Path]) -> dict:
+    """Traktor's mix recordings (its Recordings folders, subfolders too), newest first, one row per recording (Traktor
+    can save the same one as WAV, FLAC and MP3: the lossless one is analysed), with the saved analyses of each."""
+    done: dict[str, list[str]] = {}
+    for f in saved_files(dirs):
+        if f["kind"] == "mix" and f["recording"]:
+            done.setdefault(Path(f["recording"]).stem, []).append(f["id"])
+    folders = traktor.recording_dirs(settings=("Browser.Dir.Recordings",))
+    rank = lambda f: REC_FORMATS.index(f.suffix.lower()) if f.suffix.lower() in REC_FORMATS else len(REC_FORMATS)  # noqa: E731
+    best: dict[str, Path] = {}
+    for d in folders:
+        for f in Path(d).rglob("*"):
+            if f.suffix.lower() in analysis.AUDIO_EXTS and not f.name.startswith(".") and f.is_file():
+                if f.stem not in best or rank(f) < rank(best[f.stem]):
+                    best[f.stem] = f
+    out = []
+    for stem, f in best.items():
+        st = f.stat()
+        key = (str(f), st.st_size, st.st_mtime)
+        if key not in _rec_len:
+            _rec_len[key] = analysis._audio_length(f)
+        secs = _rec_len[key]
+        if secs is not None and secs <= analysis.MIX_THRESHOLD_SEC:  # a short test recording, not a mix
+            continue
+        out.append({"path": str(f), "name": f.name, "folder": str(f.parent), "modified": st.st_mtime,
+                    "seconds": secs, "saved": done.get(stem, [])})
+    return {"folders": folders, "recordings": sorted(out, key=lambda x: -x["modified"])}
+
+
+def find_recording(name: str, size: int) -> str | None:
+    """A mix dropped on the page is only its contents to the browser: if it's one of Traktor's recordings (same name
+    and size), analyse that file where it is instead of copying it."""
+    for d in traktor.recording_dirs(settings=("Browser.Dir.Recordings",)):
+        if not Path(name).name:
+            return None
+        for f in Path(d).rglob(glob.escape(Path(name).name)):  # "Mix [live].wav" is a name, not a pattern
+            if f.is_file() and f.stat().st_size == size:
+                return str(f)
+    return None
+
+
+UPLOADS = HOME / "uploads"  # a dropped mix that isn't one of Traktor's recordings, while it's analysed
+
+
+def upload_name(name: str) -> Path:
+    name = Path(str(name)).name
+    if not name or name.startswith(".") or Path(name).suffix.lower() not in analysis.AUDIO_EXTS:
+        raise ValueError(f"{name or 'That'} isn't an audio file this tool reads")
+    if jobs.busy():
+        raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it or stop it first.")
+    clear_uploads()
+    UPLOADS.mkdir(parents=True, exist_ok=True)
+    return UPLOADS / name
+
+
+def clear_uploads() -> None:
+    import shutil
+
+    shutil.rmtree(UPLOADS, ignore_errors=True)
+
+
+def _saved_path(dirs: list[Path], ident: str) -> Path:
     i, _, name = ident.partition("/")
     if not i.isdigit() or int(i) >= len(dirs) or Path(name).name != name or "\\" in name or name.startswith("."):
         raise ValueError("unknown file")
     f = dirs[int(i)] / name
     if not f.is_file():
         raise ValueError("unknown file")
-    return _json_in(f)
+    return f
+
+
+def delete_saved(dirs: list[Path], ident: str) -> dict:
+    """Move a saved result into its folder's deleted/ (not read by the page; move it back to restore it)."""
+    f = _saved_path(dirs, ident)
+    bin_ = f.parent / "deleted"
+    bin_.mkdir(exist_ok=True)
+    to, n = bin_ / f.name, 2
+    while to.exists():  # an earlier one of the same name stays
+        to, n = bin_ / f"{f.stem} ({n}){f.suffix}", n + 1
+    f.rename(to)
+    log(f"Moved {f.name} to {to}")
+    return {"moved_to": str(to)}
+
+
+def saved_file(dirs: list[Path], ident: str):
+    f = _saved_path(dirs, ident)
+    data = _json_in(f)
+    if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
+        data["library"] = played_tracks(data["tracklist"]["tracks"])
+    return data
+
+
+def played_tracks(tracks: list[dict]) -> dict:
+    """{track number: {hype, colour, guessed}} for a mix's tracklist from the native library, as the timeline draws the
+    set: by path (saved since 2026-10-31), else artist + title. Colour = yours in Traktor, else the model's guess."""
+    import sqlite3
+
+    if not collection.NATIVE_DB.exists():
+        return {}
+    con = sqlite3.connect(f"file:{collection.NATIVE_DB}?mode=ro", uri=True)
+    try:
+        rows = con.execute("SELECT path, lower(coalesce(artist, '')), lower(coalesce(title, '')), hype, traktor_color, color FROM tracks").fetchall()
+    finally:
+        con.close()
+    by_path = {r[0]: r for r in rows}
+    by_name = {(r[1], r[2]): r for r in rows}
+    out = {}
+    for t in tracks:
+        r = by_path.get(t.get("path") or "") or by_name.get(((t.get("artist") or "").lower(), (t.get("title") or "").lower()))
+        if r and (r[3] is not None or r[4] or r[5]):
+            out[t["n"]] = {"hype": r[3], "colour": r[4] or r[5], "guessed": not r[4]}
+    return out
 
 
 def _try(fn, *a, **kw):
@@ -1154,6 +1326,7 @@ def snapshot(dirs: list[Path], progress=log) -> str:
         if f["kind"] == "mix":
             data["saved"].append(f)
             data["files"][f["id"]] = saved_file(dirs, f["id"])
+    data["mixes_report"] = _try(mixreport.report, dirs)
     blob = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     page = PAGE.read_text(encoding="utf-8")
     return page.replace("<script>\n\"use strict\";", f"<script>window.SNAPSHOT = {blob};</script>\n<script>\n\"use strict\";", 1)
@@ -1176,6 +1349,7 @@ def allowed_hosts(host: str) -> list[str]:
 
 
 def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
+    jobs.MIX_DIR = log_dirs[0]  # a mix analysed from the page is saved where the Mixes tab looks
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
     from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -1186,8 +1360,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
 
     def failed(e: BaseException) -> JSONResponse:
         """Every failure as JSON {error}: the page reads each answer with .json()."""
-        if isinstance(e, traktor.ConfirmClosed):  # in a container: the page asks whether Traktor is closed
-            return JSONResponse({"error": str(e.code or e), "confirm": "traktor_closed"}, status_code=409)
+        if isinstance(e, traktor.ConfirmClosed):  # can't see Traktor (a container): the page asks whether it's closed
+            return JSONResponse({"error": str(e.code or e), "confirm": "traktor_closed", "why": e.why}, status_code=409)
         if isinstance(e, SystemExit):  # expected problems come with advice
             return JSONResponse({"error": str(e.code or e)}, status_code=409)
         if isinstance(e, (ValueError, OSError, KeyError, TypeError, AttributeError)):  # bad input, missing file
@@ -1283,6 +1457,27 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         return request.headers.get("content-type", "").split(";")[0] == "application/json" and \
             not (origin and origin.split("://", 1)[-1] != request.headers.get("host"))
 
+    async def mix_upload(request: Request):
+        """A dropped mix's bytes, streamed to UPLOADS. Not JSON, so the custom header stands in for from_this_page's
+        content type: another site can't send it without a CORS preflight, which this server never allows."""
+        origin = request.headers.get("origin")
+        if request.headers.get("x-track-analyzer") != "upload" or (origin and origin.split("://", 1)[-1] != request.headers.get("host")):
+            return JSONResponse({"error": "not allowed"}, status_code=403)
+        try:
+            dest = upload_name(request.query_params.get("name", ""))
+        except Exception as e:  # refused (busy, not audio): leave UPLOADS alone, a running job may be reading it
+            return failed(e)
+        try:
+            part = dest.with_name(dest.name + ".part")
+            with open(part, "wb") as f:
+                async for chunk in request.stream():
+                    f.write(chunk)
+            part.replace(dest)
+            return JSONResponse({"path": str(dest)})
+        except Exception as e:
+            clear_uploads()
+            return failed(e)
+
     def answered(fn, body: dict):
         """fn(body) with the page's answer to "Is Traktor closed?" (only asked in a container)."""
         with traktor.page_answer(body.get("traktor_closed") is True):
@@ -1320,6 +1515,11 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/tempo/report", respond(lambda q: tempo_report(num(q, "bpm", 145.0), int(num(q, "limit", 25))))),
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
+        Route("/api/saved-file/delete", post(lambda b: delete_saved(log_dirs, str(b["id"]))), methods=["POST"]),
+        Route("/api/mixes-report", respond(lambda q: mixreport.report(log_dirs))),
+        Route("/api/recordings", respond(lambda q: recordings(log_dirs))),
+        Route("/api/recordings/find", post(lambda b: {"path": find_recording(str(b["name"]), int(b["size"]))}), methods=["POST"]),
+        Route("/api/mix-upload", mix_upload, methods=["POST"]),
         Route("/api/cues", respond(lambda q: track_cues(q["path"]))),
         Route("/api/cues/parts", respond_until_gone(lambda q, cancel: loop_parts(q["path"], cancel))),
         Route("/api/wave", respond(lambda q: wave_detail(q["path"], num(q, "t0"), num(q, "t1"), int(num(q, "n", 1000))))),
@@ -1327,7 +1527,9 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
+        Route("/api/track/edit", post(lambda b: edit_track(str(b["path"]), b.get("changes") or {}, b.get("clear") or [], b.get("traktor_genre"))), methods=["POST"]),
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
+        Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),
@@ -1340,6 +1542,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/to-learn", respond(lambda q: to_learn())),
         Route("/api/jobs", respond(lambda q: jobs.state(int(num(q, "since", 0))))),
         Route("/api/jobs/start", post(start_job), methods=["POST"]),
         Route("/api/jobs/stop", post(lambda b: jobs.stop()), methods=["POST"]),
