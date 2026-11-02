@@ -82,8 +82,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (genres again from cached scores + current dj_genres.json; reproduces scan exactly).
 - `traktor.py`: `traktor` command. Surgical text edits of collection.nml (never a full XML rewrite),
   timestamped backups + `--undo` (refuses if the NML changed since our write, via a `.written-sha1` file next to
-  the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer:
-  in a container, `CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor, so it needs a y in a terminal,
+  the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer;
+  `running_state()`: pgrep, `tasklist` on Windows, None when it can't tell. Never assumed closed: in a container
+  (`CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor) or when the check fails, it needs a y in a terminal,
   TRACK_ANALYZER_TRAKTOR_CLOSED=1, or the page's answer (`page_answer`; else `ConfirmClosed` → web 409
   {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE, INFO COLOR (only where
   missing unless `--overwrite-colors`), and a "Genres (Track Analyzer)" Smartlist folder, only for

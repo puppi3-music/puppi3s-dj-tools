@@ -416,10 +416,12 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
 - **Settings paths.** `traktor.mac_path()` converts the `.tsi`'s colon paths (`Macintosh HD:Users:Shared:…`). Windows
   Traktor's form is unknown (**verify**: probably `C:\Users\…` or a colon form with a drive letter). Used for
   the sample folder (`web.sample_root()`) and the folders `scan --traktor` skips.
-- **Is Traktor running?** `traktor.traktor_running()` uses `pgrep`. On Windows that command doesn't exist, the
-  call fails, and the function returns False: every writer would then edit `collection.nml` while Traktor is
-  open, and Traktor overwrites it on quit. Use `tasklist /FI "IMAGENAME eq Traktor.exe"` (**verify** the process
-  name), and make a failed check refuse to write rather than assume Traktor is closed. Fix this first.
+- **Is Traktor running?** **Done** (2026-11-02): `traktor.running_state()` reads `tasklist /FO CSV /NH` on Windows
+  (any image named `traktor*.exe`, so `Traktor.exe` and a versioned name both count; **verify** the name on a real
+  machine) and `pgrep` elsewhere. When the check fails (no process list, an error) it returns None, and
+  `check_closed` treats that like the container: it asks in the terminal or on the page, or needs
+  `TRACK_ANALYZER_TRAKTOR_CLOSED=1`, and refuses otherwise. Before, a failed check meant "closed", so on Windows
+  every writer would have edited `collection.nml` under a running Traktor, which overwrites it on quit.
 - **NML text.** The NML is read and written with `Path.read_text()` / `write_text()` without an encoding in many
   places (18 at the time of writing). Python on Windows defaults to the ANSI code page, so accented
   names would be garbled or the write would fail. Pass `encoding="utf-8"` everywhere, or run Python in UTF-8
@@ -480,7 +482,8 @@ The Local API itself (localhost:48624) is the same.
    front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
    collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
    everywhere.
-2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows.
+2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows (done 2026-11-02;
+   the process name still to check on a real machine, step 3).
 3. On a Windows machine with Traktor: copy `collection.nml` and `Traktor Settings.tsi` and note the `LOCATION`,
    `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files.
 4. Path mapping (`location_paths`, `mac_path`, collection search), case-insensitive matching, the `/` assumptions,
