@@ -339,10 +339,21 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   that really had that colour (+5 pseudo-tracks of the overall rate). Bundles store `cv` (positions, truth);
   bundles without it → None (retrain). Typical 0.2-0.3. `review` uses within=1.
 - `colors review --apply` recolours CV disagreements with gap ≥ 2.5 and within-one confidence ≥ 0.75
-  (`traktor.set_colors`, skips tracks recoloured since). Asks per track (y/n/k/a/c; `--yes` skips); `k` = keep always → collection.db `color_keep`, which
+  (`traktor.set_colors`, skips tracks recoloured since). `--track PATH` (repeatable; `review(only=)`) = only those listed tracks,
+  thresholds ignored, refused if any is kept always. The page's Approve / Keep only mark rows: native collection.db `colour_plan`
+  (`colors.set_plan/plans`, POST /api/colours/mark; stale marks dropped by review); **Write…** = job `colors_write_marked` =
+  `review --apply --planned` (set_colors for approvals, then keep-always + colour_keep feedback, marks cleared; no undo offered when
+  only keeps). **Retrain now** (shown when `recoloured_since_training`) = job `colors_train` {views} = `train --refresh-views`.
+  `colors.sync_traktor_colours()` (review, web `tracks`/`stats`) copies Traktor's colours into the native db's `traktor_color` whenever
+  collection.nml's mtime changes (not while a view is loaded), so recolours, undos and hand edits show at once; review lists a track
+  whose colour changed since training with `recoloured` (its colour now; not approvable or markable, not counted toward the
+  threshold, skipped by --apply; `recoloured_since_training` shows Retrain now) until retraining drops it from `disagreements`. Asks per track (y/n/k/a/c; `--yes` skips); `k` = keep always → collection.db `color_keep`, which
   `--apply` skips. `colors review --kept [--keep|--forget TEXT]` shows/edits it (`--keep` alone is refused; ≤10 matches).
   `read_traktor_colors` refuses while a tempo view is loaded (train, explain, apply, `--keep`). `colors apply`: scan --traktor (new only) → deep features
   for uncoloured → refresh predictions → `traktor.sync(update_genres=False, make_smartlists=False)`.
+- The page never shows the final model's guess for a track it learned from (it leans toward your colour): `web._unbiased_colours`
+  swaps in the CV position (`colors.unbiased_positions`: bundle `cv.paths`, or older bundles' `labels` order when lengths and
+  truths match) + the view's shift; `colour_unbiased` on /api/tracks. Approve / Recolour are disabled while a view is loaded.
 - `colors explain`: per-colour profile + playlists + History set position + artist consistency (read-only).
 - Learn from what was set or accepted, whoever suggested it (user, 2026-10-26). `traktor.sync` (colour fills and
   `--overwrite-colors`, i.e. `traktor` and `colors apply`) records each colour it writes in NATIVE collection.db

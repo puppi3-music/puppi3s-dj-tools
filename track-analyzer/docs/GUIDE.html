@@ -234,6 +234,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>On the Colours tab, <b>Tracks that disagree with their colour</b> lists your colour (<b>Yours</b>) next to what the track <b>Sounds like</b>, how many colours apart they are (<b>Gap</b>) and how sure the model is (<b>Confidence</b>). These are judged by a model that never saw that track's colour.</li>
   <li>Listen to the tracks at the top in Traktor, and recolour the ones you agree are off.</li>
   <li>Or let the app recolour only the clearest cases, marked <b>over threshold</b> (a gap of 2.5 colours or more, and tracks placed there really had that colour or a neighbour 75% of the time or more): quit Traktor, then <b>Recolour them in Traktor…</b> (also on the Setup tab as <b>Recolour clear disagreements</b>).</li>
+  <li>To pick suggestions yourself, over the threshold or not, mark rows <b>Approve</b> (recolour to what it sounds like) or <b>Keep</b> (keep your colour always), or tick several and mark them together. Nothing changes until <b>Write…</b>: a preview, then <b>Write it</b> (Traktor closed when anything is recoloured). Undo is <b>Undo the last change to Traktor</b>. Recoloured tracks leave the list, and <b>Retrain now</b> learns from them and refreshes your tempo views. With a tempo view loaded, switch back first.</li>
   <li>A track you want left as it is, whatever the model says: hold its colour (<a href="#hold">below</a>). It's then marked <b>kept</b> and never recoloured.</li>
   <li>Then <b>Update training</b>, as in <a href="#recoloured">I recoloured a bunch of tracks</a>.</li>
 </ol>
@@ -733,6 +734,9 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--min-confidence 0.3</code></td><td><code>colors apply</code></td><td>Only set the more reliable colour guesses (most are 0.2–0.3)</td></tr>
 <tr><td><code>--min-gap 2.5</code> / <code>--min-confidence 0.75</code></td><td><code>colors review --apply</code></td><td>Which disagreements get recoloured (these are the defaults)</td></tr>
 <tr><td><code>--yes</code></td><td><code>colors review --apply</code></td><td>Recolour them all without asking about each track</td></tr>
+<tr><td><code>--track PATH</code></td><td><code>colors review --apply</code></td><td>Recolour only this track, whatever the thresholds; repeat for several</td></tr>
+<tr><td><code>--planned</code></td><td><code>colors review --apply</code></td><td>Write what's marked in the web page's Colours tab</td></tr>
+<tr><td><code>--refresh-views</code></td><td><code>colors train</code></td><td>Afterwards refresh every tempo view's colours</td></tr>
 <tr><td><code>--kept</code></td><td><code>colors review</code></td><td>Show the tracks you said to keep always. Add <code>--forget "name"</code> to let review suggest one again, or <code>--keep "name"</code> to add one yourself</td></tr>
 <tr><td><code>--no-deep</code></td><td><code>colors train</code></td><td>Skip the MAEST, mood and instrument features (faster, less accurate)</td></tr>
 <tr><td><code>--least</code> / <code>--gems</code></td><td><code>hype</code></td><td>Chill first / hype tracks with few stars or plays</td></tr>

@@ -147,6 +147,14 @@ def main() -> None:
                     help="review --apply: recolour every track over the thresholds without asking about each one")
     co.add_argument("--min-gap", type=float, default=2.5,
                     help="review --apply: only recolour tracks this many colours away from yours or more (default 2.5)")
+    co.add_argument("--track", metavar="PATH", action="append", default=None,
+                    help="review --apply: recolour only this track (its full path, as review lists it), "
+                         "whatever the thresholds, without asking; repeat for several")
+    co.add_argument("--planned", action="store_true",
+                    help="review --apply: write what's marked on the web page's Colours tab (approved tracks recoloured, "
+                         "kept ones on the keep-always list)")
+    co.add_argument("--refresh-views", action="store_true",
+                    help="train: afterwards redo every tempo view's colours with the new model (tempo refresh)")
     co.add_argument("--kept", action="store_true",
                     help="review: list the tracks you answered [k]eep always for (review --apply skips them)")
     co.add_argument("--keep", metavar="TEXT", default=None,
@@ -397,6 +405,14 @@ def main() -> None:
             return
         if args.action == "train":
             out = colors.train(args.nml, deep=not args.no_deep, workers=args.workers)
+            if args.refresh_views:
+                from . import analysis, tempo
+
+                views = sorted(float(d.name[3:]) for d in analysis.HOME.glob("at-*") if (d / "collection.db").exists())
+                for k, bpm in enumerate(views, 1):
+                    log(f"[{k}/{len(views)}] refreshing the {bpm:g} BPM tempo view with the new model")
+                    tempo.refresh(bpm)
+                out["views_refreshed"] = views
         elif args.action == "guessed":
             out = colors.guessed(accept=args.accept, nml=args.nml)
         elif args.accept:
@@ -404,6 +420,8 @@ def main() -> None:
         elif args.action == "apply":
             out = colors.apply(args.nml, dry_run=args.dry_run, min_confidence=args.min_confidence or 0.0,
                                workers=args.workers)
+        elif args.planned and not args.apply:
+            raise SystemExit("--planned goes with --apply: uv run dj-track-analyzer colors review --apply --planned")
         elif (args.forget or args.keep) and not args.kept:
             raise SystemExit("--keep and --forget go with --kept: uv run dj-track-analyzer colors review --kept --keep \"<name>\"")
         elif args.kept:
@@ -411,7 +429,8 @@ def main() -> None:
         else:
             out = colors.review(apply=args.apply, dry_run=args.dry_run, min_gap=args.min_gap,
                                 min_confidence=0.75 if args.min_confidence is None else args.min_confidence,
-                                nml=args.nml, ask=sys.stdin.isatty() and not args.yes)
+                                nml=args.nml, ask=sys.stdin.isatty() and not args.yes and not args.track and not args.planned,
+                                only=args.track, planned=args.planned)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         if args.action == "apply" or args.apply:
             say_if_nothing(out, args.dry_run)

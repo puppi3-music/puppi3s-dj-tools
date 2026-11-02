@@ -266,6 +266,7 @@ The writers are there too, each with **Preview…** first (the command's `--dry-
 | Hype in Traktor's Comment | `hype --traktor` | `traktor --undo`, or **Take it out…** (`hype --traktor --remove`) |
 | Colour new tracks | `colors apply` | `traktor --undo` |
 | Recolour clear disagreements | `colors review --apply --yes` (also on the Colours tab) | `traktor --undo` |
+| Recolour or keep the listed tracks you pick | Mark rows **Approve** / **Keep** in the Colours tab (or tick several), then **Write…** (`colors review --apply --planned`; one by one: `--track PATH`) | `traktor --undo` |
 | Load into Traktor (tempo view) | `tempo load` (`--lexicon` when ticked; also on the Tempo view tab) | `tempo native` |
 | Undo the last change to Traktor | `traktor --undo` (refuses if Traktor saved since; no `--force` from the page) | |
 
@@ -460,6 +461,9 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `--min-confidence` | `apply` / `review --apply` | Only set guesses at least this reliable | 0 / 0.75 |
 | `--min-gap 2.5` | `review --apply` | How many colours away from yours a track must sound | 2.5 |
 | `--yes` | `review --apply` | Recolour every qualifying track without asking about each one | off |
+| `--track PATH` | `review --apply` | Recolour only this track (full path, as `review` lists it), whatever the thresholds, without asking; repeat for several | off |
+| `--planned` | `review --apply` | Write what's marked in the web page's Colours tab: recolour the approved tracks, keep the kept ones always | off |
+| `--refresh-views` | `train` | Afterwards redo every tempo view's colours with the new model (`tempo refresh`) | off |
 | `--kept` | `review` | List the tracks on your keep-always list | off |
 | `--keep TEXT` | `review --kept` | Put the coloured tracks whose path contains TEXT on the keep-always list (10 matches at most) | — |
 | `--forget TEXT` | `review --kept` | Take tracks whose path contains TEXT off the keep-always list | — |

@@ -80,6 +80,9 @@ def colours(lib: str) -> dict[str, str]:
 
 
 def tracks(lib: str = "native") -> dict:
+    from . import colors
+
+    colors.sync_traktor_colours()  # a recolour, an undo or a colour set in Traktor since
     with library(lib):
         con = collection.db()
         have = {r[1] for r in con.execute("PRAGMA table_info(tracks)")}
@@ -96,6 +99,7 @@ def tracks(lib: str = "native") -> dict:
                 r.pop("traktor_color", None)
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
+    _unbiased_colours(rows)
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
     guessed = colour_guesses()
     from . import cues, gridfix
@@ -136,7 +140,28 @@ def tracks(lib: str = "native") -> dict:
     return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
 
 
+def _unbiased_colours(rows: list[dict]) -> None:
+    """For tracks you coloured, the model's colour from training's cross-validation (made without seeing yours),
+    not the final model's, which learned your colour and leans toward it. In a tempo view, plus the view's shift."""
+    from . import colors
+
+    b = analysis.color_model()
+    up = colors.unbiased_positions(b)
+    for r in rows:
+        pos = up.get(r["path"])
+        if pos is None:
+            continue
+        if r.get("native_color_position") is not None and r.get("color_position") is not None:
+            pos += r["color_position"] - r["native_color_position"]
+        d = analysis.describe_position(pos)
+        r["color"], r["color_position"], r["colour_unbiased"] = d["color"], d["position"], True
+        r["color_confidence"] = analysis.color_confidence(b, d["position"], d["value"])
+
+
 def stats(lib: str = "native") -> dict:
+    from . import colors
+
+    colors.sync_traktor_colours()
     with library(lib):
         out = collection.summary()
         if lib and lib != "native":  # count the view's colours (yours shifted, else predicted), as the Tracks tab shows them
@@ -163,6 +188,13 @@ def colour_review(limit: int = 200) -> dict:
 
     with library("native"):
         return colors.review(limit=limit)
+
+
+def colour_mark(paths: list[str], action: str | None) -> dict:
+    """Mark review tracks to approve or keep (written together by the job colors_write_marked); None unmarks."""
+    from . import colors
+
+    return colors.set_plan(paths, action)
 
 
 def colour_explain() -> dict:
@@ -1472,6 +1504,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
+        Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),
