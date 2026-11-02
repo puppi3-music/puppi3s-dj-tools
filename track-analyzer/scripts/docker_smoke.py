@@ -63,8 +63,35 @@ def request(path: str, body: dict | None = None, host: str = f"127.0.0.1:{PORT}"
             return e.code, {"raw": raw.decode(errors="replace")}
 
 
+def fixture_stamps() -> None:
+    """The fixtures are made in their own build stage and copied in: each file must keep the modification time the
+    collection was stamped with, or Traktor's re-read rules (MODIFIED vs the file) would be tested on a mismatch."""
+    import datetime as dt
+    import html
+    import re
+
+    text = NML.read_text(encoding="utf-8")
+    n = 0
+    entries = r'<ENTRY MODIFIED_DATE="(\d+)/(\d+)/(\d+)" MODIFIED_TIME="(\d+)".*?<LOCATION DIR="([^"]*)" FILE="([^"]*)"'
+    for m in re.finditer(entries, text, re.S):
+        y, mo, d, secs, folder, name = m.groups()
+        f = Path("/" + html.unescape(folder).replace("/:", "/").strip("/")) / html.unescape(name)
+        if not f.exists():
+            fail(f"the collection lists {f}, which isn't there")
+        t = dt.datetime.fromtimestamp(f.stat().st_mtime, dt.timezone.utc)
+        if (t.year, t.month, t.day, t.hour * 3600 + t.minute * 60 + t.second) != (int(y), int(mo), int(d), int(secs)):
+            fail(f"{f.name}: modified {t:%Y-%m-%d %H:%M:%S} UTC, but the collection says {y}/{mo}/{d} + {secs} s")
+        n += 1
+    if not n:
+        fail("no fixture entries found in the collection")
+    print(f"  {n} files keep the modification time the collection was stamped with")
+
+
 def main() -> None:
     expected = json.loads((MUSIC / "expected.json").read_text())
+
+    step("fixtures: files and collection agree")
+    fixture_stamps()
 
     step("scan --traktor")
     cli("scan", "--traktor")
