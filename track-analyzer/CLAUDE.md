@@ -214,7 +214,21 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; /api/saved-file/delete (`web.delete_saved`: moves a listed saved file to its folder's deleted/, which
   `saved_files` doesn't read); `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
-  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers. `Start Puppi3's Track Analyzer.bat` is its Windows twin (CRLF via `.gitattributes`; also `PYTHONUTF8=1`, x64 Python on Arm). Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
+  installs uv if missing, then loops `uv sync --inexact` (keeps the opt-in extras) + `uv run dj-track-analyzer web` while it exits 75 (restart after an update, `update.py`); opens the page if 8766 already answers. `Start Puppi3's Track Analyzer.bat` is its Windows twin (CRLF via `.gitattributes`; also `PYTHONUTF8=1`, x64 Python on Arm). Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
+- `update.py`: `update [--check|--dry-run|--undo]` + the Setup tab's update card (/api/update: `web.update_status`,
+  GitHub's releases API cached `UPDATE_EVERY` 6 h, `update_check` setting = "check when the page opens"; jobs
+  `update` / `update_undo`, previewed in writeDialog). Zip installs: the newest `v…` release's zip (SHA-256 from the
+  API's asset `digest`), only the app's files (`PROTECTED` data/, logs/, .venv, .git never), each written via a temp
+  file + rename, files gone from src/ removed (nothing deleted elsewhere); old copies + update.json in
+  data/app-backups/ (last 3) first, a failure halfway restores them. Clones: `git pull --ff-only` on clean main,
+  undo = `git reset --keep`. Docker: refused. `AFTER` {version: step keys} = steps a release needs afterwards
+  (add a line when a release changes the genre list, analysis or models); `pending_steps` vs setting
+  `app_version_seen` (missing + a collection.db = 1.0.1) → the card's Run buttons. Restart: POST /api/restart →
+  server exits `RESTART_CODE` 75 under a launcher (env `TRACK_ANALYZER_LAUNCHER`), whose loop runs `uv sync
+  --inexact` and starts it with --no-open; without one (1.0.1's launchers, a terminal) Mac/Linux `os.execv` into
+  `uv run dj-track-analyzer web`, Windows asks for a manual restart. The .bat must stay under 1800 bytes: cmd.exe
+  re-reads a running batch file by byte offset, and 1.0.1's launcher reads on at byte 1817 after an update replaced
+  it (past the end it just stops; `tests/test_update.py`); its own loop is one parenthesized block, parsed whole.
 - `cues.py`: `cues train|scan|show`. Traktor's grid (AutoGrid CUE_V2 TYPE 4 START ms + TEMPO BPM; `grids()`,
   read-only; your cues = TYPE 0 cue / 5 loop, LEN ms) → bars. Per bar (cache.db `bars`, keyed path+grid, valid
   while mutagen length is within 0.25 s): 6 band dB, 40 mel dB (2048 FFT, 10 ms hop, 44.1k mono), kick body

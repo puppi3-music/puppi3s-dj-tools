@@ -60,7 +60,9 @@ On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-c
 
 Keep the Terminal window open while you use the page; close it to stop. Double-click again any time: if the page is already running, it just opens it.
 
-**Updating.** From a zip: unzip the new release, then move the `data` folder from your old copy into the new one (it holds your scans, models and training), and double-click the launcher in the new folder. From a clone: `git pull`, then double-click the launcher. Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
+**Updating.** The **Setup** tab says when a new release is out, with its notes. Press **Update now…**: it shows what changes, then installs it, and the page starts again with the new version. Your `data` folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, and **Go back to …** on the same card returns to the version you had. If a release needs a step afterwards (genres again, a rescan, new models), the card offers it as a button. To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent; untick **check when the page opens** to turn that off (**Check now** still works). In a terminal: `uv run dj-track-analyzer update` (`--check`, `--dry-run`, `--undo`), then start the launcher again. A clone is updated with `git pull` (only on `main` without local changes of your own); Docker by building the image again. Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
+
+*From 1.0.1 on Windows only:* the 1.0.1 launcher can't restart the page by itself, so after that one update close its window and double-click **`Start Puppi3's Track Analyzer.bat`** again. Later updates restart by themselves.
 
 ### The Terminal way
 
@@ -820,6 +822,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `regenre` | Genres again from saved scores after editing `dj_genres.json` | app database, CSV |
 | `keys` | The key model's key for tracks scanned before it, compared with Essentia's and Traktor's (see [Keys of tracks scanned earlier](#keys-of-tracks-scanned-earlier)) | app database |
 | `styles` | List the 400 Discogs styles, check `dj_genres.json` | nothing |
+| `update [--check] [--dry-run] [--undo]` | Install the newest release (a clone: `git pull`), keeping `data/`; `--undo` goes back to the version before (also the Setup tab's update card) | **the app's own files** (backed up in `data/app-backups/`) |
 | `colors train\|review\|explain\|apply` | Your colour scale (section 4) | `apply`, `review --apply`: **Traktor** |
 | `hype` | Tracks by hype, with filters (section 5) | app database; `--traktor`: **Traktor** |
 | `crates [--tempo 145] [--traktor] [--remove]` | Warm-up, peak and closing crates from colour and hype (section 5) | nothing; `--traktor`: **Traktor** (undo: `crates --remove`) |
