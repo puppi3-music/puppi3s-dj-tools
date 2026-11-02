@@ -66,7 +66,7 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
-| Key | 0.10–0.18 s per 5–8-min track, 1.47 s per 63-min mix | Rust: 0.013–0.024 s, 0.19 s | 5.7–7.6x faster | 5 tracks, 1 mix |
+| Key | 0.10–0.19 s per 5–8-min track, 1.49 s per 63-min mix | Rust: 0.016–0.029 s, 0.24 s (with the libm tables) | 5.5–8x faster | 5 tracks, 1 mix |
 
 Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
 and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
@@ -226,10 +226,17 @@ HPCP (12 bins, 4 harmonics), and the streaming Key's mean HPCP against the edma 
   1e-4 threshold (|X| <= ||x|| * ||w|| < 5e-5, noise included), so it has no peaks and the noise can't reach the key.
 
 `dsp/check.py --steps key`: bit-identical key, scale and strength on 63 test signals and on all 469 tracks and 41 mix
-recordings, every 2-minute segment of the 34 over 12 minutes included. 5.7–7.6x faster (speed table). On other
-platforms the Rust code calls that system's `logf`, `log10f`, `cos` and `exp10f`, which may differ from macOS's in
-the last bit: same keys, strength within about 1e-7 (well inside the 0.01 gate). Tables of macOS's results where
-they differ (as `LOG10F_FIX` for the mels) would make it bit-identical everywhere: not done yet.
+recordings, every 2-minute segment of the 34 over 12 minutes included. 5.5–8x faster (speed table).
+
+The same bits on every platform: the libm functions it needs (`logf`, `log10f`, `cos` in HPCP's weights, and
+`exp10f`) are computed in double with the platform's libm, rounded to float, and replaced by macOS's result from a
+table wherever that isn't safely macOS's (`dsp/tools/key_libm_exceptions.c`, as `LOG10F_FIX` for the mels): 13,590
+inputs for `logf`, 506 for `log10f`, 6 for `cos`. macOS's `exp10f` is `powf(10, x)` (identical on all 1.1 billion
+inputs in [-12, 0]), and that `powf` is neither correctly rounded (one float step off on 0.1% of inputs) nor Arm's
+optimized-routines algorithm nor `exp2(y * L)` for any constant L, so its 1.1 million exceptions ship as a 1.8 MB table
+(`key_exp10f.bin`). The tables are used on macOS too, so a macOS update can't change the results. `dsp/check.py
+--steps key` checks them against this Mac's libm on every input (4.3 billion, about 10 s): no differences. The
+constants (HPCP's harmonic table and its `exp2` factors) are stored as macOS computes them.
 Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
 0.01, matching the BPM rule; the aim is bit-identical.
 

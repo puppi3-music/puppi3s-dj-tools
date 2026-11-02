@@ -42,7 +42,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   FFT in fft4096.rs with `r2cf_128`, tables from `dsp/tools/gen_key_tables.py`): clang's `exp10f`/`exp2` for pow(10/2, x),
   Essentia's log2 = logf/ln2 in double, SpectralWhitening's vectorised loop (blocks of 16 unfused, tail fused), Key's std
   unfused / correlation fused; per-frame work `#[inline(never)]` with heap buffers (inlined into rayon's splitting it
-  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
+  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). libm results are
+  macOS's on every platform: double + round, with tables LOGF_FIX/LOG10F_FIX/COSPI_FIX and `key_exp10f.bin` (macOS
+  exp10f = powf(10, x), off by one float step on 0.1%: 1.1M entries, LEB128) from `dsp/tools/key_libm_exceptions.c`. Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
   it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
   after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a

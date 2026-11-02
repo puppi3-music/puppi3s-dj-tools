@@ -377,6 +377,13 @@ fn _key_frame_steps(frame: &Bound<'_, PyAny>) -> PyResult<(Vec<f32>, Vec<f32>, V
     Ok(key::frame_steps(&x))
 }
 
+/// key.rs's libm tables against this Mac's libm over each function's whole range: inputs that differ (none expected).
+#[cfg(target_os = "macos")]
+#[pyfunction]
+fn _key_libm_mismatches(py: Python<'_>, which: String) -> PyResult<u64> {
+    py.detach(|| key::libm_mismatches(&which)).map_err(PyValueError::new_err)
+}
+
 #[pymodule]
 fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loudness_ebur128, m)?)?;
@@ -389,5 +396,7 @@ fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(key_edma, m)?)?;
     m.add_function(wrap_pyfunction!(_key_hpcps, m)?)?;
     m.add_function(wrap_pyfunction!(_key_frame_steps, m)?)?;
+    #[cfg(target_os = "macos")]
+    m.add_function(wrap_pyfunction!(_key_libm_mismatches, m)?)?;
     Ok(())
 }

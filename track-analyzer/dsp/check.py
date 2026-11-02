@@ -288,6 +288,11 @@ def test_key(e, dsp, rng) -> int:
         if d := _key_diff(e, dsp, x):
             bad += 1
             print(f"key DIFFERENT: {name}: {d}")
+    if sys.platform == "darwin":  # key.rs's libm tables against this Mac's libm, every input (~10 s)
+        for f in ("cospi", "log10f", "logf", "exp10f"):
+            if n := dsp._key_libm_mismatches(f):
+                bad += 1
+                print(f"key DIFFERENT: {f} differs from macOS's on {n} inputs")
     return bad
 
 
