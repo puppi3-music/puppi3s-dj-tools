@@ -276,7 +276,13 @@ inputs, takes two floats and can't be tabulated. Since November 2026 all of them
 `libm` crate and rounded (`dsp/src/math.rs`), on every platform: more exact than Essentia's, and the same bits on
 macOS, Linux and Windows, at the same speed. `hypotf` is `sqrt(x*x + y*y)` in double, as macOS computes it. The
 Rayleigh and Gaussian weights are stored as Python's `exp` gives them. On the test signals 5 of 15 differ from
-Essentia in bits, all with the same beats and BPM, the confidence at most 1e-6 off. Real recordings: not compared yet.
+Essentia in bits, all with the same beats and BPM, the confidence at most 1e-6 off. Real recordings (check of
+2026-11-02, all 476 tracks and 34 mixes): the same whole-number BPM on every track and every mix segment but one.
+The two misses are both a mix's short last segment, where the set ends: VDJ- (1).mp3 segment 23 (63 s), 149.99
+against Essentia's 150.82, with the set at 149.97 and 150.03 in the two segments before; and VDJ-.mp3 segment 29
+(21 s), the same 48 beats and BPM, confidence 2.979 against 2.989. Both come from libm alone: with macOS's float
+libm in math.rs instead, bpm.rs gives Essentia's result bit for bit on both. One float step in an onset function
+tips a tracker's close call either way; where it tipped, ours is the BPM the set was playing.
 
 **Stage 7: drop Essentia.** `track-analyzer-dsp` (prebuilt wheels) becomes a required dependency;
 `essentia-tensorflow` moves to an optional dependency group used only by `dsp/check.py` on macOS and Linux;
