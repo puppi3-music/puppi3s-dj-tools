@@ -321,12 +321,13 @@ def main() -> None:
             except NoHistory as e:
                 if args.chapters or args.tracklist != "auto":  # the chapters need it; a file given has to work
                     raise
-                skipped = str(e.code)
-                log(f"No tracklist check: {skipped}")
+                skipped = {"tracklist_skipped": str(e.code), "tracklist_skipped_kind": e.kind,
+                           **({"recording_start": e.start.isoformat(sep=" ")} if e.start else {})}
+                log(f"No tracklist check: {e.code}")
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
                               highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood)
         if skipped and result.get("type") == "dj_mix":
-            result["tracklist_skipped"] = skipped
+            result.update(skipped)
         if result.get("type") == "dj_mix":
             from . import tracklist as tl
 

@@ -56,7 +56,12 @@ SPEED_GENRE = 0.04   # tempo changed by more than this: judge the genre at the t
 
 
 class NoHistory(SystemExit):
-    """No history file to check against: `analyze --tracklist` (found automatically) carries on without it."""
+    """No history file to check against: `analyze --tracklist` (found automatically) carries on without it.
+    `kind`: "start" (the recording's name doesn't say when it began) or "history" (no file covers that time)."""
+
+    def __init__(self, message: str, kind: str, start: datetime | None = None):
+        super().__init__(message)
+        self.kind, self.start = kind, start
 
 
 def recording_start(path: str | Path) -> datetime | None:
@@ -67,7 +72,7 @@ def recording_start(path: str | Path) -> datetime | None:
 
 def parse_start(text: str, day: date | None) -> datetime:
     """--start: 'HH:MM:SS' (on the recording's date, or today) or 'YYYY-MM-DD HH:MM:SS'."""
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
         try:
             return datetime.strptime(text, fmt)
         except ValueError:
@@ -558,14 +563,15 @@ def prepare(recording: str, history: str, start_text: str | None) -> tuple[list[
         start = named
     else:
         raise NoHistory(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
-                         "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
-                         "the time of day the recording began.")
+                        "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
+                        "the time of day the recording began.", "start")
     if history == "auto":
         found = find_history(start, analysis._audio_length(rec) or 6 * 3600)
         if not found:
             raise NoHistory(f"No Traktor history file covers a recording starting {start:%Y-%m-%d %H:%M:%S} "
-                             f"(looked in {HISTORY_GLOB}). Traktor saves one per session when it closes: quit "
-                             "Traktor once after the set, or pass the file: --tracklist /path/to/history_….nml")
+                            f"(looked in {HISTORY_GLOB}). Traktor saves one per session when it closes: quit "
+                            "Traktor once after the set, or pass the file: --tracklist /path/to/history_….nml",
+                            "history", start)
         path = found
     else:
         path = Path(os.path.expanduser(history))

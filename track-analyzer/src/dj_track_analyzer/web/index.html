@@ -273,8 +273,9 @@ details.fold .sub:first-child { margin-top: 0; }
 .seg-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
 .seg-toggle button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12px; background: transparent; }
 .seg-toggle button.on { background: var(--accent); color: #fff; }
-.tl-x { display: flex; gap: 2px; font-size: 10px; color: var(--text-3); margin-top: 3px; }
-.tl-x span { flex: 1; text-align: left; overflow: hidden; white-space: nowrap; }
+.tl-x { position: relative; height: 13px; font-size: 10px; color: var(--text-3); margin-top: 3px; }
+.tl-x span { position: absolute; top: 0; white-space: nowrap; }
+.tl-x span.end { right: 0; }
 .tl-wrap { position: relative; }
 .tl-wrap svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .tl-wrap line, .tl-wrap polyline, .tl-key line { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; }
@@ -381,6 +382,7 @@ dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--
   .split { grid-template-columns: minmax(0, 1fr); }
   .grid.two { grid-template-columns: minmax(0, 1fr); }
   .bars .lab { max-width: 130px; }
+  .tl-x .alt, .tl-x .late { display: none; }  /* fewer time labels, none crowding the end one */
 }
 </style>
 </head>
@@ -2453,12 +2455,23 @@ async function pageTempo(main, bpmArg) {
 }
 
 // ---------- jobs: the CLI's own commands, run by the server one at a time (jobs.py) ----------
-const JOB = { job: null, lines: [], since: 0, timer: 0, listeners: new Set(), waiters: [], seenEnd: undefined, flash: null, hidden: null };
+const JOB = { job: null, lines: [], since: 0, timer: 0, listeners: new Set(), waiters: [], seenEnd: undefined, flash: null, hidden: null,
+  endedId: undefined, failed: [] };  // endedId: the last job seen in job.ended; failed: queued mixes that failed meanwhile
 async function jobPoll() {
   clearTimeout(JOB.timer);
   let d;
   try { d = await api("jobs", { since: JOB.since }); } catch (e) { JOB.timer = setTimeout(jobPoll, 3000); return; }
   const j = d.job;
+  // jobs that ended while the page didn't look (a queued mix starts at once): end them as if seen; the first poll replays none
+  for (const e of j?.ended || []) {
+    if (JOB.endedId !== undefined && e.id > JOB.endedId && e.id !== j.id && JOB.seenEnd !== e.id) {
+      JOB.seenEnd = e.id;
+      if (e.error && e.error !== "Stopped.") JOB.failed.push(e);
+      JOB.waiters = JOB.waiters.filter(w => w.id !== e.id || (w.ok(e), false));
+      jobEnded(e);
+    }
+  }
+  if (j) JOB.endedId = Math.max(JOB.endedId ?? 0, ...(j.ended || []).map(e => e.id));
   if (j && JOB.job && JOB.job.id !== j.id && JOB.since) { JOB.since = 0; JOB.job = null; return jobPoll(); }  // a newer job: its log from the start
   if (j) {
     if (!JOB.job || JOB.job.id !== j.id) JOB.lines = [];
@@ -2466,7 +2479,11 @@ async function jobPoll() {
     if (JOB.lines.length > 3000) JOB.lines.splice(0, JOB.lines.length - 3000);
     JOB.since = j.line_to; JOB.job = j;
     if (!j.running) {
-      if (JOB.seenEnd !== j.id) { if (JOB.seenEnd !== undefined) jobEnded(j); JOB.seenEnd = j.id; }
+      if (JOB.seenEnd !== j.id) {
+        if (JOB.seenEnd !== undefined) jobEnded(j);
+        if (j.error && j.error !== "Stopped." && j.queued?.length) JOB.failed.push(j);  // the next one's bar replaces this
+        JOB.seenEnd = j.id;
+      }
       JOB.waiters = JOB.waiters.filter(w => w.id !== j.id || (w.ok(j), false));
     }
   }
@@ -2478,7 +2495,7 @@ async function jobPoll() {
 async function startJob(action, options = {}, dry_run = false) {
   const d = await postJSON("/api/jobs/start", { action, options, dry_run });
   if (JOB.seenEnd === undefined) JOB.seenEnd = null;
-  JOB.flash = null;
+  JOB.flash = null; JOB.failed = [];
   const done = new Promise(ok => { JOB.waiters.push({ id: d.job.id, ok }); });
   await jobPoll();
   rerenderSetup();  // its buttons wait while a job runs
@@ -2505,19 +2522,21 @@ const progressText = j => {
   const stage = j.stage ? j.stage[0].toUpperCase() + j.stage.slice(1) : "";
   return `${p && p.total ? `Step ${p.done + 1} of ${p.total}: ` : ""}${esc(stage)}${stage ? " · " : ""}${mmss(j.elapsed)} so far`;
 };
+// Queued mixes that failed before this one (their own bar was never shown): how many, and why on hover
+const failedNote = () => JOB.failed.length ? `<span class="err" data-tip="${esc(JOB.failed.map(e => `${e.label}: ${e.error}`).join("\n"))}">${JOB.failed.length} before this failed</span>` : "";
 function jobBar() {
   const bar = $("#jobbar"), j = JOB.job;
   if (SNAP || !j) { bar.hidden = true; return; }
   if (j.running) {
     bar.className = "jobbar"; bar.hidden = false;
-    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
+    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${failedNote()}${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
       ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : j.queued?.length ? "Stop all" : "Stop"}</button>`;
     $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll);
   } else if (JOB.flash && JOB.flash.id === j.id) {
     bar.className = `jobbar ${j.error ? "bad" : "good"}`; bar.hidden = false;
-    bar.innerHTML = `<span>${j.error === "Stopped." ? `<b>${esc(j.label)}</b> stopped. It carries on where it stopped next time.` : j.error ? `<b>${esc(j.label)}</b> stopped: ${esc(j.error)}` : `<b>✓ ${esc(j.label)}</b> finished`}</span>
+    bar.innerHTML = `<span>${j.error === "Stopped." ? `<b>${esc(j.label)}</b> stopped. It carries on where it stopped next time.` : j.error ? `<b>${esc(j.label)}</b> stopped: ${esc(j.error)}` : `<b>✓ ${esc(j.label)}</b> finished`}</span>${failedNote()}
       ${S.page !== "setup" ? `<a href="#setup">Details</a>` : ""}<button id="jb-x">OK</button>`;
-    $("#jb-x").onclick = () => { JOB.flash = null; jobBar(); };
+    $("#jb-x").onclick = () => { JOB.flash = null; JOB.failed = []; jobBar(); };
   } else bar.hidden = true;
 }
 
@@ -2782,13 +2801,18 @@ let LOGS = null;
 async function getLogs(force) { if (!LOGS || force) LOGS = await api("saved"); return LOGS; }
 const ago = t => new Date(t * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 // Traktor names its recordings Recording_2026-10-27_14h57m24s: show when the set was played, then the file only if it says more.
-const REC_NAME = /Recording_(\d{4})-(\d\d)-(\d\d)_(\d\d)h(\d\d)m/;
-function mixTitle(f) {
-  const m = (f.recording || "").match(REC_NAME);
-  if (!m) return f.recording || f.name;
-  return new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+const REC_NAME = /Recording_(\d{4})-(\d\d)-(\d\d)_(\d\d)h(\d\d)m/, VDJ_NAME = /VDJ-(\d{4})-(\d\d)-(\d\d)-(\d\d)_(\d\d) ?([AP]M)/i;
+function recDate(name) {  // the date and time in a recording's name (Traktor's or VirtualDJ's), else null
+  let m = (name || "").match(REC_NAME);
+  if (m) return new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]);
+  m = (name || "").match(VDJ_NAME);
+  return m ? new Date(+m[1], m[2] - 1, +m[3], m[4] % 12 + (m[6].toUpperCase() === "PM" ? 12 : 0), +m[5]) : null;
 }
-const mixFile = f => { const stem = n => (n || "").replace(/\.[^.]+$/, ""); return REC_NAME.test(f.recording || "") && stem(f.name) === stem(f.recording) ? "" : f.name; };
+function mixTitle(f) {
+  const t = recDate(f.recording);
+  return t ? t.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : f.recording || f.name;
+}
+const mixFile = f => { const stem = n => (n || "").replace(/\.[^.]+$/, ""); return recDate(f.recording) && stem(f.name) === stem(f.recording) ? "" : f.name; };
 async function pageMixes(main, id) {
   const me = S.routeId, L = await getLogs(true), mixes = L.files.filter(f => f.kind === "mix");
   if (me !== S.routeId) return;
@@ -2822,7 +2846,8 @@ async function pageMixes(main, id) {
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
         LOGS = null;
         const left = mixes.filter(x => x.id !== id);
-        location.hash = left.length ? `#mixes/${encodeURIComponent(left[0].id)}` : "#mixes";
+        const to = left.length ? `#mixes/${encodeURIComponent(left[0].id)}` : "#mixes";
+        if (location.hash === to) route(); else location.hash = to;
       };
     }
   }
@@ -2842,6 +2867,7 @@ async function mixDialog(file) {
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
     <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against Traktor's history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
+      <div id="mx-startrow" style="margin:2px 0 4px 22px"><label class="inline" style="white-space:normal;flex-wrap:wrap">Started at <input type="datetime-local" step="1" id="mx-start"> <span class="dim small">only for a recording whose name doesn't say (Traktor's do)</span></label></div>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
@@ -2863,7 +2889,12 @@ async function mixDialog(file) {
   zone.ondragleave = () => zone.classList.remove("over");
   zone.ondrop = e => { e.preventDefault(); zone.classList.remove("over"); choose(e.dataTransfer.files[0]); };
   const picked = () => [...dlg.querySelectorAll("input[name=mx-rec]:checked")].map(r => recs[+r.value].path);
-  const count = () => { const n = dropped ? 1 : picked().length; $("#mx-go").textContent = n > 1 ? `Analyse ${n} mixes` : "Analyse"; $("#mx-go").disabled = !n; };
+  const count = () => {
+    const n = dropped ? 1 : picked().length;
+    $("#mx-go").textContent = n > 1 ? `Analyse ${n} mixes` : "Analyse"; $("#mx-go").disabled = !n;
+    $("#mx-startrow").hidden = n !== 1 || !$("#mx-tl").checked;  // one start time is for one recording
+  };
+  $("#mx-tl").addEventListener("change", count);
   dlg.querySelectorAll("input[name=mx-rec]").forEach(r => r.addEventListener("change", () => {
     if (dropped) { dropped = null; zone.innerHTML = zoneText; $("#mx-pick").onclick = e => { e.preventDefault(); input.click(); }; }
     count();
@@ -2890,7 +2921,8 @@ async function mixDialog(file) {
     JOB.listeners.add(running); dlg.addEventListener("close", () => JOB.listeners.delete(running));
     let j;
     const queued = jobRunning() && JOB.job.action === "analyze_mix";  // goes after the one running: no waiting here
-    const opts = { ...(files.length > 1 ? { files } : { file }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked };
+    const start = $("#mx-startrow").hidden ? "" : $("#mx-start").value;
+    const opts = { ...(files.length > 1 ? { files } : { file, start }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked };
     if (queued) {
       try { await postJSON("/api/jobs/start", { action: "analyze_mix", options: opts }); await jobPoll(); dlg.close(); }
       catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
@@ -3007,6 +3039,12 @@ function moodCell(t) {
   const line = (name, m) => m ? `\n${name}: ${Object.entries(m).map(([k, v]) => `${k} ${pct(v)}`).join(" · ")}` : "";
   return `<span class="small" data-tip="${esc(`Mood as played${line("as played", h)}${line(`tempo view${t.view_bpm ? ` (${t.view_bpm} BPM)` : ""}`, t.view_mood)}${line("own tempo", t.own_mood)}${t.view_genre ? `\nview genre: ${t.view_genre}` : ""}`)}">${top.map(([k, v]) => `${esc(k)} ${pct(v)}`).join("<br>")}</span>`;
 }
+// Time labels under a timeline: marks = [[0..1, text]], end = the label at the right edge. A label runs over the empty
+// space after it; on a phone every other one hides, and those near the end (they'd overlap it).
+function tlAxis(marks, end) {
+  const keep = marks.filter(([x]) => x < 0.9);
+  return `<div class="tl-x">${keep.map(([x, t], k) => `<span class="${[k % 2 ? "alt" : "", x > 0.75 ? "late" : ""].join(" ").trim()}" style="left:${(x * 100).toFixed(2)}%">${esc(t)}</span>`).join("")}${end != null ? `<span class="end">${esc(end)}</span>` : ""}</div>`;
+}
 // Your sets stretched to the same length (mixreport.shape): bars = the mean per slice, a faint line per mix
 let SHAPE_SHOWN = null, SHAPE_PICK = null;  // SHAPE_PICK: the set whose own line is drawn (its file)
 function shapeTimeline(sh) {
@@ -3016,9 +3054,15 @@ function shapeTimeline(sh) {
   const h = v => v == null ? null : view === "hype" ? v * 10 : (v - lo) / (hi - lo || 1) * 100;
   const step = 100 / n, val = v => v == null ? "–" : view === "hype" ? fmt(v, 1) : `${fmt(v, 1)} LUFS`;
   const name = m => mixTitle({ recording: m.file });
+  // per slice the sets, highest first; with many, the 3 highest and 3 lowest
+  const perSet = i => {
+    const rows = sh.mixes.filter(m => m[key]?.[i] != null).sort((a, b) => b[key][i] - a[key][i])
+      .map(m => `${name(m)}: ${val(m[key][i])}${m.colour[i] && view === "hype" ? ` · ${m.colour[i]}` : ""}`);
+    return rows.length > 8 ? [...rows.slice(0, 3), `… ${rows.length - 6} more …`, ...rows.slice(-3)] : rows;
+  };
   const bar = (x, i) => {
     const c = sh.colour[i], tip = `${Math.round(i * step)}–${Math.round((i + 1) * step)}% of the set\n${view === "hype" ? "hype" : "loudness"} ${val(x.value)} · average of ${x.mixes} ${x.mixes === 1 ? "set" : "sets"}${c ? `\nmostly ${c}` : ""}\n`
-      + sh.mixes.map(m => `${name(m)}: ${val(m[key]?.[i])}${m.colour[i] && view === "hype" ? ` · ${m.colour[i]}` : ""}`).join("\n");
+      + perSet(i).join("\n");
     return x.value == null ? `<div class="seg none" data-tip="${esc(tip)}"></div>`
       : `<div class="seg" style="height:${h(x.value)}%;${c ? `background:var(--c-${c.toLowerCase()});` : ""}" data-tip="${esc(tip)}"></div>`;
   };
@@ -3040,7 +3084,7 @@ function shapeTimeline(sh) {
     <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype 1-10" : "Loudness"} per ${Math.round(step)}% of the set: 50% is the middle of every set, whatever its length. Hover a bar for each set.</div>
     <div class="tl-wrap"><div class="timeline">${sh[key].map(bar).join("")}</div>
       <svg viewBox="0 0 ${n} 100" preserveAspectRatio="none" aria-hidden="true">${sh[key].map((x, i) => range(i)).join("")}${pick ? line(pick) : ""}</svg></div>
-    <div class="tl-x">${sh[key].map((x, i) => `<span>${i % (n / 4) ? "" : `${Math.round(i * step)}%`}</span>`).join("")}</div>
+    ${tlAxis([0, 0.25, 0.5, 0.75].map(x => [x, `${x * 100}%`]), "100%")}
     <div class="tl-key">
       <div class="sw">${(used.length ? used : [null]).map((c, i) => `<i style="height:${[60, 100, 75, 45][i]}%;background:${c ? `var(--c-${c.toLowerCase()})` : "var(--bar)"}"></i>`).join("")}</div>
       <div><b>Bar</b>: the average ${view === "hype" ? "hype" : "loudness"} of your sets there${used.length ? `; its colour is the Traktor colour played there most` : ""}</div>
@@ -3087,12 +3131,19 @@ function renderMixReport(r) {
         { h: "Blend lag", f: m => m.blend_lag_seconds == null ? "–" : `${m.blend_lag_seconds} s${m.matches_per_lag ? ` <span class="dim small">${Object.entries(m.matches_per_lag).map(([l, n]) => `${l}:${n}`).join(" ")}</span>` : ""}` },
         { h: "Changes", f: m => m.transitions ? esc(Object.entries(m.transitions).map(([t, n]) => `${n} ${t}`).join(", ")) : "–" }, { h: "Keys heard by", f: m => m.key_model ? esc(m.key_model) : `<span class="dim small" data-tip="Analysed before the model was saved with it: Essentia before 1 Nov 2026, the CNN since">not saved</span>` }], r.mixes)}</div>`;
 }
+function skippedNote(d) {
+  const kind = d.tracklist_skipped_kind || (/^Can't tell when/.test(d.tracklist_skipped) ? "start" : /^No Traktor history/.test(d.tracklist_skipped) ? "history" : "");  // saved before the kind was
+  if (kind === "start") return `Its name doesn't say when it started, so Traktor's history of that session can't be found. If you played it in Traktor, analyse it again with its start time (Analyse a mix… → Started at).`;
+  if (kind === "history") return `No Traktor history covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. Traktor saves a session's history when it closes: quit Traktor once after the set, then analyse the mix again.`;
+  return esc(d.tracklist_skipped);
+}
 function renderMix(d) {
   const tl = d.timeline || [], tlist = d.tracklist, hl = d.highlights || [];
   const lufs = tl.map(s => s.lufs ?? -40), lo = Math.min(...lufs) - 2, hi = Math.max(...lufs);
   const hlSecs = hl.map(h => [toSec(h.start), toSec(h.end)]);
   const segHl = s => hlSecs.some(([a, b]) => toSec(s.start) < b && toSec(s.end) > a);
   const everyX = Math.ceil(tl.length / 10);
+  const segLength = s => { const n = Math.round(toSec(s.end) - toSec(s.start)); return n % 60 ? `${n}-second` : `${n / 60}-minute`; };
   const kl = tlist?.keylock;
   if (MIX_SHOWN !== d) MIX_SEL = null;
   MIX_SHOWN = d;
@@ -3112,8 +3163,8 @@ function renderMix(d) {
       : `<div class="seg ${pl.guessed && !str ? "pred" : ""}" style="height:${pl.hype * 10}%;${colour}${fade(i)}" data-tip="${esc(tip)}"></div>`;
   };
   return `
-    <div class="page-head"><div><h2>${esc(mixTitle({ recording: (d.file || "").split("/").pop() }))}</h2><div class="muted">${REC_NAME.test(d.file || "") ? `${esc(d.file.split("/").pop())} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
-    ${d.tracklist_skipped ? `<div class="note" style="margin-bottom:12px"><b>No tracklist check.</b> ${esc(d.tracklist_skipped)}</div>` : ""}
+    <div class="page-head"><div><h2>${esc(mixTitle({ recording: (d.file || "").split("/").pop() }))}</h2><div class="muted">${recDate(d.file) ? `${esc(d.file.split("/").pop())} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
+    ${d.tracklist_skipped ? `<div class="note" style="margin-bottom:12px"><b>No tracklist check.</b> ${skippedNote(d)}</div>` : ""}
     <div class="grid">
       <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score, sel: { kind: "genre", label: g.genre }, on: isOn("genre", g.genre) })))}
         ${d.genre_basis?.dj_genre ? `<div class="note">${esc(d.genre_basis.dj_genre)}</div>` : ""}
@@ -3127,11 +3178,11 @@ function renderMix(d) {
     ${tl.length ? `<div class="card"><div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Timeline</h3><div class="spacer"></div>
         ${sel ? `<button class="chip" data-mixsel="${esc(JSON.stringify(sel))}" data-tip="Stop showing it">${esc(selName)} ✕</button>` : ""}
         ${canHype ? `<div class="seg-toggle"><button data-mixview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-mixview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
-      <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? " and Traktor colour of the tracks you played" : ""} per ${esc(tl[0].start)}–${esc(tl[0].end)} segment; hover for more, click a genre, style or mood above to show where it is</div>
+      <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? " and Traktor colour of the tracks you played" : ""} per ${segLength(tl[0])} segment; hover for more, click a genre, style or mood above to show where it is</div>
       <div class="timeline">${tl.map(segBar).join("")}</div>
       ${str ? `<div class="tl-clips tl-sel">${tl.map((s, i) => `<span style="opacity:${str[i] ?? 0}"></span>`).join("")}</div>` : ""}
       ${hl.length ? `<div class="tl-clips">${tl.map(s => `<span class="${segHl(s) ? "on" : ""}"></span>`).join("")}</div>` : ""}
-      <div class="tl-x">${tl.map((s, i) => `<span>${i % everyX ? "" : esc(s.start)}</span>`).join("")}</div>
+      ${tlAxis(tl.flatMap((s, i) => i % everyX ? [] : [[i / tl.length, s.start]]), tl[tl.length - 1].end)}
       <div class="legend">${sel ? `<span><i style="background:var(--accent)"></i>${esc(selName)}: ${sel.kind === "genre" ? "the segment's genre" : sel.kind === "mood" ? "brighter = more of the segment sounds it, against the most" : "brighter = higher among the segment's top 3 styles, against the highest"}${str.every(v => !v) ? " (in no segment)" : ""}</span>` : ""}
         ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your Traktor colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
         ${view === "hype" && plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}
