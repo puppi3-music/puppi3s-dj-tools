@@ -26,11 +26,23 @@ RUN mkdir -p /data /home/dj /app/logs && chmod 777 /data /home/dj /app/logs
 EXPOSE 8766
 CMD ["dj-track-analyzer", "web", "--host", "0.0.0.0", "--no-open"]
 
+# The models on their own, from the model list alone: a code change doesn't download them again (a few hundred MB)
+FROM --platform=linux/amd64 python:3.11.13-slim-bookworm AS models
+COPY src/dj_track_analyzer/model_files.py /tmp/model_files.py
+RUN python /tmp/model_files.py /models
+
 FROM app AS test
-# chmod in the same layer that made the files: a later layer changing their mode would hold a second copy of the models
+# --chmod in the copy itself: a later layer changing their mode would hold a second copy of the models
+COPY --from=models --chmod=777 /models /data/models
 RUN dj-track-analyzer setup && chmod -R a+rwX /data /home/dj
 COPY scripts ./scripts
 RUN python scripts/make_fixtures.py --music /fixtures/music \
         --nml "/home/dj/Documents/Native Instruments/Traktor 4.0.0/collection.nml" \
     && chmod -R a+rwX /fixtures /home/dj
 CMD ["python", "scripts/docker_smoke.py"]
+
+# CI: the smoke test as the last build step (as any user id, as compose runs it), so the 2 GB image never has to be
+# exported and loaded into Docker to run one container. Unchanged code = this step cached = nothing to test again.
+FROM test AS smoke
+USER 1000:1000
+RUN python scripts/docker_smoke.py

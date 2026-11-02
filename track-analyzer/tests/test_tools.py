@@ -93,3 +93,21 @@ def test_undo_anyway_passes_force():
     assert build({"force": "yes"}) == ["traktor", "--undo"]  # only a real true from the page's button
     page = (Path(jobs.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
     assert "write(act, { ...opts, force: true })" in page
+
+
+def test_model_download_reports_missing_required_models(tmp_path, monkeypatch):
+    """model_files.download (also run alone by the Docker image): required models that fail are returned, optional ones skipped."""
+    from dj_track_analyzer import model_files
+
+    def fetch(url, dest):
+        if "maest" in url or "mood_sad" in url:
+            return False
+        dest.write_bytes(b"model")
+        return True
+
+    monkeypatch.setattr(model_files, "_fetch", fetch)
+    missing = model_files.download(tmp_path / "models")
+    assert sorted(n for n, _ in missing) == sorted(model_files.MAEST_FILES)
+    assert all((tmp_path / "models" / n).exists() for n in model_files.MODEL_FILES)
+    assert not (tmp_path / "models" / "mood_sad-discogs-effnet-1.pb").exists()
+    assert model_files.download(tmp_path / "models", maest=False) == []  # what's there is kept, not fetched again
