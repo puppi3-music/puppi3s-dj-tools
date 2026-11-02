@@ -41,7 +41,7 @@ def make_app(root: Path) -> Path:
     app = root / "app"
     for rel, text in OLD.items():
         (app / rel).parent.mkdir(parents=True, exist_ok=True)
-        (app / rel).write_text(text)
+        (app / rel).write_bytes(text.encode())  # exact bytes, as unzipped (write_text gives \r\n on Windows)
     (app / "src/dj_track_analyzer/__pycache__").mkdir()
     (app / "src/dj_track_analyzer/__pycache__/a.cpython-311.pyc").write_bytes(b"cache")
     return app
@@ -63,7 +63,23 @@ def snapshot(app: Path) -> dict:
 
 def test_versions_compare_as_numbers():
     assert update.version_key("v1.10.0") > update.version_key("1.9.3") > update.version_key("1.9")
+    assert update.version_key("v1.1") == update.version_key("1.1.0")  # a short tag isn't "older" than its own version
     assert update.installed_version(APP_ROOT)  # the real pyproject.toml has one
+
+
+def test_a_failed_write_leaves_no_temporary_file(tmp_path, monkeypatch):
+    def broken(*a):
+        raise OSError("disk full")
+    monkeypatch.setattr(update.os, "replace", broken)
+    with pytest.raises(OSError):
+        update._replace(tmp_path / "a.py", b"x", None)
+    assert not list(tmp_path.iterdir())
+
+
+def test_a_github_error_message_is_an_error(monkeypatch):
+    monkeypatch.setattr(update, "_get", lambda url: b'{"message": "API rate limit exceeded"}')
+    with pytest.raises(ValueError, match="rate limit"):
+        update.releases()
 
 
 def test_install_writes_only_the_apps_files_and_undo_puts_them_back(tmp_path):
@@ -122,6 +138,7 @@ def test_a_failure_halfway_puts_everything_back(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("files, top, why", [
     ({**NEW, "../escape.py": "x"}, "puppi3s-track-analyzer-1.0.2/", "unsafe path"),
+    ({**NEW, "src/a.py:hidden": "x"}, "puppi3s-track-analyzer-1.0.2/", "unsafe path"),  # an NTFS stream
     ({"pyproject.toml": "x"}, "puppi3s-track-analyzer-1.0.2/", "isn't Puppi3"),
 ])
 def test_a_wrong_zip_is_refused(tmp_path, files, top, why):
