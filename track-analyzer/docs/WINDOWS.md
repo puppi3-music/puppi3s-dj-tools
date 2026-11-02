@@ -502,7 +502,9 @@ Each scan worker runs TensorFlow and the Rust code on every core, so a scan take
 command except `web` and `serve` runs at below-normal priority (`cli.lower_priority`; its workers inherit it), so
 whatever you're doing comes first and the scan gets the rest. Results don't change. Measured 2026-11-02 on two
 tracks: the analysis is bit-identical with TensorFlow and Rust on 1 thread or on all 10 (only the time differs), so
-giving each worker its share of the cores is safe too; not done yet, its speed is unmeasured.
+giving each worker its share of the cores is safe too. Measured on a 10-core M1 Pro (10 tracks, real scan workers):
+5 workers on all cores 60 s, 5 workers x 2 threads 58 s, 10 workers x 1 thread 81 s, results identical in all
+three. No real gain, so not done. On Windows the gain would have to be measured on the PC itself.
 No GPU: TensorFlow 2.15 has no GPU support on Windows and none for Vulkan anywhere; a GPU runtime (ONNX Runtime
 with DirectML, TensorFlow's old DirectML plugin) gives results that aren't bit-identical, so it isn't used.
 
