@@ -377,6 +377,16 @@ def _new_labels(nml: Path) -> tuple:
     return _new_cache["data"]
 
 
+def to_learn() -> dict:
+    """What retraining your colour and cue models would learn that they haven't (the Colours and Tracks tabs offer it):
+    {colours, cues}, each {added, changed, removed}, or None (no Traktor, a starter or an older model, a tempo view loaded)."""
+    try:
+        return dict(zip(("colours", "cues"), _new_labels(Path(traktor.find_collection(None)))))
+    except (SystemExit, OSError, ValueError) as e:
+        log(f"New-labels count skipped: {e}")
+        return {"colours": None, "cues": None}
+
+
 def _changed(path: str, size, mtime) -> bool:
     """A scanned file that's different on disk now (edited by another tagger, Traktor or a sync): `tag` skips it
     until it's scanned again. A file that's gone doesn't count."""

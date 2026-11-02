@@ -101,6 +101,7 @@ def tracks(lib: str = "native") -> dict:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
     _unbiased_colours(rows)
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
+    by_hand = collection.manual()
     guessed = colour_guesses()
     from . import cues, gridfix
 
@@ -135,6 +136,8 @@ def tracks(lib: str = "native") -> dict:
             r["held_genre"] = True
         if r["path"] in colour_held:
             r["held_colour"] = True
+        if r["path"] in by_hand:  # {field: value} set by hand (genre, hype, BPM)
+            r["by_hand"] = by_hand[r["path"]]
         if r["path"] in guessed:  # guessed into Traktor by the app, not checked yet: training leaves it out
             r["colour_guess"] = True
     return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
@@ -149,13 +152,16 @@ def _unbiased_colours(rows: list[dict]) -> None:
     up = colors.unbiased_positions(b)
     for r in rows:
         pos = up.get(r["path"])
-        if pos is None:
-            continue
-        if r.get("native_color_position") is not None and r.get("color_position") is not None:
-            pos += r["color_position"] - r["native_color_position"]
-        d = analysis.describe_position(pos)
-        r["color"], r["color_position"], r["colour_unbiased"] = d["color"], d["position"], True
-        r["color_confidence"] = analysis.color_confidence(b, d["position"], d["value"])
+        if pos is not None:
+            if r.get("native_color_position") is not None and r.get("color_position") is not None:
+                pos += r["color_position"] - r["native_color_position"]
+            d = analysis.describe_position(pos)
+            r["color"], r["color_position"], r["colour_unbiased"] = d["color"], d["position"], True
+            r["color_confidence"] = analysis.color_confidence(b, d["position"], d["value"])
+        if b and r.get("color_position") is not None:
+            # the Colours tab's measure: how often tracks placed here were that colour or a neighbour of it
+            d = analysis.describe_position(r["color_position"])
+            r["color_confidence_near"] = analysis.color_confidence(b, d["position"], d["value"], within=1)
 
 
 def stats(lib: str = "native") -> dict:
@@ -233,6 +239,19 @@ def hold(paths: list[str], kind: str, on: bool) -> dict:
     values = {p: r["tag_genre"] if kind == "genre" else r["traktor_color"] for p, r in rows.items()}
     collection.set_hold(kind, values, on)
     return {"kind": kind, "on": on, "tracks": len(values), "held": len(collection.held(kind))}
+
+
+def edit_track(path: str, changes: dict, clear: list[str], traktor_genre: str | None = None) -> dict:
+    """Colour, key, genre, hype or BPM set by hand (edit.edit: into Traktor too). The answer's `undo` puts it back."""
+    from . import edit
+
+    if jobs.busy():
+        raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
+    if not isinstance(changes, dict) or not isinstance(clear, list):
+        raise ValueError("changes is an object, clear a list")
+    with library("native"):
+        return edit.edit(path, changes, [str(f) for f in clear],
+                         traktor_genre=None if traktor_genre is None else str(traktor_genre))
 
 
 def accept_colours(paths: list[str]) -> dict:
@@ -1088,6 +1107,11 @@ def setup_status() -> dict:
         return jobs.setup_status()
 
 
+def to_learn() -> dict:
+    with library("native"):
+        return jobs.to_learn()
+
+
 def start_job(b: dict) -> dict:
     with library("native"):  # the options are checked against the normal library
         return jobs.start(str(b["action"]), b.get("options") or {}, bool(b.get("dry_run", False)))
@@ -1503,6 +1527,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
+        Route("/api/track/edit", post(lambda b: edit_track(str(b["path"]), b.get("changes") or {}, b.get("clear") or [], b.get("traktor_genre"))), methods=["POST"]),
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
@@ -1517,6 +1542,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/to-learn", respond(lambda q: to_learn())),
         Route("/api/jobs", respond(lambda q: jobs.state(int(num(q, "since", 0))))),
         Route("/api/jobs/start", post(start_job), methods=["POST"]),
         Route("/api/jobs/stop", post(lambda b: jobs.stop()), methods=["POST"]),

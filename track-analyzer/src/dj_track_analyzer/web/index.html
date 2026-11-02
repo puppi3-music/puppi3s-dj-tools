@@ -74,6 +74,8 @@ label.inline { display: inline-flex; align-items: center; gap: 6px; white-space:
 #loaded:hover .chip { border-color: var(--text-3); }
 
 main { padding: 20px; max-width: 1400px; margin: 0 auto; }
+footer.legal { max-width: 1400px; margin: 0 auto; padding: 8px 20px 24px; color: var(--text-3); font-size: 12px; }
+footer.legal a { color: inherit; }
 .page-head { display: flex; align-items: flex-end; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
 .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .grid.two { grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); }
@@ -380,6 +382,7 @@ dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--
   .drawer-head { top: -16px; margin: -16px -16px 0; padding: 12px 16px 10px; }
   .drawer-head .wide-btn { display: none; }
   main { padding: 16px; }
+  footer.legal { padding: 8px 16px 20px; }
   .split { grid-template-columns: minmax(0, 1fr); }
   .grid.two { grid-template-columns: minmax(0, 1fr); }
   .bars .lab { max-width: 130px; }
@@ -407,6 +410,7 @@ dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--
   <div class="banner" id="dockernote" hidden><b>Docker is experimental.</b> This copy runs in a container, which is less tested than the Mac and Linux launcher. Keep a backup of your Traktor collection and check each change before relying on it.</div>
 </header>
 <main id="main"><div class="loading">Loading…</div></main>
+<footer class="legal">Puppi3's Track Analyzer © 2026 puppi3-music (DJ Puppi3), free software under the <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener">GNU AGPL v3</a>: <a href="https://github.com/puppi3-music/puppi3s-dj-tools" target="_blank" rel="noopener">source code</a>. Built on <a href="https://essentia.upf.edu/" target="_blank" rel="noopener">Essentia</a>; models by the Music Technology Group, Universitat Pompeu Fabra, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/" target="_blank" rel="noopener">CC BY-NC-SA 4.0</a>.</footer>
 <aside class="drawer" id="drawer" aria-hidden="true"><div id="drawer-body"></div></aside>
 <div id="tip"></div>
 
@@ -422,6 +426,8 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = (v, d = 2) => v == null || v === "" ? "–" : typeof v === "number" ? (Number.isInteger(v) ? String(v) : v.toFixed(d)) : esc(v);
 const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
+// a colour and its neighbours on the scale: "Blue–Magenta" for Violet, "Red–Orange" for Red
+const nearRange = c => { const i = COLOURS.indexOf(c); return i < 0 ? c : `${COLOURS[Math.max(0, i - 1)]}–${COLOURS[Math.min(COLOURS.length - 1, i + 1)]}`; };
 const mmss = s => s == null ? "–" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 const sw = (c, predicted) => c ? `<span class="sw sw-${esc(c)}${predicted ? " pred" : ""}"></span>` : "";
 const colour = (c, predicted) => c ? `<span class="colour" data-tip="${predicted ? "Predicted by the colour model (not set by you)" : "Your colour in Traktor"}">${sw(c, predicted)}${esc(c)}${predicted ? "?" : ""}</span>` : `<span class="dim">–</span>`;
@@ -724,8 +730,10 @@ async function pageTracks(main, open) {
       <select id="f-cues"><option value="">All tracks</option><optgroup label="Cues"><option value="some">Has cues in Traktor</option><option value="none">No cues in Traktor</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to Traktor yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to Traktor yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with Traktor's</option></optgroup><optgroup label="Colour"><option value="guess">Colour guessed by the app, not checked yet</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
+    <div id="t-learn"></div>
     <div id="selbar"></div>
     <div class="card" style="padding:0"><div id="ttable"></div></div>`;
+  retrainBars($("#t-learn"), ["cues", "colours"]);
   $("#t-write")?.addEventListener("click", () => writeToTraktor(() => S.reloadTracks()));
   $("#t-grids")?.addEventListener("click", () => writeGrids(() => S.reloadTracks()));
   $("#f-type").value = TF.type; $("#f-held").value = TF.held; $("#f-cues").value = TF.cues;
@@ -1043,17 +1051,18 @@ async function openTrack(path) {
   const genreScores = [[t.genre, t.genre_score], [t.genre_2, t.genre_2_score], [t.genre_3, t.genre_3_score]].filter(g => g[0]).map(([g, s]) => ({ label: g, value: s }));
   body.innerHTML = `
     <div class="drawer-head"><div><h2>${esc(t.title || t.filename)}</h2><div class="muted">${esc(t.artist || "")}</div></div>
-      <div class="acts"><button class="wide-btn" id="dr-wide" aria-pressed="${drawerWide()}" data-tip="${drawerWide() ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"}">${drawerWide() ? "⇥ Narrow" : "⇤ Wide"}</button>
+      <div class="acts">${canEdit(t) ? `<button id="dr-edit" class="${editing(t) ? "on" : ""}" aria-pressed="${editing(t)}" data-tip="${editing(t) ? "Stop editing without saving" : "Change this track's BPM, key, colour, genre or hype by hand"}">✎ Edit</button>` : ""}<button class="wide-btn" id="dr-wide" aria-pressed="${drawerWide()}" data-tip="${drawerWide() ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"}">${drawerWide() ? "⇥ Narrow" : "⇤ Wide"}</button>
       <button id="dr-close" aria-label="Close" data-tip="Close (Esc)">✕</button></div></div>
     <dl class="facts">
-      <dt>BPM</dt><dd>${fmt(t.mix_bpm)}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
-      <dt>Key</dt><dd>${esc(t.mix_camelot || "–")} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
-      <dt>Colour</dt><dd>${colour(colourOf(t), !t.traktor_color)}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? `, confidence ${pct(t.color_confidence)}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
-      <dt>Hype</dt><dd>${hypeBadge(t.hype)} <span class="dim small">1-10 within your collection</span></dd>
+      <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
+      <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
+      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? ` (${pct(t.color_confidence)})` : ""}${t.color_confidence_near != null ? ` · ${pct(t.color_confidence_near)} sure it's ${esc(nearRange(t.color))}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
+      <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
+      <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">1-10 within your collection</span></dd>
       <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
       ${t.error ? `<dt>Note</dt><dd class="small">${esc(t.error)}</dd>` : ""}
-    </dl>
+    </dl>${editBar(t)}
     ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
     ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
@@ -1092,6 +1101,8 @@ async function openTrack(path) {
     try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
     catch (e) { acc.textContent = e.message; }
   };
+  $("#dr-edit")?.addEventListener("click", () => { S.editing = editing(t) ? null : t.path; if (S.editing) S.editMsg = null; reopen(t.path); });
+  bindEdit(t);
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
@@ -1117,6 +1128,64 @@ async function openTrack(path) {
     } catch (e) { box.className = ""; box.innerHTML = errBox(e); }
   };
   $("#sg-same").onchange = load; $("#sg-tol").onchange = load; load();
+}
+
+// Edit by hand (✎ Edit in the panel's head turns its facts into fields): colour, key and genre go into Traktor too
+// (edit.edit); genre, hype and BPM stay yours over rescans. Only in the normal library.
+const CAMELOTS = [...Array(12)].flatMap((_, i) => [`${i + 1}A`, `${i + 1}B`]);
+const canEdit = t => !SNAP && t.type === "track" && S.lib === "native";
+const editing = t => canEdit(t) && S.editing === t.path;
+const editNow = t => ({ colour: t.traktor_color || "", key: t.mix_camelot || "", genre: t.my_genre || t.genre || "",
+  hype: t.hype != null ? String(t.hype) : "", bpm: t.mix_bpm != null ? String(t.mix_bpm) : "" });
+const reopen = async path => { const d = $("#drawer"), top = d.scrollTop; await openTrack(path); d.scrollTop = top; };
+// a fact as shown, or (editing) its field; a value set by hand says so, and while editing ↺ takes it back to the analysis
+function ed(t, f, shown, all = []) {
+  const mine = (t.by_hand || {})[f] != null, mark = mine ? ` <span class="chip" data-tip="Set by hand: stays when the analysis runs again">by hand</span>` : "";
+  if (!editing(t)) return shown + mark;
+  const v = editNow(t)[f];
+  const opts = (list, cur) => `${cur ? "" : `<option value="">–</option>`}${list.map(x => `<option${x === cur ? " selected" : ""}>${esc(x)}</option>`).join("")}`;
+  const reset = mine ? ` <button type="button" class="mini" data-clear="${f}" data-tip="Back to the analysis">↺</button>` : "";
+  if (f === "colour") return `<select data-ed="colour">${opts(COLOURS, v)}</select>`;
+  if (f === "key") return `<select data-ed="key">${opts(CAMELOTS, v)}</select>`;
+  if (f === "hype") return `<select data-ed="hype">${opts([...Array(10)].map((_, i) => String(i + 1)), v)}</select>${reset}`;
+  if (f === "bpm") return `<input data-ed="bpm" type="number" min="40" max="300" step="1" value="${esc(v)}" style="width:80px">${reset}`;
+  const genres = [...new Set(all.flatMap(x => [x.genre, x.genre_2, x.genre_3, x.my_genre]).filter(Boolean))].sort();
+  return `<input data-ed="genre" list="ed-genres" value="${esc(v)}" style="width:min(220px,100%)"><datalist id="ed-genres">${genres.map(g => `<option value="${esc(g)}">`).join("")}</datalist>${reset}`;
+}
+// under the facts: Save / Cancel while editing, and after a save what was written and Undo
+function editBar(t) {
+  if (!canEdit(t)) return "";
+  const msg = S.editMsg?.path === t.path ? S.editMsg : null;
+  if (!editing(t)) return msg ? `<div class="filters small" id="ed-bar">${msg.undo ? `<button type="button" id="ed-undo">Undo</button>` : ""}<span class="muted" id="ed-msg">${esc(msg.text)}</span></div>` : "";
+  return `<div class="filters" id="ed-bar"><button type="button" class="primary" id="ed-save" disabled>Save</button><button type="button" id="ed-cancel">Cancel</button><span class="small muted" id="ed-msg"></span></div>
+    <div class="note">Colour, key and genre are written into Traktor as well (quit Traktor first; a backup is made, and Undo puts it back).
+      A colour you set is kept always and teaches the colour model; a genre you set is held. Genre, hype and BPM stay yours when the
+      analysis runs again (↺ goes back to it). BPM changes only what the analyzer uses: Traktor's BPM goes with its beat grid.</div>`;
+}
+function bindEdit(t) {
+  const box = $("#drawer-body");
+  if (!canEdit(t) || !box.querySelector("#ed-bar")) return;
+  const now = editNow(t), save = box.querySelector("#ed-save"), msg = box.querySelector("#ed-msg");
+  const changes = () => Object.fromEntries([...box.querySelectorAll("[data-ed]")].map(e => [e.dataset.ed, e.value.trim()]).filter(([f, x]) => x && x !== now[f]));
+  box.querySelectorAll("[data-ed]").forEach(e => e.addEventListener("input", () => { save.disabled = !Object.keys(changes()).length; }));
+  const send = async (body, done) => {
+    if (save) save.disabled = true;
+    msg.textContent = "Saving…";
+    try {
+      const d = await postJSON("/api/track/edit", { path: t.path, ...body });
+      const tk = typeof d.traktor === "string" ? d.traktor : d.traktor?.changed ? `Traktor: ${d.traktor.changed_fields.join(", ")} written` : "Traktor already had it";
+      S.editMsg = { path: t.path, text: `${done} · ${tk}${d.traktor?.warning ? ` · ${d.traktor.warning}` : ""}${d.traktor?.hype_comment_skipped ? ` · ${d.traktor.hype_comment_skipped}` : ""}`,
+        undo: body.undo ? null : d.undo };
+      S.editing = null; S.tracks = {}; SETUP = null;
+      await reopen(t.path);
+      if (S.page === "tracks") { S.reloadTracks?.(); S.refreshRetrain?.(); }
+      if (S.page === "colours") S.reloadColours?.().catch(() => {});
+    } catch (e) { msg.textContent = e.message; if (save) save.disabled = !Object.keys(changes()).length; }
+  };
+  if (save) save.onclick = () => send({ changes: changes(), clear: [] }, "Saved");
+  box.querySelector("#ed-cancel")?.addEventListener("click", () => { S.editing = null; reopen(t.path); });
+  box.querySelectorAll("[data-clear]").forEach(b => b.onclick = () => send({ changes: {}, clear: [b.dataset.clear] }, `${b.dataset.clear === "bpm" ? "BPM" : b.dataset.clear[0].toUpperCase() + b.dataset.clear.slice(1)} back to the analysis`));
+  box.querySelector("#ed-undo")?.addEventListener("click", () => send({ ...S.editMsg.undo, undo: true }, "Undone"));
 }
 
 // The loop-idea buttons; each says what plays in it once Demucs has listened (parts: vocals, synth, drums + bass only)
@@ -2350,35 +2419,34 @@ async function pageColours(main) {
   const markCell = t => t.kept || t.recoloured ? "" : t.marked
     ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
         ? `will recolour to&nbsp; ${sw(t.sounds_like)}${esc(t.sounds_like)}` : `will keep&nbsp; ${sw(t.your_colour)}${esc(t.your_colour)} always`}</span> <button class="mini" data-mark="" data-p="${esc(t.path)}" data-tip="Unmark">✕</button></span>`
-    : `<span class="nowrap"><button class="mini" data-mark="approve" data-p="${esc(t.path)}" data-tip="Mark: recolour it ${esc(t.sounds_like)} when you press Write">Approve</button> <button class="mini" data-mark="keep" data-p="${esc(t.path)}" data-tip="Mark: keep your ${esc(t.your_colour)} always when you press Write">Keep</button></span>`;
+    : `<span class="nowrap"><button class="mini" data-mark="approve" data-p="${esc(t.path)}" data-tip="Mark: recolour it ${esc(t.sounds_like)} when you press Write">Approve ${esc(t.sounds_like)}${t.confidence_exact != null ? ` (${pct(t.confidence_exact)})` : ""}</button> <button class="mini" data-mark="keep" data-p="${esc(t.path)}" data-tip="Mark: keep your ${esc(t.your_colour)} always when you press Write">Keep ${esc(t.your_colour)}</button></span>`;
   const reviewTable = rows => table([
           ...(SNAP ? [] : [{ h: `<input type="checkbox" data-ckall aria-label="Tick every track in this list">`, raw: 1,
             f: t => t.kept || t.recoloured ? "" : `<input type="checkbox" data-ck="${esc(t.path)}" aria-label="Tick" ${RSEL.has(t.path) ? "checked" : ""}>` }]),
           { h: "Track", f: t => `<div class="trk"><div class="t">${esc(t.file)}</div></div>` },
           { h: "Yours", f: t => colour(t.your_colour) }, { h: "Sounds like", f: t => colour(t.sounds_like) },
-          { h: "Gap", r: 1, f: t => fmt(t.gap) }, { h: "Confidence", r: 1, f: t => pct(t.confidence) },
+          { h: "Gap", r: 1, f: t => fmt(t.gap) }, { h: "Confidence", r: 1, f: t => t.confidence == null ? "–" : `<span class="nowrap">${pct(t.confidence)} <span class="dim small">${esc(nearRange(t.sounds_like))}</span></span>` },
           { h: "", f: t => (t.meets_apply_threshold ? `<span class="chip warn">over threshold</span> ` : "") + (t.kept ? `<span class="chip">kept</span>` : "")
             + (t.recoloured ? `<span class="chip good" data-tip="You recoloured it since training. Retrain to learn from it; it then leaves this list.">recoloured&nbsp; ${sw(t.recoloured)}${esc(t.recoloured)}</span>` : "") },
           ...(SNAP ? [] : [{ h: "", r: 1, f: markCell }]),
         ], rows, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` });
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
-    <div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads Traktor's collection and History)…</div>`;
+    <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads Traktor's collection and History)…</div>`;
   const [rv, ex, kp] = await Promise.allSettled([api("colours/review", { limit: 200 }), api("colours/explain"), api("colours/kept")]);
   const m = $("#c-model"); m.className = "";
   if (rv.status === "rejected") m.innerHTML = errBox(rv.reason);
   else {
-    const r = rv.value, a = r.accuracy || {}, byPath = new Map(r.tracks.map(t => [t.path, t]));
+    let r = rv.value, byPath = new Map(r.tracks.map(t => [t.path, t]));
     const draw = () => {
-      const marks = r.tracks.filter(t => t.marked), nA = marks.filter(t => t.marked === "approve").length, nK = marks.length - nA;
+      const a = r.accuracy || {};
       const retrain = r.recoloured_since_training;
+      const marks = r.tracks.filter(t => t.marked), nA = marks.filter(t => t.marked === "approve").length, nK = marks.length - nA;
       m.innerHTML = `<div class="tiles">
         <div class="tile"><div class="v">${fmt(a.average_error_per_colour)}</div><div class="l">average error per colour (in colours)</div></div>
         <div class="tile"><div class="v">${pct(a.within_one_colour)}</div><div class="l">within one colour</div></div>
         <div class="tile"><div class="v">${pct(a.exact)}</div><div class="l">exactly right</div></div>
         <div class="tile"><div class="v" style="font-size:15px;padding-top:6px">${esc(r.trained_at)}</div><div class="l">trained · ${esc(r.model || "")}</div></div>
       </div>
-      ${retrain && !SNAP ? `<div class="selbar"><span>You recoloured ${plural(retrain, "listed track")} since training. Retraining learns from your new colours, lists the tracks the new model disagrees with, and refreshes your tempo views' colours (a minute or two).</span>
-        <button class="primary" id="c-retrain">Retrain now</button><span class="small muted" id="c-retrainmsg"></span></div>` : ""}
       <div class="card"><h3>Tracks that disagree with their colour <span class="dim small">(cross-validated: predicted without seeing the track)</span></h3>
         <div class="note" style="margin:0 0 10px">${r.apply_threshold.tracks_meeting_it} meet the recolour threshold (gap ≥ ${r.apply_threshold.min_gap}, confidence ≥ ${pct(r.apply_threshold.min_confidence)}).
         ${r.always_kept ? `${r.always_kept} you chose to keep always.` : ""}
@@ -2396,11 +2464,6 @@ async function pageColours(main) {
       $("#c-recolour")?.addEventListener("click", e => { e.stopPropagation(); writeDialog("colors_recolour", {}, () => route()); });
       $("#c-write")?.addEventListener("click", () => writeDialog("colors_write_marked", {}, () => route()));
       $("#c-unmark")?.addEventListener("click", () => mark(marks.map(t => t.path), null));
-      $("#c-retrain")?.addEventListener("click", async e => {
-        e.target.disabled = true; e.target.textContent = "Retraining…";
-        try { const j = await startJob("colors_train", { views: true }); if (j?.error) throw new Error(j.error); route(); }
-        catch (err) { e.target.disabled = false; e.target.textContent = "Retrain now"; $("#c-retrainmsg").textContent = err.message; }
-      });
       selbar();
     };
     const mark = async (paths, action) => {
@@ -2441,7 +2504,17 @@ async function pageColours(main) {
       if (mk) return mark([mk.dataset.p], mk.dataset.mark || null);
       const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path);
     };
-    draw();
+    const learn = () => retrainBars($("#c-learn"), ["colours"], { colours: r.recoloured_since_training && `${r.recoloured_since_training} of them on the list below` });
+    draw(); learn();
+    // a hand edit in the track panel changes your colour: list the track as recoloured / kept straight away
+    S.reloadColours = async () => {
+      if (!m.isConnected) return;
+      const n = await api("colours/review", { limit: 200 });
+      if (!m.isConnected) return;
+      r = n; byPath = new Map(r.tracks.map(t => [t.path, t]));
+      for (const p of [...RSEL]) if (!byPath.has(p)) RSEL.delete(p);
+      draw(); learn();
+    };
   }
   const x = $("#c-explain"); x.className = "";
   if (ex.status === "rejected") { x.innerHTML = `<div class="card"><h3>Colour profile</h3>${errBox(ex.reason)}</div>`; return; }
@@ -2580,6 +2653,7 @@ async function jobEnded(j) {
   try { await loadLibs(); } catch (e) {}
   await refreshSetupNote();
   rerenderSetup();
+  S.refreshRetrain?.();  // a write or a training changes what there is to learn
 }
 // Draw the Setup page again in place (no "Loading…", so it doesn't jump).
 function rerenderSetup() { if (S.page === "setup") pageSetup($("#main")).catch(e => { $("#main").innerHTML = errBox(e); }); }
@@ -2734,6 +2808,31 @@ function learnNew(n, what) {
   if (!k) return { text: "", any: false, none: true };
   const parts = [n.added && `${n.added} new`, n.changed && `${n.changed} changed`, n.removed && `${n.removed} gone`].filter(Boolean).join(", ");
   return { text: `<b>${plural(k, what)} to learn from since then</b> (${parts}): update training to use them.`, any: true, none: false };
+}
+// A tab offers to retrain a model that has new labels to learn from: your recolours and hand edits, your new cues
+const RETRAIN = {
+  colours: { what: "colour", model: "colour model", job: "colors_train", opts: { views: true }, button: "Retrain colours",
+    does: "Retraining learns them, lists the tracks the new model disagrees with, and refreshes your tempo views' colours (a minute or two)." },
+  cues: { what: "track", model: "cue model", job: "cues_train", opts: {}, button: "Retrain cues",
+    does: "Retraining learns from their cues and updates the suggestions and corrections in each track's panel." },
+};
+async function retrainBars(box, kinds, extra = {}) {
+  if (!box?.isConnected || SNAP) return;  // also an earlier tab's bar, gone since
+  S.refreshRetrain = () => retrainBars(box, kinds, extra);
+  let n;
+  try { n = await api("to-learn"); } catch (e) { return; }
+  if (!box.isConnected) return;
+  box.innerHTML = kinds.filter(k => n[k] && n[k].added + n[k].changed + n[k].removed).map(k => {
+    const r = RETRAIN[k], m = n[k], parts = [m.added && `${m.added} new`, m.changed && `${m.changed} changed`, m.removed && `${m.removed} gone`, extra[k]].filter(Boolean).join(", ");
+    return `<div class="selbar"><span><b>${plural(m.added + m.changed + m.removed, r.what)} to learn from since the ${r.model} was trained</b> (${parts}). ${r.does}</span>
+      <button class="primary" data-retrain="${k}" ${jobRunning() ? `disabled title="Wait for the job that's running"` : ""}>${r.button}</button><span class="small muted" data-retrainmsg="${k}"></span></div>`;
+  }).join("");
+  box.querySelectorAll("[data-retrain]").forEach(b => b.onclick = async () => {
+    const k = b.dataset.retrain, r = RETRAIN[k], page = S.page;
+    b.disabled = true; b.textContent = "Retraining…";
+    try { const j = await startJob(r.job, r.opts); if (j?.error) throw new Error(j.error); if (S.page === page) route(); }
+    catch (err) { b.disabled = false; b.textContent = r.button; box.querySelector(`[data-retrainmsg="${k}"]`).textContent = err.message; }
+  });
 }
 async function pageSetup(main) {
   const st = await getSetup(true), b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;

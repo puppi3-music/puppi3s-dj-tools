@@ -939,6 +939,112 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
     return out
 
 
+def camelot_value(cam: str) -> int:
+    """'6A' → MUSICAL_KEY VALUE 19 (0-11 = C..B major, 12-23 = C..B minor)."""
+    from . import analysis
+
+    n, minor = int(cam[:-1]), cam[-1].upper() == "A"
+    pc = next(pc for pc, c in (analysis.CAMELOT_MINOR if minor else analysis.CAMELOT_MAJOR).items() if c == n)
+    return pc + 12 if minor else pc
+
+
+def open_key(cam: str) -> str:
+    """'6A' → '11m', Traktor's INFO KEY text (Open Key = Camelot + 5, d for major)."""
+    return f"{(int(cam[:-1]) + 4) % 12 + 1}{'m' if cam[-1].upper() == 'A' else 'd'}"
+
+
+def read_track(path: str, nml: str | None = None) -> dict | None:
+    """What Traktor has for one track now: {colour 1-7, camelot, genre, comment}, or None if it isn't listed."""
+    text = find_collection(nml).read_text(encoding="utf-8")
+    c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
+    for entry in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
+        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc or path not in location_paths(attrs(loc.group(0))):
+            continue
+        info_m, key_m = re.search(r"<INFO\b[^>]*>", entry), re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+        info = attrs(info_m.group(0)) if info_m else {}
+        kv = attrs(key_m.group(0)).get("VALUE", "") if key_m else ""
+        cam = None
+        if kv.isdigit() and int(kv) < 24:
+            from . import analysis
+
+            v = int(kv)
+            cam = f"{analysis.CAMELOT_MINOR[v - 12]}A" if v >= 12 else f"{analysis.CAMELOT_MAJOR[v]}B"
+        c = info.get("COLOR", "")
+        return {"colour": int(c) if c.isdigit() and 1 <= int(c) <= 7 else None, "camelot": cam,
+                "genre": info.get("GENRE"), "comment": info.get("COMMENT")}
+    return None
+
+
+def set_track(path: str, colour: int | None = None, camelot: str | None = None, genre: str | None = None,
+              hype: int | None = None, nml: str | None = None, dry_run: bool = False) -> dict:
+    """One track's values set by hand: INFO COLOR, the key (MUSICAL_KEY VALUE + INFO KEY as Open Key), INFO
+    GENRE, and the Hype in Comment only where Comment already carries one (from `hype --traktor`) and Traktor
+    doesn't write tags into the files. None = leave as it is. Backup + `traktor --undo` as every write."""
+    p = find_collection(nml)
+    refuse_if_tempo_view(p)
+    check_closed(dry_run, "this edit")
+    text = p.read_text(encoding="utf-8")
+    stats = {"collection": str(p), "changed_fields": []}
+    found = []
+
+    def fix_entry(m: re.Match) -> str:
+        entry = m.group(0)
+        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc_m or path not in (paths := location_paths(attrs(loc_m.group(0)))):
+            return entry
+        found.append(1)
+        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info = attrs(info_m.group(0)) if info_m else {}
+        if colour is not None and info.get("COLOR") != str(colour):
+            entry = _set_info_attr(entry, "COLOR", str(colour))[0]
+            stats["changed_fields"].append("colour")
+        if genre is not None and (info.get("GENRE") or "") != genre:  # "" takes it off
+            entry = _set_or_drop_info(entry, "GENRE", genre)
+            stats["changed_fields"].append("genre")
+        if camelot is not None:
+            v = str(camelot_value(camelot))
+            key_m = re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+            if not key_m or attrs(key_m.group(0)).get("VALUE") != v:
+                if key_m:
+                    entry = entry[:key_m.start()] + set_attr(key_m.group(0), "VALUE", v) + entry[key_m.end():]
+                else:  # where Traktor puts it: after LOUDNESS, else TEMPO, else INFO
+                    after = next((x for x in (re.search(rf"<{t}\b[^>]*>.*?</{t}>", entry, re.S)
+                                              for t in ("LOUDNESS", "TEMPO", "INFO")) if x), None)
+                    at = after.end() if after else entry.rfind("</ENTRY>")
+                    entry = entry[:at] + f'\n<MUSICAL_KEY VALUE="{v}"></MUSICAL_KEY>' + entry[at:]
+                stats["changed_fields"].append("key")
+            if info.get("KEY") != open_key(camelot):
+                entry = _set_info_attr(entry, "KEY", open_key(camelot))[0]
+                if "key" not in stats["changed_fields"]:
+                    stats["changed_fields"].append("key")
+        new = with_hype(info.get("COMMENT"), hype) if hype is not None else None
+        if new is not None and HYPE_RE.search(info.get("COMMENT") or "") and new != info.get("COMMENT"):
+            if tag_writing_on(p):
+                stats["hype_comment_skipped"] = ("Traktor writes tags into your files, so the Hype in Comment "
+                                                 "wasn't changed (it would go into the file's comment)")
+            else:
+                entry = _set_info_attr(entry, "COMMENT", new)[0]
+                stats["changed_fields"].append("hype comment")
+        if stats["changed_fields"]:  # or Traktor reads the file's tags on deck load and they replace these
+            entry, how = stamp_if_unchanged(entry, paths)
+            if how == "tags_changed":
+                stats["warning"] = ("This file's tags changed since Traktor read them: when Traktor reads them "
+                                    "again, the file's genre/colour/comment may replace what was set here")
+        return entry
+
+    c0 = text.find("<COLLECTION")
+    c1 = text.find("</COLLECTION>", c0)
+    if c0 == -1 or c1 == -1:
+        raise SystemExit(f"{p} doesn't look like a Traktor collection (no COLLECTION section).")
+    body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
+    if not found:
+        stats["not_in_collection"] = True
+        stats["changed"] = False
+        return stats
+    return _save(p, text, text[:c0] + body + text[c1:], stats, dry_run)
+
+
 WRITTEN_SUFFIX = ".written-sha1"
 
 

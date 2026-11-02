@@ -592,6 +592,8 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             t["gap"] = d["gap"]
             if scale:
                 t["confidence"] = conf
+                # how often tracks placed here were exactly that colour
+                t["confidence_exact"] = analysis.color_confidence(b, pos, COLOR_NAMES.index(d["sounds_like"]) + 1)
             t["meets_apply_threshold"] = chosen
             if d["path"] in keep_forever:
                 t["kept"] = True  # you answered "keep always": --apply leaves it alone

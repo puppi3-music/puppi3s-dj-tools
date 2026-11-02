@@ -297,6 +297,19 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Skipped by `_wanted` (tag, scan --write-tags), `traktor.sync` (genre and colour, even --overwrite-colors),
   `colors review --apply`, `tempo.build_view` and `lexicon.build` (held genre keeps its Smartlist); stats
   `genre_held` / `colour_held`.
+- Hand edits (`edit.py`, `edit` command, POST /api/track/edit → `web.edit_track`, the panel head's ✎ Edit
+  (`S.editing` = path; `ed()` turns the facts into fields, `editBar`/`bindEdit` Save/Cancel/↺/Undo)): colour/key/genre → `traktor.set_track` (INFO COLOR; MUSICAL_KEY VALUE + INFO KEY as Open
+  Key = Camelot + 5, `open_key`/`camelot_value`, MUSICAL_KEY inserted after LOUDNESS if missing; INFO GENRE; Hype in
+  COMMENT only where it already has one and tag writing is off; `stamp_if_unchanged`; `_save` backup) first, then the
+  NATIVE db: colour → traktor_color + colour hold + `accept_guesses` (a training label), key → traktor_camelot (Traktor
+  stays their source, so a later Traktor edit wins). Genre/hype/BPM → collection.db `manual` (path, field, value,
+  `was` JSON of the replaced columns, per column) via `collection.set_manual`; `apply_manual(con)` (native db only)
+  puts them back after `store_traktor_info`, scan, regenre and `hype.compute` (whose returned dict gets them, so
+  `hype --traktor` writes them); `MANUAL` = genre → genre + my_genre, hype, bpm → traktor_bpm (also merged into
+  `load_traktor_info`, so genre rules and tempo views use it; Traktor's BPM is never written). Genre set = held.
+  `edit()` returns `undo` {changes, clear, traktor_genre}: the page's Undo sends it back (colour may be set and
+  cleared at once: set + release the keep-always hold). Refused while a job runs (web) and, for Traktor fields,
+  while a tempo view is loaded. Feedback kind `manual`.
 - `keycnn.py`: key from MusicalKeyCNN (puppi3-music/MusicalKeyCNN-CKA, from a1ex90/MusicalKeyCNN; MIT): KeyNet in
   numpy (`forward`; weights `starter/keynet.npz`, BN folded, made by `scripts/convert_keynet.py` from keynet.pt),
   input = librosa CQT exactly as the repo trained on (hence the librosa pin). Checked: same key as torch on 32/32
