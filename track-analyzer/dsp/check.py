@@ -77,12 +77,16 @@ def _essentia_decode(e, path: str):
 
 
 def _decode_diff(ref, path: str) -> str | None:
-    """None if PyAV's decode matches Essentia's (ref) bit for bit, else what differs."""
+    """None if PyAV's decode matches Essentia's (ref) bit for bit, "header" if Essentia's is PyAV's with one MP3 frame
+    in front (FFmpeg 2.8 decodes a second LAME Info header frame as audio; ours is right: docs/WINDOWS.md stage 2),
+    else what differs."""
     from dj_track_analyzer import analysis as a
 
     x, sr, nch = a._av_decode(a.pyav(), Path(path))
     if (sr, nch) != ref[1:]:
         return f"rate/channels {sr:g}/{nch} vs {ref[1]:g}/{ref[2]}"
+    if len(ref[0]) == len(x) + 1152 and path.lower().endswith(".mp3") and np.array_equal(x, ref[0][1152:]):
+        return "header"
     if x.shape != ref[0].shape:
         return f"length {len(x)} vs {len(ref[0])}"
     if not np.array_equal(x, ref[0]):
@@ -516,18 +520,21 @@ def _check_file(steps, path: str) -> str | None:
     except Exception as err:  # unreadable here = not a difference; say so
         return f"skipped ({err}): {path}"
     out = []
+    notes = []
     if "decode" in steps and (diff := _decode_diff(ref, path)):
-        out.append(f"decode: {diff}")
+        if diff == "header":
+            notes.append("decode: Essentia decodes the Info header frame as audio, 26 ms; the rest the same")
+        else:
+            out.append(f"decode: {diff}")
     if "loudness" in steps and not _same_loudness(e, dsp, stereo, sr):
         out.append("loudness")
     if "mono" in steps and not _same_mono(e, stereo, nch):
         out.append("mono mix")
     if not {"resample", "linear", "mel", "effnet", "nets", "key", "bpm"} & set(steps):
-        return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
+        return f"DIFFERENT ({', '.join(out)}): {path}" if out else f"close ({'; '.join(notes)}): {path}" if notes else None
     mono = e.MonoMixer()(stereo, nch)  # Essentia's, so each resample check sees the same input
     if "resample" in steps and sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
         out.append("resample")
-    notes = []
     if {"key", "bpm"} & set(steps):  # on Essentia's 44.1 kHz mono, so only the key / BPM step is compared
         mono44 = np.asarray(mono if sr == 44100 else e.Resample(inputSampleRate=sr, outputSampleRate=44100, quality=1)(mono),
                             np.float32)
@@ -593,7 +600,7 @@ def files(paths: list[str], steps, workers: int, mix_workers: int) -> int:
         done += len(group)
     print(f"files: {len(paths) - bad - varies - close} of {len(paths)} identical"
           + (f", {varies} differ in EffNet only where Essentia's own output is random (near-silent frames)" if varies else "")
-          + (f", {close} close (other bits where our libm is more exact: within the tolerances, the BPM within the gate)" if close else "")
+          + (f", {close} close (where ours is more exact: other bits within the tolerances, the BPM within the gate, or an MP3 header frame not decoded)" if close else "")
           + (f", {bad} different" if bad else ""))
     return bad
 
