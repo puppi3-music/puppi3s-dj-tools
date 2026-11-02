@@ -156,3 +156,74 @@ def test_older_trained_genres_are_kept_but_not_used(tmp_path, monkeypatch):
     con.close()
     assert rows["/m/a.mp3"] == (None, "Hyperpop", 0.8)
     assert rows["/m/b.mp3"] == (None, None, None)  # (apply_manual puts it back in the real, native database)
+
+
+def traktor_nml(path, genre_of: dict, folder: dict) -> None:
+    """A Traktor collection: entries with a Genre field (genre_of {file: genre}) and a playlist folder
+    "DJ / Genre Training" with one playlist per genre (folder {name: [files]})."""
+    from conftest import esc, location
+
+    def key(f):
+        loc = location(f)
+        return esc(loc["VOLUME"] + loc["DIR"] + loc["FILE"])
+
+    entries = "".join(
+        f'<ENTRY TITLE="{esc(f.stem)}"><LOCATION {" ".join(f"{k}={chr(34)}{esc(v)}{chr(34)}" for k, v in location(f).items())}>'
+        f'</LOCATION>\n<INFO GENRE="{esc(g)}"></INFO>\n</ENTRY>\n' for f, g in genre_of.items())
+    lists = "".join(
+        f'<NODE TYPE="PLAYLIST" NAME="{esc(n)}"><PLAYLIST ENTRIES="{len(fs)}" TYPE="LIST" UUID="u{i}">'
+        + "".join(f'<ENTRY><PRIMARYKEY TYPE="TRACK" KEY="{key(f)}"></PRIMARYKEY>\n</ENTRY>\n' for f in fs)
+        + "</PLAYLIST>\n</NODE>\n" for i, (n, fs) in enumerate(folder.items()))
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8" standalone="no" ?>\n<NML VERSION="20">'
+        f'<COLLECTION ENTRIES="{len(genre_of)}">{entries}</COLLECTION>\n<PLAYLISTS><NODE TYPE="FOLDER" NAME="$ROOT">'
+        '<SUBNODES COUNT="2"><NODE TYPE="FOLDER" NAME="DJ"><SUBNODES COUNT="1"><NODE TYPE="FOLDER" NAME="Genre Training">'
+        f'<SUBNODES COUNT="{len(folder)}">{lists}</SUBNODES>\n</NODE>\n</SUBNODES>\n</NODE>\n'
+        '<NODE TYPE="FOLDER" NAME="Sets (Track Analyzer)"><SUBNODES COUNT="2">'
+        '<NODE TYPE="PLAYLIST" NAME="a"><PLAYLIST ENTRIES="0" TYPE="LIST" UUID="x"></PLAYLIST></NODE>'
+        '<NODE TYPE="PLAYLIST" NAME="b"><PLAYLIST ENTRIES="0" TYPE="LIST" UUID="y"></PLAYLIST></NODE>'
+        '</SUBNODES></NODE></SUBNODES>\n</NODE>\n</PLAYLISTS>\n</NML>\n', encoding="utf-8")
+
+
+@pytest.fixture
+def traktor_examples(setup, monkeypatch):
+    folder = setup()
+    files = {g: sorted((folder / g).iterdir()) for g in ("Hyperpop", "Pop")}
+    genre_of = {f: g for g, fs in files.items() for f in fs}
+    genre_of[files["Pop"][0]] = "Pop; Hyperpop"  # several genres: left out
+    nml = TMP / "traktor-genres.nml"
+    # the first Pop example is in both playlists: left out of both
+    traktor_nml(nml, genre_of, {"Hyperpop": files["Hyperpop"] + files["Pop"][:1], "Pop": files["Pop"]})
+    from dj_track_analyzer import traktor as tr
+
+    monkeypatch.setattr(tr, "find_collection", lambda nml_=None: nml)
+    return files
+
+
+def test_learn_from_a_traktor_playlist_folder(traktor_examples):
+    from dj_track_analyzer import traktor as tr
+
+    folders = tr.playlist_folders()
+    assert [f["folder"] for f in folders] == ["DJ / Genre Training"]  # not this app's own Sets folder
+    assert mygenres.traktor_choices()["playlist_folders"] == [
+        {"folder": "DJ / Genre Training", "playlists": {"Hyperpop": 16, "Pop": 15}}]
+    report = mygenres.train(playlists="DJ / Genre Training")
+    assert report["genres"] == {"Hyperpop": 15, "Pop": 14}
+    assert mygenres.status()["source_kind"] == {"kind": "traktor_playlists", "folder": "DJ / Genre Training"}
+    with pytest.raises(SystemExit, match="No playlist folder"):
+        mygenres.train(playlists="Nope")
+
+
+def test_learn_from_traktors_genre_field(traktor_examples):
+    ch = mygenres.traktor_choices()
+    assert ch["genres"] == [{"genre": "Hyperpop", "tracks": 15, "built_in": False},
+                            {"genre": "Pop", "tracks": 14, "built_in": False}] and ch["multi"] == 1
+    report = mygenres.train(genres=["Hyperpop", "Pop"])
+    assert report["genres"] == {"Hyperpop": 15, "Pop": 14}
+    assert mygenres.status()["source_kind"] == {"kind": "traktor_genres", "genres": ["Hyperpop", "Pop"]}
+    (analysis.HOME / "tempo-loaded.json").write_text('{"collection": "x", "bpm": 145}')
+    try:
+        with pytest.raises(SystemExit, match="tempo view is loaded"):
+            mygenres.train(genres=["Hyperpop", "Pop"])
+    finally:
+        (analysis.HOME / "tempo-loaded.json").unlink()

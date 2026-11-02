@@ -1,4 +1,4 @@
-# Puppi3's Track Analyzer
+# <img src="../puppi3-icon.png" alt="" width="40" align="center"> Puppi3's Track Analyzer
 
 Local music analysis for a DJ's Mac (or Linux computer): BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon), plus an MCP server so a local LLM can search your collection. Fully offline, no length limit, free.
 
@@ -799,10 +799,20 @@ Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; t
 └── Melodic House/
 ```
 
-On the **Setup** tab, **Learn your genres**: choose the folder (**Browse…**, or paste its path) and press **Learn your genres**. In a terminal:
+On the **Setup** tab, **Learn your genres**, **Learn from** offers three places for the examples:
+
+| Learn from | What you pick | Each genre is |
+|---|---|---|
+| **A folder** | The folder above (**Browse…**, or paste its path) | A subfolder or playlist file |
+| **Traktor playlists** | A playlist folder in Traktor (make one, like *Genre Training*, and save the collection) | A playlist in it, named after the genre; a track in two of them is left out |
+| **Traktor's Genre field** | The genres to learn, ticked from a list with track counts | The tracks with that Genre; tracks with several genres in the field are left out |
+
+Then press **Learn your genres**. Genres with a built-in name are marked in the Genre-field list: this app may have written them (section 3), so they'd teach it its own guesses back. While a tempo view is loaded, the Genre field holds the view's genres, so that choice waits until you switch back. In a terminal:
 
 ```bash
 uv run dj-track-analyzer train ~/Music/"Genre Training"
+uv run dj-track-analyzer train --traktor-playlists "Genre Training"
+uv run dj-track-analyzer train --traktor-genre Hyperpop --traktor-genre "Afro House"
 ```
 
 **Only where it fits.** Besides your examples it learns what the rest of your scanned collection sounds like (copies of the examples left out), so it needs 30 scanned tracks first. A track gets one of your genres only when it sounds more like that genre than like the rest of your music; every other track keeps its built-in genre. You don't have to train every genre you play.
@@ -846,7 +856,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `crates [--tempo 145] [--traktor] [--remove]` | Warm-up, peak and closing crates from colour and hype (section 5) | nothing; `--traktor`: **Traktor** (undo: `crates --remove`) |
 | `set [--arc …] [--tracks 20] [--tempo 145] …` | Plan a set along an arc of colour and hype, with keys that mix (section 5) | nothing; `--traktor`: **Traktor** (undo: `set --remove NAME`) |
 | `tempo scan\|report\|export\|nml\|refresh\|status\|load\|native` | The tempo view, 145 by default (section 6) | `load`, `native`: **Traktor** (and Lexicon) |
-| `train <folder>` | Your own genres (section 9); `--use starter\|both\|mine` = **Genres used** | app files |
+| `train <folder>` | Your own genres (section 9); or `--traktor-playlists FOLDER` / `--traktor-genre GENRE` (repeat) from Traktor; `--use starter\|both\|mine` = **Genres used** | app files |
 | `serve [--http] [--host] [--port]` | MCP server; stdio for LM Studio, HTTP for Open WebUI | nothing |
 | `web [--port 8766] [--logs DIR] [--no-open] [--export FILE.html]` | Everything in a local web page, or a snapshot file to share (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | the hold list only |
 | `cues train\|scan\|show [track] [--workers N] [--rescan]` | Cue points and a mix loop per track, learned from the cues you set yourself (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | app database and model file |

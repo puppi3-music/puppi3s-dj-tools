@@ -308,6 +308,10 @@ def main() -> None:
     st.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
     t = sub.add_parser("train", help="train your own genres from a folder (the Setup tab's Learn your genres)")
     t.add_argument("folder", nargs="?", help="one subfolder or .m3u8 playlist per genre, 20-50 example tracks each")
+    t.add_argument("--traktor-playlists", metavar="FOLDER", help="learn from a playlist folder in Traktor instead: "
+                   "each playlist in it is a genre (nested folders as \"DJ / Genre Training\")")
+    t.add_argument("--traktor-genre", action="append", metavar="GENRE", help="learn from Traktor's Genre field "
+                   "instead: the tracks with this genre (repeat for each genre, at least 2)")
     t.add_argument("--use", choices=["starter", "both", "mine"], default=None,
                    help="the Setup tab's genre switch: starter = built-in genres only; both = yours where one fits, "
                         "built-in elsewhere; mine = the nearest of yours on every track")
@@ -418,9 +422,13 @@ def main() -> None:
     elif args.cmd == "train":
         from . import mygenres
 
-        if not args.folder and not args.use:
-            raise SystemExit("Give the folder with your example tracks, or --use starter|both|mine.")
-        out = mygenres.train(args.folder) if args.folder else {}
+        sources = sum(map(bool, (args.folder, args.traktor_playlists, args.traktor_genre)))
+        if sources > 1:
+            raise SystemExit("Give one of: a folder, --traktor-playlists or --traktor-genre.")
+        if not sources and not args.use:
+            raise SystemExit("Give the folder with your example tracks (or --traktor-playlists / --traktor-genre), "
+                             "or --use starter|both|mine.")
+        out = mygenres.train(args.folder, playlists=args.traktor_playlists, genres=args.traktor_genre) if sources else {}
         if args.use:
             out["use"] = mygenres.set_mode(args.use)
         print(json.dumps(out, indent=2, ensure_ascii=False))

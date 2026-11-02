@@ -1926,18 +1926,28 @@ def collect_training_set(folder: str) -> dict[str, list[Path]]:
     return sets
 
 
-def train(folder: str, progress=log) -> dict:
+def train(folder: str | None = None, progress=log, sets: dict[str, list] | None = None,
+          source: dict | None = None) -> dict:
+    """Learn your genres from `folder` (one subfolder or playlist per genre) or from `sets` ({genre: files}, e.g. a
+    Traktor playlist folder or Traktor's Genre field; `source` says which, so the page can learn again from it)."""
     from sklearn.linear_model import LogisticRegression
     from sklearn.model_selection import StratifiedKFold, cross_val_predict
     from sklearn.pipeline import make_pipeline
     from sklearn.preprocessing import StandardScaler
     import joblib
 
-    sets = collect_training_set(folder)
+    if sets is None:
+        sets = collect_training_set(folder)
+        source = {"kind": "folder", "folder": str(Path(folder).expanduser())}
+        where = f"inside {folder}"
+    else:
+        sets = {g: [Path(f) for f in files] for g, files in sets.items() if files}
+        source = source or {"kind": "sets"}
+        where = "in what you picked"
     if len(sets) < 2:
         raise ValueError(
             "Need at least 2 genres. Make one subfolder per genre (or one .m3u8 playlist per genre) "
-            f"inside {folder}. Found: {list(sets) or 'nothing'}"
+            f"{where}. Found: {list(sets) or 'nothing'}"
         )
 
     X, y, used, failed = [], [], [], []
@@ -1955,7 +1965,7 @@ def train(folder: str, progress=log) -> dict:
             except Exception as err:  # unreadable file etc.
                 failed.append(f"{f.name}: {err}")
     if not X:
-        raise ValueError(f"None of the example tracks in {folder} could be read.")
+        raise ValueError(f"None of the example tracks {where} could be read.")
     X, y = np.vstack(X), np.array(y)
     counts = {g: int((y == g).sum()) for g in sets}
 
@@ -1996,7 +2006,8 @@ def train(folder: str, progress=log) -> dict:
     clf.fit(Xa, ya)
     HOME.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": clf, "counts": counts, "trained_at": time.strftime("%Y-%m-%d %H:%M"),
-                 "source": str(Path(folder).expanduser()), "report": report, "examples": used}, GENRE_MODEL)
+                 "source": source.get("folder") if source.get("kind") == "folder" else None,
+                 "source_kind": source, "report": report, "examples": used}, GENRE_MODEL)
     report["saved_to"] = str(GENRE_MODEL)
     if failed:
         report["skipped_files"] = failed[:20]

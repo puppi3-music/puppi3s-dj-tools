@@ -62,6 +62,13 @@ def _scan(o: dict) -> list[str]:
 
 
 def _genres_train(o: dict) -> list[str]:
+    if str(o.get("playlists") or "").strip():  # a Traktor playlist folder
+        return ["train", "--traktor-playlists", str(o["playlists"]).strip()]
+    if o.get("genres"):  # genres in Traktor's Genre field
+        genres = [str(g).strip() for g in o["genres"] if str(g).strip()] if isinstance(o["genres"], list) else []
+        if len(genres) < 2:
+            raise ValueError("Tick at least 2 genres")
+        return ["train", *[a for g in genres for a in ("--traktor-genre", g)]]
     folder = str(o.get("folder") or "").strip()
     if not folder:
         raise ValueError("Choose the folder with your example tracks (one subfolder or playlist per genre)")

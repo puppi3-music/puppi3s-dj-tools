@@ -49,8 +49,69 @@ def refresh(predict: bool = True, progress=log) -> dict:
     return out
 
 
-def train(folder: str, progress=log) -> dict:
-    report = analysis.train(folder, progress)
+def _tempo_view_loaded() -> bool:
+    import json
+
+    from . import traktor
+
+    state = analysis.HOME / traktor.TEMPO_STATE
+    try:
+        return bool(state.exists() and json.loads(state.read_text(encoding="utf-8")).get("collection"))
+    except (OSError, ValueError):
+        return False
+
+
+def traktor_choices(nml: str | None = None) -> dict:
+    """What the Setup tab offers to learn from in Traktor: playlist folders (each playlist = a genre) and the genres
+    in Traktor's Genre field, with track counts. `built_in`: one of this app's genre names (maybe written by it)."""
+    from . import traktor
+
+    built = {g.casefold() for g in analysis.dj_rules()}
+    field = traktor.genre_field(nml)
+    return {
+        "playlist_folders": [{"folder": f["folder"], "playlists": {n: len(v) for n, v in f["playlists"].items()}}
+                             for f in traktor.playlist_folders(nml)],
+        "genres": [{"genre": g, "tracks": len(v), "built_in": g.casefold() in built} for g, v in field["genres"].items()],
+        "multi": field["multi"], "tempo_view_loaded": _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
+    }
+
+
+def traktor_sets(playlists: str | None = None, genres: list[str] | None = None,
+                 nml: str | None = None) -> tuple[dict[str, list[str]], dict]:
+    """The examples from Traktor: the playlists in the playlist folder `playlists`, or the tracks whose Genre field
+    is one of `genres`. Also the source, to learn again from it later. A track in two playlists is left out."""
+    from . import traktor
+
+    if playlists:
+        found = next((f for f in traktor.playlist_folders(nml) if f["folder"] == playlists), None)
+        if not found:
+            raise SystemExit(f"No playlist folder \"{playlists}\" with 2 or more playlists in Traktor's collection.")
+        seen: dict[str, int] = {}
+        for files in found["playlists"].values():
+            for f in files:
+                seen[f] = seen.get(f, 0) + 1
+        sets = {n: [f for f in files if seen[f] == 1] for n, files in found["playlists"].items()}
+        return sets, {"kind": "traktor_playlists", "folder": playlists}
+    if genres:
+        if _tempo_view_loaded():
+            raise SystemExit("A tempo view is loaded in Traktor, so its Genre field holds the view's genres. "
+                             "Switch Traktor back to normal on the Tempo tab first.")
+        field = traktor.genre_field(nml)["genres"]
+        missing = [g for g in genres if g not in field]
+        if missing:
+            raise SystemExit(f"No tracks with the genre {', '.join(missing)} in Traktor's collection.")
+        return {g: field[g] for g in genres}, {"kind": "traktor_genres", "genres": list(genres)}
+    raise ValueError("Pick a Traktor playlist folder or some genres")
+
+
+def train(folder: str | None = None, progress=log, playlists: str | None = None,
+          genres: list[str] | None = None) -> dict:
+    """Learn your genres from a folder on disk, a Traktor playlist folder or genres in Traktor's Genre field."""
+    if folder:
+        report = analysis.train(folder, progress)
+    else:
+        sets, source = traktor_sets(playlists, genres)
+        report = analysis.train(None, progress, sets=sets, source=source)
     progress("Giving your scanned tracks their genre...")
     report["collection"] = refresh(True, progress)
     return report
@@ -81,6 +142,7 @@ def status() -> dict:
            "tracks_with_yours": 0}
     if b:
         out.update(trained_at=b.get("trained_at"), source=b.get("source"), counts=b.get("counts") or {},
+                   source_kind=b.get("source_kind") or ({"kind": "folder", "folder": b["source"]} if b.get("source") else None),
                    report={k: v for k, v in (b.get("report") or {}).items() if k != "saved_to"})
     if b and collection.NATIVE_DB.exists():
         with sqlite3.connect(collection.NATIVE_DB) as con:

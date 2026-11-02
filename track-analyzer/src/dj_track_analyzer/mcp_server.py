@@ -94,7 +94,7 @@ def build_mcp():
 
     @mcp.tool()
     @friendly
-    def train_genres(folder: str) -> dict:
+    def train_genres(folder: str = "", traktor_playlists: str = "", traktor_genres: list[str] | None = None) -> dict:
         """OPTIONAL. Teach the analyzer the user's own genre labels from example tracks.
         Not needed for normal use: dj_genre already works without training.
 
@@ -102,16 +102,23 @@ def build_mcp():
         or one .m3u8 playlist per genre named after the genre. Aim for 20-50 tracks per genre.
         It also learns what the rest of the user's scanned collection sounds like, so only tracks that clearly
         fit get one of these genres; the collection uses them once the user sets the genre switch (Setup tab of the
-        web page) to Both (theirs where one fits) or Mine only (the nearest of theirs on every track). Replaces any previous custom model. Large sets can take several minutes the first time
+        web page) to Both (theirs where one fits) or Mine only (the nearest of theirs on every track).
+        Replaces any previous custom model. Large sets can take several minutes the first time
         (embeddings are cached afterwards); for big libraries the CLI is better:
         `uv run dj-track-analyzer train <folder>`.
 
-        Args:
+        Args (give one):
             folder: Full path to the training folder.
+            traktor_playlists: A playlist folder in Traktor ("Genre Training", nested "DJ / Genre Training"):
+                each playlist in it is one genre.
+            traktor_genres: Genres from Traktor's Genre field (at least 2): the tracks with each are its examples.
         """
         from . import mygenres
 
-        return mygenres.train(folder, progress=lambda *a: None)
+        if sum(map(bool, (folder, traktor_playlists, traktor_genres))) != 1:
+            raise ValueError("Give one of folder, traktor_playlists or traktor_genres")
+        return mygenres.train(folder or None, progress=lambda *a: None, playlists=traktor_playlists or None,
+                              genres=traktor_genres or None)
 
     @mcp.tool()
     @friendly
