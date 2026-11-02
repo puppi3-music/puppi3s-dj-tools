@@ -32,7 +32,7 @@ jobs:
           echo "V=$v" >> "$GITHUB_ENV"
       - uses: softprops/action-gh-release@v2
         with:
-          name: Puppi3's Track Analyzer ${{ env.V }}
+          name: v${{ env.V }} · Puppi3's Track Analyzer  # version first: GitHub's sidebar cuts long titles off
           body_path: notes.md
           files: puppi3s-track-analyzer-${{ env.V }}.zip
           make_latest: true
