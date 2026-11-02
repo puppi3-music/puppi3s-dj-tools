@@ -87,7 +87,13 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - `collection.py`: `scan` (resumable, parallel spawn workers, SQLite `collection.db`), CSV export,
   `tag`/`untag` (mutagen; originals backed up in `original_tags` table), search, mix suggestions, `regenre`
   (genres again from cached scores + current dj_genres.json; reproduces scan exactly).
-- `traktor.py`: `traktor` command. Surgical text edits of collection.nml (never a full XML rewrite),
+- `traktor.py`: `traktor` command. `find_collection()`: `--nml`, else the Setup tab's choice (`data/settings.json` via
+  `analysis.app_setting`; POST /api/traktor/collection: `web.pick_file` = the system's file dialog run by the server,
+  osascript / PowerShell / zenity, or a pasted path, `check_collection`), else the newest in `documents_dirs()` (on
+  Windows also the real Documents folder via SHGetKnownFolderPath and OneDrive's); `newer_collection()` offers a newer
+  Traktor version's. `TESTED_TRAKTOR` / `TESTED_FORMATS` (NML VERSION): above them Setup says "not verified yet"
+  (`collection_version`) and `_save` logs `untested_note` on every write and preview; raise them after checking a new
+  Traktor version for real. A "Traktor 4.5.0 copy" folder loses to "Traktor 4.5.0" (`_version_key`). Surgical text edits of collection.nml (never a full XML rewrite),
   timestamped backups + `--undo` (refuses if the NML changed since our write, via a `.written-sha1` file next to
   the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer;
   `running_state()`: pgrep, `tasklist` on Windows, None when it can't tell. Never assumed closed: in a container

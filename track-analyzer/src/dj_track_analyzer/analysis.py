@@ -37,6 +37,31 @@ HOME = Path(os.environ.get("TRACK_ANALYZER_HOME", Path(__file__).resolve().paren
 MODELS_DIR = HOME / "models"
 CACHE_DB = HOME / "cache.db"
 GENRE_MODEL = HOME / "my_genres.joblib"
+SETTINGS = HOME / "settings.json"  # choices made on the page (e.g. where Traktor's collection is), read by the CLI too
+
+
+def app_setting(key: str, default=None):
+    try:
+        return json.loads(SETTINGS.read_text(encoding="utf-8")).get(key, default)
+    except (OSError, ValueError, AttributeError):
+        return default
+
+
+def save_app_setting(key: str, value) -> None:
+    """Set (None: remove) one setting; written to a temporary file first, so a crash never leaves half a file."""
+    try:
+        s = json.loads(SETTINGS.read_text(encoding="utf-8"))
+        s = s if isinstance(s, dict) else {}
+    except (OSError, ValueError):
+        s = {}
+    if value is None:
+        s.pop(key, None)
+    else:
+        s[key] = value
+    SETTINGS.parent.mkdir(parents=True, exist_ok=True)
+    tmp = SETTINGS.with_name(SETTINGS.name + ".part")
+    tmp.write_text(json.dumps(s, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(SETTINGS)
 
 # Tempo window for a DJ library. Detected tempos are folded (x2 / ÷2) into it,
 # so a 170 BPM hardcore track detected as 85 comes back as 170.
