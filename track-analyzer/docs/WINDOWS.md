@@ -236,7 +236,8 @@ inputs in [-12, 0]), and that `powf` is neither correctly rounded (one float ste
 optimized-routines algorithm nor `exp2(y * L)` for any constant L, so its 1.1 million exceptions ship as a 1.8 MB table
 (`key_exp10f.bin`). The tables are used on macOS too, so a macOS update can't change the results. `dsp/check.py
 --steps key` checks them against this Mac's libm on every input (4.3 billion, about 10 s): no differences. The
-constants (HPCP's harmonic table and its `exp2` factors) are stored as macOS computes them.
+constants (HPCP's harmonic table and its `exp2` factors) are stored as macOS computes them. Released in dsp 0.4.0: CI's Linux wheel
+(glibc's libm, x86_64, in Docker) gives the same key, scale and strength bits as the Mac on 200 test signals.
 Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
 0.01, matching the BPM rule; the aim is bit-identical.
 
