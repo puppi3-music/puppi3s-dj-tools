@@ -2,12 +2,9 @@
 name = "dj-track-analyzer"
 version = "0.1.0"
 description = "Local music analysis for DJs: BPM, key/Camelot, genre, mood and Traktor colour, Traktor/Lexicon sync and an MCP server"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.11,<3.12"  # PyAV 18 has no 3.10 wheels, TensorFlow 2.15 none for 3.12
 license = "AGPL-3.0-only"
 dependencies = [
-    # Apple Silicon: this build runs on macOS 11+ (newer builds need macOS 15).
-    "essentia-tensorflow==2.1b6.dev1177; sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "essentia-tensorflow>2.1b6.dev1177; sys_platform != 'darwin' or platform_machine != 'arm64'",
     "mcp>=2.3,<3",
     "scikit-learn>=1.3",
     "joblib>=1.3",
@@ -15,28 +12,41 @@ dependencies = [
     "numpy<2",
     # MusicalKeyCNN's key and Cross-Key Analysis (keycnn.py, cka.py): the CQT and chroma the model was trained on.
     "librosa==0.10.2.post1",
-    # Rust copies of Essentia steps (dsp/), bit for bit, faster. Prebuilt by CI, so no Rust needed.
-    "track-analyzer-dsp==0.5.0; (sys_platform == 'darwin') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
+    # The DSP (loudness, resampling, mel bands, key, BPM) in Rust (dsp/), prebuilt by CI, so no Rust needed.
+    "track-analyzer-dsp==0.5.0",
+    # Decoding with current FFmpeg (analysis.decode). Apple Silicon wheels need macOS 14.
+    "av==18.1.0",
+    # The model graphs (analysis.Graph, Head). On Apple Silicon and Windows `tensorflow` is an empty package
+    # pulling in these, which uv's lock misses: name them.
+    "tensorflow==2.15.0",
+    "tensorflow-macos==2.15.0; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "tensorflow-intel==2.15.0; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
-# Decoding with current FFmpeg, bit for bit as Essentia's AudioLoader and faster (analysis.decode). Opt-in until
-# Essentia goes (docs/WINDOWS.md): its Apple Silicon wheels need macOS 14. `uv sync --extra decode`
-decode = ["av==18.1.0; python_version >= '3.11'"]  # Python 3.10: Essentia decodes
-# The model graphs on Python TensorFlow, the version Essentia bundles: bit for bit as Essentia (analysis.Graph). Opt-in
-# until Essentia goes (docs/WINDOWS.md stage 4). `uv sync --extra nets`
-# On Apple Silicon and Windows `tensorflow` is an empty package pulling in these, which uv's lock misses: name them.
-nets = [
-    "tensorflow==2.15.0; python_version < '3.12'",
-    "tensorflow-macos==2.15.0; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'",
-    "tensorflow-intel==2.15.0; python_version < '3.12' and sys_platform == 'win32'",
-]
 # Vocals and synths in a loop (cues.loop_parts): Demucs separates the loop's audio into stems. PyTorch, about 600 MB.
 # `uv sync --extra stems`
 stems = ["demucs==4.0.1"]
 
+[dependency-groups]
+# Essentia, only as the reference dsp/check.py compares the Rust code against (macOS and Linux x86_64).
+# `uv sync --group check`
+check = [
+    "essentia-tensorflow==2.1b6.dev1177; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "essentia-tensorflow>2.1b6.dev1177; sys_platform == 'darwin' and platform_machine != 'arm64'",
+    "essentia-tensorflow>2.1b6.dev1177; sys_platform == 'linux'",
+]
+
 [project.scripts]
 dj-track-analyzer = "dj_track_analyzer.cli:main"
+
+[tool.uv]
+# Where the dsp wheels are built (.github/workflows/dsp-wheels.yml).
+environments = [
+    "sys_platform == 'darwin'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
 
 [tool.uv.sources]
 track-analyzer-dsp = { index = "dsp" }

@@ -1,8 +1,8 @@
 """
-Core analysis for Puppi3's Track Analyzer: configuration, Essentia models, the analysis cache, analyze_file()
+Core analysis for Puppi3's Track Analyzer: configuration, the models, the analysis cache, analyze_file()
 and custom genre training. The command line is in cli.py, the MCP server in mcp_server.py.
 
-Runs entirely on your machine with Essentia:
+Runs entirely on your machine (the DSP in Rust, track_analyzer_dsp; the models on TensorFlow):
   * BPM (fast-tempo aware), key + Camelot, loudness, energy curve
   * Discogs style classification (400 styles: Hard Trance, Acid, Techno, ...)
   * YOUR OWN genre labels, learned from example tracks you sort into folders
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import os
 
-# Keep TensorFlow quiet; must be set before essentia-tensorflow loads TF.
+# Keep TensorFlow quiet; must be set before TensorFlow loads.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
 
 import hashlib
@@ -117,70 +117,48 @@ def log(*args) -> None:
 # Essentia loading (lazy, so `--help` and `setup` stay fast)
 # ----------------------------------------------------------------------------
 
-_es = None
-
-
-def es():
-    global _es
-    if _es is None:
-        import essentia
-
-        essentia.log.infoActive = False
-        essentia.log.warningActive = False
-        import essentia.standard as standard
-
-        _es = standard
-    return _es
-
-
-_dsp = False
+_dsp = None
 
 
 def dsp():
-    """The Rust module (dsp/) or None. Its functions give Essentia's results, faster: bit for bit, or where its
-    maths is more exact (libm calls, dsp/src/math.rs) within a float step; checked over the test collection
-    (docs/WINDOWS.md). Without it Essentia does the same work."""
+    """The Rust module (dsp/): Essentia's DSP steps, ported operation for operation, faster; bit for bit, or where
+    its maths is more exact (libm calls, dsp/src/math.rs) within a float step (docs/WINDOWS.md)."""
     global _dsp
-    if _dsp is False:
-        try:
-            import track_analyzer_dsp as m
-        except ImportError:
-            m = None
-        _dsp = m
+    if _dsp is None:
+        import track_analyzer_dsp
+
+        _dsp = track_analyzer_dsp
     return _dsp
 
 
-_av = False
+_av = None
 
 
 def pyav():
-    """PyAV or None. `decode` reads files with it the way Essentia's AudioLoader does, bit for bit, faster;
-    checked over the test collection (docs/WINDOWS.md stage 2). Without it Essentia decodes."""
+    """PyAV: `decode` reads files with it the way Essentia's AudioLoader did (docs/WINDOWS.md stage 2)."""
     global _av
-    if _av is False:
-        try:
-            import av as m
-        except ImportError:
-            m = None
-        _av = m
+    if _av is None:
+        import av
+
+        _av = av
     return _av
 
 
-_tf = False
-TF_VERSION = "2.15.0"  # the version Essentia bundles; another one may change the models' last bits
+_tf = None
+TF_VERSION = "2.15.0"  # the version Essentia bundled; another one may change the models' last bits
 
 
 def tensorflow():
-    """Python TensorFlow 2.15 or None. Graph and Head run the models on it, bit for bit as Essentia's own
-    TensorFlow (docs/WINDOWS.md stage 4). Without it (or with another version) Essentia runs them."""
+    """Python TensorFlow 2.15, imported on first use (it takes a few seconds). Graph and Head run the models on it,
+    bit for bit as Essentia's own TensorFlow (docs/WINDOWS.md stage 4)."""
     global _tf
-    if _tf is False:
+    if _tf is None:
         os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # no start-up chatter on stderr
-        try:
-            import tensorflow as m
-        except ImportError:
-            m = None
-        _tf = m if m is not None and m.__version__ == TF_VERSION else None
+        import tensorflow as tf
+
+        if tf.__version__ != TF_VERSION:
+            raise RuntimeError(f"TensorFlow {tf.__version__} is installed; the models need {TF_VERSION} (uv sync)")
+        _tf = tf
     return _tf
 
 
@@ -200,49 +178,33 @@ def _session(pb):
 
 class Graph:
     """A frozen model graph with named inputs and outputs, as Essentia's TensorflowPredict: run({input: array})
-    → {output: array}. On Python TensorFlow when installed, else Essentia's (essentia=True forces it). args: what
-    it was made from, so dsp/check.py can make Essentia's copy."""
+    → {output: array}. args: what it was made from, so dsp/check.py can make Essentia's copy."""
 
-    def __init__(self, pb, inputs: list[str], outputs: list[str], essentia: bool = False):
+    def __init__(self, pb, inputs: list[str], outputs: list[str]):
         self.args, self.outputs = (pb, list(inputs), list(outputs)), list(outputs)
-        if tensorflow() is None or essentia:
-            self._sess, self._es = None, es().TensorflowPredict(graphFilename=str(pb), inputs=list(inputs),
-                                                                outputs=self.outputs)
-        else:
-            self._sess, self._es = _session(pb), None
+        self._sess = _session(pb)
 
     def run(self, feeds: dict) -> dict:
-        if self._sess is not None:  # as TensorflowPredict: inputs lose their size-1 axes after the batch, outputs
-            got = self._sess.run([_tensor(o) for o in self.outputs],  # get size-1 axes after it up to 4 dimensions
-                                 {_tensor(k): v.reshape(v.shape[:1] + tuple(d for d in v.shape[1:] if d != 1))
-                                  for k, v in feeds.items()})
-            return {o: v.reshape(v.shape[:1] + (1,) * (4 - v.ndim) + v.shape[1:]) if v.ndim < 4 else v
-                    for o, v in zip(self.outputs, got)}
-        from essentia import Pool
-
-        pool = Pool()
-        for k, v in feeds.items():
-            pool.set(k, v)
-        out = self._es(pool)
-        return {o: out[o] for o in self.outputs}
+        # as TensorflowPredict: inputs lose their size-1 axes after the batch, outputs get size-1 axes after it up
+        # to 4 dimensions
+        got = self._sess.run([_tensor(o) for o in self.outputs],
+                             {_tensor(k): v.reshape(v.shape[:1] + tuple(d for d in v.shape[1:] if d != 1))
+                              for k, v in feeds.items()})
+        return {o: v.reshape(v.shape[:1] + (1,) * (4 - v.ndim) + v.shape[1:]) if v.ndim < 4 else v
+                for o, v in zip(self.outputs, got)}
 
 
 class Head:
     """A classification head on (rows, features), as Essentia's TensorflowPredict2D: batches of 64 rows, the last
-    one shorter (any other batching changes the last bits). On Python TensorFlow when installed, else Essentia's."""
+    one shorter (any other batching changes the last bits)."""
 
     BATCH = 64
 
-    def __init__(self, pb, input: str, output: str, essentia: bool = False):
+    def __init__(self, pb, input: str, output: str):
         self.args, self.input, self.output = (pb, input, output), _tensor(input), _tensor(output)
-        if tensorflow() is None or essentia:
-            self._sess, self._es = None, es().TensorflowPredict2D(graphFilename=str(pb), input=input, output=output)
-        else:
-            self._sess, self._es = _session(pb), None
+        self._sess = _session(pb)
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
-        if self._es is not None:
-            return np.asarray(self._es(x), dtype=np.float32)
         x = np.ascontiguousarray(x, dtype=np.float32)
         if not len(x):
             raise RuntimeError("empty input")  # as TensorflowPredict2D
@@ -330,10 +292,8 @@ def style_models():
         )
     if not _models:
         pb = str(MODELS_DIR / "discogs-effnet-bs64-1.pb")
-        if _rust_mels():  # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
-            _models["embed"] = Graph(pb, [EFFNET_INPUT], [EFFNET_OUTPUT])
-        else:
-            _models["embed"] = es().TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
+        # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
+        _models["embed"] = Graph(pb, [EFFNET_INPUT], [EFFNET_OUTPUT])
         _models["styles"] = Head(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb",
                                  input="serving_default_model_Placeholder", output="PartitionedCall:0")
         meta = json.loads((MODELS_DIR / "genre_discogs400-discogs-effnet-1.json").read_text())
@@ -792,28 +752,16 @@ MAEST_MEL_MEAN, MAEST_MEL_STD = 2.06755686098554, 1.268292820667291
 MAEST_PATCH, MAEST_PATCH_HOP = 1876, 1875
 
 
-def _rust_mels():
-    """The Rust module if it has musicnn_mels (dsp 0.3.0 on)."""
-    m = dsp()
-    return m if m is not None and hasattr(m, "musicnn_mels") else None
-
-
 def musicnn_mels(x: np.ndarray, streaming: bool = False) -> np.ndarray:
     """Essentia's TensorflowInputMusiCNN on every frame of 16 kHz audio, cut as FrameGenerator(frameSize=512,
-    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (within a float step; docs/WINDOWS.md
-    stage 3), else Essentia. streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs
-    gives them (a silent first frame comes out as silence); Rust only."""
+    hopSize=256, startFromZero=False): (frames, 96) float32, in Rust (within a float step; docs/WINDOWS.md stage 3).
+    streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs gives them (a silent first
+    frame comes out as silence)."""
+    m = dsp()
     x = np.ascontiguousarray(x, dtype=np.float32)
-    if m := _rust_mels():
-        out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
-        m.musicnn_mels(x, out, streaming=streaming)
-        return out
-    if streaming:
-        raise RuntimeError("streaming mel frames need track_analyzer_dsp 0.3.0 or newer")
-    e = es()
-    mel = e.TensorflowInputMusiCNN()
-    return np.array([mel(fr) for fr in e.FrameGenerator(x, frameSize=512, hopSize=256, startFromZero=False)],
-                    dtype=np.float32).reshape(-1, 96)
+    out = np.empty((m.musicnn_frame_count(len(x)), 96), dtype=np.float32)
+    m.musicnn_mels(x, out, streaming=streaming)
+    return out
 
 
 def _maest_patches(audio: np.ndarray) -> np.ndarray:
@@ -1283,16 +1231,8 @@ _CHUNK = 1 << 20  # samples per channel gathered as raw bytes before converting 
 
 def decode(p: Path) -> tuple[np.ndarray, float, int]:
     """(stereo float32 (n, 2) at the file's own rate, the rate, the file's channel count), as Essentia's
-    AudioLoader gives it: PyAV if installed (bit for bit, faster), else Essentia."""
-    if m := pyav():
-        return _av_decode(m, p)
-    try:
-        stereo, sr, nch, *_ = es().AudioLoader(filename=str(p))()
-    except RuntimeError as err:
-        if "more than 2 channels" not in str(err):
-            raise
-        stereo, sr, nch, *_ = _load_downmixed(p)
-    return stereo, float(sr), int(nch)
+    AudioLoader gave it, bit for bit, read with PyAV (current FFmpeg)."""
+    return _av_decode(pyav(), p)
 
 
 def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
@@ -1300,7 +1240,7 @@ def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
     decoder (16-bit, clipped; FFmpeg 2.8's default), AAC and Opus keeping the encoder's priming samples (2.8
     didn't trim them; Opus is then cut to its packets' total length, as 2.8 did), mono files in the left channel
     with the right one silent, damaged packets skipped. More than 2 channels: FFmpeg's standard downmix, as
-    `ffmpeg -ac 2` gives it (_load_downmixed). Frames are gathered as raw bytes and converted in chunks into one
+    `ffmpeg -ac 2` gives it. Frames are gathered as raw bytes and converted in chunks into one
     array: per-frame numpy work made it slower than Essentia, this is faster."""
     with av.open(str(p), metadata_errors="replace") as c:  # tags unused; Traktor writes binary into WAV INFO tags
         s = c.streams.audio[0]
@@ -1383,43 +1323,22 @@ def _av_decode(av, p: Path) -> tuple[np.ndarray, float, int]:
     return out, float(sr), min(nch, 2)
 
 
-def _load_downmixed(p: Path):
-    """Files with more than 2 channels (5.1 FLACs): Essentia's AudioLoader refuses them, so ffmpeg mixes
-    them down to stereo with its standard downmix, at the file's own rate, as float (no rounding).
-    Only without PyAV (decode)."""
-    import shutil
-    import subprocess
-    import tempfile
-
-    if not shutil.which("ffmpeg"):
-        raise RuntimeError(f"{p.name} has more than 2 channels; install ffmpeg ({install_hint('ffmpeg')}) to read it")
-    with tempfile.TemporaryDirectory(prefix="track-analyzer-") as tmp:
-        out = Path(tmp) / "stereo.wav"
-        done = subprocess.run(["ffmpeg", "-v", "error", "-i", str(p), "-map", "0:a:0", "-ac", "2",
-                               "-c:a", "pcm_f32le", str(out)], capture_output=True, text=True)
-        if done.returncode:
-            raise RuntimeError(f"ffmpeg couldn't mix {p.name} down to stereo: {done.stderr.strip()}")
-        return es().AudioLoader(filename=str(out))()
-
-
 def resample_medium(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
-    """Essentia's Resample(quality=1) (libsamplerate's medium sinc), bit for bit; the Rust copy (~5x faster) if
-    installed. Checked on 48 kHz mixes and on 8-192 kHz test signals (docs/WINDOWS.md)."""
-    if m := dsp():
-        x = np.ascontiguousarray(mono, dtype=np.float32)
-        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
-        return out[: m.resample_sinc_medium(x, out, sr, out_sr)]
-    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=1)(mono)
+    """Essentia's Resample(quality=1) (libsamplerate's medium sinc), bit for bit, in Rust (~5x faster). Checked on
+    48 kHz mixes and on 8-192 kHz test signals (docs/WINDOWS.md)."""
+    m = dsp()
+    x = np.ascontiguousarray(mono, dtype=np.float32)
+    out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+    return out[: m.resample_sinc_medium(x, out, sr, out_sr)]
 
 
 def resample_linear(mono: np.ndarray, sr: float, out_sr: float) -> np.ndarray:
-    """Essentia's Resample(quality=4) (libsamplerate's linear converter), bit for bit; the Rust copy if installed.
-    Used for the models' 16 kHz input, as Essentia's model docs do."""
-    if (m := dsp()) and hasattr(m, "resample_linear"):  # dsp 0.1.0 doesn't have it
-        x = np.ascontiguousarray(mono, dtype=np.float32)
-        out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
-        return out[: m.resample_linear(x, out, sr, out_sr)]
-    return es().Resample(inputSampleRate=sr, outputSampleRate=out_sr, quality=4)(mono)
+    """Essentia's Resample(quality=4) (libsamplerate's linear converter), bit for bit, in Rust. Used for the
+    models' 16 kHz input, as Essentia's model docs do."""
+    m = dsp()
+    x = np.ascontiguousarray(mono, dtype=np.float32)
+    out = np.empty(m.resample_max_len(len(x), sr, out_sr), dtype=np.float32)
+    return out[: m.resample_linear(x, out, sr, out_sr)]
 
 
 def mono_mix(stereo: np.ndarray, nch: int) -> np.ndarray:
@@ -1451,10 +1370,8 @@ def effnet_embeddings(mono16: np.ndarray, model: Graph | None = None) -> np.ndar
     Like padSignal, the audio is zero-padded so that the last batch is full, and the padding patches' outputs are
     dropped; the arithmetic of its patch count (float, with a double step) is copied as is. Checked identical to
     TensorflowPredictEffnetDiscogs (docs/WINDOWS.md stage 3). No patch (under ~3 s): an empty array, as it gives.
-    Without the Rust module, TensorflowPredictEffnetDiscogs itself. model: another EffNet Graph (dsp/check.py)."""
+    model: another EffNet Graph (dsp/check.py)."""
     x = np.ascontiguousarray(mono16, dtype=np.float32)
-    if not _rust_mels():
-        return np.asarray(style_models()["embed"](x), dtype=np.float32)
     f32 = np.float32
     hops = f32((float(f32(len(x))) - 512 / 2.0) / float(f32(256)))
     n_frames = 1 + math.ceil(hops)
@@ -1501,40 +1418,22 @@ def top_styles(scores: dict[str, float], n: int = 5, min_score: float = 0.05):
     return out
 
 
-def rhythm(mono44: np.ndarray, method: str = "multifeature"):
-    """(BPM, confidence, beat count). The extractor's own BPM is used as it is: a line fit through
-    its beat grid was tried and made things worse (stray off-beat hits in breakdowns counted as
-    beats; checked 2026-10-21 against Traktor's BPMs: 96% within 1 BPM raw vs 50% after the fit)."""
+def rhythm(mono44: np.ndarray):
+    """(BPM, confidence, beat count): Essentia's RhythmExtractor2013(method="multifeature") in Rust, with more exact
+    libm calls (the same whole-number BPM on every track; docs/WINDOWS.md stage 6) and its rand() from seed 1 on
+    every call. The extractor's own BPM is used as it is: a line fit through its beat grid was tried and made things
+    worse (stray off-beat hits in breakdowns counted as beats; checked 2026-10-21 against Traktor's BPMs: 96% within
+    1 BPM raw vs 50% after the fit)."""
     lo = max(40, min(180, int(BPM_MIN)))
     hi = max(60, min(250, int(BPM_MAX)))
-    if method == "multifeature" and (m := _rust_rhythm()):
-        bpm, beats, conf = m.rhythm_multifeature(np.ascontiguousarray(mono44, dtype=np.float32), lo, hi)
-    else:
-        bpm, beats, conf, _est, _int = es().RhythmExtractor2013(method=method, minTempo=lo, maxTempo=hi)(mono44)
+    bpm, beats, conf = dsp().rhythm_multifeature(np.ascontiguousarray(mono44, dtype=np.float32), lo, hi)
     return float(bpm), float(conf), len(beats)
 
 
-def _rust_rhythm():
-    """The Rust module if it has rhythm_multifeature (dsp 0.5.0 on): RhythmExtractor2013(multifeature) as Essentia
-    computes it, with more exact libm calls (the same whole-number BPM on every track; docs/WINDOWS.md stage 6), with
-    its rand() from seed 1 on every call."""
-    m = dsp()
-    return m if m is not None and hasattr(m, "rhythm_multifeature") else None
-
-
-def _rust_key():
-    """The Rust module if it has key_edma (dsp 0.4.0 on)."""
-    m = dsp()
-    return m if m is not None and hasattr(m, "key_edma") else None
-
-
 def key_of(mono44: np.ndarray):
-    """Essentia's KeyExtractor(profileType="edma") on 44.1 kHz mono: (key, scale, strength). The Rust copy if installed
-    (same key and scale, strength within 1e-6; docs/WINDOWS.md stage 5), else Essentia."""
-    if m := _rust_key():
-        key, scale, strength = m.key_edma(np.ascontiguousarray(mono44, dtype=np.float32))
-    else:
-        key, scale, strength = es().KeyExtractor(profileType="edma", sampleRate=44100)(mono44)
+    """Essentia's KeyExtractor(profileType="edma") on 44.1 kHz mono: (key, scale, strength), in Rust (same key and
+    scale, strength within 1e-5 with more exact libm calls; docs/WINDOWS.md stage 5)."""
+    key, scale, strength = dsp().key_edma(np.ascontiguousarray(mono44, dtype=np.float32))
     return key, scale, float(strength)
 
 
@@ -1553,11 +1452,9 @@ def loudness(stereo: np.ndarray, sr: float):
     if sr > LOUDNESS_MAX_SR:  # e.g. a 96 kHz Traktor recording: measure it at 48 kHz (same short-term timing)
         stereo = np.stack([resample_medium(stereo[:, c], sr, 48000) for c in range(stereo.shape[1])], axis=1)
         sr = 48000
-    if m := dsp():  # Essentia's LoudnessEBUR128, bit for bit, ~7x faster
-        short, integrated, lra = m.loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
-        return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
-    _mom, short, integrated, lra = es().LoudnessEBUR128(sampleRate=sr)(stereo)
-    return np.asarray(short, dtype=np.float32), float(integrated), float(lra)
+    # Essentia's LoudnessEBUR128 in Rust, bit for bit, ~7x faster
+    short, integrated, lra = dsp().loudness_ebur128(np.ascontiguousarray(stereo, dtype=np.float32), sr)
+    return np.frombuffer(short, dtype=np.float32).copy(), float(integrated), float(lra)
 
 
 def energy_curve(short_term: np.ndarray, duration: float, points: int = 16):
@@ -1832,7 +1729,7 @@ def _audio_pool_init(npy: str) -> None:
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
     os.dup2(2, 1)  # stray library output to stderr: stdout may be the MCP channel
-    es()
+    dsp()
     _AUDIO["mono44"] = np.load(npy, mmap_mode="r")
 
 

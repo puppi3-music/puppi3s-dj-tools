@@ -1,10 +1,11 @@
 """Check the Rust module, PyAV decoding, the EffNet input and the models on Python TensorFlow against Essentia.
-Run after any change to dsp/, decode or the model graphs:
+The analyzer no longer uses Essentia; it stays the reference here, installed with `uv sync --group check` (macOS
+and Linux x86_64). Run after any change to dsp/, decode or the model graphs:
 
     uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix,
                                                # decoding test files in each format (made with the ffmpeg command),
                                                # the models' mel frames, EffNet's patches and batches,
-                                               # every model graph on Python TensorFlow (uv sync --inexact --extra nets),
+                                               # every model graph on Python TensorFlow,
                                                # the key (KeyExtractor edma; mixes: every 2-minute segment too),
                                                # the BPM (RhythmExtractor2013 multifeature; the same segments)
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
@@ -47,6 +48,56 @@ CODECS = [(f"{c}.wav", ["-c:a", c], sr, 2) for c in ("pcm_u8", "pcm_s16le", "pcm
     ("320k.mp3", ["-c:a", "libmp3lame", "-b:a", "320k"], 44100, 2), ("48k.mp3", ["-c:a", "libmp3lame", "-q:a", "2"], 48000, 2),
     ("mono.mp3", ["-c:a", "libmp3lame", "-b:a", "128k"], 44100, 1), ("cbr-noxing.mp3", ["-c:a", "libmp3lame", "-b:a", "192k", "-write_xing", "0"], 44100, 2),
 ]
+_es = None
+
+
+def es():
+    """essentia.standard, quiet: the reference every step is compared against."""
+    global _es
+    if _es is None:
+        import essentia
+
+        essentia.log.infoActive = False
+        essentia.log.warningActive = False
+        import essentia.standard as standard
+
+        _es = standard
+    return _es
+
+
+class EssentiaGraph:
+    """analysis.Graph on Essentia's TensorflowPredict (Essentia's bundled TensorFlow)."""
+
+    def __init__(self, pb, inputs: list[str], outputs: list[str]):
+        self.outputs = list(outputs)
+        self._es = es().TensorflowPredict(graphFilename=str(pb), inputs=list(inputs), outputs=self.outputs)
+
+    def run(self, feeds: dict) -> dict:
+        from essentia import Pool
+
+        pool = Pool()
+        for k, v in feeds.items():
+            pool.set(k, v)
+        out = self._es(pool)
+        return {o: out[o] for o in self.outputs}
+
+
+class EssentiaHead:
+    """analysis.Head on Essentia's TensorflowPredict2D."""
+
+    def __init__(self, pb, input: str, output: str):
+        self._es = es().TensorflowPredict2D(graphFilename=str(pb), input=input, output=output)
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return np.asarray(self._es(x), dtype=np.float32)
+
+
+def _essentia_copy(m):
+    from dj_track_analyzer import analysis as a
+
+    return (EssentiaGraph if isinstance(m, a.Graph) else EssentiaHead)(*m.args)
+
+
 LOSSY = [("aac.m4a", ["-c:a", "aac", "-b:a", "256k"], 44100, 2), ("vorbis.ogg", ["-c:a", "vorbis", "-strict", "-2"], 44100, 2),
          ("opus.opus", ["-c:a", "libopus", "-b:a", "160k"], 48000, 2)]
 
@@ -64,15 +115,27 @@ def _same_mono(e, stereo, nch) -> bool:
 
 
 def _essentia_decode(e, path: str):
-    """AudioLoader's (stereo, rate, channels); >2 channels through the ffmpeg command, as without PyAV."""
-    from dj_track_analyzer import analysis as a
+    """AudioLoader's (stereo, rate, channels). It refuses more than 2 channels (5.1 FLACs), so those are mixed down
+    to stereo by the ffmpeg command (its standard downmix, at the file's own rate, as float) and read from that, as
+    the analyzer did before PyAV."""
+    import shutil
+    import subprocess
+    import tempfile
 
     try:
         stereo, sr, nch, *_ = e.AudioLoader(filename=path)()
     except RuntimeError as err:
         if "more than 2 channels" not in str(err):
             raise
-        stereo, sr, nch, *_ = a._load_downmixed(Path(path))
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError(f"{Path(path).name} has more than 2 channels: the ffmpeg command is needed") from err
+        with tempfile.TemporaryDirectory(prefix="dsp-check-") as tmp:
+            out = Path(tmp) / "stereo.wav"
+            done = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-map", "0:a:0", "-ac", "2", "-c:a", "pcm_f32le",
+                                   str(out)], capture_output=True, text=True)
+            if done.returncode:
+                raise RuntimeError(f"ffmpeg couldn't mix {Path(path).name} down to stereo: {done.stderr.strip()}") from err
+            stereo, sr, nch, *_ = e.AudioLoader(filename=str(out))()
     return np.asarray(stereo, np.float32), float(sr), int(nch)
 
 
@@ -208,7 +271,7 @@ def _net_pairs():
         ours += [("instruments", a.instrument_model()), ("vocals", (a.voice_model() or (None,))[0])]
         ours += [(h, m) for h, m in a.extra_heads().items()]
         ours.append(("maest", (a.maest_model() or {}).get("model")))
-        _nets["pairs"] = [(n, m, type(m)(*m.args, essentia=True)) for n, m in ours if m is not None]
+        _nets["pairs"] = [(n, m, _essentia_copy(m)) for n, m in ours if m is not None]
     return _nets["pairs"]
 
 
@@ -248,11 +311,6 @@ def _nets_diff(mono16, emb=None) -> list[str]:
 
 def test_nets() -> int:
     """Every graph on random embeddings around the heads' batch of 64 rows, and EffNet and MAEST on noise."""
-    from dj_track_analyzer import analysis as a
-
-    if a.tensorflow() is None:
-        print(f"nets: skipped (Python TensorFlow {a.TF_VERSION} isn't installed: uv sync --inexact --extra nets)")
-        return 0
     rng = np.random.default_rng(3)
     bad = 0
     for n in (1, 2, 63, 64, 65, 128, 129, 300):
@@ -450,7 +508,7 @@ def test_signals(steps) -> int:
     from dj_track_analyzer import analysis as a
     import track_analyzer_dsp as dsp
 
-    e = a.es()
+    e = es()
     rng = np.random.default_rng(1)
     bad = 0
     for sr in (8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000):
@@ -514,7 +572,7 @@ def _check_file(steps, path: str) -> str | None:
     from dj_track_analyzer import analysis as a
     import track_analyzer_dsp as dsp
 
-    e = a.es()
+    e = es()
     try:
         ref = stereo, sr, nch = _essentia_decode(e, path)
     except Exception as err:  # unreadable here = not a difference; say so
@@ -561,7 +619,7 @@ def _check_file(steps, path: str) -> str | None:
                 notes.append("effnet")
             elif not r:
                 out.append("effnet")
-        if "nets" in steps and a.tensorflow() is not None:
+        if "nets" in steps:
             out += _nets_diff(mono16)
     if out:
         return f"DIFFERENT ({', '.join(out)}): {path}"
