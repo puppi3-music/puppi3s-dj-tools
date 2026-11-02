@@ -2875,9 +2875,9 @@ async function pageSetup(main) {
         : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,
       `${st.cues.starter && tk.collection ? jb("su-cues-scan", "Listen to your tracks") : ""}${cueOk ? jb("su-cues", "Learn your cue points", true) : ""}`);
   const tool = (n, name, what) => st.tools[name] ? step("done", n, name, `Installed. ${what}`)
-    : step("todo", n, name, `${what} ${st.brew ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
+    : step("todo", n, name, `${what} ${st.install[name] ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
         : `Install it in a terminal: <code>${esc(st.install_hint[name])}</code>, then reload this page.`}`,
-      st.brew ? jb(`su-install-${name}`, "Install with Homebrew") : "");
+      st.install[name] ? jb(`su-install-${name}`, st.install[name]) : "");
   const T = st.tempo, bpm = SF.bpm || (T.views[0] ?? 145), haveView = T.views.includes(+bpm);
   const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 9, "Tempo view",
     `Optional: your catalogue as heard stretched to the tempo you play at, with key lock: which genres, colours and hype change.

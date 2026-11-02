@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import time
+from pathlib import Path
 
 import pytest
 from conftest import TMP, WINDOWS, make_audio
@@ -56,3 +58,29 @@ def test_install_buttons(monkeypatch, brew, winget, windows, tool, want, button)
             jobs._tool_install({"tool": tool})
     else:
         assert jobs._tool_install({"tool": tool})[:len(want)] == want
+
+
+def test_page_shows_the_install_button():
+    """The Setup tab draws the button from setup_status()'s `install`, not from whether Homebrew is there."""
+    page = (Path(jobs.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    assert "st.install[name] ? jb(`su-install-${name}`, st.install[name])" in page
+    assert 'go("install", { tool: "rubberband" })' in page
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Rubber Band's Windows build")
+def test_install_button_installs_rubberband(monkeypatch, tmp_path):
+    """What the Setup tab's Install button does on Windows: a job that downloads and installs Rubber Band."""
+    monkeypatch.setattr(analysis, "TOOLS_HOME", tmp_path / "tools")  # a fresh install, not the earlier test's
+    monkeypatch.setattr(analysis, "TOOL_DIRS", [str(tmp_path / "tools" / "rubberband")])
+    monkeypatch.setattr(analysis, "_rubberband_exe", None)
+    st = jobs.setup_status()
+    assert st["install"]["rubberband"] == "Install"
+    monkeypatch.setenv("TRACK_ANALYZER_HOME", str(tmp_path))  # the job process installs into tmp_path/tools
+    jobs.start("install", {"tool": "rubberband"})
+    job = jobs._job
+    end = time.time() + 300
+    while job["running"] and time.time() < end:
+        time.sleep(0.5)
+    assert job["returncode"] == 0, job["lines"]
+    assert (tmp_path / "tools" / "rubberband" / "rubberband.exe").exists()
+    assert jobs.setup_status()["tools"]["rubberband"]  # the step shows as installed
