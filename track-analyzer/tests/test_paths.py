@@ -133,3 +133,13 @@ def test_running_refuses_even_when_told_closed(monkeypatch):
     monkeypatch.setattr(traktor, "running_state", lambda: True)
     with traktor.page_answer(True), pytest.raises(SystemExit, match="Traktor is running"):
         traktor.check_closed()
+
+
+def test_lexicon_locations():
+    from dj_track_analyzer import lexicon
+
+    # Windows Lexicon (seen 2026-11-02) and the Mac's boot-drive form
+    assert lexicon._paths("C:/Users/me/Music/Traktor/Tracks/Café - Été.mp3") == [
+        "C:\\Users\\me\\Music\\Traktor\\Tracks\\Café - Été.mp3"]
+    assert lexicon._paths("/Volumes/Macintosh HD/Users/me/x.mp3") == ["/Volumes/Macintosh HD/Users/me/x.mp3",
+                                                                      "/Users/me/x.mp3"]

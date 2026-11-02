@@ -492,8 +492,8 @@ x64 builds only. `.gitattributes` checks `.bat` files out with CRLF.
 Lexicon has a Windows version. `lexicon.py` needs:
 - its database path for the backup before each load: `%APPDATA%\lexicon\main.db` on Windows (confirmed by the
   user 2026-11-02; done), `~/Library/Application Support/lexicon/main.db` on a Mac;
-- the location prefix it strips (now `/Volumes/<disk>`; Windows Lexicon likely sends `C:\…`, **verify**) so
-  Lexicon's tracks match `collection.db` paths.
+- its track locations matched to `collection.db` paths: Windows Lexicon sends `C:/Users/…` with forward slashes
+  (seen 2026-11-02 from its Local API); `lexicon._paths` turns them into `C:\Users\…` (done).
 The Local API itself (localhost:48624) is the same.
 
 ## Using the computer while it scans
