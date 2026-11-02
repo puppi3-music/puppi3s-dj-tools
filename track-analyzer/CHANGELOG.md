@@ -3,7 +3,7 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
-## Unreleased
+## 1.1.0 (2026-11-02)
 
 **New**
 - **Update from the Setup tab.** A card at the top of the Setup tab says when a new release is out, with its notes.
