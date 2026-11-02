@@ -36,7 +36,7 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
 | Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical (stage 3) |
 | Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | **done**: bit-identical (stage 4) |
-| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | bit-identical |
+| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | **done**: bit-identical (stage 5) |
 | BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's codelets for its sizes | bit-identical; gate below |
 
 Essentia is AGPL-3.0, and so is this repo, so porting its code line by line is fine. FFTW (GPL-2.0+) can be
@@ -66,6 +66,7 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
+| Key | 0.10–0.18 s per 5–8-min track, 1.47 s per 63-min mix | Rust: 0.013–0.024 s, 0.19 s | 5.7–7.6x faster | 5 tracks, 1 mix |
 
 Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
 and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
@@ -210,9 +211,25 @@ With stages 1–3, the nets get bit-identical input, so any difference comes fro
 - On a different CPU (Windows and Linux on x86_64) the nets' last bits differ from the Mac's whatever runtime
   is used. That's already true of Essentia on Linux today. The DSP stages don't have this problem.
 
-**Stage 5: key** (Rust; about 2,500 lines of C++, much of it profile tables, parameters and the frame cutter
-already ported for loudness: Blackman-Harris window, spectrum, spectral peaks, spectral whitening, HPCP, EDMA
-profile correlation). Simpler than BPM and shares its spectral code, so it goes first.
+**Stage 5: key. Done (November 2026)**: `track_analyzer_dsp.key_edma` (dsp/src/key.rs) is KeyExtractor(profileType
+"edma") of Essentia 2.1b6.dev1177 (commit 1d1cc983, the wheel's: 1177 commits after v2.1_beta5), used by
+`analysis.key_of` when installed. Streaming FrameCutter 4096/4096 (frames start at -2048 + 4096k while inside the
+signal), Hann window (normalized, zero-phase; read off Essentia), the 4096-point FFT (FFTW's plan with `r2cf_128` in
+place of `r2cf_16`, checked against the wheel's `fftwf_execute` on 20,000 frames), SpectralPeaks, SpectralWhitening,
+HPCP (12 bins, 4 harmonics), and the streaming Key's mean HPCP against the edma profiles. Found on the way:
+- clang turned `pow(10, x)` into `exp10f` and `pow(2, x)` into `exp2`, and Essentia's own `log2` is `logf(x) / ln 2`
+  in double; the Rust code calls the same functions.
+- SpectralWhitening's envelope loop was vectorised (4 floats x 4) with in-order sums: inside whole blocks of 16 the
+  product is rounded before it's added, the scalar tail fuses `wavg += energy*weight`. Key's std sums unfused,
+  its correlation fused. Each was found from the data (hundreds to thousands of frames) and then held on all of them.
+- The streaming FrameCutter adds unseeded noise to silent frames, but such a frame's spectrum stays under SpectralPeaks'
+  1e-4 threshold (|X| <= ||x|| * ||w|| < 5e-5, noise included), so it has no peaks and the noise can't reach the key.
+
+`dsp/check.py --steps key`: bit-identical key, scale and strength on 63 test signals and on all 469 tracks and 41 mix
+recordings, every 2-minute segment of the 34 over 12 minutes included. 5.7–7.6x faster (speed table). On other
+platforms the Rust code calls that system's `logf`, `log10f`, `cos` and `exp10f`, which may differ from macOS's in
+the last bit: same keys, strength within about 1e-7 (well inside the 0.01 gate). Tables of macOS's results where
+they differ (as `LOG10F_FIX` for the mels) would make it bit-identical everywhere: not done yet.
 Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
 0.01, matching the BPM rule; the aim is bit-identical.
 

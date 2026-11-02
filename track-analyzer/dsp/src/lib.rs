@@ -10,8 +10,11 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+mod fft4096;
 mod fft512;
 mod fftw_codelets;
+mod key;
+mod key_tables;
 mod mid_qual_coeffs;
 mod musicnn;
 mod musicnn_tables;
@@ -316,6 +319,64 @@ fn musicnn_mels(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny
     })
 }
 
+/// The 4096-point FFT of `signal` (4096 float32) into `out` (4098 float32: 2049 interleaved complex values), for
+/// dsp/check.py to compare against FFTW itself.
+#[pyfunction]
+fn _rfft4096(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>) -> PyResult<usize> {
+    with_buffers(py, signal, out, |x, o| {
+        let x: &[f32; 4096] = x.try_into().map_err(|_| "signal must hold 4096 values".to_string())?;
+        let o: &mut [f32; 4098] = o.try_into().map_err(|_| "out must hold 4098 values".to_string())?;
+        fft4096::rfft4096(x, o);
+        Ok(4098)
+    })
+}
+
+/// Essentia's KeyExtractor(profileType="edma", sampleRate=44100) on a 44.1 kHz mono float32 `signal`, bit for bit:
+/// (key, "major" or "minor", strength). See key.rs.
+#[pyfunction]
+fn key_edma(py: Python<'_>, signal: &Bound<'_, PyAny>) -> PyResult<(&'static str, &'static str, f32)> {
+    let buf = PyBuffer::<f32>::get(signal)?;
+    if !buf.is_c_contiguous() {
+        return Err(PyValueError::new_err("expected a C-contiguous float32 array"));
+    }
+    if buf.item_count() == 0 {
+        return Err(PyValueError::new_err("KeyExtractor: empty input signal"));
+    }
+    let (p, n) = (buf.buf_ptr() as usize, buf.item_count());
+    // SAFETY: the buffer stays alive (we hold it) and is only read while the GIL is released.
+    let (k, minor, strength) = py.detach(|| {
+        let x = unsafe { std::slice::from_raw_parts(p as *const f32, n) };
+        key::key_of(&key::hpcps(x))
+    });
+    drop(buf);
+    Ok((key::KEYS[k], if minor { "minor" } else { "major" }, strength))
+}
+
+/// Every frame's HPCP of key_edma into `out` (at least frames * 12 float32), for dsp/check.py; returns the frame count.
+#[pyfunction]
+fn _key_hpcps(py: Python<'_>, signal: &Bound<'_, PyAny>, out: &Bound<'_, PyAny>) -> PyResult<usize> {
+    with_buffers(py, signal, out, |x, o| {
+        let h = key::hpcps(x);
+        if o.len() < h.len() * 12 {
+            return Err(format!("out holds {} values, {} needed", o.len(), h.len() * 12));
+        }
+        for (k, f) in h.iter().enumerate() {
+            o[12 * k..12 * k + 12].copy_from_slice(f);
+        }
+        Ok(h.len())
+    })
+}
+
+/// key_edma's steps on one 4096-sample frame: (spectrum, peak frequencies, peak magnitudes, whitened, HPCP).
+#[pyfunction]
+fn _key_frame_steps(frame: &Bound<'_, PyAny>) -> PyResult<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
+    let x = read_f32(frame)?;
+    if x.len() != 4096 {
+        return Err(PyValueError::new_err("expected 4096 samples"));
+    }
+    Ok(key::frame_steps(&x))
+}
+
 #[pymodule]
 fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(loudness_ebur128, m)?)?;
@@ -324,5 +385,9 @@ fn track_analyzer_dsp(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(resample_linear, m)?)?;
     m.add_function(wrap_pyfunction!(musicnn_frame_count, m)?)?;
     m.add_function(wrap_pyfunction!(musicnn_mels, m)?)?;
+    m.add_function(wrap_pyfunction!(_rfft4096, m)?)?;
+    m.add_function(wrap_pyfunction!(key_edma, m)?)?;
+    m.add_function(wrap_pyfunction!(_key_hpcps, m)?)?;
+    m.add_function(wrap_pyfunction!(_key_frame_steps, m)?)?;
     Ok(())
 }

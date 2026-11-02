@@ -1511,8 +1511,19 @@ def rhythm(mono44: np.ndarray, method: str = "multifeature"):
     return float(bpm), float(conf), len(beats)
 
 
+def _rust_key():
+    """The Rust module if it has key_edma (dsp 0.4.0 on)."""
+    m = dsp()
+    return m if m is not None and hasattr(m, "key_edma") else None
+
+
 def key_of(mono44: np.ndarray):
-    key, scale, strength = es().KeyExtractor(profileType="edma", sampleRate=44100)(mono44)
+    """Essentia's KeyExtractor(profileType="edma") on 44.1 kHz mono: (key, scale, strength). The Rust copy if installed
+    (bit for bit; docs/WINDOWS.md stage 5), else Essentia."""
+    if m := _rust_key():
+        key, scale, strength = m.key_edma(np.ascontiguousarray(mono44, dtype=np.float32))
+    else:
+        key, scale, strength = es().KeyExtractor(profileType="edma", sampleRate=44100)(mono44)
     return key, scale, float(strength)
 
 

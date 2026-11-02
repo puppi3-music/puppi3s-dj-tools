@@ -99,7 +99,7 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 - 💡 **Beatport-era genres** (Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass, Hard Groove) don't exist as Discogs styles. Possible via `train` with example folders, or a shared set of trained examples.
 
 ### Platforms
-- 🧪 **Windows.** Blocked by Essentia, which has no Windows build. The plan replaces it step by step on every platform, each step checked against Essentia track by track: [WINDOWS.md](WINDOWS.md). Loudness and resampling are done (identical results, 5–7x faster). Decoding (current FFmpeg via PyAV), the models' input (mel bands, EffNet patches) and the TensorFlow graphs (Python TensorFlow 2.15, opt-in for now) are done too; key and BPM are next.
+- 🧪 **Windows.** Blocked by Essentia, which has no Windows build. The plan replaces it step by step on every platform, each step checked against Essentia track by track: [WINDOWS.md](WINDOWS.md). Loudness and resampling are done (identical results, 5–7x faster). Decoding (current FFmpeg via PyAV), the models' input (mel bands, EffNet patches) the TensorFlow graphs (Python TensorFlow 2.15, opt-in for now) and the key (Rust, 7x faster) are done too; BPM is next.
 - 💡 **Docker on Apple Silicon without emulation.** The image is amd64-only because Essentia has no Linux arm64 build. Once the last Essentia steps are replaced, a native arm64 image becomes possible (TensorFlow 2.15 has arm64 Linux wheels), which would skip the emulation on Apple Silicon Macs.
 
 ## Findings from testing

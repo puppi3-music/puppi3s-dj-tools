@@ -4,7 +4,8 @@ Run after any change to dsp/, decode or the model graphs:
     uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix,
                                                # decoding test files in each format (made with the ffmpeg command),
                                                # the models' mel frames, EffNet's patches and batches,
-                                               # every model graph on Python TensorFlow (uv sync --inexact --extra nets)
+                                               # every model graph on Python TensorFlow (uv sync --inexact --extra nets),
+                                               # the key (KeyExtractor edma; mixes: every 2-minute segment too)
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
     uv run python dsp/check.py --files-from mixes.txt   # files listed one per line (names with spaces are fine)
     uv run python dsp/check.py --collection --steps linear   # only the step you changed: much faster
@@ -26,7 +27,7 @@ from pathlib import Path
 
 import numpy as np
 
-STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet", "nets")
+STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet", "nets", "key")
 # Test files for decoding: (name, ffmpeg output options, rate, channels). AAC, Vorbis and Opus come out of
 # current FFmpeg's rewritten decoders about 1 in 10 million different (stage 0): printed, not counted.
 CODECS = [(f"{c}.wav", ["-c:a", c], sr, 2) for c in ("pcm_u8", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_f64le")
@@ -242,6 +243,54 @@ def test_nets() -> int:
     return bad
 
 
+_ke = {}
+
+
+def _key_diff(e, dsp, x) -> str | None:
+    """track_analyzer_dsp.key_edma vs KeyExtractor(profileType="edma"): None if key, scale and strength are the same bits."""
+    if "ref" not in _ke:
+        _ke["ref"] = e.KeyExtractor(profileType="edma", sampleRate=44100)
+    x = np.ascontiguousarray(x, np.float32)
+    got, want = dsp.key_edma(x), _ke["ref"](x)
+    if got[:2] == tuple(want[:2]) and np.float32(got[2]).view(np.uint32) == np.float32(want[2]).view(np.uint32):
+        return None
+    return f"{got[0]} {got[1]} {got[2]!r} vs {want[0]} {want[1]} {float(want[2])!r}"
+
+
+def _key_segments(e, dsp, mono44) -> list[str]:
+    """The whole signal and, over 12 minutes, every 2-minute segment as segment_timeline cuts them."""
+    out = [f"key: {d}" for d in [_key_diff(e, dsp, mono44)] if d]
+    duration = len(mono44) / 44100.0
+    if duration > 12 * 60:
+        for i in range(int(np.ceil(duration / 120))):
+            a, b = i * 120, min(duration, (i + 1) * 120)
+            if b - a >= 20 and (d := _key_diff(e, dsp, mono44[int(a * 44100): int(b * 44100)])):
+                out.append(f"key segment {i}: {d}")
+    return out
+
+
+def test_key(e, dsp, rng) -> int:
+    """Chords of 1-5 sines with noise, quiet starts, 0.02-20 s; silence; one sample; one frame."""
+    bad = 0
+    sr = 44100
+    signals = []
+    for trial in range(60):
+        t = np.arange(int(sr * rng.uniform(0.02, 20))) / sr
+        x = np.zeros(len(t))
+        for f0 in rng.uniform(40, 2000, rng.integers(1, 6)):
+            x += rng.uniform(0.05, 0.4) * np.sin(2 * np.pi * f0 * t + rng.uniform(0, 6))
+        x += 10 ** rng.uniform(-5, -1) * rng.standard_normal(len(t))
+        if trial % 3 == 0:
+            x[: rng.integers(0, len(x))] *= 1e-7
+        signals.append((f"{len(t)} samples", x))
+    signals += [("silence", np.zeros(50000)), ("one sample", np.full(1, 0.3)), ("one frame", 0.1 * rng.standard_normal(4096))]
+    for name, x in signals:
+        if d := _key_diff(e, dsp, x):
+            bad += 1
+            print(f"key DIFFERENT: {name}: {d}")
+    return bad
+
+
 def _same_loudness(e, dsp, stereo, sr) -> bool:
     stereo = np.ascontiguousarray(stereo, np.float32)
     _m, short, integ, lra = e.LoudnessEBUR128(sampleRate=sr)(stereo)
@@ -302,6 +351,8 @@ def test_signals(steps) -> int:
         if _same_effnet(e, x) is False:
             bad += 1
             print("effnet DIFFERENT: near-silent first frame")
+    if "key" in steps:
+        bad += test_key(e, dsp, rng)
     print(f"test signals: {'all identical' if not bad else f'{bad} different'}")
     if "nets" in steps:
         bad += test_nets()
@@ -326,11 +377,14 @@ def _check_file(steps, path: str) -> str | None:
         out.append("loudness")
     if "mono" in steps and not _same_mono(e, stereo, nch):
         out.append("mono mix")
-    if not {"resample", "linear", "mel", "effnet", "nets"} & set(steps):
+    if not {"resample", "linear", "mel", "effnet", "nets", "key"} & set(steps):
         return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
     mono = e.MonoMixer()(stereo, nch)  # Essentia's, so each resample check sees the same input
     if "resample" in steps and sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
         out.append("resample")
+    if "key" in steps:  # on Essentia's 44.1 kHz mono, so only the key step is compared
+        mono44 = mono if sr == 44100 else e.Resample(inputSampleRate=sr, outputSampleRate=44100, quality=1)(mono)
+        out += _key_segments(e, dsp, np.asarray(mono44, np.float32))
     if "linear" in steps and not _same_resample(e, dsp, mono, sr, 16000, linear=True):
         out.append("linear resample")
     varies = None
