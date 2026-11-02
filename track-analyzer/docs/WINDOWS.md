@@ -402,23 +402,27 @@ Windows x86_64 and attaches them to a release on a `dsp-v*` tag; `pyproject.toml
 Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what a port really adds.
 
 - **Collection location.** `traktor.find_collection()` globs `~/Documents/Native Instruments/Traktor*/collection.nml`.
-  On Windows that's the same relative to the user folder, so `expanduser` finds it (**verify**: OneDrive can move
-  Documents to `~/OneDrive/Documents`, and may keep files there as online-only placeholders). History files
+  On Windows that's the same relative to the user folder, so `expanduser` finds it (seen 2026-11-02:
+  `C:\Users\<user>\Documents\Native Instruments\Traktor 4.4.2`; still open: OneDrive can move Documents to
+  `~/OneDrive/Documents`, and may keep files there as online-only placeholders). History files
   (`tracklist.HISTORY_GLOB`) and recordings (`traktor.recording_dirs()`) use the same base.
 - **Track paths.** `traktor.location_paths()` turns an NML `LOCATION` (`VOLUME`, `DIR="/:Users/:me/:Music/:"`, `FILE`)
-  into `/Users/…` or `/Volumes/<VOLUME>/…`. On Windows `VOLUME` is a drive letter (`VOLUME="C:"`, **verify** the
-  exact form and `VOLUMEID`), so the path is `C:\Users\me\Music\x.mp3`. Every lookup between Traktor's entries
+  into `/Users/…` or `/Volumes/<VOLUME>/…`. On Windows `VOLUME` is the drive letter with its colon (seen 2026-11-02 in a
+  Traktor Pro 4 collection: `VOLUME="C:" VOLUMEID="f21b7ddb"`, `DIR` in the same `/:` form as on the Mac), so the
+  path is `C:\Users\me\Music\x.mp3`. A playlist's `PRIMARYKEY KEY` is VOLUME + DIR + FILE, as on the Mac:
+  `C:/:Users/:me/:Music/:x.mp3`. Every lookup between Traktor's entries
   and `collection.db` paths goes through this, so get it right first; a wrong mapping means no track matches.
   Network drives (`\\server\share`) need a rule too.
 - **Case.** Windows paths ignore case; the code compares paths as exact strings. If Traktor stores
   `Music\House` and the folder is `music\house`, the track doesn't match. Compare with `os.path.normcase`
   (or a casefolded key column) on Windows.
 - **Settings paths.** `traktor.mac_path()` converts the `.tsi`'s colon paths (`Macintosh HD:Users:Shared:…`). Windows
-  Traktor's form is unknown (**verify**: probably `C:\Users\…` or a colon form with a drive letter). Used for
+  Traktor writes plain Windows paths (seen 2026-11-02: `C:\Users\me\Music\Traktor\Samples`, sometimes with a
+  trailing `\`; Recordings on `D:\DJing\…`), which `mac_path` now misreads as a volume called `C`. The list
+  entry `Browser.Dir.Music` (Type 7) separates its parts with a literal `\b` (`C:\bUsers\bme…`); we don't read it. Used for
   the sample folder (`web.sample_root()`) and the folders `scan --traktor` skips.
 - **Is Traktor running?** **Done** (2026-11-02): `traktor.running_state()` reads `tasklist /FO CSV /NH` on Windows
-  (any image named `traktor*.exe`, so `Traktor.exe` and a versioned name both count; **verify** the name on a real
-  machine) and `pgrep` elsewhere. When the check fails (no process list, an error) it returns None, and
+  (any image named `traktor*.exe`; Traktor Pro 4's is `Traktor Pro 4.exe`, seen in Task Manager 2026-11-02) and `pgrep` elsewhere. When the check fails (no process list, an error) it returns None, and
   `check_closed` treats that like the container: it asks in the terminal or on the page, or needs
   `TRACK_ANALYZER_TRAKTOR_CLOSED=1`, and refuses otherwise. Before, a failed check meant "closed", so on Windows
   every writer would have edited `collection.nml` under a running Traktor, which overwrites it on quit.
@@ -426,8 +430,8 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
   places (18 at the time of writing). Python on Windows defaults to the ANSI code page, so accented
   names would be garbled or the write would fail. Pass `encoding="utf-8"` everywhere, or run Python in UTF-8
   mode (`PYTHONUTF8=1`, set in the launcher).
-- **Line endings.** `read_text()` turns `\r\n` into `\n` and writing puts `\n` back. If Windows Traktor writes CRLF
-  (**verify**), every write would change every line ending and the backup/undo SHA-1 check (`.written-sha1`) would
+- **Line endings.** `read_text()` turns `\r\n` into `\n` and writing puts `\n` back. Windows Traktor Pro 4 writes LF
+  (seen 2026-11-02 in the collection and the `.tsi`; UTF-8, no BOM), so this is safe as it is. Had it been CRLF, every write would change every line ending and the backup/undo SHA-1 check (`.written-sha1`) would
   report every file as changed. Read and write with `newline=""` so the edits stay surgical.
 - **Replacing files.** `os.replace` (the `.tsi` write, `traktor.py`) fails on Windows if another program holds the
   file open without delete sharing: antivirus, OneDrive, maybe Traktor itself. Test with Traktor closed and open;
@@ -482,10 +486,10 @@ The Local API itself (localhost:48624) is the same.
    front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
    collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
    everywhere.
-2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows (done 2026-11-02;
-   the process name still to check on a real machine, step 3).
+2. **Traktor-running check that fails closed** (`tasklist`), before anything writes on Windows (done 2026-11-02).
 3. On a Windows machine with Traktor: copy `collection.nml` and `Traktor Settings.tsi` and note the `LOCATION`,
-   `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files.
+   `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files. (Done 2026-11-02 from a
+   Traktor Pro 4.4.2 install; still open: OneDrive Documents, network drives, MODIFIED seconds.)
 4. Path mapping (`location_paths`, `mac_path`, collection search), case-insensitive matching, the `/` assumptions,
    drive letters for unplugged drives, UTF-8 and `newline=""` on every NML read and write.
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
