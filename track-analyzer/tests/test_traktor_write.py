@@ -140,3 +140,25 @@ def test_collection_found_in_moved_documents(tmp_path, monkeypatch):
 @pytest.mark.skipif(not WINDOWS, reason="asks Windows itself")
 def test_windows_knows_its_documents_folder():
     assert traktor._known_documents()  # the raising version: CI shows Windows' error if it fails
+
+
+def test_first_scan_scores_hype(library, fake_analysis, monkeypatch):
+    """A fresh library's first scan scores hype (it used to wait for `hype`, leaving the column empty)."""
+    from dj_track_analyzer import hype
+
+    calls = []
+
+    def compute(con, progress=None):
+        calls.append(1)
+        con.execute("UPDATE tracks SET hype = 5")
+        con.commit()
+        return {}
+
+    monkeypatch.setattr(hype, "compute", compute)
+    scan(library)
+    assert len(calls) == 1
+    scan(library)  # nothing new and hype already there: left as it is
+    assert len(calls) == 1
+    collection.db().execute("UPDATE tracks SET hype = NULL").connection.commit()
+    scan(library)  # nothing new, but no hype yet: scored
+    assert len(calls) == 2
