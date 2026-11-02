@@ -1,25 +1,17 @@
-"""Tables for src/key.rs, read off Essentia and this Mac's libm (run on macOS, in the analyzer's environment):
+"""Tables for src/key.rs, read off Essentia (run on macOS, in the analyzer's environment):
 
-    uv run python dsp/tools/gen_key_tables.py dsp/src/key_tables.rs dsp/src/key_exp10f.bin
+    uv run python dsp/tools/gen_key_tables.py dsp/src/key_tables.rs
 
 - HANN4096: Essentia's Windowing(hann, size 4096, normalized=True), as KeyExtractor configures it, of 4096 ones with
   zeroPhase off: the window itself, w[0..4096].
 - TW4096: FFTW 3.3.10's twiddles for its 4096-point r2c plan (hc2cf_32, m = 1..63), made as TW512 is
   (gen_musicnn_tables.py).
 - HARMONICS: HPCP's harmonic table (initHarmonicContributionTable, 4 harmonics) and each one's exp2(-semitone/12),
-  as macOS's log and exp2 give them.
-- LOGF_FIX, LOG10F_FIX, COSPI_FIX: (x, macOS's result) wherever rounding the double result to float isn't safely
-  what macOS gives (key_libm_exceptions.c), so key.rs gives macOS's bits on every platform.
-- key_exp10f.bin: the same for exp10f (= powf(10, x), not correctly rounded on 0.1% of inputs: 1.1 million of
-  them in [-12, 0], each one float step off). LEB128 numbers, one per input in increasing bit order:
-  (bits - previous bits) * 3 + (macOS's result - (float)pow(10, x), in float steps, + 1); the first counts from
-  0x80000000 (-0.0).
+  as Python's log and exp2 give them.
 """
 import math
 import struct
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -34,21 +26,8 @@ F = np.float32
 LN2 = 0.6931471805599453  # M_LN2
 
 
-def exceptions(which):
-    with tempfile.TemporaryDirectory() as tmp:
-        exe = Path(tmp) / "key_libm_exceptions"
-        subprocess.run(["clang", "-O2", "-ffp-contract=off", "-o", str(exe), str(HERE / "key_libm_exceptions.c")], check=True)
-        out = subprocess.run([str(exe), which], capture_output=True, text=True, check=True).stdout.split()
-    return [(int(out[i], 16), int(out[i + 1], 16)) for i in range(0, len(out), 2)]
-
-
-def pairs(name, vals):
-    return (f"pub static {name}: [(u32, u32); {len(vals)}] = [\n"
-            + "".join(f"    (0x{x:08x}, 0x{y:08x}),\n" for x, y in vals) + "];\n")
-
-
 def harmonics():
-    """key.rs harmonic_peaks, in numpy float32 and Python (macOS libm) doubles: (semitone, strength, exp2 factor)."""
+    """key.rs harmonic_peaks, in numpy float32 and Python doubles: (semitone, strength, exp2 factor)."""
     precision = F(0.00001)
     out = []
     for i in range(5):
@@ -68,21 +47,6 @@ def harmonics():
             + "".join(f"    (0x{s:08x}, 0x{w:08x}, 0x{x:016x}),\n" for s, w, x in rows) + "];\n")
 
 
-def exp10f_bin():
-    out, prev = bytearray(), 0x80000000
-    for x, y in exceptions("exp10f"):
-        r = bits(F(10.0 ** float(np.uint32(x).view(F))))
-        v = (x - prev) * 3 + (y - r + 1)
-        assert x >= prev and -1 <= y - r <= 1
-        prev = x
-        while True:
-            b, v = v & 0x7F, v >> 7
-            out.append(b | (0x80 if v else 0))
-            if not v:
-                break
-    return bytes(out)
-
-
 def main():
     if sys.platform != "darwin":
         raise SystemExit("run this on macOS: the tables follow Essentia's macOS build and macOS's libm")
@@ -91,14 +55,9 @@ def main():
            "// on macOS. Do not edit by hand.", "",
            table("HANN4096", [bits(v) for v in w]),
            table("TW4096", twiddles(4096)),
-           harmonics(),
-           pairs("LOGF_FIX", exceptions("logf")),
-           pairs("LOG10F_FIX", exceptions("log10f")),
-           pairs("COSPI_FIX", exceptions("cospi"))]
+           harmonics()]
     Path(sys.argv[1]).write_text("\n".join(out))
-    blob = exp10f_bin()
-    Path(sys.argv[2]).write_bytes(blob)
-    print(f"wrote {sys.argv[1]} and {sys.argv[2]} ({len(blob)} bytes)")
+    print(f"wrote {sys.argv[1]}")
 
 
 if __name__ == "__main__":

@@ -3,19 +3,18 @@
 //! Spectrum (FFTW) -> SpectralPeaks -> SpectralWhitening -> HPCP (12 bins) -> Key (streaming: the mean HPCP).
 //! Each step follows the C++ (Essentia 2.1b6.dev1177) operation for operation, in float where it is float and in
 //! double where C++ promotes to double, with clang's contractions (`a*b + c` within one expression becomes one
-//! fused multiply-add) and the libm calls clang emits (pow(10, x) -> exp10f, pow(2, x) -> exp2), given as macOS gives
-//! them on every platform (tables, see `fixed`). Frames are
-//! independent, so they run in parallel; their HPCPs are then summed in order, as meanFrames does.
+//! fused multiply-add); its libm calls (pow(10, x), log, log10, cos) are computed in double and rounded (math.rs), the
+//! nearest float, where Essentia's macOS build is a float step off on some inputs. Frames are independent, so they run in parallel; their HPCPs are then summed in order, as meanFrames does.
 //!
 //! Silent frames: the streaming FrameCutter adds unseeded noise (-100 dB) to a frame whose mean power is below
 //! 1e-10. It can't matter here: such a frame's spectrum stays below 5e-5 (|X| <= ||x|| * ||w|| < 6.4e-4 * 0.038,
 //! noise included), under SpectralPeaks' 1e-4 threshold, so the frame has no peaks and a zero HPCP either way.
 
 use crate::fft4096::rfft4096;
-use crate::key_tables::{COSPI_FIX, HANN4096, HARMONICS, LOG10F_FIX, LOGF_FIX};
+use crate::key_tables::{HANN4096, HARMONICS};
+use crate::math::{cos, exp10f, log10f, log2f};
 use rayon::prelude::*;
-use std::f64::consts::{LN_2, PI};
-use std::sync::OnceLock;
+use std::f64::consts::PI;
 
 const FRAME: usize = 4096;
 const HOP: usize = 4096;
@@ -32,62 +31,9 @@ pub const KEYS: [&str; 12] = ["A", "Bb", "B", "C", "C#", "D", "Eb", "E", "F", "F
 const EDMA_MAJOR: [f32; 12] = [1.00, 0.29, 0.50, 0.40, 0.60, 0.56, 0.32, 0.80, 0.31, 0.45, 0.42, 0.39];
 const EDMA_MINOR: [f32; 12] = [1.00, 0.31, 0.44, 0.58, 0.33, 0.49, 0.29, 0.78, 0.43, 0.29, 0.53, 0.32];
 
-/// f(x) rounded to float, or macOS's result where that isn't safely it (the tables, made on macOS by
-/// gen_key_tables.py), so every platform gets the bits Essentia's macOS build gets. y: f(x) in double, from this
-/// platform's libm (any that is within a few ulps).
-fn fixed(table: &[(u32, u32)], x: f32, y: f64) -> f32 {
-    match table.binary_search_by_key(&x.to_bits(), |&(k, _)| k) {
-        Ok(i) => f32::from_bits(table[i].1),
-        Err(_) => y as f32,
-    }
-}
-
-fn logf(x: f32) -> f32 {
-    fixed(&LOGF_FIX, x, (x as f64).ln())
-}
-
-fn log10f(x: f32) -> f32 {
-    fixed(&LOG10F_FIX, x, (x as f64).log10())
-}
-
 /// HPCP's weight: (float)cos(M_PI * d), d in [0, 0.5].
 fn cospi(d: f32) -> f32 {
-    fixed(&COSPI_FIX, d, (PI * d as f64).cos())
-}
-
-/// key_exp10f.bin decoded: (input bits, macOS's result minus the rounded double, in float steps), by input.
-fn exp10f_fix() -> &'static (Vec<u32>, Vec<i8>) {
-    static FIX: OnceLock<(Vec<u32>, Vec<i8>)> = OnceLock::new();
-    FIX.get_or_init(|| {
-        let (mut keys, mut steps) = (Vec::with_capacity(1 << 20), Vec::with_capacity(1 << 20));
-        let (mut prev, mut v, mut shift) = (0x8000_0000u64, 0u64, 0);
-        for &b in include_bytes!("key_exp10f.bin") {
-            v |= ((b & 0x7f) as u64) << shift;
-            shift += 7;
-            if b & 0x80 == 0 {
-                prev += v / 3;
-                keys.push(prev as u32);
-                steps.push((v % 3) as i8 - 1);
-                (v, shift) = (0, 0);
-            }
-        }
-        (keys, steps)
-    })
-}
-
-/// db2lin's pow(10.0f, x), which clang compiles to exp10f: macOS's, which isn't correctly rounded (key_exp10f.bin).
-fn exp10f(x: f32) -> f32 {
-    let r = 10f64.powf(x as f64) as f32;
-    let (keys, steps) = exp10f_fix();
-    match keys.binary_search(&x.to_bits()) {
-        Ok(i) => f32::from_bits((r.to_bits() as i64 + steps[i] as i64) as u32),
-        Err(_) => r,
-    }
-}
-
-/// essentia::log2<float>: log(x) / M_LN2, logf then a double division.
-fn log2_es(x: f32) -> f32 {
-    (logf(x) as f64 / LN_2) as f32
+    cos(PI * d as f64)
 }
 
 /// essentiamath's lin2db: 10 * log10f(x), -100 below 1e-10.
@@ -290,7 +236,7 @@ fn hpcp(p: &[(f32, f32)], mags: &[f32], harm: &[(f32, f32, f64)]) -> [f32; 12] {
         let mag = mags[k];
         for &(_semitone, hw, factor) in harm {
             let f = (freq as f64 * factor) as f32; // freq * pow(2., -semitone / 12.0)
-            let bin = log2_es(f / 440.0) * 12.0;
+            let bin = log2f(f / 440.0) * 12.0;
             let left = (bin as f64 - (resolution * 1.0) as f64 / 2.0).ceil() as i32;
             let right = (bin as f64 + (resolution * 1.0) as f64 / 2.0).floor() as i32;
             for i in left..=right {
@@ -411,30 +357,4 @@ pub fn key_of(frames: &[[f32; 12]]) -> (usize, bool, f32) {
     }
     // maxOther stays -1 without useMajMin
     if max_maj > max_min && max_maj > -1.0 { (i_maj, false, max_maj) } else { (i_min, true, max_min) }
-}
-
-/// How many inputs in each function's range give other bits than macOS's own libm (should be none): `which` is
-/// logf, log10f, exp10f or cospi. macOS only; dsp/check.py runs it.
-#[cfg(target_os = "macos")]
-pub fn libm_mismatches(which: &str) -> Result<u64, String> {
-    unsafe extern "C" {
-        fn logf(x: f32) -> f32;
-        fn log10f(x: f32) -> f32;
-        fn __exp10f(x: f32) -> f32;
-    }
-    // SAFETY: pure libm functions.
-    let (lo, hi, f): (u32, u32, Box<dyn Fn(f32) -> (f32, f32) + Sync>) = match which {
-        "logf" => (1, 0x7f7f_ffff, Box::new(|x| (self::logf(x), unsafe { logf(x) }))),
-        "log10f" => (1e-10f32.to_bits(), 0x7f7f_ffff, Box::new(|x| (self::log10f(x), unsafe { log10f(x) }))),
-        "exp10f" => (0x8000_0000, (-12f32).to_bits(), Box::new(|x| (exp10f(x), unsafe { __exp10f(x) }))),
-        "cospi" => (0, 0.5f32.to_bits(), Box::new(|x| (cospi(x), (PI * x as f64).cos() as f32))),
-        _ => return Err(format!("unknown function {which}")),
-    };
-    Ok((lo as u64..=hi as u64)
-        .into_par_iter()
-        .filter(|&u| {
-            let (a, b) = f(f32::from_bits(u as u32));
-            a.to_bits() != b.to_bits()
-        })
-        .count() as u64)
 }

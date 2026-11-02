@@ -39,14 +39,21 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   FFTW 3.3.10's plan with the codelets ported (`dsp/tools/gen_fftw_codelets.py`: Essentia's FFTW runs the PLAIN
   codelet variant and gcc -O3 fuses mul+add across statements, modelled with mul_add; checked by calling the
   wheel's local `_r2cf_16` etc. via ctypes). `key_edma` (= KeyExtractor edma, `analysis.key_of`; dsp/src/key.rs, the 4096
-  FFT in fft4096.rs with `r2cf_128`, tables from `dsp/tools/gen_key_tables.py`): clang's `exp10f`/`exp2` for pow(10/2, x),
-  Essentia's log2 = logf/ln2 in double, SpectralWhitening's vectorised loop (blocks of 16 unfused, tail fused), Key's std
+  FFT in fft4096.rs with `r2cf_128`, tables from `dsp/tools/gen_key_tables.py`): SpectralWhitening's vectorised loop (blocks of 16 unfused, tail fused), Key's std
   unfused / correlation fused; per-frame work `#[inline(never)]` with heap buffers (inlined into rayon's splitting it
-  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). libm results are
-  macOS's on every platform: double + round, with tables LOGF_FIX/LOG10F_FIX/COSPI_FIX and `key_exp10f.bin` (macOS
-  exp10f = powf(10, x), off by one float step on 0.1%: 1.1M entries, LEB128) from `dsp/tools/key_libm_exceptions.c`. Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
-  it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
-  after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
+  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). `rhythm_multifeature`
+  (= RhythmExtractor2013 multifeature, `analysis.rhythm`; dsp/src/bpm.rs, tables from `dsp/tools/gen_bpm_tables.py`):
+  the trackers' autocorrelations need FFTW's own rounding, so dsp/src/fftw.rs ports FFTW's ESTIMATE plans for every
+  power of two to 2^22 (r2c + c2r; plans read with `fftwf_sprint_plan`, twiddles from FFTW's sqrt(n) trig table);
+  the five Degara trackers draw rand() (seed 1 per call) in Essentia's scheduler order infogain, beat_emphasis,
+  melflux, rms, complex (`order` [4, 3, 2, 0, 1]; test signals can't tell orders apart, real recordings can).
+  Essentia fails on a whole long mix (output buffer full), so check.py compares only a mix's 2-min segments, as the
+  app measures. Accuracy beats Essentia's bits (user, 2026-11-02): every libm call (log, log2, log10, exp, pow(10, x),
+  sin/cos, atan2) is the `libm` crate's double rounded to float (dsp/src/math.rs), more exact than Essentia's macOS
+  float libm and the same bits on every platform; check.py passes those steps within `TOL` (mel 1 float step, EffNet
+  and key strength 1e-5, key/scale equal; BPM its gate) as "close". Mel tables (window, mel weights, twiddles) from
+  `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
+  after a check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
   release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
   uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
