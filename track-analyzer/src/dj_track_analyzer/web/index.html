@@ -359,7 +359,10 @@ pre.log { max-height: 280px; overflow: auto; font-family: var(--mono); font-size
 .step .act { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; align-items: center; max-width: 460px; }
 .step .act input[type=text] { width: 230px; }
 button:disabled { opacity: .5; cursor: default; }
-dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
+#updatecard .card { margin-bottom: 16px; }
+#updatecard .card.hl { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft); }
+#updatecard ul { margin: 4px 0; padding-left: 20px; }
+dialog.write .warnbox, #gridbox .warnbox, #updatecard .warnbox { background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line));
   border-radius: 8px; padding: 8px 10px; margin: 8px 0; font-size: 13px; }
 
 #lib { max-width: 220px; }
@@ -2695,10 +2698,12 @@ function jobBar() {
 
 // What a writer reported, readably: the counts, notes, a few examples, and everything else folded away.
 const HIDE = new Set(["dry_run", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
-  "now_loaded", "clock", "smartlist_folder", "kept", "restored_from"]);
+  "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps"]);
 const LABELS = { would_write: "files that would get a new tag", written: "files tagged", would_restore: "files that would get their old tags back",
   restored: "files given their old tags back", skipped_changed_since_scan: "skipped: changed on disk since the scan (scan again first)",
-  unchanged: "already right", missing: "files no longer there", traktor_tracks: "tracks in Traktor", matched_scanned_tracks: "of them scanned" };
+  unchanged: "already right", missing: "files no longer there", traktor_tracks: "tracks in Traktor", matched_scanned_tracks: "of them scanned",
+  new_files: "new files", changed_files: "files changed", removed_files: "files removed", commits: "new commits",
+  files_put_back: "files put back", files_removed: "files taken out" };
 const human = k => LABELS[k] || k.replace(/_/g, " ");
 function exampleText(x) {
   return typeof x === "string" ? x : Object.entries(x).map(([k, v]) => k === "file" ? v : `${k}: ${v}`).join(" · ");
@@ -2760,7 +2765,10 @@ async function writeDialog(action, options = {}, onDone) {
     const open = j.traktor_running && TOUCHES_TRAKTOR.has(act), nothing = nothingToDo(j.result);
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
       ${resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
-      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? "A backup of Traktor's collection is made first, and you can undo it here afterwards." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
+      ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
+      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? "A backup of Traktor's collection is made first, and you can undo it here afterwards."
+        : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
+        : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
     again(act, opts);
     dlg.querySelector("[data-go]")?.addEventListener("click", () => write(act, opts));
@@ -2780,6 +2788,7 @@ async function writeDialog(action, options = {}, onDone) {
       return again(act, opts);
     }
     const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
+    if (r.restart) return restartApp((html, buttons) => show(html, buttons), r);
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
       ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
       ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
@@ -2791,6 +2800,87 @@ async function writeDialog(action, options = {}, onDone) {
   preview(action, options);
 }
 
+// ---------- updating the app (update.py) ----------
+let UPD = null;
+async function getUpdate(force = false, auto = false) { UPD = await api("update", { force: force ? 1 : "", auto: auto ? 1 : "" }); return UPD; }
+// Release notes are a little Markdown: bold, code, "- " lists, "## " headings
+function notesHtml(md) {
+  const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, '<span class="mono">$1</span>');
+  let out = "", list = false;
+  for (const raw of md.split(/\r?\n/)) {
+    const line = raw.trimEnd(), li = line.match(/^\s*[-*] (.*)/);
+    if (li) { if (!list) { out += "<ul>"; list = true; } out += `<li>${inline(li[1])}</li>`; continue; }
+    if (list && /^\s+\S/.test(line)) { out = out.replace(/<\/li>$/, ` ${inline(line.trim())}</li>`); continue; }  // a list item's next line
+    if (list) { out += "</ul>"; list = false; }
+    if (/^#+ /.test(line)) out += `<div class="small" style="margin-top:8px"><b>${inline(line.replace(/^#+ /, ""))}</b></div>`;
+    else if (line.trim()) out += `<div class="small">${inline(line)}</div>`;
+  }
+  return out + (list ? "</ul>" : "");
+}
+// After an update (or going back): the server stops and its launcher starts the new version; reload when it answers again
+async function restartApp(show, r = {}) {
+  const st = UPD || await getUpdate(false, true).catch(() => null);
+  const to = r.to && r.to !== "main" ? ` ${esc(r.to)}` : "";
+  const steps = (r.after_steps || []).length ? `<div class="note">After it starts, the Setup tab offers what this update needs: ${esc(r.after_steps.join("; "))}.</div>` : "";
+  const manual = why => show(`<div style="color:var(--good)"><b>✓ Version${to} is installed.</b></div><div style="margin-top:8px">${esc(why)}</div>${steps}`);
+  if (st && !st.restart) return manual("To start it, close the analyzer's window and double-click Start Puppi3's Track Analyzer again.");
+  show(`<div style="color:var(--good)"><b>✓ Version${to} is installed.</b></div><div class="muted" style="margin-top:8px">Starting the page again with it: installing its packages first, which can take a minute…</div>${steps}`);
+  try { await postJSON("/api/restart", {}); } catch (e) { return manual(e.message); }
+  let gone = false;
+  for (const t0 = Date.now(); Date.now() - t0 < 5 * 60e3;) {
+    await new Promise(ok => setTimeout(ok, 1000));
+    try { const res = await fetch("/api/libraries", { cache: "no-store" }); if (res.ok && gone) { location.hash = "setup"; location.reload(); return; } gone ||= !res.ok; }
+    catch (e) { gone = true; }
+  }
+  manual("It's taking a while. Look at the analyzer's window for what it's doing; if it stopped, double-click Start Puppi3's Track Analyzer again.");
+}
+// What each step after an update runs (update.STEPS' keys)
+const AFTER_JOBS = { models: ["setup", {}], regenre: ["regenre", {}], rescan: ["scan", { traktor: true, rescan: true }], train: ["colors_train", { views: true }] };
+async function updateCard(force = false) {
+  const box = $("#updatecard");
+  if (!box || SNAP) return;
+  let u;
+  try { u = await getUpdate(force, !force); } catch (e) { box.innerHTML = `<div class="card"><div class="err">${esc(e.message)}</div></div>`; return; }
+  if (!box.isConnected) return;
+  const b = jobRunning() ? "disabled" : "";
+  const P = u.pending || { steps: [] };
+  const pending = P.steps.length ? `<div class="warnbox" style="margin-top:10px"><b>After updating to version ${esc(P.version)}</b> (from ${esc(P.since)}), do these once:
+      <div class="steps" style="margin-top:6px">${P.steps.map(x => `<div class="step todo"><div class="ic">→</div><div><div class="st">${esc(x.label)}</div></div>
+        <div class="act"><button class="primary" data-after="${esc(x.key)}" ${b}>Run</button></div></div>`).join("")}</div>
+      <div class="filters" style="margin-top:6px"><button id="up-seen">Done, hide this</button></div></div>` : "";
+  const notes = (u.notes || []).map(n => `<details ${u.notes.length === 1 ? "open" : ""} style="margin-top:6px"><summary style="cursor:pointer"><b>What's new in ${esc(n.version)}</b></summary><div style="margin:4px 0 0 4px">${notesHtml(n.notes)}</div></details>`).join("");
+  const kind = u.kind === "git" ? " (a git clone: updates with git pull)" : u.kind === "container" ? " (Docker)" : "";
+  const state = u.error ? `<span class="err">${esc(u.error)}</span>`
+    : u.newer ? `<b>Version ${esc(u.latest)} is out</b>${u.published ? ` <span class="muted">(${esc(u.published)})</span>` : ""}.`
+    : u.latest ? `Up to date${u.checked ? ` <span class="muted">(checked ${esc(u.checked)})</span>` : ""}.`
+    : !u.auto ? `<span class="muted">Checking for updates when the page opens is off.</span>` : "";
+  box.innerHTML = `<div class="card${u.newer ? " hl" : ""}"><div class="filters" style="margin-bottom:4px"><h3 style="margin:0">Puppi3's Track Analyzer ${esc(u.installed)}<span class="dim small">${esc(kind)}</span></h3><div class="spacer"></div>
+      <label class="inline small" data-tip="Asks GitHub for the newest release at most every 6 hours; nothing else is sent"><input type="checkbox" id="up-auto" ${u.auto ? "checked" : ""}> check when the page opens</label>
+      <button id="up-check">Check now</button></div>
+    <div>${state}</div>
+    ${u.newer && u.can_update ? `<div class="filters" style="margin-top:8px"><button class="primary" id="up-go" ${b}>Update now…</button><span class="small muted">Shows what changes first. Your scans, models and training stay.</span></div>` : ""}
+    ${u.newer && !u.can_update && u.why_not ? `<div class="note">${esc(u.why_not)} <a href="${esc(u.url || u.page)}" target="_blank" rel="noopener">The release on GitHub</a></div>` : ""}
+    ${notes}${pending}
+    ${u.previous ? `<div class="small muted" style="margin-top:8px">Updated from ${esc(u.previous)}. <a href="#" id="up-back">Go back to ${esc(u.previous)}…</a></div>` : ""}</div>`;
+  const on = (id, fn) => { const el = $("#" + id); if (el) el.onclick = fn; };
+  on("up-check", async e => { e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking…"; await updateCard(true); updateDot(); });
+  on("up-go", () => writeDialog("update"));
+  on("up-back", e => { e.preventDefault(); writeDialog("update_undo"); });
+  on("up-seen", async () => { await postJSON("/api/update/settings", { seen: true }); updateCard(); });
+  $("#up-auto").onchange = async e => { await postJSON("/api/update/settings", { auto: e.target.checked }); updateCard(); };
+  box.querySelectorAll("[data-after]").forEach(el => el.onclick = () => {
+    const [action, opts] = AFTER_JOBS[el.dataset.after];
+    startJob(action, opts).catch(err => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(err.message)}</div>`; });
+  });
+}
+// The Setup link's dot: an update is out, or steps after one are left
+function updateDot() {
+  const link = document.querySelector('#nav a[href="#setup"]'), u = UPD;
+  if (!link || !u || link.querySelector(".dot")) return;
+  const why = u.newer ? `Version ${u.latest} is out` : u.pending?.steps?.length ? "Steps left after the update" : "";
+  if (why) link.insertAdjacentHTML("beforeend", `<span class="dot" data-tip="${esc(why)}"></span>`);
+}
+
 // ---------- setup ----------
 let SETUP = null;
 async function getSetup(force) { if (!SETUP || force) SETUP = await api("setup"); return SETUP; }
@@ -2800,6 +2890,7 @@ async function refreshSetupNote() {
   let st; try { st = await getSetup(); } catch (e) { return; }
   const todo = !setupReady(st), n = $("#setupnote"), link = document.querySelector('#nav a[href="#setup"]');
   link.innerHTML = `Setup${todo ? `<span class="dot" data-tip="Not set up yet"></span>` : ""}`;
+  if (UPD) updateDot(); else getUpdate(false, true).then(updateDot, () => {});
   n.hidden = !todo || S.page === "setup";
   $("#dockernote").hidden = !st.container;
   n.innerHTML = !st.models.ready ? `<b>New here?</b> Nothing is set up yet: the analysis models aren't downloaded and nothing is scanned. <a href="#setup">Set it up →</a>`
@@ -2921,6 +3012,7 @@ async function pageSetup(main) {
   const noScan = !sc.tracks && "disabled";
   main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in Traktor. Each button runs the same command as in a terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
     <div id="jobpanel"></div>
+    <div id="updatecard"></div>
     <div class="card"><h3>Get started</h3><div class="steps">${models}${traktorStep}${scanStep}${hypeStep}</div></div>
     <div class="card"><h3>Learn from your own Traktor work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}</div></div>
     <div class="card"><h3>Extra tools <span class="dim small">(optional)</span></h3><div class="steps">
@@ -2988,6 +3080,7 @@ async function pageSetup(main) {
   on("wr-capply", () => writeDialog("colors_apply"));
   on("wr-recolour", () => writeDialog("colors_recolour"));
   on("wr-undo", () => writeDialog("traktor_undo"));
+  updateCard();
   jobPanel();
 }
 // The running (or last) job on the Setup page: progress, live log, result.

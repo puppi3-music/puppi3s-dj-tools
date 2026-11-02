@@ -37,11 +37,21 @@ if ! command -v uv >/dev/null 2>&1; then
   command -v uv >/dev/null 2>&1 || fail "uv was installed but can't be found. Close this window and double-click again."
 fi
 
-echo "Getting Python and the analyzer ready (the first time takes a few minutes)…"
-uv sync --inexact || fail "Couldn't install the analyzer's Python packages."
-
-echo
-echo "Starting Puppi3's Track Analyzer. The page opens in your browser."
-echo "Keep this window open while you use it; close it (or press Ctrl-C) to stop."
-echo
-exec uv run dj-track-analyzer web
+# After an update the page stops with code 75 to be started again: install the new version's packages, start it.
+# (An update replaces this file with a new one; bash keeps reading this copy, and the loop is read whole anyway.)
+export TRACK_ANALYZER_LAUNCHER=1
+OPEN=""
+while :; do
+  echo "Getting Python and the analyzer ready (the first time takes a few minutes)…"
+  uv sync --inexact || fail "Couldn't install the analyzer's Python packages."
+  echo
+  echo "Starting Puppi3's Track Analyzer. The page opens in your browser."
+  echo "Keep this window open while you use it; close it (or press Ctrl-C) to stop."
+  echo
+  uv run dj-track-analyzer web $OPEN
+  rc=$?
+  [ "$rc" = 75 ] || exit "$rc"
+  echo
+  echo "Restarting with the new version…"
+  OPEN="--no-open"
+done
