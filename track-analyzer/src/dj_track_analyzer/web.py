@@ -30,7 +30,7 @@ _lock = threading.RLock()
 TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", "duration_sec", "bpm", "traktor_bpm",
               "key", "camelot", "cnn_key", "cnn_camelot", "traktor_camelot", "lufs", "loudness_range", "genre", "genre_score", "genre_2",
               "genre_2_score", "genre_3", "genre_3_score", "my_genre", "my_genre_confidence", "trained_genre",
-              "trained_genre_confidence", "tag_genre", "styles",
+              "trained_genre_confidence", "nearest_genre", "nearest_genre_confidence", "tag_genre", "styles",
               "traktor_color", "color", "color_position", "color_confidence", "mood_aggressive", "mood_happy",
               "mood_party", "mood_relaxed", "mood_sad", "instruments", "approachability", "hype", "error",
               "scanned_at"]
@@ -959,21 +959,22 @@ def pick_genre_folder() -> dict:
     return {"cancelled": True} if path is None else {"path": path}
 
 
-def use_my_genres(on: bool) -> dict:
-    """The Setup tab's "Use my genres" switch. Not while a job runs (a scan or training writes the same columns)."""
+def set_genre_mode(mode: str) -> dict:
+    """The Setup tab's genre switch (starter / both / mine). Not while a job runs (a scan or training writes the
+    same columns)."""
     from . import mygenres
 
     if jobs.busy():
         raise SystemExit("A job is running: wait for it (or stop it) before switching your genres on or off.")
     with library("native"):
-        return mygenres.set_use(on)
+        return mygenres.set_mode(mode)
 
 
-def my_genres_preview() -> dict:
+def my_genres_preview(mode: str) -> dict:
     from . import mygenres
 
     with library("native"):
-        return mygenres.preview()
+        return mygenres.preview(mode)
 
 
 def set_collection(b: dict) -> dict:
@@ -1761,8 +1762,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
-        Route("/api/genres/preview", respond(lambda q: my_genres_preview())),
-        Route("/api/genres/use", post(lambda b: use_my_genres(bool(b.get("on")))), methods=["POST"]),
+        Route("/api/genres/preview", respond(lambda q: my_genres_preview(q.get("mode", "both")))),
+        Route("/api/genres/use", post(lambda b: set_genre_mode(str(b.get("mode", "")))), methods=["POST"]),
         Route("/api/genres/browse", post(lambda b: pick_genre_folder()), methods=["POST"]),
         Route("/api/update", respond(lambda q: update_status(q.get("force") == "1", q.get("auto") == "1"))),
         Route("/api/update/settings", post(update_settings), methods=["POST"]),

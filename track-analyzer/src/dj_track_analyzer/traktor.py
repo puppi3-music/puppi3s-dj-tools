@@ -423,7 +423,7 @@ def known_genres() -> set[str]:
     from . import analysis
 
     names = set(analysis.dj_rules())
-    if analysis.use_my_genres():  # "Use my genres" on (else nothing carries them)
+    if analysis.use_my_genres():  # the genre switch on Both or Mine (else nothing carries them)
         names |= set(analysis.my_genre_bundle().get("counts", {}))
     return names
 
@@ -845,7 +845,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     if genres_from_analysis:
         hand = {p: f["genre"] for p, f in collection.manual().items() if "genre" in f}
         for r in con.execute("SELECT * FROM tracks WHERE error IS NULL OR error LIKE 'tags:%'"):
-            # with "Use my genres" on, my_genre is your trained genre where one fits (else None: ours)
+            # my_genre: your genre per the Setup tab's genre switch (starter: None, so ours)
             if (g := hand.get(r["path"]) or r["my_genre"] or collection.multi_genre(dict(r))):
                 analysed[r["path"]] = g
     genre_of = analysed.get if genres_from_analysis else file_genre

@@ -133,7 +133,7 @@ def main() -> None:
     tg.add_argument("folders", nargs="*", help="limit to these folders (default: everything scanned)")
     tg.add_argument("--fields", default="genre", help="genre (default), or e.g. genre,bpm,camelot  (fields: genre,bpm,key,camelot)")
     tg.add_argument("--min-score", type=float, default=0.0, help="skip tracks whose genre score is below this (e.g. 0.2)")
-    tg.add_argument("--use-my-genre", action="store_true", help="write your trained genres instead, where one fits (\"Use my genres\" on does this always)")
+    tg.add_argument("--use-my-genre", action="store_true", help="write your trained genres instead, where one fits (the Setup tab's genre switch on Both or Mine does this always)")
     tg.add_argument("--dry-run", action="store_true", help="show what would change without touching any file")
     tg.add_argument("--multi", action="store_true", help='also add close runner-up genres, e.g. "Acid Trance; Hard Trance"')
     tg.add_argument("--multi-ratio", type=float, default=0.7, help="a runner-up needs at least this share of the top score (default 0.7)")
@@ -308,8 +308,9 @@ def main() -> None:
     st.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
     t = sub.add_parser("train", help="train your own genres from a folder (the Setup tab's Learn your genres)")
     t.add_argument("folder", nargs="?", help="one subfolder or .m3u8 playlist per genre, 20-50 example tracks each")
-    t.add_argument("--use", choices=["on", "off"], default=None,
-                   help="the Setup tab's \"Use my genres\": your genre where one fits, the built-in genre elsewhere")
+    t.add_argument("--use", choices=["starter", "both", "mine"], default=None,
+                   help="the Setup tab's genre switch: starter = built-in genres only; both = yours where one fits, "
+                        "built-in elsewhere; mine = the nearest of yours on every track")
     w = sub.add_parser("web", help="browse everything in a local web page (also holds, cue approvals, loop samples)")
     w.add_argument("--host", default="127.0.0.1")
     w.add_argument("--port", type=int, default=8766)
@@ -418,10 +419,10 @@ def main() -> None:
         from . import mygenres
 
         if not args.folder and not args.use:
-            raise SystemExit("Give the folder with your example tracks, or --use on|off.")
+            raise SystemExit("Give the folder with your example tracks, or --use starter|both|mine.")
         out = mygenres.train(args.folder) if args.folder else {}
         if args.use:
-            out["use"] = mygenres.set_use(args.use == "on")
+            out["use"] = mygenres.set_mode(args.use)
         print(json.dumps(out, indent=2, ensure_ascii=False))
     elif args.cmd == "scan":
         from . import collection

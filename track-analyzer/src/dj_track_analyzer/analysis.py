@@ -1525,7 +1525,7 @@ _genre_bundle: dict = {}
 # of your genres when it sounds more like that genre than like the rest of your music (else it keeps the built-in
 # genre). Without it every track got one of your genres, even a house track when you'd trained Hyperpop and Pop.
 OTHER_GENRE = "∅ everything else"
-MY_GENRES_MIN_TOTAL, MY_GENRES_MIN_EACH = 30, 10  # before the Setup tab's "Use my genres" can be switched on
+MY_GENRES_MIN_TOTAL, MY_GENRES_MIN_EACH = 30, 10  # before your genres can be switched on (Setup tab)
 BACKGROUND_MIN, BACKGROUND_MAX = 30, 1500  # scanned tracks of yours that stand for "everything else"
 SAME_TRACK_COS = 0.995  # a copy of an example (other path or format; 0.99999 measured) vs different tracks (≤ 0.983)
 
@@ -1551,7 +1551,7 @@ def my_genre_model():
 
 
 def my_genres_not_ready(b: dict | None = None) -> str | None:
-    """Why "Use my genres" can't be switched on (yet), or None when it can."""
+    """Why your genres can't be switched on (yet), or None when they can."""
     b = b if b is not None else my_genre_bundle()
     if not b:
         return "Learn your genres first."
@@ -1566,14 +1566,26 @@ def my_genres_not_ready(b: dict | None = None) -> str | None:
     return None
 
 
+# The Setup tab's genre switch (setting `my_genres_mode`): built-in genres only; yours where one clearly fits and
+# the built-in genre elsewhere; or yours on every track (the nearest of yours, even when none fits).
+MY_GENRE_MODES = ("starter", "both", "mine")
+
+
+def my_genres_mode() -> str:
+    """The switch as it applies now: "starter" while your genres can't be used (not learned, too few examples)."""
+    mode = app_setting("my_genres_mode", "starter")
+    return mode if mode in MY_GENRE_MODES and my_genres_not_ready() is None else "starter"
+
+
 def use_my_genres() -> bool:
-    """The Setup tab's "Use my genres" switch is on and the trained genres can be used."""
-    return bool(app_setting("use_my_genres", False)) and my_genres_not_ready() is None
+    """Your genres are in use ("both" or "mine")."""
+    return my_genres_mode() != "starter"
 
 
-def predict_my_genres(X: np.ndarray, top: int = 3) -> list[list[dict] | None]:
+def predict_my_genres(X: np.ndarray, top: int = 3, nearest: bool = False) -> list[list[dict] | None]:
     """Per row (a track's mean EffNet embedding): your trained genres, best first, or None when the track sounds
-    more like the rest of your collection than like any of them (models without that class: never None)."""
+    more like the rest of your collection than like any of them (models without that class: never None).
+    `nearest`: your genres best first even then (the switch's "mine only")."""
     clf = my_genre_model()
     X = np.atleast_2d(X)
     if clf is None:
@@ -1582,7 +1594,7 @@ def predict_my_genres(X: np.ndarray, top: int = 3) -> list[list[dict] | None]:
     out = []
     for p in clf.predict_proba(X):
         order = np.argsort(p)[::-1]
-        if classes[order[0]] == OTHER_GENRE:
+        if classes[order[0]] == OTHER_GENRE and not nearest:
             out.append(None)
             continue
         out.append([{"genre": classes[i], "confidence": round(float(p[i]), 3)}
@@ -1590,8 +1602,8 @@ def predict_my_genres(X: np.ndarray, top: int = 3) -> list[list[dict] | None]:
     return out
 
 
-def predict_my_genre(emb_mean: np.ndarray, top: int = 3):
-    return predict_my_genres(emb_mean.reshape(1, -1), top)[0]
+def predict_my_genre(emb_mean: np.ndarray, top: int = 3, nearest: bool = False):
+    return predict_my_genres(emb_mean.reshape(1, -1), top, nearest)[0]
 
 
 def track_embedding(p: Path):
@@ -1699,6 +1711,9 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         mine = predict_my_genre(emb_mean)
         if mine:
             result["my_genre"] = mine
+        nearest = predict_my_genre(emb_mean, top=1, nearest=True)
+        if nearest:
+            result["my_genre_nearest"] = nearest[0]
         mood_p = mood_patches(emb)
         moods = run_moods(emb, mask, mood_p)
         if moods:
