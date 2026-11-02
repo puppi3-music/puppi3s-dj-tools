@@ -389,6 +389,7 @@ Each run recreates that folder, so keep customised copies of a Smartlist outside
 | `--undo` | Restore `collection.nml` from before the last run; run again to step back further | |
 | `--undo --force` | Restore even though Traktor saved the collection since (loses what Traktor saved: plays, cues, edits) | |
 | `--smartlists-only` / `--no-smartlists` | Only rebuild the Smartlists / only update genres | |
+| `--genres-from-analysis` | Genres straight from the analysis (as `tag --multi` picks them; a genre set by hand as typed), leaving your files' tags as they are. Traktor may bring back a file's own genre when it re-reads that file's tags; writing again fixes it. On the page: "only in Traktor" | |
 | `--no-colors` | Don't colour uncoloured tracks | |
 | `--color-min-confidence 0.3` | Only colour the more reliable guesses | 0 |
 | `--overwrite-colors` | Also replace colours you set yourself. Not recommended | off |

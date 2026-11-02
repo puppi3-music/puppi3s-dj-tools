@@ -101,3 +101,23 @@ def test_unplugged_drive_keeps_its_tracks(library, fake_analysis):
     left = set(collection.known_all(collection.db()))
     assert unplugged in left  # its drive isn't there: unplugged, kept
     assert deleted not in left  # its drive is there, the file isn't: gone
+
+
+def test_genres_only_in_traktor(library, fake_analysis):
+    """`traktor --genres-from-analysis` (the page's "only in Traktor"): the files' tags stay as they were."""
+    if traktor.running_state():
+        pytest.skip("Traktor is running on this computer")
+    scan(library)
+    collection.set_manual(str(library["files"][2]), "genre", "My Own Genre")  # set by hand: goes in as typed
+    nml = library["nml"]
+    before, files = nml.read_bytes(), {f: f.read_bytes() for f in library["files"]}
+
+    out = json.loads(cli("traktor", "--genres-from-analysis").stdout)
+    assert out["genres_updated"] == len(TRACKS)
+    after = entries(nml)
+    assert after[str(library["files"][0])]["GENRE"] == TRACKS[0][2]  # both genres, as tag --multi picks them
+    assert after[str(library["files"][1])]["GENRE"] == TRACKS[1][2]
+    assert after[str(library["files"][2])]["GENRE"] == "My Own Genre"
+    assert {f: f.read_bytes() for f in library["files"]} == files  # no file touched
+    cli("traktor", "--undo")
+    assert nml.read_bytes() == before

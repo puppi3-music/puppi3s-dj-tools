@@ -2805,7 +2805,7 @@ async function refreshSetupNote() {
   n.innerHTML = !st.models.ready ? `<b>New here?</b> Nothing is set up yet: the analysis models aren't downloaded and nothing is scanned. <a href="#setup">Set it up →</a>`
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
-const SF = { folder: "", bpm: "", noMaest: false, multi: true, colours: true, lexicon: false };
+const SF = { folder: "", bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -2916,13 +2916,14 @@ async function pageSetup(main) {
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
       ${st.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Previews work, but quit Traktor before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
       <div class="steps">
-      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, which Traktor, Lexicon and other players read. Do this before the next step: Traktor gets its genres from these tags.
+      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, which Traktor, Lexicon and other players read. Do this before the next step: Traktor gets its genres from these tags (unless you tick "only in Traktor" there).
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
       ${w("wr-traktor", "Genres, colours and Smartlists in Traktor", `Puts the genre tags into Traktor's collection, sets the predicted colour on tracks you haven't coloured (yours are never changed),
         and adds a "Genres (Track Analyzer)" Smartlist folder.`,
-        `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>`, (noScan || !tk.collection) && "disabled")}
+        `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>
+         <label class="inline small" data-tip="The analyzer's genres go straight into Traktor; your files keep their own genre tags. Traktor may put a file's own genre back when it re-reads that file's tags (after another program changes the file); writing again fixes it."><input type="checkbox" id="wr-only-traktor" ${SF.onlyTraktor ? "checked" : ""}> only in Traktor (leave my files' tags as they are)</label>`, (noScan || !tk.collection) && "disabled")}
       ${w("wr-hype", "Hype in Traktor's Comment", `Adds "Hype 07" after anything already in Comment (an old Hype in Comment 2 is moved), so you can sort and search by it in Traktor.`,
         `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !tk.collection) && "disabled")}
       ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in Traktor and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !tk.collection && "disabled") : ""}
@@ -2934,7 +2935,7 @@ async function pageSetup(main) {
   const go = (action, opts) => startJob(action, opts).catch(e => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(e.message)}</div>`; });
   const bindVal = (id, key, prop = "value") => { const el = $("#" + id); if (el) el.addEventListener("input", () => { SF[key] = el[prop]; }); };
   bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked");
-  bindVal("wr-colours", "colours", "checked"); bindVal("su-lexicon", "lexicon", "checked");
+  bindVal("wr-colours", "colours", "checked"); bindVal("wr-only-traktor", "onlyTraktor", "checked"); bindVal("su-lexicon", "lexicon", "checked");
   on("su-setup", () => go("setup", { no_maest: SF.noMaest }));
   on("su-maest", () => go("setup", {}));
   on("su-scan-tk", () => go("scan", { traktor: true }));
@@ -2952,7 +2953,7 @@ async function pageSetup(main) {
   on("su-native", () => writeDialog("tempo_native", { lexicon: lex() }));
   on("wr-tag", () => writeDialog("tag", { multi: SF.multi }));
   on("wr-untag", () => writeDialog("untag"));
-  on("wr-traktor", () => writeDialog("traktor", { colours: SF.colours }));
+  on("wr-traktor", () => writeDialog("traktor", { colours: SF.colours, only_traktor: SF.onlyTraktor }));
   on("wr-hype", () => writeDialog("hype_traktor"));
   on("wr-hype-rm", () => writeDialog("hype_remove"));
   on("wr-capply", () => writeDialog("colors_apply"));

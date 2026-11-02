@@ -93,7 +93,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `running_state()`: pgrep, `tasklist` on Windows, None when it can't tell. Never assumed closed: in a container
   (`CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor) or when the check fails, it needs a y in a terminal,
   TRACK_ANALYZER_TRAKTOR_CLOSED=1, or the page's answer (`page_answer`; else `ConfirmClosed` → web 409
-  {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE, INFO COLOR (only where
+  {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE (from the files' tags; `--genres-from-analysis` / the page's "only in Traktor": `multi_genre` of the DB row, a hand genre as typed, files untouched), INFO COLOR (only where
   missing unless `--overwrite-colors`), and a "Genres (Track Analyzer)" Smartlist folder, only for
   `known_genres()` = dj_genres.json names + trained genres (shop tags like "melodic techno, indie dance" would
   otherwise become ~100 Smartlists). `track_info()` reads Traktor's TEMPO BPM and MUSICAL_KEY (0-11 = C..B major,
