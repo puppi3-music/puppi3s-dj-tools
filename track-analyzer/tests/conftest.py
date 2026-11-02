@@ -38,7 +38,7 @@ RECORDING = ("Recordings", "2026-11-02 Mix.flac")  # Traktor's own mix recording
 
 
 def make_audio(path: Path, freq: float, seconds: float = 3.0) -> None:
-    """A few seconds of a stereo tone as FLAC (PyAV is a dependency anyway)."""
+    """A few seconds of a stereo tone, as FLAC or WAV by the name (PyAV is a dependency anyway)."""
     import av
     import numpy as np
 
@@ -47,7 +47,7 @@ def make_audio(path: Path, freq: float, seconds: float = 3.0) -> None:
     t = np.arange(int(rate * seconds)) / rate
     tone = (np.sin(2 * np.pi * freq * t) * 12000).astype(np.int16)
     with av.open(str(path), "w") as out:
-        stream = out.add_stream("flac", rate=rate, layout="stereo")
+        stream = out.add_stream("pcm_s16le" if path.suffix == ".wav" else "flac", rate=rate, layout="stereo")
         for i in range(0, len(tone), 4096):
             chunk = tone[i:i + 4096]
             frame = av.AudioFrame.from_ndarray(np.repeat(chunk, 2)[None, :], format="s16", layout="stereo")

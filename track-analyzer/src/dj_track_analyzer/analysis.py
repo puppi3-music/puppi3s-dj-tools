@@ -1119,8 +1119,13 @@ def cache_put(p: Path, duration: float, emb: np.ndarray, styles: np.ndarray) -> 
 
 
 TOOL_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", "/home/linuxbrew/.linuxbrew/bin"]  # Homebrew's, when PATH lacks them
+TOOLS_HOME = HOME / "tools"  # tools the analyzer installed itself (Rubber Band on Windows: `install rubberband`)
 if sys.platform == "win32":  # winget's command links (a new PATH entry reaches only programs started after the install)
-    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links")]
+    TOOL_DIRS = [os.path.join(os.environ.get("LOCALAPPDATA", ""), "Microsoft", "WinGet", "Links"),
+                 str(TOOLS_HOME / "rubberband")]
+# Rubber Band's own Windows build: the same 4.0.0 as Homebrew's on the Mac, checked by its SHA-256
+RUBBERBAND_WINDOWS = ("https://breakfastquay.com/files/releases/rubberband-4.0.0-gpl-executable-windows.zip",
+                      "f2d47fc64dbb42f6cc62edf7933ac4fa89d8f0ef8b9cf97b6afc263a7fe05644")
 APT_NAMES = {"rubberband": "rubberband-cli"}  # Debian/Ubuntu packages named differently from the command
 
 
@@ -1137,10 +1142,44 @@ def install_hint(name: str) -> str:
         return f"brew install {name}"
     if sys.platform == "win32":
         if name == "rubberband":
-            return ("download the Windows build (3.0 or newer) from breakfastquay.com/rubberband and put the folder "
-                    "with rubberband.exe on your PATH")
+            return "uv run dj-track-analyzer install rubberband"
         return "winget install Gyan.FFmpeg"
     return f"sudo apt install {APT_NAMES.get(name, name)} (or your distribution's package manager)"
+
+
+def install_rubberband() -> dict:
+    """Windows: Rubber Band's own build (RUBBERBAND_WINDOWS) into data/tools/rubberband, where find_tool looks.
+    Elsewhere the package manager has it (install_hint)."""
+    import hashlib
+    import shutil
+    import tempfile
+    import zipfile
+
+    if sys.platform != "win32":
+        raise SystemExit(f"Install Rubber Band with: {install_hint('rubberband')}")
+    url, sha256 = RUBBERBAND_WINDOWS
+    dest = TOOLS_HOME / "rubberband"
+    with tempfile.TemporaryDirectory() as tmp:
+        z = Path(tmp) / Path(url).name
+        log(f"Downloading {url}")
+        if not _fetch(url, z):
+            raise SystemExit("Couldn't download Rubber Band. Check the internet connection and try again.")
+        got = hashlib.sha256(z.read_bytes()).hexdigest()
+        if got != sha256:
+            raise SystemExit(f"The Rubber Band download isn't the expected file (SHA-256 {got}); nothing installed.")
+        unpacked = Path(tmp) / "unpacked"
+        with zipfile.ZipFile(z) as zf:
+            zf.extractall(unpacked)
+        shutil.rmtree(dest, ignore_errors=True)
+        dest.mkdir(parents=True)
+        for f in unpacked.rglob("*"):
+            if f.is_file():  # the zip has one folder: rubberband.exe, its sndfile.dll, the licence
+                shutil.copy2(f, dest / f.name)
+    global _rubberband_exe
+    _rubberband_exe = None
+    exe = rubberband()
+    log(f"Rubber Band installed: {exe}")
+    return {"installed": exe}
 
 
 _rubberband_exe: str | None = None

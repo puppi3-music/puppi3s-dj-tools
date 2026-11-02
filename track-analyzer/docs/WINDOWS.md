@@ -469,8 +469,14 @@ Paths are stored as `str(Path)` strings and compared as strings. On Windows that
 - **Installing tools.** The Setup tab installs ffmpeg and rubberband with Homebrew; without it, it shows
   `analysis.install_hint()`. **Done:** the Windows hint (`winget install Gyan.FFmpeg`; Rubber Band's Windows build
   from breakfastquay.com/rubberband, 3.0+ for the R3 engine, on PATH), and `analysis.find_tool()` also looks in
-  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). Still open: running winget from `_tool_install`.
-  Every ffprobe call goes through `find_tool` (the page's player and loops, `traktor.audio_offset`), except `clips.py`.
+  winget's command links (`%LOCALAPPDATA%\Microsoft\WinGet\Links`). **Done** (2026-11-02): the Setup tab's buttons
+  run `winget install Gyan.FFmpeg` (ffmpeg 9.0.2, as Homebrew's) and `dj-track-analyzer install rubberband`, which
+  downloads Rubber Band's own Windows build (4.0.0, as Homebrew's; winget doesn't have it), checks its SHA-256 and
+  unpacks it into `data/tools/rubberband`, where `find_tool` looks. Every ffmpeg/ffprobe call goes through
+  `find_tool`, `clips.py` included.
+- **Job logs.** Windows ends lines with `\r\n`; the log reader took the `\r` for a progress meter's update, so on
+  Windows every log line would only have flashed by as the "live" line and the page's log stayed empty. Fixed
+  (2026-11-02, found by the Windows test run): on Windows `\r\n` is a plain line end.
 - **Show in Explorer** (`web._show`) already uses `explorer /select,` on Windows.
 
 ## Launcher
@@ -511,7 +517,7 @@ the page. What it can't check is real Traktor reading what we wrote; that stays 
    a run on Windows itself is step 5.)
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
    and then open (it must refuse).
-6. Setup tab (job stop, tool installs), launcher (done 2026-11-02), Lexicon.
+6. Setup tab (job stop, tool installs; done 2026-11-02), launcher (done 2026-11-02), Lexicon.
 
 ## Stopgap: WSL2
 

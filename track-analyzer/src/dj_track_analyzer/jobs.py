@@ -20,6 +20,7 @@ from . import analysis, collection, traktor
 from .analysis import HOME, log
 
 BREW = analysis.find_tool("brew")
+WINGET = analysis.find_tool("winget") if sys.platform == "win32" else None
 ERROR_MARK = "\x1eTRACK-ANALYZER-ERROR "  # the child's last line when it stops with a message (SystemExit)
 # "[12/470  ~31m left] what" from scan, tempo scan, cues, colours, Lexicon loads; "[3/17] what" without a time
 PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)(?:\s+~(.+?) left)?\]\s*(.*)")
@@ -84,9 +85,25 @@ def _analyze_mix(o: dict) -> list[str]:
 def _tool_install(o: dict) -> list[str]:
     if o.get("tool") not in ("ffmpeg", "rubberband"):
         raise ValueError("unknown tool")
-    if not BREW:
-        raise ValueError(f"Homebrew isn't installed. In a terminal: {analysis.install_hint(o['tool'])}")
-    return [BREW, "install", o["tool"]]
+    if BREW:
+        return [BREW, "install", o["tool"]]
+    if WINDOWS and o["tool"] == "rubberband":
+        return ["install", "rubberband"]  # its own build (analysis.install_rubberband): winget doesn't have it
+    if WINGET:
+        return [WINGET, "install", "--id", "Gyan.FFmpeg", "--exact", "--silent", "--disable-interactivity",
+                "--accept-source-agreements", "--accept-package-agreements"]
+    raise ValueError(f"Homebrew isn't installed. In a terminal: {analysis.install_hint(o['tool'])}")
+
+
+def _installer(tool: str) -> str | None:
+    """The Setup tab's install button for a tool, or None (then it shows install_hint)."""
+    if BREW:
+        return "Install with Homebrew"
+    if WINDOWS and tool == "rubberband":
+        return "Install"
+    if WINDOWS and WINGET:
+        return "Install with winget"
+    return None
 
 
 # name: (label, args from options, writes = changes files / Traktor / Lexicon, so the page previews it first)
@@ -136,8 +153,8 @@ def command_line(args: list[str]) -> str:
     """The same command as you'd type it in Terminal (shown on the page, so it's no mystery what runs)."""
     import shlex
 
-    if args and args[0] == BREW:
-        return " ".join(["brew", *args[1:]])
+    if args and args[0] in (BREW, WINGET):
+        return " ".join(["brew" if args[0] == BREW else "winget", *args[1:]])
     return "uv run dj-track-analyzer " + " ".join(shlex.quote(a) for a in args)
 
 
@@ -198,7 +215,7 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
     job, proc = _job, _proc
     out: list[str] = []
     readers = [threading.Thread(target=_read_err, args=(job, proc), daemon=True),
-               threading.Thread(target=_read_out, args=(job, proc, out, args[0] == BREW), daemon=True)]
+               threading.Thread(target=_read_out, args=(job, proc, out, args[0] in (BREW, WINGET)), daemon=True)]
     for t in readers:
         t.start()
     threading.Thread(target=_wait, args=(job, proc, out, readers), daemon=True).start()
@@ -206,7 +223,7 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
 
 
 def _command(args: list[str]) -> list[str]:
-    return args if args[0] == BREW else [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
+    return args if args[0] in (BREW, WINGET) else [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
 
 
 # Each job runs in its own process group, so a stop reaches its worker processes too and never the page itself.
@@ -253,11 +270,15 @@ def _add(job: dict, line: str) -> None:
 
 
 def _read_err(job: dict, proc: subprocess.Popen) -> None:
-    """Log lines; a line that ends in a carriage return (curl's download meter) is shown as `live` until replaced."""
+    """Log lines; a line that ends in a carriage return (curl's download meter) is shown as `live` until replaced.
+    On Windows "\r\n" (its line end) is a plain line end."""
     buf, after_cr = b"", False
+    ends = rb"\r\n|[\r\n]" if WINDOWS else rb"[\r\n]"
     while chunk := proc.stderr.read1(65536):
         buf += chunk
-        while (m := re.search(rb"[\r\n]", buf)):
+        while (m := re.search(ends, buf)):
+            if WINDOWS and m.group() == b"\r" and m.end() == len(buf):
+                break  # maybe the "\r" of a "\r\n" whose "\n" comes in the next read
             line, cr, buf = buf[:m.start()].decode("utf-8", "replace"), buf[m.start():m.end()] == b"\r", buf[m.end():]
             if cr:
                 job["live"] = line.strip() or job.get("live")
@@ -284,7 +305,7 @@ def _read_out(job: dict, proc: subprocess.Popen, out: list[str], text: bool) -> 
     for raw in iter(proc.stdout.readline, b""):
         line = raw.decode("utf-8", "replace")
         if text:
-            _add(job, line.rstrip("\n"))
+            _add(job, line.rstrip("\r\n"))
         else:
             out.append(line)
 
@@ -447,7 +468,8 @@ def setup_status() -> dict:
     st["tools"] = {"ffmpeg": bool(_tool("ffmpeg")), "rubberband": bool(_tool("rubberband"))}
     st["mac"] = sys.platform == "darwin"
     st["container"] = traktor.CONTAINER  # the page says Docker is experimental
-    st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no Homebrew
+    st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no install button
+    st["install"] = {t: _installer(t) for t in st["tools"]}
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
