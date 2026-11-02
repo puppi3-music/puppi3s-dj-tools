@@ -42,7 +42,10 @@ COLUMNS = [
     ("traktor_color", "TEXT"), ("color", "TEXT"), ("color_position", "REAL"), ("color_confidence", "REAL"),
     ("mood_aggressive", "REAL"), ("mood_happy", "REAL"), ("mood_party", "REAL"), ("mood_relaxed", "REAL"),
     ("mood_sad", "REAL"), ("instruments", "TEXT"), ("approachability", "REAL"), ("hype", "INTEGER"),
+    # trained_genre: what your trained genres say (None: none of them fits); my_genre: the same while the Setup
+    # tab's "Use my genres" is on (else None), or a genre set by hand. Everything that uses your genre reads my_genre.
     ("styles", "TEXT"), ("my_genre", "TEXT"), ("my_genre_confidence", "REAL"),
+    ("trained_genre", "TEXT"), ("trained_genre_confidence", "REAL"),
     ("error", "TEXT"), ("size", "INTEGER"), ("mtime", "INTEGER"), ("scanned_at", "TEXT"),
 ]
 NAMES = [c for c, _ in COLUMNS]
@@ -307,6 +310,13 @@ def db() -> sqlite3.Connection:
     for c, t in COLUMNS:  # databases from older versions get new columns added
         if c not in have:
             con.execute(f"ALTER TABLE tracks ADD COLUMN {c} {t}")
+    if have and "trained_genre" not in have:
+        # Before "Use my genres", a trained genre (in my_genre) was used everywhere at once. It's kept as the
+        # trained genre, and used again only when switched on (hand-set genres stay where they were).
+        con.execute("UPDATE tracks SET trained_genre=my_genre, trained_genre_confidence=my_genre_confidence, "
+                    "my_genre=NULL, my_genre_confidence=NULL")
+        con.commit()
+        apply_manual(con)
     for idx in ("genre", "bpm", "camelot"):
         con.execute(f"CREATE INDEX IF NOT EXISTS ix_{idx} ON tracks({idx})")
     return con
@@ -521,6 +531,7 @@ def tag_from_db(roots: list[str] | None, fields: list[str], min_score: float = 0
              "missing": 0, "errors": 0}
     examples = []
     genre_held = held("genre") if "genre" in fields else set()
+    use_mine = analysis.use_my_genres()
     if genre_held:
         stats["genre_held"] = sum(r["path"] in genre_held for r in rows)  # their genre tag stays as it is
     for r in rows:
@@ -532,8 +543,9 @@ def tag_from_db(roots: list[str] | None, fields: list[str], min_score: float = 0
         if (st.st_size, int(st.st_mtime)) != (r["size"], r["mtime"]):
             stats["skipped_changed_since_scan"] += 1  # results may be stale; scan again first
             continue
-        if use_my_genre and r.get("my_genre"):
-            r["genre"] = r["my_genre"]
+        mine = r.get("my_genre") if use_mine else (r.get("my_genre") or r.get("trained_genre")) if use_my_genre else None
+        if mine:  # your genre (the switch, or --use-my-genre); with the switch, tracks none of them fits keep ours
+            r["genre"] = mine
         elif "genre" in fields and (r["genre_score"] or 0) < min_score:
             stats["skipped_low_score"] += 1
             continue
@@ -717,9 +729,11 @@ def to_row(p: Path, r: dict | None, err: str | None) -> dict:
                                           **({"vocal_share": r["vocal_share"]} if "vocal_share" in r else {})}),
             approachability=r.get("approachability"),
             styles="; ".join(f'{s["style"]} {s["score"]:.2f}' for s in (r.get("discogs_styles") or [])[:3]),
-            my_genre=mine[0]["genre"] if mine else None,
-            my_genre_confidence=mine[0]["confidence"] if mine else None,
+            trained_genre=mine[0]["genre"] if mine else None,
+            trained_genre_confidence=mine[0]["confidence"] if mine else None,
         )
+        if mine and analysis.use_my_genres():
+            row.update(my_genre=row["trained_genre"], my_genre_confidence=row["trained_genre_confidence"])
         if r.get("styles_error"):
             row["error"] = r["styles_error"]
     return row
@@ -977,11 +991,56 @@ def regenre(csv_out: Path | None = DEFAULT_CSV) -> dict:
                                      g[2]["genre"] if len(g) > 2 else None, g[1]["score"] if len(g) > 1 else None,
                                      g[2]["score"] if len(g) > 2 else None, r["path"]))
     con.commit()
-    apply_manual(con)
+    refresh_my_genres(con)  # also puts hand-set genres back
     if csv_out:
         export_csv(csv_out)
     return {"tracks": len(rows) - missing, "not_in_cache": missing, "top_genre_changed": sum(changed.values()),
             "changes": dict(changed.most_common())}
+
+
+def refresh_my_genres(con, predict: bool = True) -> dict:
+    """Your trained genre for every scanned track again from its cached sound (`predict`: after training; False:
+    only the switch changed), then my_genre = it while "Use my genres" is on, else nothing. Hand-set genres are
+    put back afterwards (apply_manual). Seconds: no audio is decoded. Works on the database `con` (a tempo view's
+    too, with that view's cache active)."""
+    import numpy as np
+
+    if predict:
+        rows = con.execute("SELECT path FROM tracks WHERE type='track' AND (error IS NULL OR error LIKE 'tags:%')").fetchall()
+        paths, X = [], []
+        for (p,) in rows:
+            hit = analysis.cache_get(Path(p)) if Path(p).exists() else None
+            if hit is not None:
+                paths.append(p)
+                X.append(hit[1])
+        if analysis.my_genre_model() is None:
+            con.execute("UPDATE tracks SET trained_genre=NULL, trained_genre_confidence=NULL")
+        elif X:
+            preds = analysis.predict_my_genres(np.vstack(X), top=1)
+            con.executemany("UPDATE tracks SET trained_genre=?, trained_genre_confidence=? WHERE path=?",
+                            [(m[0]["genre"] if m else None, m[0]["confidence"] if m else None, p)
+                             for p, m in zip(paths, preds)])
+    on = analysis.use_my_genres()
+    con.execute("UPDATE tracks SET my_genre=CASE WHEN ? THEN trained_genre END, "
+                "my_genre_confidence=CASE WHEN ? THEN trained_genre_confidence END", (on, on))
+    con.commit()
+    apply_manual(con)
+    n = con.execute("SELECT COUNT(*) FROM tracks WHERE trained_genre IS NOT NULL").fetchone()[0]
+    return {"tracks_with_your_genre": n, "in_use": on}
+
+
+def my_genres_preview(con, limit: int = 500) -> dict:
+    """What "Use my genres" would change: tracks whose trained genre fits and differs from the genre they show now
+    (hand-set genres stay as they are, so they're left out)."""
+    hand = {p for p, f in manual().items() if "genre" in f} if _is_native(con) else set()
+    rows = [dict(r) for r in con.execute(
+        "SELECT path, artist, title, filename, genre, trained_genre, trained_genre_confidence FROM tracks "
+        "WHERE trained_genre IS NOT NULL ORDER BY trained_genre, trained_genre_confidence DESC")]
+    changes = [r for r in rows if r["path"] not in hand and r["trained_genre"] != r["genre"]]
+    by = {}
+    for r in changes:
+        by[r["trained_genre"]] = by.get(r["trained_genre"], 0) + 1
+    return {"changes": len(changes), "same": len(rows) - len(changes), "by_genre": by, "tracks": changes[:limit]}
 
 
 BPM_COLUMNS = {"bpm", "traktor_bpm", "source_bpm"}

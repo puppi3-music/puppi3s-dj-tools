@@ -61,6 +61,15 @@ def _scan(o: dict) -> list[str]:
     return [*args, "--rescan"] if o.get("rescan") is True else args
 
 
+def _genres_train(o: dict) -> list[str]:
+    folder = str(o.get("folder") or "").strip()
+    if not folder:
+        raise ValueError("Choose the folder with your example tracks (one subfolder or playlist per genre)")
+    if not Path(folder).expanduser().is_dir():
+        raise ValueError(f"Not a folder: {folder}")
+    return ["train", str(Path(folder).expanduser())]
+
+
 MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
 
 
@@ -113,6 +122,7 @@ ACTIONS = {
     "hype": ("Score hype", lambda o: ["hype", "--limit", "1", "--json", "--native"], False),
     "colors_train": ("Learn your colours", lambda o: ["colors", "train", *(["--refresh-views"] if o.get("views") else [])], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
+    "genres_train": ("Learn your genres", _genres_train, False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),
@@ -514,6 +524,9 @@ def setup_status() -> dict:
                      "predicted": predicted}
     st["cues"] = {"model": stamp(cues.MODEL), "starter": cues.STARTER_MODEL.exists(),
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
+    from . import mygenres
+
+    st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
     if st["traktor"].get("collection"):
         from . import cues, gridfix

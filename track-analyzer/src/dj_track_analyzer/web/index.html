@@ -1070,10 +1070,11 @@ async function openTrack(path) {
     ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
       <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
-    ${genreScores.length || t.styles || t.my_genre || t.tag_genre ? fold("genre", "Genre and style", `
+    ${genreScores.length || t.styles || t.trained_genre || t.tag_genre ? fold("genre", "Genre and style", `
       ${genreScores.length ? `<div class="sub">Genres</div>${bars(genreScores, { max: Math.max(...genreScores.map(g => g.value || 0), 0.01) })}` : ""}
       ${t.styles ? `<div class="sub">Discogs styles</div>${bars(parseScores(t.styles))}` : ""}
-      ${t.my_genre || t.tag_genre ? `<dl class="facts">${t.my_genre ? `<dt>Your genre</dt><dd>${esc(t.my_genre)} <span class="dim small">${pct(t.my_genre_confidence)}</span></dd>` : ""}${t.tag_genre ? `<dt>Genre tag</dt><dd>${esc(t.tag_genre)}</dd>` : ""}</dl>` : ""}`,
+      ${t.trained_genre || t.tag_genre ? `<dl class="facts">${t.trained_genre ? `<dt>Your genre</dt><dd>${esc(t.trained_genre)} <span class="dim small">${pct(t.trained_genre_confidence)}
+        ${t.my_genre === t.trained_genre ? "· in use" : t.my_genre ? "· your hand-set genre is used" : SNAP ? "· not in use" : `· not in use: <a href="#setup">Setup › Use my genres</a>`}</span></dd>` : ""}${t.tag_genre ? `<dt>Genre tag</dt><dd>${esc(t.tag_genre)}</dd>` : ""}</dl>` : ""}`,
       hint(genreScores[0]?.label)) : ""}
     ${moods.length || t.instruments ? fold("mood", "Mood and instruments", `
       ${moods.length ? `<div class="sub">Mood</div>${bars(moods, { max: 1, fmtVal: v => pct(v) })}` : ""}
@@ -2896,7 +2897,7 @@ async function refreshSetupNote() {
   n.innerHTML = !st.models.ready ? `<b>New here?</b> Nothing is set up yet: the analysis models aren't downloaded and nothing is scanned. <a href="#setup">Set it up →</a>`
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
-const SF = { folder: "", bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -2988,12 +2989,34 @@ async function pageSetup(main) {
         ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection." + cueStarter
         : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,
       `${st.cues.starter && tk.collection ? jb("su-cues-scan", "Listen to your tracks") : ""}${cueOk ? jb("su-cues", "Learn your cue points", true) : ""}`);
+  // Your own genres: learned from example folders + "everything else" (the rest of your scanned music), used only when switched on
+  const GN = st.genres, GR = GN.report || {}, pc = v => v == null ? "–" : `${Math.round(v * 100)}%`;
+  const genreOk = sc.tracks >= 30;
+  const gFolder = `<input type="text" id="su-gfolder" placeholder="folder: one subfolder per genre" value="${esc(SF.gfolder || GN.source || "")}">${tk.can_browse ? jb("su-gbrowse", "Browse…") : ""}`;
+  const gHow = `Make a folder with one subfolder (or one playlist) per genre, 20–50 example tracks each, at least two genres.
+    It also learns what the rest of your scanned music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps its built-in genre.`;
+  const gUse = !GN.trained ? ""
+    : GN.in_use ? `<div class="small" style="margin-top:6px"><b>In use</b> on ${plural(GN.tracks_with_yours, "track")}: the Tracks tab, mix suggestions, sets and the LLM show them; your files and Traktor get them the next time you write genres (below). The rest keep their built-in genre.</div>`
+    : GN.not_ready ? `<div class="small" style="margin-top:6px"><b>Not usable yet.</b> ${esc(GN.not_ready)}</div>`
+    : `<div class="small" style="margin-top:6px">${plural(GN.tracks_with_yours, "scanned track")} sound like one of your genres. Preview what would change, then switch them on: nothing else changes until you do, and switching off puts the built-in genres back.</div>`;
+  const genreStep = GN.trained
+    ? step(GN.in_use ? "done" : "todo", 7, "Your genres",
+        `Learned ${esc(Object.entries(GN.counts).map(([g, n]) => `${g} (${n})`).join(", "))} on ${esc(GN.trained_at || "")}.
+         ${GR.cross_validated_accuracy != null ? `Tested on your tracks: it recognised ${pc(GR.cross_validated_accuracy)} of the examples${GR.others_given_yours != null ? ` and gave one of your genres to ${pc(GR.others_given_yours)} of your other tracks` : ""}.` : ""}
+         ${GR.most_confused && Object.keys(GR.most_confused).length ? `Mix-ups: ${esc(Object.entries(GR.most_confused).map(([k, n]) => `${k} ${n}`).join(", "))}.` : ""}
+         ${gUse}<div id="su-gprev"></div><div id="su-gmsg" class="small" hidden></div>`,
+        `${GN.in_use ? jb("su-gstop", "Stop using them") : jb("su-gprev-btn", "Preview…", false, GN.not_ready && "disabled", GN.not_ready || "")}
+         ${gFolder}${jb("su-gtrain", "Learn again")}`)
+    : step(genreOk ? "todo" : "blocked", 7, "Learn your genres",
+        `Optional. Teaches it genres the built-in ones don't have (like Hyperpop), or your own way of splitting them. ${gHow}
+         ${genreOk ? "" : ` <b>Needs 30 scanned tracks first</b> (you have ${sc.tracks}).`}<div id="su-gmsg" class="small" hidden></div>`,
+        genreOk ? `${gFolder}${jb("su-gtrain", "Learn your genres", true)}` : "");
   const tool = (n, name, what) => st.tools[name] ? step("done", n, name, `Installed. ${what}`)
     : step("todo", n, name, `${what} ${st.install[name] ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
         : `Install it in a terminal: <code>${esc(st.install_hint[name])}</code>, then reload this page.`}`,
       st.install[name] ? jb(`su-install-${name}`, st.install[name]) : "");
   const T = st.tempo, bpm = SF.bpm || (T.views[0] ?? 145), haveView = T.views.includes(+bpm);
-  const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 9, "Tempo view",
+  const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 10, "Tempo view",
     `Optional: your catalogue as heard stretched to the tempo you play at, with key lock: which genres, colours and hype change.
      About an hour the first time for 470 tracks, resumable; later only new tracks. ${T.views.length ? `Scanned: ${T.views.map(v => `${v} BPM`).join(", ")}.` : ""}
      ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>Traktor has the ${T.loaded} BPM view loaded.</b>` : ""}`,
@@ -3002,7 +3025,7 @@ async function pageSetup(main) {
      ${T.loaded ? `<button id="su-native">Switch Traktor back…</button>` : T.views.length ? `<button id="su-load">Load into Traktor…</button>` : ""}
      ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon || T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
   const G = st.grids || {};
-  const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 10, "Beat grids",
+  const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
     `Optional: checks that Traktor's grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
      ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
     jb("su-grids", G.checked ? "Update beat-grids" : "Check the beat grids", !G.checked && !!sc.tracks,
@@ -3014,10 +3037,10 @@ async function pageSetup(main) {
     <div id="jobpanel"></div>
     <div id="updatecard"></div>
     <div class="card"><h3>Get started</h3><div class="steps">${models}${traktorStep}${scanStep}${hypeStep}</div></div>
-    <div class="card"><h3>Learn from your own Traktor work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}</div></div>
+    <div class="card"><h3>Learn from your own work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}${genreStep}</div></div>
     <div class="card"><h3>Extra tools <span class="dim small">(optional)</span></h3><div class="steps">
-      ${tool(7, "ffmpeg", "Plays loops and saves samples in a track's panel, keeps MP3 timing exact, and cuts mix clips.")}
-      ${tool(8, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
+      ${tool(8, "ffmpeg", "Plays loops and saves samples in a track's panel, keeps MP3 timing exact, and cuts mix clips.")}
+      ${tool(9, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
     <div class="card"><h3>Into your files and Traktor</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
       ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
@@ -3065,6 +3088,37 @@ async function pageSetup(main) {
   on("su-colours", () => go("colors_train"));
   on("su-cues", () => go("cues_train"));
   on("su-cues-scan", () => go("cues_scan"));
+  bindVal("su-gfolder", "gfolder");
+  const gmsg = (text, bad) => { const m = $("#su-gmsg"); if (!m) return; m.hidden = !text; m.className = `small${bad ? " err" : ""}`; m.textContent = text || ""; };
+  on("su-gbrowse", async e => {
+    const btn = e.currentTarget, label = btn.textContent;
+    btn.disabled = true; btn.textContent = "Waiting for the folder dialog…"; gmsg("");
+    try { const r = await postJSON("/api/genres/browse", {}); if (r.path) { SF.gfolder = r.path; $("#su-gfolder").value = r.path; } }
+    catch (err) { gmsg(err.message, true); }
+    finally { if (document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
+  });
+  on("su-gtrain", () => { const f = $("#su-gfolder").value.trim(); f ? go("genres_train", { folder: f }) : $("#su-gfolder").focus(); });
+  const gSwitch = async (onOff, btn) => {
+    btn.disabled = true; gmsg("");
+    try { await postJSON("/api/genres/use", { on: onOff }); S.tracks = {}; SETUP = null; route(); }
+    catch (err) { btn.disabled = false; gmsg(err.message, true); }
+  };
+  on("su-gstop", e => gSwitch(false, e.currentTarget));
+  on("su-gprev-btn", async e => {
+    const box = $("#su-gprev"), btn = e.currentTarget;
+    btn.disabled = true; box.innerHTML = `<div class="small muted">Loading…</div>`;
+    try {
+      const p = await api("genres/preview");
+      const by = Object.entries(p.by_genre).map(([g, n]) => `${esc(g)} ${n}`).join(", ");
+      box.innerHTML = `<div class="small" style="margin-top:8px"><b>${plural(p.changes, "track")} would change</b>${by ? ` (${by})` : ""}${p.same ? `; ${p.same} already show that genre` : ""}. Every other track keeps its built-in genre, and genres you set by hand stay.</div>
+        ${p.tracks.length ? `<div class="table-wrap" style="max-height:320px;overflow:auto;margin-top:6px"><table class="small"><thead><tr><th>Track</th><th>Now</th><th>Would be</th><th>Sure</th></tr></thead><tbody>
+          ${p.tracks.map(t => `<tr><td>${esc(t.artist && t.title ? `${t.artist} – ${t.title}` : t.filename)}</td><td>${esc(t.genre || "–")}</td><td><b>${esc(t.trained_genre)}</b></td><td>${pc(t.trained_genre_confidence)}</td></tr>`).join("")}
+          </tbody></table></div>${p.changes > p.tracks.length ? `<div class="small muted">The first ${p.tracks.length} shown.</div>` : ""}` : ""}
+        <div style="margin-top:8px"><button id="su-guse" class="primary" ${jobRunning() ? "disabled" : ""}>Use my genres</button></div>`;
+      $("#su-guse").onclick = ev => gSwitch(true, ev.currentTarget);
+    } catch (err) { box.innerHTML = ""; gmsg(err.message, true); }
+    finally { if (document.contains(btn)) btn.disabled = false; }
+  });
   on("su-grids", () => go("grids_check"));
   on("su-install-ffmpeg", () => go("install", { tool: "ffmpeg" }));
   on("su-install-rubberband", () => go("install", { tool: "rubberband" }));

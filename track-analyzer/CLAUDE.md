@@ -351,6 +351,20 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `cnn_camelot`, `cnn_confidence` (tracks, tempo views and the tracklist check's heard keys, `_measure` want key "cnn"; mix timeline segments still use Essentia).
   `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
   The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
+- `mygenres.py` (+ `analysis.train`, `collection.refresh_my_genres`): your own genres. `train` learns the example
+  folders' genres + `OTHER_GENRE` ("∅ everything else") from the scanned collection's cached EffNet means
+  (`background_embeddings`: examples and copies of them, cosine ≥ `SAME_TRACK_COS` 0.995, left out; ≥ 30 needed, ≤ 1500;
+  copies measured 0.99999, different tracks ≤ 0.983), LR C=0.5 balanced; CV report kept in the bundle
+  (`accuracy_per_genre`, `kept_built_in`, `others_given_yours`). Tested 2026-11-02 on the test collection's genres
+  (pairs trained from 7-20 tracks): plain probability or distance gates let 40-85% of other tracks through, the
+  everything-else class 2-13% (own tracks found 18-69%, harsher than a distinct genre would be). Columns:
+  `trained_genre` (+ confidence; None = none fits) for every track, `my_genre` = it only while "Use my genres" is on
+  (setting `use_my_genres` and `my_genres_not_ready()` None: 30 examples, ≥ 10 each, an everything-else model), else
+  None or a hand genre (MANUAL). Everything that uses your genre reads `my_genre` (page, mix suggestions, sets, LLM,
+  `tag`, `traktor --genres-from-analysis`; `known_genres` adds trained names only while in use). The switch/train
+  refresh the native db and every tempo view (`_refresh_views`), then `apply_manual`. Page: Setup step 7, /api/genres/
+  preview, use, browse (folder dialog via `pick_file(folder=True)`). A db from before gets `my_genre` moved to
+  `trained_genre` once (collection.db()).
 - `dj_genres.json`: maps Discogs styles to DJ genre names (rules with "needs" groups + BPM range); a user copy in
   `data/dj_genres.json` wins.
 
@@ -503,6 +517,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   peak-time house), Ambient (it went to a psytrance track in testing), Afro/Organic House as 2-style combos (matched
   nothing). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass, Hard Groove don't
   exist in Discogs: only via `train` with example folders.
+- No Hyperpop either: Discogs has the style now, but neither model's class list (400 / 519, from the Discogs list
+  at training time) has it; digicore/glitchcore neither: README §7 and GUIDE "Genres" say so plainly, as
+  it's a scene trans and queer artists built, and point to ✎ Edit (a typed genre is held) or Learn your genres.
 
 ## Traktor NML facts (verified on real Traktor 4 files)
 - Smartlist node: `<NODE TYPE="SMARTLIST" NAME="X"><SMARTLIST UUID="hex"><SEARCH_EXPRESSION VERSION="1" QUERY="$GENRE % &quot;X&quot;"></SEARCH_EXPRESSION></SMARTLIST></NODE>`.

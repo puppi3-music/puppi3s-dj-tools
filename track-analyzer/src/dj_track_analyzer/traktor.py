@@ -417,16 +417,14 @@ def smartlist_query(genre: str, all_genres: list[str]) -> str:
 
 
 def known_genres() -> set[str]:
-    """Genre names this tool writes: the DJ genres in dj_genres.json, plus the user's trained genres.
+    """Genre names this tool writes: the DJ genres in dj_genres.json, plus the user's trained genres while they're in use.
     Only these get Smartlists; a file's own genre tag ("melodic techno, indie dance", "Électronique")
     is the user's or the shop's, not ours."""
     from . import analysis
 
     names = set(analysis.dj_rules())
-    if analysis.GENRE_MODEL.exists():
-        import joblib
-
-        names |= set(joblib.load(analysis.GENRE_MODEL).get("counts", {}))
+    if analysis.use_my_genres():  # "Use my genres" on (else nothing carries them)
+        names |= set(analysis.my_genre_bundle().get("counts", {}))
     return names
 
 
@@ -847,7 +845,8 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     if genres_from_analysis:
         hand = {p: f["genre"] for p, f in collection.manual().items() if "genre" in f}
         for r in con.execute("SELECT * FROM tracks WHERE error IS NULL OR error LIKE 'tags:%'"):
-            if (g := hand.get(r["path"]) or collection.multi_genre(dict(r))):
+            # with "Use my genres" on, my_genre is your trained genre where one fits (else None: ours)
+            if (g := hand.get(r["path"]) or r["my_genre"] or collection.multi_genre(dict(r))):
                 analysed[r["path"]] = g
     genre_of = analysed.get if genres_from_analysis else file_genre
     predicted = {}
