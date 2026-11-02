@@ -200,18 +200,15 @@ def traktor_examples(setup, monkeypatch):
     return files
 
 
-def test_learn_from_a_traktor_playlist_folder(traktor_examples):
-    from dj_track_analyzer import traktor as tr
-
-    folders = tr.playlist_folders()
-    assert [f["folder"] for f in folders] == ["DJ / Genre Training"]  # not this app's own Sets folder
-    assert mygenres.traktor_choices()["playlist_folders"] == [
-        {"folder": "DJ / Genre Training", "playlists": {"Hyperpop": 16, "Pop": 15}}]
-    report = mygenres.train(playlists="DJ / Genre Training")
-    assert report["genres"] == {"Hyperpop": 15, "Pop": 14}
-    assert mygenres.status()["source_kind"] == {"kind": "traktor_playlists", "folder": "DJ / Genre Training"}
-    with pytest.raises(SystemExit, match="No playlist folder"):
-        mygenres.train(playlists="Nope")
+def test_learn_from_traktor_playlists(traktor_examples):
+    lists = ["DJ / Genre Training / Hyperpop", "DJ / Genre Training / Pop"]
+    assert mygenres.traktor_choices()["playlists"] == [  # not this app's own Sets folder, nor empty playlists
+        {"path": lists[0], "name": "Hyperpop", "tracks": 16}, {"path": lists[1], "name": "Pop", "tracks": 15}]
+    report = mygenres.train(playlists=lists)
+    assert report["genres"] == {"Hyperpop": 15, "Pop": 14}  # the track in both: left out
+    assert mygenres.status()["source_kind"] == {"kind": "traktor_playlists", "playlists": lists}
+    with pytest.raises(SystemExit, match="no playlist Nope"):
+        mygenres.train(playlists=[lists[0], "Nope"])
 
 
 def test_learn_from_traktors_genre_field(traktor_examples):

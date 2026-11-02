@@ -806,8 +806,9 @@ def track_info(nml: str | None = None) -> dict[str, tuple[float | None, str | No
     return out
 
 
-# Folders this app makes in Traktor: never offered as genre examples
+# Folders this app makes in Traktor, and Traktor's own playlists of mix recordings and loops: never offered as genre examples
 OWN_FOLDERS = {FOLDER_NAME, "Sets (Track Analyzer)", "Crates (Track Analyzer)"}
+TRAKTOR_LISTS = {"_RECORDINGS", "_LOOPS"}
 
 
 def _collection_files(root) -> dict[str, tuple[str, dict]]:
@@ -827,10 +828,10 @@ def _collection_files(root) -> dict[str, tuple[str, dict]]:
     return out
 
 
-def playlist_folders(nml: str | None = None) -> list[dict]:
-    """Traktor's playlist folders that hold at least 2 playlists, for learning genres (each playlist = one genre):
-    [{"folder": "Genre Training" (nested: "DJ / Genre Training"), "playlists": {name: [audio files]}}].
-    This app's own folders and smartlists are left out; tracks missing on disk too."""
+def playlists(nml: str | None = None) -> list[dict]:
+    """Every playlist in Traktor's collection, for learning genres (each ticked playlist = a genre named after it):
+    [{"path": "DJ / Genre Training / Hyperpop", "name": "Hyperpop", "files": [audio files]}], in Traktor's order.
+    This app's own folders, smartlists and empty playlists are left out; tracks missing on disk too."""
     root = ET.parse(find_collection(nml)).getroot()
     files = _collection_files(root)
     out = []
@@ -839,16 +840,15 @@ def playlist_folders(nml: str | None = None) -> list[dict]:
         subs = node.find("SUBNODES")
         if subs is None:
             return
-        lists = {}
         for child in subs.findall("NODE"):
             name = child.get("NAME", "")
             if child.get("TYPE") == "FOLDER" and name not in OWN_FOLDERS:
                 walk(child, path + [name])
-            elif child.get("TYPE") == "PLAYLIST" and child.find("PLAYLIST") is not None:
+            elif child.get("TYPE") == "PLAYLIST" and child.find("PLAYLIST") is not None and name not in TRAKTOR_LISTS:
                 keys = [pk.get("KEY", "") for pk in child.find("PLAYLIST").iter("PRIMARYKEY")]
-                lists[name] = list(dict.fromkeys(files[k][0] for k in keys if k in files))
-        if path and len(lists) >= 2:
-            out.append({"folder": " / ".join(path), "playlists": lists})
+                found = list(dict.fromkeys(files[k][0] for k in keys if k in files))
+                if found:
+                    out.append({"path": " / ".join(path + [name]), "name": name, "files": found})
 
     top = root.find("PLAYLISTS/NODE")
     if top is not None:

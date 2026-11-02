@@ -62,36 +62,41 @@ def _tempo_view_loaded() -> bool:
 
 
 def traktor_choices(nml: str | None = None) -> dict:
-    """What the Setup tab offers to learn from in Traktor: playlist folders (each playlist = a genre) and the genres
+    """What the Setup tab offers to learn from in Traktor: its playlists (each ticked one = a genre) and the genres
     in Traktor's Genre field, with track counts. `built_in`: one of this app's genre names (maybe written by it)."""
     from . import traktor
 
     built = {g.casefold() for g in analysis.dj_rules()}
     field = traktor.genre_field(nml)
     return {
-        "playlist_folders": [{"folder": f["folder"], "playlists": {n: len(v) for n, v in f["playlists"].items()}}
-                             for f in traktor.playlist_folders(nml)],
+        "playlists": [{"path": p["path"], "name": p["name"], "tracks": len(p["files"])} for p in traktor.playlists(nml)],
         "genres": [{"genre": g, "tracks": len(v), "built_in": g.casefold() in built} for g, v in field["genres"].items()],
         "multi": field["multi"], "tempo_view_loaded": _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
     }
 
 
-def traktor_sets(playlists: str | None = None, genres: list[str] | None = None,
+def traktor_sets(playlists: list[str] | None = None, genres: list[str] | None = None,
                  nml: str | None = None) -> tuple[dict[str, list[str]], dict]:
-    """The examples from Traktor: the playlists in the playlist folder `playlists`, or the tracks whose Genre field
-    is one of `genres`. Also the source, to learn again from it later. A track in two playlists is left out."""
+    """The examples from Traktor: the ticked `playlists` (paths as traktor.playlists gives them; each is a genre
+    named after the playlist, two with the same name are one genre), or the tracks whose Genre field is one of
+    `genres`. Also the source, to learn again from it later. A track in two different genres is left out."""
     from . import traktor
 
     if playlists:
-        found = next((f for f in traktor.playlist_folders(nml) if f["folder"] == playlists), None)
-        if not found:
-            raise SystemExit(f"No playlist folder \"{playlists}\" with 2 or more playlists in Traktor's collection.")
+        have = {p["path"]: p for p in traktor.playlists(nml)}
+        missing = [p for p in playlists if p not in have]
+        if missing:
+            raise SystemExit(f"Traktor has no playlist {', '.join(missing)} (with tracks) any more.")
+        sets: dict[str, list[str]] = {}
+        for p in playlists:
+            sets.setdefault(have[p]["name"], []).extend(have[p]["files"])
+        sets = {g: list(dict.fromkeys(fs)) for g, fs in sets.items()}
         seen: dict[str, int] = {}
-        for files in found["playlists"].values():
+        for files in sets.values():
             for f in files:
                 seen[f] = seen.get(f, 0) + 1
-        sets = {n: [f for f in files if seen[f] == 1] for n, files in found["playlists"].items()}
-        return sets, {"kind": "traktor_playlists", "folder": playlists}
+        sets = {g: [f for f in files if seen[f] == 1] for g, files in sets.items()}
+        return sets, {"kind": "traktor_playlists", "playlists": list(playlists)}
     if genres:
         if _tempo_view_loaded():
             raise SystemExit("A tempo view is loaded in Traktor, so its Genre field holds the view's genres. "
@@ -101,12 +106,12 @@ def traktor_sets(playlists: str | None = None, genres: list[str] | None = None,
         if missing:
             raise SystemExit(f"No tracks with the genre {', '.join(missing)} in Traktor's collection.")
         return {g: field[g] for g in genres}, {"kind": "traktor_genres", "genres": list(genres)}
-    raise ValueError("Pick a Traktor playlist folder or some genres")
+    raise ValueError("Tick some Traktor playlists or genres")
 
 
-def train(folder: str | None = None, progress=log, playlists: str | None = None,
+def train(folder: str | None = None, progress=log, playlists: list[str] | None = None,
           genres: list[str] | None = None) -> dict:
-    """Learn your genres from a folder on disk, a Traktor playlist folder or genres in Traktor's Genre field."""
+    """Learn your genres from a folder on disk, Traktor playlists or genres in Traktor's Genre field."""
     if folder:
         report = analysis.train(folder, progress)
     else:

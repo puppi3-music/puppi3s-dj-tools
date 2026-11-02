@@ -2902,7 +2902,7 @@ async function refreshSetupNote() {
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
 let G_TRAKTOR = null;  // the Setup tab's Traktor choices for learning genres (/api/genres/traktor), read once per visit
-const SF = { folder: "", gfolder: "", gsrc: "", gpl: "", ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -3002,13 +3002,13 @@ async function pageSetup(main) {
   const G_SRC = { folder: "A folder", traktor_playlists: "Traktor playlists", traktor_genres: "Traktor's Genre field" };
   const lastSrc = GN.source_kind || {};
   if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind === "folder" || tk.collection) ? lastSrc.kind : "folder";
-  if (!SF.gpl && lastSrc.kind === "traktor_playlists") SF.gpl = lastSrc.folder;
+  if (!SF.gpl) SF.gpl = lastSrc.kind === "traktor_playlists" ? [...(lastSrc.playlists || [])] : [];
   if (!SF.ggenres) SF.ggenres = lastSrc.kind === "traktor_genres" ? [...lastSrc.genres] : [];
   const gSource = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Learn from:</span>
     <div class="seg-toggle" id="su-gsrc">${Object.entries(G_SRC).map(([k, label]) => `<button data-gsrc="${k}" class="${SF.gsrc === k ? "on" : ""}"
       ${k !== "folder" && !tk.collection ? `disabled title="Choose Traktor's collection first (above)"` : ""}>${label}</button>`).join("")}</div></div>
     <div id="su-gsrcbox" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>`;
-  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, a playlist folder in Traktor with one playlist per genre, or genres from Traktor's Genre field. 20–50 example tracks per genre, at least two genres.
+  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, Traktor playlists (each one a genre named after it), or genres from Traktor's Genre field. 20–50 example tracks per genre, at least two genres.
     It also learns what the rest of your scanned music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps its built-in genre.`;
   const G_MODES = { starter: "Starter", both: "Both", mine: "Mine only" };
   const gSwitchRow = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Genres used:</span>
@@ -3130,26 +3130,27 @@ async function pageSetup(main) {
     }
     const T = G_TRAKTOR, few = n => n < T.min_each ? ` <span class="dim">· under ${T.min_each}</span>` : "";
     const again = `<button id="su-greread" class="mini" title="Read Traktor's collection again (after changing it in Traktor and saving)">↻</button>`;
-    if (SF.gsrc === "traktor_playlists") {
-      const F = T.playlist_folders;
-      if (!F.length) { box.innerHTML = `<div class="small">No playlist folder with 2 or more playlists yet. In Traktor, make a folder (like <b>Genre Training</b>) with one playlist per genre, named after the genre, and save the collection. ${again}</div>`; }
-      else {
-        if (!F.some(f => f.folder === SF.gpl)) SF.gpl = F[0].folder;
-        const cur = F.find(f => f.folder === SF.gpl);
-        box.innerHTML = `<select id="su-gpl">${F.map(f => `<option ${f.folder === SF.gpl ? "selected" : ""}>${esc(f.folder)}</option>`).join("")}</select>${again}
-          <div class="small" style="flex-basis:100%">Each playlist is a genre: ${Object.entries(cur.playlists).map(([n, k]) => `<b>${esc(n)}</b> ${k}${few(k)}`).join(", ")}. A track in two of them is left out.</div>`;
-        $("#su-gpl").onchange = e => { SF.gpl = e.target.value; gBox(); };
-      }
-    } else {
-      const ticked = new Set(SF.ggenres);
-      box.innerHTML = T.tempo_view_loaded ? `<div class="small"><b>A tempo view is loaded in Traktor</b>, so its Genre field holds the view's genres. Switch Traktor back to normal on the Tempo tab first.</div>`
-        : !T.genres.length ? `<div class="small">No genres in Traktor's Genre field yet. ${again}</div>`
-        : `<div style="flex-basis:100%"><div class="small">Tick at least two genres. Tracks with several genres in the field${T.multi ? ` (${T.multi})` : ""} are left out. Genres with a built-in name may have been written by this app, not by you. ${again}</div>
-          <div class="table-wrap" style="max-height:220px;overflow:auto;margin-top:4px">${T.genres.map(g => `<label class="inline" style="display:block"><input type="checkbox" data-gg="${esc(g.genre)}" ${ticked.has(g.genre) ? "checked" : ""}>
-            ${esc(g.genre)} <span class="dim">${g.tracks}</span>${few(g.tracks)}${g.built_in ? ` <span class="dim">· built-in name</span>` : ""}</label>`).join("")}</div></div>`;
-      box.querySelectorAll("input[data-gg]").forEach(cb => cb.onchange = () => {
-        SF.ggenres = [...box.querySelectorAll("input[data-gg]:checked")].map(x => x.dataset.gg);
+    // a tick list (playlists or genres): rows {key, label, tracks, note}, the ticked keys kept in SF[keyOf]
+    const ticks = (rows, keyOf, intro) => {
+      const ticked = new Set(SF[keyOf]);
+      box.innerHTML = `<div style="flex-basis:100%"><div class="small">${intro} ${again}</div>
+        <div class="table-wrap" style="max-height:220px;overflow:auto;margin-top:4px">${rows.map(r => `<label class="inline" style="display:block"><input type="checkbox" data-tk="${esc(r.key)}" ${ticked.has(r.key) ? "checked" : ""}>
+          ${esc(r.label)} <span class="dim">${r.tracks}</span>${few(r.tracks)}${r.note ? ` <span class="dim">· ${r.note}</span>` : ""}</label>`).join("")}</div></div>`;
+      box.querySelectorAll("input[data-tk]").forEach(cb => cb.onchange = () => {
+        SF[keyOf] = [...box.querySelectorAll("input[data-tk]:checked")].map(x => x.dataset.tk);
       });
+    };
+    if (SF.gsrc === "traktor_playlists") {
+      if (!T.playlists.length) box.innerHTML = `<div class="small">No playlists with tracks in Traktor's collection yet. ${again}</div>`;
+      else ticks(T.playlists.map(p => ({ key: p.path, label: p.path, tracks: p.tracks })), "gpl",
+        "Tick at least two playlists: each one is a genre, named after the playlist (like <b>Hyperpop</b>). A track in two of them is left out.");
+    } else if (T.tempo_view_loaded) {
+      box.innerHTML = `<div class="small"><b>A tempo view is loaded in Traktor</b>, so its Genre field holds the view's genres. Switch Traktor back to normal on the Tempo tab first.</div>`;
+    } else if (!T.genres.length) {
+      box.innerHTML = `<div class="small">No genres in Traktor's Genre field yet. ${again}</div>`;
+    } else {
+      ticks(T.genres.map(g => ({ key: g.genre, label: g.genre, tracks: g.tracks, note: g.built_in ? "built-in name" : "" })), "ggenres",
+        `Tick at least two genres. Tracks with several genres in the field${T.multi ? ` (${T.multi})` : ""} are left out. Genres with a built-in name may have been written by this app, not by you.`);
     }
     on("su-greread", () => { G_TRAKTOR = null; gBox(); });
   };
@@ -3160,7 +3161,7 @@ async function pageSetup(main) {
   });
   gBox();
   on("su-gtrain", () => {
-    if (SF.gsrc === "traktor_playlists") return SF.gpl ? go("genres_train", { playlists: SF.gpl }) : gmsg("Pick a Traktor playlist folder first.", true);
+    if (SF.gsrc === "traktor_playlists") return SF.gpl.length >= 2 ? go("genres_train", { playlists: SF.gpl }) : gmsg("Tick at least two playlists first.", true);
     if (SF.gsrc === "traktor_genres") return SF.ggenres.length >= 2 ? go("genres_train", { genres: SF.ggenres }) : gmsg("Tick at least two genres first.", true);
     const f = ($("#su-gfolder")?.value || "").trim(); f ? go("genres_train", { folder: f }) : $("#su-gfolder")?.focus();
   });

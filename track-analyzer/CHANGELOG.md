@@ -14,8 +14,8 @@ module's builds, which installs download by themselves.
   `--dry-run`, `--undo`). A clone is updated with `git pull`.
 - The launchers start the page again after an update, installing its new packages first.
 - **Learn your own genres on the Setup tab**, for genres the built-in ones don't have (like Hyperpop) or your own
-  split. Learn from a folder with one subfolder or playlist per genre, a playlist folder in Traktor (a playlist per
-  genre) or genres you tick from Traktor's Genre field. It now also learns what the rest of your scanned
+  split. Learn from a folder with one subfolder or playlist per genre, playlists you tick in Traktor (each a genre
+  named after it) or genres you tick from Traktor's Genre field. It now also learns what the rest of your scanned
   music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps
   its built-in genre. It shows how well it did on your own tracks.
 - **Genres used: Starter / Both / Mine only**: trained genres are no longer used everywhere the moment they're
