@@ -172,7 +172,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   after 20 s; `web.serve` stops a running job on exit. `analyze_mix` queues: `options.files` = several recordings, run one
   after another by `_wait` (also past a failure); an analyze_mix started while one runs joins `_queue`; `busy()` counts
   the queue; Stop clears it; `state()` lists it as `job.queued`, and the last jobs that ended as `job.ended` (a queued mix starts
-  the moment the one before ends, so the page's poll may never see that one end: `jobPoll` ends them from this list, `JOB.failed`). Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
+  the moment the one before ends, so the page's poll may never see that one end: `jobPoll` ends them from this list, `JOB.failed`). Log = stderr lines (`[n/total ~eta left] what` or `[n/total] what` → progress with `what`; the page's bar falls back to
+  `job.last`, the latest log line, so every action says what it's doing; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; /api/saved-file/delete (`web.delete_saved`: moves a listed saved file to its folder's deleted/, which
   `saved_files` doesn't read); `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
