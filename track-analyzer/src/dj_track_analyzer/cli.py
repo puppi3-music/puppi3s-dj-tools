@@ -139,7 +139,7 @@ def main() -> None:
     ut.add_argument("folders", nargs="*")
     ut.add_argument("--dry-run", action="store_true")
     tk = sub.add_parser("traktor", help="put tagged genres into Traktor's collection and create genre Smartlists")
-    tk.add_argument("--nml", default=None, help="path to collection.nml (default: newest Traktor folder in ~/Documents/Native Instruments)")
+    tk.add_argument("--nml", default=None, help="path to collection.nml (default: newest Traktor folder in Documents/Native Instruments; on Windows also the real and OneDrive Documents folders)")
     tk.add_argument("--dry-run", action="store_true", help="show what would change without touching anything")
     tk.add_argument("--smartlists-only", action="store_true", help="only (re)create the Smartlists, don't update genres")
     tk.add_argument("--no-smartlists", action="store_true", help="only update genres in the collection")

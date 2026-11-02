@@ -35,7 +35,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from . import collection
-from .analysis import log
+from .analysis import app_setting, log, save_app_setting
 
 FOLDER_NAME = "Genres (Track Analyzer)"
 BACKUP_PREFIX = "collection.nml.before-track-analyzer-"
@@ -84,25 +84,164 @@ def audio_offset(path: Path) -> int:
 # ----------------------------------------------------------------------------
 
 
+def _folder_version(folder: str) -> tuple[int, ...] | None:
+    m = re.search(r"Traktor\D*(\d+(?:\.\d+)*)", folder)
+    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+
+
 def _version_key(p: str):
-    m = re.search(r"Traktor[^/]*?(\d+(?:\.\d+)*)", p)
-    return tuple(int(x) for x in m.group(1).split(".")) if m else (0,)
+    """Newest version first; at the same version Traktor's own "Traktor 4.5.0" folder beats a copy of it
+    ("Traktor 4.5.0 copy"), then the most recently saved."""
+    name = Path(p).parent.name
+    return (_folder_version(name) or (0,), bool(re.fullmatch(r"Traktor\s*\d+(?:\.\d+)*", name)), os.path.getmtime(p))
+
+
+# What the analyzer has been checked against: a real Traktor collection read and written (macOS 4.5.0, Windows
+# 4.4.2). Raise these after checking a new Traktor version: Setup says "not verified yet" above them.
+TESTED_TRAKTOR = (4, 5, 0)
+TESTED_FORMATS = ("20",)  # <NML VERSION="…">: the collection file's own format number
+
+
+def collection_version(path: Path) -> dict:
+    """Traktor's version (from its folder's name) and the collection's format, and whether they're newer than tested:
+    untested = None, "newer" (a newer Traktor, same file format: should work) or "format" (a file format not seen)."""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(4096).decode("utf-8", "replace")
+    except OSError:
+        head = ""
+    m = re.search(r'<NML\s+VERSION="([^"]*)"', head)
+    fmt, app = (m.group(1) if m else None), _folder_version(path.parent.name)
+    untested = "format" if fmt not in TESTED_FORMATS else "newer" if app and app > TESTED_TRAKTOR else None
+    return {"traktor": ".".join(map(str, app)) if app else None, "format": fmt, "untested": untested,
+            "tested_traktor": ".".join(map(str, TESTED_TRAKTOR)), "tested_formats": list(TESTED_FORMATS)}
+
+
+def untested_note(path: Path) -> str | None:
+    v = collection_version(path)
+    if v["untested"] == "format":
+        return (f"Note: this collection's file format (NML version {v['format']}) is newer than the analyzer has been "
+                f"tested with ({', '.join(v['tested_formats'])}). Check the changes in Traktor; the backup and undo work as always.")
+    if v["untested"] == "newer":
+        return (f"Note: Traktor {v['traktor']} isn't verified with the analyzer yet (tested up to {v['tested_traktor']}). "
+                "Its collection format is the same, so it should work; if anything looks wrong, undo and report it.")
+    return None
+
+
+def _windows_documents() -> str | None:
+    """Where Windows really keeps Documents (moved by OneDrive backup, or to another drive in its Properties →
+    Location), which is where Traktor puts its folder; ~/Documents is only the default."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class GUID(ctypes.Structure):
+            _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD), ("c", wintypes.WORD), ("d", ctypes.c_ubyte * 8)]
+
+        folder = GUID(0xFDD39AD0, 0x238F, 0x46AF, (ctypes.c_ubyte * 8)(0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7))
+        out = ctypes.c_wchar_p()
+        if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(folder), 0, None, ctypes.byref(out)) != 0:
+            return None
+        try:
+            return out.value
+        finally:
+            ctypes.windll.ole32.CoTaskMemFree(out)
+    except Exception:  # noqa: BLE001 - only a hint; ~/Documents is still searched
+        return None
+
+
+def documents_dirs() -> list[Path]:
+    """Folders that may hold Native Instruments/Traktor x: ~/Documents, and on Windows the real Documents folder and
+    OneDrive's."""
+    dirs = [Path(os.path.expanduser("~/Documents"))]
+    if sys.platform == "win32":
+        dirs.append(_windows_documents())
+        dirs += [Path(os.environ[k]) / "Documents" for k in ("OneDrive", "OneDriveConsumer", "OneDriveCommercial")
+                 if os.environ.get(k)]
+    seen, out = set(), []
+    for d in dirs:
+        if d and os.path.normcase(str(d)) not in seen:
+            seen.add(os.path.normcase(str(d)))
+            out.append(Path(d))
+    return out
+
+
+def traktor_glob(rest: str) -> list[str]:
+    """Matches of Native Instruments/Traktor*/<rest> in every Documents folder."""
+    return [f for d in documents_dirs()
+            for f in glob.glob(os.path.join(glob.escape(str(d)), "Native Instruments", "Traktor*", rest))]
+
+
+def auto_collection() -> Path | None:
+    """The newest Traktor version's collection.nml in any Documents folder, or None."""
+    candidates = traktor_glob("collection.nml")
+    return Path(max(candidates, key=_version_key)) if candidates else None
+
+
+COLLECTION_SETTING = "traktor_collection"  # in data/settings.json: chosen on the Setup tab
+
+
+def chosen_collection() -> Path | None:
+    p = app_setting(COLLECTION_SETTING)
+    return Path(p) if p else None
+
+
+def check_collection(path: str) -> Path:
+    """A path typed, pasted or picked as Traktor's collection: a collection.nml (or the Traktor folder holding one)
+    that Traktor wrote. Explorer's Copy as path adds quotes; they're dropped."""
+    p = Path(os.path.expanduser(path.strip().strip('"').strip("'").strip()))
+    if not str(path).strip():
+        raise ValueError("Give the path of Traktor's collection.nml.")
+    if p.is_dir():
+        p = p / "collection.nml"
+    if not p.is_file():
+        raise ValueError(f"{p} isn't there.")
+    if p.name.lower() != "collection.nml":
+        raise ValueError(f"{p.name} isn't Traktor's collection: choose the file named collection.nml in the Traktor "
+                         "folder (not a History playlist or a backup).")
+    with open(p, "rb") as f:
+        if b"<NML" not in f.read(4096):
+            raise ValueError(f"{p} doesn't look like a Traktor collection (no <NML> at the start).")
+    return p.resolve()
+
+
+def choose_collection(path: str | None) -> Path | None:
+    """Remember where Traktor's collection is (None: find it automatically again). Returns what's used now."""
+    save_app_setting(COLLECTION_SETTING, str(check_collection(path)) if path else None)
+    return chosen_collection() or auto_collection()
 
 
 def find_collection(nml: str | None = None) -> Path:
+    """--nml if given, else the one chosen on the Setup tab, else the newest Traktor version's."""
     if nml:
         p = Path(os.path.expanduser(nml))
         if not p.exists():
             raise SystemExit(f"{p} does not exist")
         return p
-    candidates = glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*/collection.nml"))
-    if not candidates and sys.platform.startswith("linux"):
+    chosen = chosen_collection()
+    if chosen:
+        if chosen.exists():
+            return chosen
+        raise SystemExit(f"The Traktor collection chosen in Setup, {chosen}, isn't there any more (moved, or on a drive "
+                         "that isn't connected). Choose it again on the Setup tab, or let it be found automatically.")
+    found = auto_collection()
+    if found:
+        return found
+    if sys.platform.startswith("linux"):
         raise SystemExit("Traktor doesn't run on Linux, so the Traktor steps are skipped. Everything else works on "
                          "your music folders.")
-    if not candidates:
-        raise SystemExit("Couldn't find Traktor's collection.nml in ~/Documents/Native Instruments/. "
-                         "Pass its location with --nml /path/to/collection.nml")
-    return Path(max(candidates, key=_version_key))
+    looked = ", ".join(str(d / "Native Instruments") for d in documents_dirs())
+    raise SystemExit(f"Couldn't find Traktor's collection.nml (looked in {looked}). Choose it on the Setup tab "
+                     "(Browse…), or pass --nml /path/to/collection.nml")
+
+
+def newer_collection() -> Path | None:
+    """A newer Traktor version's collection than the chosen one (Traktor makes a new folder when it updates, and
+    the chosen one would stay on the old version), or None."""
+    chosen, found = chosen_collection(), auto_collection()
+    if not chosen or not found or not chosen.exists():
+        return None
+    return found if (_folder_version(found.parent.name) or (0,)) > (_folder_version(chosen.parent.name) or (0,)) else None
 
 
 TEMPO_STATE = "tempo-loaded.json"  # in data while a `tempo load` view is in Traktor
@@ -431,21 +570,22 @@ def recording_dirs(nml: str | None = None, settings: tuple[str, ...] = SKIP_SETT
     """Folders to leave out of scans: Traktor's mix recordings (its default Recordings folder and
     the one set in Preferences, Browser.Dir.Recordings in Traktor Settings.tsi) and its sample/loop
     folder (Browser.Dir.Loops). `settings=("Browser.Dir.Recordings",)`: the recordings only."""
-    dirs = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*/Recordings")))
-    bases = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*")))
-    if nml:
-        bases.add(str(Path(os.path.expanduser(nml)).parent))
-    for base in bases:
-        for tsi in glob.glob(os.path.join(base, "*.tsi")):
-            try:
-                text = Path(tsi).read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            for name in settings:
-                m = re.search(rf'<Entry\s+Name="{re.escape(name)}"[^>]*\sValue="([^"]*)"', text)
-                d = mac_path(m.group(1)) if m else None
-                if d and d != "/" and not re.fullmatch(r"[A-Za-z]:\\?", d):  # never a whole drive
-                    dirs.add(d)
+    dirs = set(traktor_glob("Recordings"))
+    tsis = set(traktor_glob("*.tsi"))
+    for c in (Path(os.path.expanduser(nml)) if nml else None, chosen_collection()):
+        if c:
+            dirs.update(glob.glob(os.path.join(glob.escape(str(c.parent)), "Recordings")))
+            tsis.update(glob.glob(os.path.join(glob.escape(str(c.parent)), "*.tsi")))
+    for tsi in tsis:
+        try:
+            text = Path(tsi).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for name in settings:
+            m = re.search(rf'<Entry\s+Name="{re.escape(name)}"[^>]*\sValue="([^"]*)"', text)
+            d = mac_path(m.group(1)) if m else None
+            if d and d != "/" and not re.fullmatch(r"[A-Za-z]:\\?", d):  # never a whole drive
+                dirs.add(d)
     return sorted(os.path.normpath(d) for d in dirs)  # on Windows glob keeps the "/" of "~/Documents/…"; scans use "\\"
 
 
@@ -815,6 +955,10 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
 def _save(path: Path, text: str, new_text: str, stats: dict, dry_run: bool, prefix: str = BACKUP_PREFIX) -> dict:
     """Validate, back up and write the edited collection (or only report, for a dry run)."""
     stats["dry_run"] = dry_run
+    note = untested_note(path)
+    if note:
+        stats["untested"] = note
+        log(note)
     if new_text == text:
         stats["changed"] = False
         return stats

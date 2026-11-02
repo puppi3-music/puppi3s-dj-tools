@@ -120,7 +120,7 @@ Everything works on Windows 10 and 11 (x64), Traktor and Lexicon included, with 
 Good to know:
 
 - Scans run at below-normal priority, so the PC stays usable while one uses every core; whatever you're doing comes first.
-- Traktor's collection is found in `Documents\Native Instruments\Traktor <version>`, as on a Mac. Writes to Traktor refuse while Traktor (`Traktor Pro 4.exe`) is running, as on a Mac.
+- Traktor's collection is found in `Documents\Native Instruments\Traktor <version>`, as on a Mac, also when Documents is in OneDrive or moved to another drive. If it isn't found, choose it on the Setup tab (**Browse…**, or paste its path). Writes to Traktor refuse while Traktor (`Traktor Pro 4.exe`) is running, as on a Mac.
 - A drive letter that isn't plugged in keeps its tracks in the database, as an unplugged drive does on a Mac.
 - Paths longer than 260 characters need Windows' long path support turned on.
 - Windows on Arm runs the x64 build emulated (untested).
@@ -224,7 +224,7 @@ uv run dj-track-analyzer scan --traktor ~/Music/Incoming   # both
 | Option | What it does | Default |
 |---|---|---|
 | `--traktor` | Scan every track in Traktor's collection | off |
-| `--nml <path>` | Use another `collection.nml` | newest `~/Documents/Native Instruments/Traktor */` |
+| `--nml <path>` | Use another `collection.nml` | the one chosen on the Setup tab, else the newest `Documents/Native Instruments/Traktor */` |
 | `--exclude <folder>` | Leave a folder out; repeat for several. Earlier results from it are removed | none |
 | `--include-recordings` | Also scan your Traktor recordings and samples | off |
 | `--workers N` | Parallel analysers | half your cores, max 5 |

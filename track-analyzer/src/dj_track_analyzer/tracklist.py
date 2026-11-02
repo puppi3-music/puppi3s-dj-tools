@@ -23,7 +23,6 @@ whose main stretch is under 30 s gets no key verdict rather than a wrong one.
 
 from __future__ import annotations
 
-import glob
 import os
 import re
 import sqlite3
@@ -37,7 +36,7 @@ import numpy as np
 from . import analysis
 from .analysis import camelot, dj_genre, fmt_time, fold_bpm, label_scores, round_bpm
 
-HISTORY_GLOB = "~/Documents/Native Instruments/Traktor*/History/history_*.nml"
+HISTORY_GLOB = "Documents/Native Instruments/Traktor*/History/history_*.nml"  # in every Documents folder: traktor.traktor_glob
 RECORDING_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})_(\d{2})h(\d{2})m(\d{2})s")
 HISTORY_RE = re.compile(r"history_(\d{4})y(\d{1,2})m(\d{1,2})d")
 PITCH_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
@@ -147,7 +146,9 @@ def find_history(start: datetime, duration: float) -> Path | None:
     """The history file covering most of the recording (sessions can run past midnight)."""
     days = {start.date(), (start - timedelta(days=1)).date()}
     best = None
-    for f in glob.glob(os.path.expanduser(HISTORY_GLOB)):
+    from . import traktor
+
+    for f in traktor.traktor_glob(os.path.join("History", "history_*.nml")):
         m = HISTORY_RE.search(Path(f).name)
         if not m or date(*map(int, m.groups())) not in days:
             continue

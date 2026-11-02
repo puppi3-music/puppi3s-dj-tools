@@ -475,13 +475,22 @@ def setup_status() -> dict:
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
+        newer = traktor.newer_collection()
+        st["traktor"]["newer"] = str(newer) if newer else None
+        st["traktor"]["version"] = traktor.collection_version(nml)
         tk_files = set(_traktor_side(nml)["files"])
     except SystemExit as e:
-        st["traktor"] = {"collection": None, "why": str(e.code or e)}
+        why = str(e.code or e)
+        if not traktor.chosen_collection() and not sys.platform.startswith("linux"):  # the page's own words, not --nml
+            looked = ", ".join(str(d / "Native Instruments") for d in traktor.documents_dirs())
+            why = f"Couldn't find it automatically (looked in {looked}). Choose it with Browse…, or paste its path."
+        st["traktor"] = {"collection": None, "why": why}
         tk_files = set()
     except (OSError, ValueError) as e:
         st["traktor"] = {"collection": None, "why": f"Couldn't read Traktor's collection: {e}"}
         tk_files = set()
+    chosen = traktor.chosen_collection()
+    st["traktor"]["chosen"] = str(chosen) if chosen else None  # picked on this tab; None = found automatically
     scanned, hyped, errors, tagged, predicted, changed = set(), 0, 0, 0, 0, 0
     if collection.NATIVE_DB.exists():
         with sqlite3.connect(collection.NATIVE_DB) as con:
