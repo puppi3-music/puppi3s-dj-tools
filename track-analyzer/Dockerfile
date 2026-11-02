@@ -5,7 +5,8 @@
 #         Built locally, never published: the models' licence doesn't allow passing them on.
 # amd64 even when built on an arm64 machine (Apple Silicon: runs emulated)
 FROM --platform=linux/amd64 ghcr.io/astral-sh/uv:0.13.4 AS uv
-FROM --platform=linux/amd64 python:3.11.13-slim-bookworm AS app
+# deps: everything but the analyzer's own code (the fixtures stage builds on it too)
+FROM --platform=linux/amd64 python:3.11.13-slim-bookworm AS deps
 COPY --from=uv /uv /bin/uv
 # Debian 12's Rubber Band is 3.1 (the R3 engine the tempo view needs)
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg rubberband-cli \
@@ -19,6 +20,9 @@ ARG EXTRAS=""
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-install-project $EXTRAS
+
+FROM deps AS app
+ARG EXTRAS=""
 COPY src ./src
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen $EXTRAS
 # Any user id can run it (compose passes yours, so files it writes in your music and Traktor folder stay yours)
@@ -31,14 +35,22 @@ FROM --platform=linux/amd64 python:3.11.13-slim-bookworm AS models
 COPY src/dj_track_analyzer/model_files.py /tmp/model_files.py
 RUN python /tmp/model_files.py /models
 
+# The synthetic library from its own script alone (needs numpy and ffmpeg, both in deps): code changes reuse it.
+# The collection is stamped with the files' modification times, which COPY keeps; docker_smoke.py checks they agree.
+FROM deps AS fixtures
+COPY scripts/make_fixtures.py /tmp/make_fixtures.py
+RUN python /tmp/make_fixtures.py --music /fixtures/music \
+        --nml "/home/dj/Documents/Native Instruments/Traktor 4.0.0/collection.nml"
+
 FROM app AS test
-# --chmod in the copy itself: a later layer changing their mode would hold a second copy of the models
+# --chmod in the copies themselves: a later layer changing their mode would hold a second copy of the files
 COPY --from=models --chmod=777 /models /data/models
-RUN dj-track-analyzer setup && chmod -R a+rwX /data /home/dj
+COPY --from=fixtures --chmod=777 /fixtures /fixtures
+COPY --from=fixtures --chmod=777 /home/dj/Documents /home/dj/Documents
+# setup finds the models there and checks the genre rules against them; whatever else it made, any user may change
+RUN dj-track-analyzer setup \
+    && find /data /home/dj -path /data/models -prune -o -path /home/dj/Documents -prune -o -exec chmod a+rwX {} +
 COPY scripts ./scripts
-RUN python scripts/make_fixtures.py --music /fixtures/music \
-        --nml "/home/dj/Documents/Native Instruments/Traktor 4.0.0/collection.nml" \
-    && chmod -R a+rwX /fixtures /home/dj
 CMD ["python", "scripts/docker_smoke.py"]
 
 # CI: the smoke test as the last build step (as any user id, as compose runs it), so the 2 GB image never has to be
