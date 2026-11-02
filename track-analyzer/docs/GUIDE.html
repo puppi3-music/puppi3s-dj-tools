@@ -140,7 +140,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <main>
 <h1>How to use Puppi3's Track Analyzer</h1>
-<p class="lede">Everything happens in a web page on your own computer: scanning, colours, hype, cue points, beat grids and writing it all into Traktor, each with a preview first and an Undo after. Prefer a terminal? Every button has a command, in <a href="#cli">Command line</a>. Installation is in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md">README.md</a>.</p>
+<p class="lede">Everything happens in a web page on your own computer: scanning, colours, hype, cue points, beat grids and writing it all into Traktor, each with a preview first and an Undo after. Prefer a terminal? Every button has a command, in <a href="#cli">Command line</a>. Download it from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a>; <a href="#start">Open the web page</a> gets you going, and the details of installing are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md">README.md</a>.</p>
 
 <div class="scale" aria-label="Colour scale from Red to Magenta">
   <div style="background:var(--red)">Red<small>1</small></div><div style="background:var(--orange)">Orange<small>2</small></div><div style="background:var(--yellow)">Yellow<small>3</small></div><div style="background:var(--green)">Green<small>4</small></div><div style="background:var(--blue)">Blue<small>5</small></div><div style="background:var(--violet)">Violet<small>6</small></div><div style="background:var(--magenta)">Magenta<small>7</small></div>
@@ -158,6 +158,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <!-- ───────────────────────────── -->
 <h2 id="start">Open the web page</h2>
 <ol>
+  <li><b>Get the app:</b> download the zip from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a> (under <b>Assets</b>) and unzip it. That folder is the project folder.</li>
   <li><b>On a Mac:</b> double-click <code>Start Puppi3's Track Analyzer.command</code> in the project folder. The first time, right-click it and choose <b>Open</b> (macOS asks once about apps from the internet). It installs whatever is missing, then opens the page in your browser.</li>
   <li><b>On Windows:</b> double-click <code>Start Puppi3's Track Analyzer.bat</code> in the project folder. If Windows warns that it's from the internet, choose <b>More info → Run anyway</b>.</li>
   <li><b>On Linux:</b> run <code>./"Start Puppi3's Track Analyzer.command"</code> from a terminal in the project folder.</li>
@@ -338,7 +339,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <h3 id="update">After updating the app</h3>
 <ol>
-  <li>From a release zip: unzip the new version and move the <code>data</code> folder from your old copy into it (your scans, models and training live there). From a clone: <code>git pull</code>.</li>
+  <li>From a release zip: download the new zip from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a>, unzip it and move the <code>data</code> folder from your old copy into it (your scans, models and training live there). From a clone: <code>git pull</code>.</li>
   <li>Double-click <code>Start Puppi3's Track Analyzer.command</code> (on Windows, the <code>.bat</code>) again: it installs new dependencies before opening the page.</li>
   <li>Check the Setup tab: if a new model is needed, <b>Analysis models</b> offers the download.</li>
   <li>Press <b>Your colour scale → Update training</b>. The first run after an update may fill in new data for every track (about 10–15 minutes); later runs take a minute.</li>
