@@ -128,24 +128,33 @@ def untested_note(path: Path) -> str | None:
     return None
 
 
+KF_FLAG_DONT_VERIFY = 0x4000  # the path even if the folder isn't there (checking it is our glob's job)
+
+
+def _known_documents() -> str:
+    """Windows' Documents folder (FOLDERID_Documents); raises OSError with Windows' error code if it can't say."""
+    import ctypes
+    from ctypes import wintypes
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD), ("c", wintypes.WORD), ("d", ctypes.c_ubyte * 8)]
+
+    folder = GUID(0xFDD39AD0, 0x238F, 0x46AF, (ctypes.c_ubyte * 8)(0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7))
+    out = ctypes.c_wchar_p()
+    hr = ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(folder), KF_FLAG_DONT_VERIFY, None, ctypes.byref(out))
+    try:
+        if hr != 0:
+            raise OSError(f"SHGetKnownFolderPath failed: HRESULT 0x{hr & 0xFFFFFFFF:08X}")
+        return out.value
+    finally:
+        ctypes.windll.ole32.CoTaskMemFree(out)  # freed even on failure (NULL is fine)
+
+
 def _windows_documents() -> str | None:
     """Where Windows really keeps Documents (moved by OneDrive backup, or to another drive in its Properties →
     Location), which is where Traktor puts its folder; ~/Documents is only the default."""
     try:
-        import ctypes
-        from ctypes import wintypes
-
-        class GUID(ctypes.Structure):
-            _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD), ("c", wintypes.WORD), ("d", ctypes.c_ubyte * 8)]
-
-        folder = GUID(0xFDD39AD0, 0x238F, 0x46AF, (ctypes.c_ubyte * 8)(0xAD, 0xB4, 0x6C, 0x85, 0x48, 0x03, 0x69, 0xC7))
-        out = ctypes.c_wchar_p()
-        if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(folder), 0, None, ctypes.byref(out)) != 0:
-            return None
-        try:
-            return out.value
-        finally:
-            ctypes.windll.ole32.CoTaskMemFree(out)
+        return _known_documents()
     except Exception:  # noqa: BLE001 - only a hint; ~/Documents is still searched
         return None
 

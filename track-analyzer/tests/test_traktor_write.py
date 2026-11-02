@@ -139,4 +139,4 @@ def test_collection_found_in_moved_documents(tmp_path, monkeypatch):
 
 @pytest.mark.skipif(not WINDOWS, reason="asks Windows itself")
 def test_windows_knows_its_documents_folder():
-    assert traktor._windows_documents()
+    assert traktor._known_documents()  # the raising version: CI shows Windows' error if it fails
