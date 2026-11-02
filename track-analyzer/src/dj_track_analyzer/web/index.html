@@ -46,7 +46,7 @@ h3 { font-size: 14px; font-weight: 600; margin-bottom: 10px; }
 .mono { font-family: var(--mono); font-size: 12px; }
 
 header { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); }
-.bar-top { display: flex; align-items: center; gap: 12px; padding: 10px 20px; flex-wrap: wrap; }
+.bar-top { display: flex; align-items: center; gap: 12px; padding: 10px 20px; flex-wrap: wrap; justify-content: flex-end; }  /* a wrapped 2nd row sits right, under the chips */
 .brand { font-weight: 700; font-size: 15px; white-space: nowrap; }
 .brand span { color: var(--text-3); font-weight: 500; }
 nav { display: flex; gap: 2px; flex-wrap: wrap; }
@@ -366,7 +366,7 @@ dialog.write .warnbox, #gridbox .warnbox { background: color-mix(in srgb, var(--
   .step .act { grid-column: 2; justify-content: flex-start; max-width: none; }
   .step .act input[type=text] { width: 100%; }
   .banner, .jobbar { padding: 6px 16px; }
-  .bar-top { padding: 10px 16px; gap: 8px; }
+  .bar-top { padding: 10px 16px; gap: 8px; justify-content: flex-start; }
   nav { flex-wrap: nowrap; overflow-x: auto; width: 100%; order: 3; }
   /* the theme button beside the name (it wrapped onto a line of its own), library and export on the next line */
   .bar-top .spacer { display: none; }
@@ -591,7 +591,8 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
   el.hidden = !!SNAP;  // a snapshot can't know what's loaded now
   if (SNAP) return;
   const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
-  el.innerHTML = chip("Traktor", L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
+  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip("Traktor + Lexicon", L.loaded_view)  // saves a header row
+    : chip("Traktor", L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
   el.dataset.tip = `Traktor: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
     + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
