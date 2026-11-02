@@ -120,10 +120,13 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   for leftover names before committing.
 - Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (the dsp wheels and `[tool.uv] environments` cover Linux x86_64 only; on Apple
   Silicon it runs emulated, TF included). Target `app` (web on 0.0.0.0, HOME=/home/dj so Traktor's folder mounts at
-  ~/Documents/Native Instruments, data /data, any uid) and `test` (+ `setup` models baked in, never published:
+  ~/Documents/Native Instruments, data /data, any uid) and `test` (+ models from stage `models`, which copies only
+  `model_files.py` (the model list + downloader, no package imports) so code changes reuse it; never published:
   licence; + `scripts/make_fixtures.py` library: 4 synthetic tracks 124-145 BPM, MP3/FLAC/WAV, NML with grid, 5 cues,
   a loop). `docker compose run --rm test` = `scripts/docker_smoke.py` (scan BPM/key exact, Traktor refusal, write +
-  undo byte-identical, web 409/Host checks; ~1 min emulated), also CI `.github/workflows/docker.yml`. Develop
+  undo byte-identical, web 409/Host checks; ~1 min emulated). CI `.github/workflows/docker.yml` builds target `smoke`
+  (= test + the smoke run as a build step as uid 1000, `outputs: type=cacheonly`: no 2 GB image export/load; cancels
+  the previous run of the same PR). Develop
   against real models: `docker compose run --rm dev` (test image, ./src + ./scripts mounted, page on 8767).
 - `hype.py`: `hype` command (find by hype, filters, gems, `--traktor` → Comment).
 - `setplan.py`: `set` command. Arc = points (x 0..1, colour 1 Red..7 Magenta, hype 1-10): `ARCS` presets, `parse_arc`

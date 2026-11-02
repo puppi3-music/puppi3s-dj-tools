@@ -23,7 +23,6 @@ import sys
 import threading
 import time
 import unicodedata
-import urllib.request
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +30,11 @@ import numpy as np
 # ----------------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------------
+
+from . import model_files  # noqa: E402 - the model list and downloader (no package imports: Docker runs it alone)
+from .model_files import (  # noqa: E402,F401 - re-exported: other modules read these from analysis
+    EXTRA_HEAD_FILES, EXTRA_HEADS, INSTRUMENT_FILES, INSTRUMENT_MODEL, MAEST_FILES, MODEL_BASE, MODEL_FILES,
+    MOOD_FILES, MOODS, VOICE_MODEL, _fetch)
 
 # Data (databases, models, backups) lives in data/ at the repo root; TRACK_ANALYZER_HOME overrides it.
 HOME = Path(os.environ.get("TRACK_ANALYZER_HOME", Path(__file__).resolve().parents[2] / "data")).expanduser()
@@ -73,50 +77,11 @@ MIX_THRESHOLD_SEC = float(os.environ.get("TRACK_ANALYZER_MIX_THRESHOLD", str(12 
 
 AUDIO_EXTS = {".mp3", ".wav", ".flac", ".aiff", ".aif", ".m4a", ".ogg", ".opus", ".wma"}
 
-MODEL_BASE = "https://essentia.upf.edu/models"
-MODEL_FILES = {
-    "discogs-effnet-bs64-1.pb": f"{MODEL_BASE}/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb",
-    "genre_discogs400-discogs-effnet-1.pb": f"{MODEL_BASE}/classification-heads/genre_discogs400/genre_discogs400-discogs-effnet-1.pb",
-    "genre_discogs400-discogs-effnet-1.json": f"{MODEL_BASE}/classification-heads/genre_discogs400/genre_discogs400-discogs-effnet-1.json",
-}
-
-# Second, larger genre model (MAEST, 519 Discogs styles, trained on 4M tracks). Optional but
-# recommended: its opinion is blended with EffNet's. TRACK_ANALYZER_MAEST=0 turns it off.
-MAEST_FILES = {
-    "discogs-maest-30s-pw-519l-2.pb": f"{MODEL_BASE}/feature-extractors/maest/discogs-maest-30s-pw-519l-2.pb",
-    "discogs-maest-30s-pw-519l-2.json": f"{MODEL_BASE}/feature-extractors/maest/discogs-maest-30s-pw-519l-2.json",
-}
 USE_MAEST = os.environ.get("TRACK_ANALYZER_MAEST", "1") not in ("0", "false", "no")
 MAEST_BLOCKS = int(os.environ.get("TRACK_ANALYZER_MAEST_BLOCKS", "3"))  # 30 s blocks per track
 MAEST_WEIGHT = 0.6  # share of MAEST in the blended style scores
 
-# Small pretrained mood classifiers that reuse the EffNet embeddings (optional downloads).
-MOODS = ["aggressive", "happy", "party", "relaxed", "sad"]
-MOOD_FILES = {
-    f"mood_{m}-discogs-effnet-1.{ext}": f"{MODEL_BASE}/classification-heads/mood_{m}/mood_{m}-discogs-effnet-1.{ext}"
-    for m in MOODS for ext in ("pb", "json")
-}
-
-# Instrument tagger (40 instruments: voice, pad, piano, strings, synthesizer, ...), also on the
-# EffNet embeddings (optional download). Trained on Jamendo music, so treat it as a rough guide.
-INSTRUMENT_MODEL = "mtg_jamendo_instrument-discogs-effnet-1"
-# Its "voice" class barely reacts to vocals in club tracks, so vocals come from a dedicated
-# voice/instrumental head, measured over the whole track (vocals often sit in the breakdowns).
-VOICE_MODEL = "voice_instrumental-discogs-effnet-1"
 VOICE_FEATURES = ["vocals", "vocal_share"]  # average voice probability; share of moments with vocals
-INSTRUMENT_FILES = {
-    f"{name}.{ext}": f"{MODEL_BASE}/classification-heads/{head}/{name}.{ext}"
-    for head, name in (("mtg_jamendo_instrument", INSTRUMENT_MODEL), ("voice_instrumental", VOICE_MODEL))
-    for ext in ("pb", "json")
-}
-
-# Two regression heads used by `colors explain`: approachability (how accessible/easy a track is;
-# the strongest single match with the user's colours) and engagement. Optional downloads.
-EXTRA_HEADS = ["approachability", "engagement"]
-EXTRA_HEAD_FILES = {
-    f"{h}_regression-discogs-effnet-1.{ext}": f"{MODEL_BASE}/classification-heads/{h}/{h}_regression-discogs-effnet-1.{ext}"
-    for h in EXTRA_HEADS for ext in ("pb", "json")
-}
 # Energy-arc numbers from the short-term loudness, also for `colors explain`.
 ARC_FEATURES = ["drop_lift_db", "intro_sec", "breakdown_share", "longest_break_sec", "dynamics_db"]
 
@@ -242,59 +207,8 @@ def models_present() -> bool:
     return all((MODELS_DIR / name).exists() for name in MODEL_FILES)
 
 
-def _fetch(url: str, dest: Path) -> bool:
-    """Download with resume and retries. essentia.upf.edu is a university server that is
-    sometimes slow or unreachable over IPv6, so try curl (normal, then IPv4-only) before Python."""
-    import shutil
-    import subprocess
-
-    tmp = dest.with_suffix(dest.suffix + ".part")
-    curl = shutil.which("curl")
-    attempts = []
-    if curl:
-        base = [curl, "-fL", "--retry", "3", "--retry-delay", "3", "--connect-timeout", "20",
-                "-C", "-", "-o", str(tmp), url]
-        attempts += [base, base[:1] + ["-4"] + base[1:]]
-    for cmd in attempts:
-        label = "curl -4" if "-4" in cmd else "curl"
-        if subprocess.run(cmd).returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
-            tmp.rename(dest)
-            return True
-        log(f"    {label} failed, trying another way...")
-    for i in range(3):
-        try:
-            with urllib.request.urlopen(url, timeout=60) as r, open(tmp, "wb") as f:
-                while chunk := r.read(1 << 16):
-                    f.write(chunk)
-            tmp.rename(dest)
-            return True
-        except Exception as err:
-            log(f"    python download failed ({err}); retry {i + 1}/3")
-            time.sleep(3 * (i + 1))
-    return False
-
-
 def download_models(maest: bool = True) -> None:
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    missing = []
-    files = dict(MODEL_FILES)
-    if maest:
-        log("(includes the larger MAEST genre model, a few hundred MB; skip it with --no-maest)")
-        files.update(MAEST_FILES)
-    for name, url in files.items():
-        dest = MODELS_DIR / name
-        if dest.exists() and dest.stat().st_size > 0:
-            log(f"  ok        {name}")
-            continue
-        log(f"  download  {name}")
-        if not _fetch(url, dest):
-            missing.append((name, url))
-    for name, url in {**MOOD_FILES, **INSTRUMENT_FILES, **EXTRA_HEAD_FILES}.items():  # small and optional: a missing one is just skipped
-        dest = MODELS_DIR / name
-        if not (dest.exists() and dest.stat().st_size > 0):
-            log(f"  download  {name}")
-            if not _fetch(url, dest):
-                log(f"    (optional model {name} unavailable; it will be skipped)")
+    missing = model_files.download(MODELS_DIR, maest)
     if not missing:
         log(f"Models ready in {MODELS_DIR}")
         return
