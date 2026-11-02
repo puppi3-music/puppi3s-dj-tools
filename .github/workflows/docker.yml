@@ -1,5 +1,5 @@
 # The Docker test environment (track-analyzer/Dockerfile, target test): real models on a synthetic library,
-# scripts/docker_smoke.py end to end. Builds only; nothing is published.
+# scripts/docker_smoke.py end to end, run as the last build step (target smoke). Builds only; nothing is published.
 name: docker
 
 on:
@@ -7,8 +7,13 @@ on:
     branches: [main]
     paths: ["track-analyzer/**", ".github/workflows/docker.yml", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
   pull_request:
-    paths: ["track-analyzer/**", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
+    paths: ["track-analyzer/**", ".github/workflows/docker.yml", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
   workflow_dispatch:
+
+# A new push to the same pull request (or branch) cancels the smoke run still going for the previous one
+concurrency:
+  group: docker-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   smoke:
@@ -19,10 +24,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: track-analyzer
-          target: test
-          tags: track-analyzer:test
-          load: true
+          target: smoke  # the smoke test runs as the build's last step (Dockerfile); a failure fails the build
+          outputs: type=cacheonly  # nothing to export or load: only the cache is kept
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Smoke test
-        run: docker run --rm --user 1000:1000 track-analyzer:test
