@@ -6,8 +6,7 @@ on:
   push:
     branches: [main, windows-port]
     paths: ["track-analyzer/**", ".github/workflows/tests.yml", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
-  pull_request:
-    paths: ["track-analyzer/**", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
+  pull_request:  # every pull request: main requires these checks before a merge
   workflow_dispatch:
 
 jobs:
