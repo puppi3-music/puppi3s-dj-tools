@@ -35,7 +35,7 @@ from .analysis import HOME, log
 
 APP = Path(__file__).resolve().parents[2]  # the track-analyzer folder: pyproject.toml, launchers, src/
 REPO = "puppi3-music/puppi3s-dj-tools"
-RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=30"
+RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=100"  # dsp-v… builds share the list
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 BACKUPS = HOME / "app-backups"
 DOWNLOADS = HOME / "updates"
@@ -55,8 +55,9 @@ FIRST_SEEN = "1.0.1"  # the last release before updates were tracked: an existin
 
 
 def version_key(v: str) -> tuple[int, ...]:
-    """'1.10.2' → (1, 10, 2), for comparing; a leading 'v' is fine."""
-    return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3]) or (0,)
+    """'1.10.2' → (1, 10, 2), for comparing; a leading 'v' is fine; '1.1' = '1.1.0'."""
+    nums = [int(x) for x in re.findall(r"\d+", str(v))[:3]]
+    return tuple(nums + [0] * (3 - len(nums)))
 
 
 def installed_version(app: Path = APP) -> str:
@@ -104,8 +105,11 @@ def _get(url: str, timeout: float = 15) -> bytes:
 
 def releases() -> list[dict]:
     """The app's published releases (tags v…), newest first; the dsp-v… builds and drafts left out."""
+    data = json.loads(_get(RELEASES_API))
+    if not isinstance(data, list):  # GitHub's {"message": …} (a rate limit, say)
+        raise ValueError(f"GitHub answered: {data.get('message') if isinstance(data, dict) else data!r}")
     out = []
-    for r in json.loads(_get(RELEASES_API)):
+    for r in data:
         tag = r.get("tag_name") or ""
         if r.get("draft") or r.get("prerelease") or not re.fullmatch(r"v\d+(\.\d+)*", tag):
             continue
@@ -117,13 +121,13 @@ def releases() -> list[dict]:
     return sorted(out, key=lambda r: version_key(r["version"]), reverse=True)
 
 
-def check(app: Path = APP) -> dict:
+def check(app: Path = APP, rel: list[dict] | None = None) -> dict:
     """What's installed, the newest release, whether it's newer, its notes (and those of any skipped in between),
-    and whether this install can update itself (or why not)."""
+    and whether this install can update itself (or why not). `rel`: releases() already fetched."""
     now = installed_version(app)
     kind = install_kind(app)
     st: dict = {"installed": now, "kind": kind, "checked": time.strftime("%Y-%m-%d %H:%M"), "page": RELEASES_PAGE}
-    rel = releases()
+    rel = releases() if rel is None else rel
     if not rel:
         return {**st, "latest": None, "newer": False}
     newest = rel[0]
@@ -163,6 +167,9 @@ def _download(rel: dict) -> Path:
             dest.unlink(missing_ok=True)
             raise SystemExit(f"The download isn't the file GitHub lists (SHA-256 {got}); nothing was changed.")
         log("Download checked (SHA-256 matches).")
+    for old in DOWNLOADS.iterdir():  # earlier releases' zips (and their unfinished .part files) aren't needed again
+        if old.is_file() and old.name != dest.name:
+            old.unlink(missing_ok=True)
     return dest
 
 
@@ -187,7 +194,7 @@ def read_zip(path: Path) -> dict[str, tuple[zipfile.ZipInfo, str]]:
     for i in infos:
         rel = i.filename[len(top):]
         parts = rel.split("/")
-        if (not rel or rel.startswith("/") or "\\" in rel or ".." in parts or ":" in parts[0]):
+        if not rel or rel.startswith("/") or "\\" in rel or ".." in parts or ":" in rel:  # ':' = a drive or an NTFS stream
             raise SystemExit(f"The update zip has an unsafe path ({i.filename}); nothing was changed.")
         files[rel] = i
     if "pyproject.toml" not in files or not any(r.startswith("src/dj_track_analyzer/") for r in files):
@@ -232,10 +239,14 @@ def _replace(dest: Path, data: bytes, mode: int | None) -> None:
     """Write through a temporary file and a rename: a script running from the old file (a launcher) keeps it."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".update-part")
-    tmp.write_bytes(data)
-    if mode and sys.platform != "win32":
-        os.chmod(tmp, mode)
-    os.replace(tmp, dest)
+    try:
+        tmp.write_bytes(data)
+        if mode and sys.platform != "win32":
+            os.chmod(tmp, mode)
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)  # else a later update would list it in src/ as a file to remove
+        raise
 
 
 def install_zip(zip_path: Path, app: Path = APP, backups: Path | None = None) -> dict:
@@ -245,9 +256,13 @@ def install_zip(zip_path: Path, app: Path = APP, backups: Path | None = None) ->
     if not (p["added"] or p["changed"] or p["removed"]):
         return {**_counts(p), "changed": False, "note": "Every file is already the new release's."}
     bdir = backups / f"{p['from']}-to-{p['to']}-{time.strftime('%Y%m%d-%H%M%S')}"
-    for rel in p["changed"] + p["removed"]:  # the old copies first: nothing is changed before they're all saved
-        (bdir / "files" / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(app / rel, bdir / "files" / rel)
+    try:
+        for rel in p["changed"] + p["removed"]:  # the old copies first: nothing is changed before they're all saved
+            (bdir / "files" / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(app / rel, bdir / "files" / rel)
+    except BaseException as err:  # a full disk, say: no half backup left behind (_prune only sees whole ones)
+        shutil.rmtree(bdir, ignore_errors=True)
+        raise SystemExit(f"Couldn't back up the app's files, so nothing was changed: {err}") from None
     record = {"kind": "zip", "from": p["from"], "to": p["to"], "at": time.strftime("%Y-%m-%d %H:%M:%S"),
               "added": p["added"], "changed": p["changed"], "removed": p["removed"]}
     bdir.mkdir(parents=True, exist_ok=True)
@@ -310,7 +325,11 @@ def last_backup(backups: Path | None = None) -> tuple[Path, dict] | None:
 # ----------------------------------------------------------------------------
 
 def _git(app: Path, *args: str, check: bool = True) -> str:
-    p = subprocess.run(["git", "-C", str(app), *args], capture_output=True, text=True, check=False)
+    # never ask for a password: a page job has no terminal to answer in (git would wait, or stop on SIGTTIN)
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "", "SSH_ASKPASS": "",
+           "GIT_SSH_COMMAND": os.environ.get("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")}
+    p = subprocess.run(["git", "-C", str(app), *args], capture_output=True, text=True, check=False,
+                       stdin=subprocess.DEVNULL, env=env)
     if check and p.returncode:
         raise SystemExit(f"git {' '.join(args)} failed: {(p.stderr or p.stdout).strip()}")
     return p.stdout.strip()
@@ -334,7 +353,8 @@ def _git_update(app: Path, dry_run: bool) -> dict:
     log("Fetching from GitHub (git fetch)…")
     _git(app, "fetch", "--tags", "origin", "main")
     head, theirs = _git(app, "rev-parse", "HEAD"), _git(app, "rev-parse", "FETCH_HEAD")
-    if subprocess.run(["git", "-C", str(app), "merge-base", "--is-ancestor", head, theirs], check=False).returncode:
+    if subprocess.run(["git", "-C", str(app), "merge-base", "--is-ancestor", head, theirs], check=False,
+                      stdin=subprocess.DEVNULL).returncode:
         raise SystemExit("This clone has commits GitHub's main doesn't: update it yourself (git pull).")
     commits = _git(app, "log", "--format=%h %s", f"{head}..{theirs}").splitlines()
     files = _git(app, "diff", "--name-only", head, theirs).splitlines()
@@ -365,14 +385,14 @@ def update(dry_run: bool = False, app: Path = APP) -> dict:
     if kind == "git":
         res = _git_update(app, dry_run)
     else:
-        st = check(app)
+        rels = releases()  # asked once: GitHub allows 60 unauthenticated calls an hour
+        st = check(app, rels)
         if not st["newer"]:
             return {"from": st["installed"], "to": st["installed"], "changed": False, "dry_run": dry_run,
                     "note": f"Already the newest release ({st['installed']})."}
         if not st["can_update"]:
             raise SystemExit(st["why_not"])
-        rel = releases()[0]
-        z = _download(rel)
+        z = _download(rels[0])
         if dry_run:
             res = {**_counts(plan(z, app)), "dry_run": True, "changed": True}
         else:
