@@ -28,9 +28,10 @@ for k in ("TRACK_ANALYZER_CONTAINER", "TRACK_ANALYZER_TRAKTOR_CLOSED", "PYTHONUT
 WINDOWS = sys.platform == "win32"
 TRAKTOR_DIR = TMP / "home" / "Documents" / "Native Instruments" / "Traktor 4.4.2"
 
-# (folder, file name, genre the stand-in analysis gives, colour); accents and non-Latin names on purpose
+# (folder, file name, genres the stand-in analysis gives ("; ": runner-ups close to the top one), colour);
+# accents and non-Latin names on purpose
 TRACKS = [
-    ("Música/House", "Café del Mar - Été (Extended Mix).flac", "Deep House", "Blue"),
+    ("Música/House", "Café del Mar - Été (Extended Mix).flac", "Deep House; Progressive House", "Blue"),
     ("Música/House", "東京 Night - ナイト.flac", "Tech House", "Green"),
     ("Música/Trance", "Plain Track.flac", "Trance", "Violet"),
 ]
@@ -142,7 +143,7 @@ def fake_analysis(monkeypatch):
         genre, colour = by_name.get(Path(path).name, ("House", "Red"))
         return {"type": "track", "duration": "0:03", "bpm": 124.0, "bpm_confidence": 3.0,
                 "loudness": {"integrated_lufs": -9.0, "loudness_range_lu": 4.0},
-                "dj_genre": [{"genre": genre, "score": 0.8}],
+                "dj_genre": [{"genre": g, "score": 0.8 - 0.05 * i} for i, g in enumerate(genre.split("; "))],
                 "color": {"color": colour, "position": 0.5, "confidence": 0.9}}
 
     monkeypatch.setattr(analysis, "analyze_file", analyze_file)

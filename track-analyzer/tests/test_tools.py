@@ -84,3 +84,12 @@ def test_install_button_installs_rubberband(monkeypatch, tmp_path):
     assert job["returncode"] == 0, job["lines"]
     assert (tmp_path / "tools" / "rubberband" / "rubberband.exe").exists()
     assert jobs.setup_status()["tools"]["rubberband"]  # the step shows as installed
+
+
+def test_undo_anyway_passes_force():
+    build = jobs.ACTIONS["traktor_undo"][1]
+    assert build({}) == ["traktor", "--undo"]
+    assert build({"force": True}) == ["traktor", "--undo", "--force"]
+    assert build({"force": "yes"}) == ["traktor", "--undo"]  # only a real true from the page's button
+    page = (Path(jobs.__file__).parent / "web" / "index.html").read_text(encoding="utf-8")
+    assert "write(act, { ...opts, force: true })" in page

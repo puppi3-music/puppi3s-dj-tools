@@ -2769,7 +2769,16 @@ async function writeDialog(action, options = {}, onDone) {
   async function write(act, opts) {
     busy("Writing…");
     const j = await run(act, opts, false);
-    if (j.error) return show(`<div class="err">${esc(j.error)}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Try again</button>`), again(act, opts);
+    // An undo refused because Traktor saved the collection since: offer to restore anyway, losing what it saved
+    const forceable = act === "traktor_undo" && !opts.force && /--force/.test(j.error || "");
+    if (j.error) {
+      show(`<div class="err">${esc(j.error.replace(/ Run again with --force to restore anyway\./, ""))}</div>${j.command ? cmdNote(j) : ""}`,
+        `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
+      dlg.querySelector("[data-force]")?.addEventListener("click", () => {
+        if (confirm("Put the backup back anyway?\n\nEverything Traktor saved since the analyzer's change is lost: plays, cue points, new tracks, your own edits.")) write(act, { ...opts, force: true });
+      });
+      return again(act, opts);
+    }
     const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
       ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
