@@ -54,8 +54,12 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   for bit on 507/508 files (stage 2; the other: FFmpeg 2.8 decoded one MP3's LAME Info frame as 1152 samples of audio,
   current FFmpeg doesn't, as `traktor.audio_offset` assumes); raw frame bytes converted ~1M samples at a time (per-frame
   numpy was slower than Essentia), FLAC/ALAC frame threads; >2 channels via PyAV's resampler = `ffmpeg -ac 2` bits.
-  Opus length = sum of packet durations (FFmpeg 2.8's). Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
-  speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
+  Opus length = sum of packet durations (FFmpeg 2.8's). Every model graph goes through `analysis.Graph` (= TensorflowPredict:
+  run({in: x}) → {out: y}; inputs lose size-1 axes after the batch, outputs padded to 4 axes) or `Head` (= TensorflowPredict2D,
+  64 rows per run, the last shorter: one batch per track is off by 2e-6): Python `tensorflow==2.15.0` when installed
+  (`analysis.tensorflow()`, opt-in extra `nets`, which also names tensorflow-macos/-intel: uv's lock misses them), else
+  Essentia; bit-identical, same speed (stage 4; `dsp/check.py --steps nets`). onnxruntime (tf2onnx) isn't identical
+  (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
   Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).

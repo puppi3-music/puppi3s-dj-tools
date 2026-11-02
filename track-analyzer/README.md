@@ -98,6 +98,9 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
   exactly Essentia's samples, 1.15x faster for MP3 and 2.4x for FLAC, using a third of the memory on long mixes. It needs
   macOS 14 or newer on Apple Silicon. A plain `uv sync` removes it again (`Start Puppi3's Track Analyzer.command` runs
   `uv sync --inexact`, which keeps it).
+- **Models on Python TensorFlow (optional).** `uv sync --inexact --extra nets` adds TensorFlow 2.15 (about 1 GB), the
+  version inside Essentia, and runs the models on it with exactly Essentia's results. Not faster: a step toward
+  Windows ([docs/WINDOWS.md](docs/WINDOWS.md) stage 4), for testing.
 - **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
   which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
   "synth", "no bass" or "drums + bass only", and whether a loop has a kick comes from the drum stem (no bassline in the
