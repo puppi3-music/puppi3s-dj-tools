@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import os
 import re
+import sqlite3
+import threading
 import time
 import warnings
 from pathlib import Path
@@ -52,6 +54,35 @@ def read_traktor_colors(nml: str | None = None) -> tuple[Path, dict[str, int], i
         for p in traktor.location_paths(traktor.attrs(loc.group(0))):
             out[p] = int(color)
     return path, out, n
+
+
+_synced: dict = {"key": None}
+_sync_lock = threading.Lock()  # the web page asks from several threads
+
+
+def sync_traktor_colours(nml: str | None = None) -> None:
+    """Your colours in the database = Traktor's now, read again whenever collection.nml changes: a recolour from the
+    page, `traktor --undo` or a colour set in Traktor show at once, not only after the next scan or training.
+    Left alone while a tempo view is loaded (Traktor then holds the view's colours, not yours)."""
+    from . import tempo
+
+    try:
+        path = traktor.find_collection(nml)
+        key = (str(path), path.stat().st_mtime_ns)
+    except (SystemExit, OSError):
+        return
+    with _sync_lock:
+        if _synced["key"] == key or not collection.NATIVE_DB.exists():
+            return
+        if not tempo.loaded():
+            _p, now, _n = read_traktor_colors(str(path))
+            with sqlite3.connect(collection.NATIVE_DB) as con:
+                stored = dict(con.execute("SELECT path, traktor_color FROM tracks"))
+                new = {p: COLOR_NAMES[now[p] - 1] if p in now else None for p in stored}
+                diff = [(c, p) for p, c in new.items() if c != stored[p]]
+                if diff:
+                    con.executemany("UPDATE tracks SET traktor_color=? WHERE path=?", diff)
+        _synced["key"] = key  # a loaded view counts too: `tempo native` changes the file again
 
 
 INFO_COLS = ["bpm", "lufs", "loudness_range", "key", "key_strength"] + [f"mood_{m}" for m in analysis.MOODS]
@@ -356,7 +387,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
                  "trained_at": time.strftime("%Y-%m-%d %H:%M"), "tracks": int(len(y)), "counts": counts,
                  "metrics": metrics, "baseline": baseline, "disagreements": disagreements[:100],
                  # cross-validated positions, for analysis.color_confidence
-                 "cv": {"position": [round(float(v), 3) for v in pos], "truth": [int(v) for v in y]},
+                 "cv": {"position": [round(float(v), 3) for v in pos], "truth": [int(v) for v in y], "paths": paths},
                  # the colours it learned from, so new_labels() can tell when there's something new
                  "labels": dict(pairs), "collection": str(nml_path)}, COLOR_MODEL)
     analysis._color_bundle.clear()
@@ -492,10 +523,13 @@ def refresh_predictions(con, traktor_colors: dict[str, int] | None = None, progr
 
 
 def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap: float = 2.5,
-           min_confidence: float = 0.75, nml: str | None = None, ask: bool = False) -> dict:
+           min_confidence: float = 0.75, nml: str | None = None, ask: bool = False, only: list[str] | None = None, planned: bool = False) -> dict:
     """apply=True recolours, in Traktor, the reviewed tracks with gap >= min_gap and confidence >=
     min_confidence to the colour they sound like. Uses the cross-validated predictions (made without
-    seeing the track's own colour), not the final model's. ask=True asks about each track first."""
+    seeing the track's own colour), not the final model's. ask=True asks about each track first.
+    only: recolour only these listed tracks (exact paths), whatever the thresholds: you approved them.
+    planned: with apply, write what's marked on the web page (set_plan): recolour the approved tracks, put the
+    kept ones on the keep-always list, and clear those marks."""
     b = analysis.color_model()
     if b is None:
         raise SystemExit("No colour model yet. Run: uv run dj-track-analyzer colors train")
@@ -508,13 +542,47 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
         raise SystemExit("This colour model is from before confidence was measured properly. "
                          "Retrain it: uv run dj-track-analyzer colors train")
     keep_forever = _kept_forever()
-    for i, d in enumerate(b["disagreements"]):
+    sync_traktor_colours(nml)
+    with sqlite3.connect(collection.NATIVE_DB) as con:
+        colour_now = dict(con.execute("SELECT path, traktor_color FROM tracks"))
+    listed = {d["path"]: d for d in b["disagreements"]}
+    plan = plans()
+    stale = [p for p in plan if p not in listed or p in keep_forever
+             or colour_now.get(p) not in (None, listed[p]["your_colour"])]  # retrained, kept or recoloured since
+    if stale:
+        set_plan(stale, None)
+        plan = {p: v for p, v in plan.items() if p not in stale}
+    keeps = [p for p, v in plan.items() if v["action"] == "keep"] if planned else []
+    if planned:
+        only = [p for p, v in plan.items() if v["action"] == "approve"]
+    use_picked = only is not None
+    picked = set(only or ())
+    if picked:
+        if not apply:
+            raise SystemExit("--track goes with --apply: uv run dj-track-analyzer colors review --apply --track <path>")
+        unknown = picked - {d["path"] for d in b["disagreements"]}
+        if unknown:
+            raise SystemExit(f"Not among the tracks the review lists: {', '.join(sorted(Path(p).name for p in unknown))}")
+        kept_ones = sorted(Path(p).name for p in picked & keep_forever)
+        if kept_ones:
+            raise SystemExit(f"You chose to keep these colours always: {', '.join(kept_ones)}. Take them off that list "
+                             f'first: uv run dj-track-analyzer colors review --kept --forget "<part of the name>"')
+    recoloured, i = 0, -1
+    for d in b["disagreements"]:
+        if use_picked and d["path"] not in picked:
+            continue
+        now = colour_now.get(d["path"])
+        changed = now is not None and now != d["your_colour"]  # recoloured since training: listed, nothing to do
+        recoloured += changed
+        if changed and apply:
+            continue
+        i += 1
         if apply and d["path"] in keep_forever:
             continue  # plain review still lists them, marked "kept"
         pos = d["position"]
         # how often tracks placed here really were this colour or a neighbour of it
         conf = analysis.color_confidence(b, pos, COLOR_NAMES.index(d["sounds_like"]) + 1, within=1) if scale else None
-        chosen = bool(scale and d["gap"] >= min_gap and conf >= min_confidence)  # numpy bool isn't JSON
+        chosen = bool(scale and not changed and (use_picked or d["gap"] >= min_gap and conf >= min_confidence))  # numpy bool isn't JSON
         if chosen:
             changes[d["path"]] = (COLOR_NAMES.index(d["your_colour"]) + 1, COLOR_NAMES.index(d["sounds_like"]) + 1)
         if (chosen if apply else i < limit):  # --apply lists only the tracks it would recolour
@@ -525,6 +593,10 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             t["meets_apply_threshold"] = chosen
             if d["path"] in keep_forever:
                 t["kept"] = True  # you answered "keep always": --apply leaves it alone
+            if d["path"] in plan:
+                t["marked"] = plan[d["path"]]["action"]  # on the web page, waiting for Write
+            if changed:
+                t["recoloured"] = now  # its colour in Traktor now; retraining takes it off the list
             t["path"] = d["path"]
             tracks.append(t)
     out = {"trained_at": b["trained_at"], "model": b.get("name"), "accuracy": b["metrics"],
@@ -538,6 +610,10 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
            "tracks": tracks}
     if keep_forever:
         out["always_kept"] = len(keep_forever)
+    if recoloured:
+        out["recoloured_since_training"] = recoloured
+    if plan:
+        out["marked"] = {a: sum(v["action"] == a for v in plan.values()) for a in ("approve", "keep")}
     if apply:
         if not scale:
             raise SystemExit("--apply needs a scale model (this one treats colours as classes).")
@@ -550,13 +626,71 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             said = lambda p: {"yours": COLOR_NAMES[asked[p][0] - 1], "model": COLOR_NAMES[asked[p][1] - 1]}  # noqa: E731
             collection.log_feedback("colour_keep", [(p, said(p)) for p in forever])
             collection.log_feedback("colour_no", [(p, said(p)) for p in asked if p not in changes and p not in forever])
-        out["traktor"] = traktor.set_colors(changes, nml, dry_run=dry_run)
-        if not dry_run and out["traktor"].get("changed"):
-            out["undo"] = "uv run dj-track-analyzer traktor --undo"
+        if changes or not planned:
+            out["traktor"] = traktor.set_colors(changes, nml, dry_run=dry_run)
+            if not dry_run and out["traktor"].get("changed"):
+                out["undo"] = "uv run dj-track-analyzer traktor --undo"
+        if planned:
+            names = sorted(listed[p]["file"] for p in keeps)
+            if dry_run:
+                out["would_keep_always"] = names
+            else:
+                _keep_forever(keeps, {p: COLOR_NAMES.index(listed[p]["your_colour"]) + 1 for p in keeps})
+                collection.log_feedback("colour_keep", [(p, {"yours": listed[p]["your_colour"],
+                                                             "model": listed[p]["sounds_like"]}) for p in keeps])
+                out["kept_always"] = names
+                set_plan(list(changes) + keeps, None)
+            out["changed"] = bool(keeps) or bool(out.get("traktor", {}).get("changed"))
     else:
         out["apply_hint"] = (f"uv run dj-track-analyzer colors review --apply --dry-run  (previews recolouring the "
                              f"{len(changes)} tracks with gap >= {min_gap} and confidence >= {min_confidence})")
     return out
+
+
+def unbiased_positions(b: dict | None = None) -> dict[str, float]:
+    """{path: cross-validated position} for the tracks the colour model learned from: where it places each one
+    without having seen its colour. The final model saw it, so its own guess leans toward the colour you gave."""
+    b = b or analysis.color_model()
+    cv = (b or {}).get("cv")
+    if not cv or b.get("starter"):
+        return {}
+    if cv.get("paths"):
+        return dict(zip(cv["paths"], cv["position"]))
+    # bundles before the paths were stored: the labels are in training order, unless a track was dropped on the way
+    labels = b.get("labels") or {}
+    if len(labels) != len(cv["position"]) or any(int(c) != t for c, t in zip(labels.values(), cv["truth"])):
+        return {}
+    return dict(zip(labels, cv["position"]))
+
+
+def _plan_db() -> sqlite3.Connection:
+    con = sqlite3.connect(collection.NATIVE_DB)
+    con.execute("CREATE TABLE IF NOT EXISTS colour_plan (path TEXT PRIMARY KEY, action TEXT, at TEXT)")
+    return con
+
+
+def plans() -> dict[str, dict]:
+    """Review tracks marked on the web page, waiting for Write: {path: {action: approve | keep, at}}."""
+    with _plan_db() as con:
+        return {p: {"action": a, "at": at} for p, a, at in con.execute("SELECT path, action, at FROM colour_plan")}
+
+
+def set_plan(paths: list[str], action: str | None) -> dict:
+    """Mark review tracks: approve (recolour to what it sounds like) or keep (keep always), both done by
+    `review --apply --planned`; None unmarks."""
+    if action not in ("approve", "keep", None):
+        raise ValueError(f"action is approve, keep or none, not {action!r}")
+    if action:
+        listed = {d["path"] for d in (analysis.color_model() or {}).get("disagreements", [])}
+        if any(p not in listed for p in paths):
+            raise ValueError("Only tracks the review lists can be marked")
+    with _plan_db() as con:
+        if action:
+            now = time.strftime("%Y-%m-%d %H:%M")
+            con.executemany("INSERT OR REPLACE INTO colour_plan VALUES (?, ?, ?)", [(p, action, now) for p in paths])
+        else:
+            con.executemany("DELETE FROM colour_plan WHERE path=?", [(p,) for p in paths])
+    return {"marked": len(plans())}
 
 
 def _kept_forever() -> set[str]:

@@ -93,7 +93,7 @@ ACTIONS = {
     "setup": ("Download the models", lambda o: ["setup", *(["--no-maest"] if o.get("no_maest") else [])], False),
     "scan": ("Scan your music", _scan, False),
     "hype": ("Score hype", lambda o: ["hype", "--limit", "1", "--json", "--native"], False),
-    "colors_train": ("Learn your colours", lambda o: ["colors", "train"], False),
+    "colors_train": ("Learn your colours", lambda o: ["colors", "train", *(["--refresh-views"] if o.get("views") else [])], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
@@ -110,15 +110,16 @@ ACTIONS = {
     "hype_remove": ("Take hype out of Comment", lambda o: ["hype", "--traktor", "--remove", "--native"], True),
     "colors_apply": ("Colour new and uncoloured tracks in Traktor", lambda o: ["colors", "apply"], True),
     "colors_recolour": ("Recolour the clearest disagreements in Traktor", lambda o: ["colors", "review", "--apply", "--yes"], True),
+    "colors_write_marked": ("Write the colours you marked", lambda o: ["colors", "review", "--apply", "--yes", "--planned"], True),
     "tempo_load": ("Switch Traktor to the tempo view",
                    lambda o: ["tempo", "load", "--bpm", _bpm(o), *(["--lexicon"] if o.get("lexicon") else [])], True),
     "tempo_native": ("Switch Traktor back to normal", lambda o: ["tempo", "native", *(["--lexicon"] if o.get("lexicon") else [])], True),
 }
 UNDO = {"tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
-        "colors_recolour": "traktor_undo", "tempo_load": "tempo_native"}
+        "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native"}
 NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
 TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
-                   "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
+                   "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
 _lock = threading.Lock()
 _job: dict | None = None  # the running or last job

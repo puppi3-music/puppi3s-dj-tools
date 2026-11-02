@@ -537,7 +537,7 @@ function columns(items) {
     <div class="cols-x">${items.map((i, k) => `<span>${k % every ? "" : esc(i.short ?? i.label)}</span>`).join("")}</div>`;
 }
 function table(cols, rows, { onRow, rowAttr } = {}) {
-  return `<div class="tablewrap"><table><thead><tr>${cols.map(c => `<th class="${c.r ? "r" : ""}">${esc(c.h)}</th>`).join("")}</tr></thead>
+  return `<div class="tablewrap"><table><thead><tr>${cols.map(c => `<th class="${c.r ? "r" : ""}">${c.raw ? c.h : esc(c.h)}</th>`).join("")}</tr></thead>
     <tbody>${rows.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ""}>${cols.map(c => `<td class="${c.r ? "r num" : ""}">${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
@@ -692,6 +692,7 @@ function camelotNeighbours(code) {
   return [`${n}${l}`, `${w(n - 1)}${l}`, `${w(n + 1)}${l}`, `${n}${l === "A" ? "B" : "A"}`];
 }
 const colourOf = t => t.traktor_color || t.color;
+const UNBIASED_TIP = "Judged without knowing your colour (from training's cross-validation), so a colour you set by mistake doesn't pull it your way";
 // the Tracks tab's "All tracks" menu: value → which tracks it lists
 const CHECKS = {
   some: t => t.own_cues > 0, none: t => !t.own_cues, fixes: t => t.corrections > 0, approved: t => t.cues_approved,
@@ -851,7 +852,7 @@ function scaleView(t) {
   const at = p => `left:${(p - 0.5) / 7 * 100}%`;
   return `<div class="scale-marks top">${yours ? `<div class="m" style="${at(yours)}">yours</div>` : ""}</div>
     <div class="scale">${COLOURS.map(c => `<div class="sw-${c}" data-tip="${c}"></div>`).join("")}</div>
-    <div class="scale-marks">${pos != null ? `<div class="m" style="${at(pos)}" data-tip="where the model places this track (1 = Red … 7 = Magenta)">model ${pos.toFixed(2)}</div>` : ""}</div>`;
+    <div class="scale-marks">${pos != null ? `<div class="m" style="${at(pos)}" data-tip="where the model places this track (1 = Red … 7 = Magenta)${t.colour_unbiased ? `. ${UNBIASED_TIP}` : ""}">model ${pos.toFixed(2)}</div>` : ""}</div>`;
 }
 // ---------- beat grid check (gridfix.py): does Traktor's grid sit on the kicks? ----------
 const GRIDPLAY = { src: null, btn: null };
@@ -1046,7 +1047,7 @@ async function openTrack(path) {
     <dl class="facts">
       <dt>BPM</dt><dd>${fmt(t.mix_bpm)}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
       <dt>Key</dt><dd>${esc(t.mix_camelot || "–")} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
-      <dt>Colour</dt><dd>${colour(colourOf(t), !t.traktor_color)}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small">model: ${esc(t.color)}${t.color_confidence != null ? `, confidence ${pct(t.color_confidence)}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
+      <dt>Colour</dt><dd>${colour(colourOf(t), !t.traktor_color)}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? `, confidence ${pct(t.color_confidence)}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Hype</dt><dd>${hypeBadge(t.hype)} <span class="dim small">1-10 within your collection</span></dd>
       <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
@@ -2343,11 +2344,21 @@ async function pageHype(main) {
 
 // ---------- colours ----------
 async function pageColours(main) {
+  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `Traktor has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab, or tempo native), then write` : "";
+  const RSEL = new Set();  // ticked review rows (paths)
+  const markCell = t => t.kept || t.recoloured ? "" : t.marked
+    ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
+        ? `will recolour to&nbsp; ${sw(t.sounds_like)}${esc(t.sounds_like)}` : `will keep&nbsp; ${sw(t.your_colour)}${esc(t.your_colour)} always`}</span> <button class="mini" data-mark="" data-p="${esc(t.path)}" data-tip="Unmark">✕</button></span>`
+    : `<span class="nowrap"><button class="mini" data-mark="approve" data-p="${esc(t.path)}" data-tip="Mark: recolour it ${esc(t.sounds_like)} when you press Write">Approve</button> <button class="mini" data-mark="keep" data-p="${esc(t.path)}" data-tip="Mark: keep your ${esc(t.your_colour)} always when you press Write">Keep</button></span>`;
   const reviewTable = rows => table([
+          ...(SNAP ? [] : [{ h: `<input type="checkbox" data-ckall aria-label="Tick every track in this list">`, raw: 1,
+            f: t => t.kept || t.recoloured ? "" : `<input type="checkbox" data-ck="${esc(t.path)}" aria-label="Tick" ${RSEL.has(t.path) ? "checked" : ""}>` }]),
           { h: "Track", f: t => `<div class="trk"><div class="t">${esc(t.file)}</div></div>` },
           { h: "Yours", f: t => colour(t.your_colour) }, { h: "Sounds like", f: t => colour(t.sounds_like) },
           { h: "Gap", r: 1, f: t => fmt(t.gap) }, { h: "Confidence", r: 1, f: t => pct(t.confidence) },
-          { h: "", f: t => (t.meets_apply_threshold ? `<span class="chip warn">over threshold</span> ` : "") + (t.kept ? `<span class="chip">kept</span>` : "") },
+          { h: "", f: t => (t.meets_apply_threshold ? `<span class="chip warn">over threshold</span> ` : "") + (t.kept ? `<span class="chip">kept</span>` : "")
+            + (t.recoloured ? `<span class="chip good" data-tip="You recoloured it since training. Retrain to learn from it; it then leaves this list.">recoloured&nbsp; ${sw(t.recoloured)}${esc(t.recoloured)}</span>` : "") },
+          ...(SNAP ? [] : [{ h: "", r: 1, f: markCell }]),
         ], rows, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` });
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
     <div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads Traktor's collection and History)…</div>`;
@@ -2355,22 +2366,81 @@ async function pageColours(main) {
   const m = $("#c-model"); m.className = "";
   if (rv.status === "rejected") m.innerHTML = errBox(rv.reason);
   else {
-    const r = rv.value, a = r.accuracy || {};
-    m.innerHTML = `<div class="tiles">
+    const r = rv.value, a = r.accuracy || {}, byPath = new Map(r.tracks.map(t => [t.path, t]));
+    const draw = () => {
+      const marks = r.tracks.filter(t => t.marked), nA = marks.filter(t => t.marked === "approve").length, nK = marks.length - nA;
+      const retrain = r.recoloured_since_training;
+      m.innerHTML = `<div class="tiles">
         <div class="tile"><div class="v">${fmt(a.average_error_per_colour)}</div><div class="l">average error per colour (in colours)</div></div>
         <div class="tile"><div class="v">${pct(a.within_one_colour)}</div><div class="l">within one colour</div></div>
         <div class="tile"><div class="v">${pct(a.exact)}</div><div class="l">exactly right</div></div>
         <div class="tile"><div class="v" style="font-size:15px;padding-top:6px">${esc(r.trained_at)}</div><div class="l">trained · ${esc(r.model || "")}</div></div>
       </div>
+      ${retrain && !SNAP ? `<div class="selbar"><span>You recoloured ${plural(retrain, "listed track")} since training. Retraining learns from your new colours, lists the tracks the new model disagrees with, and refreshes your tempo views' colours (a minute or two).</span>
+        <button class="primary" id="c-retrain">Retrain now</button><span class="small muted" id="c-retrainmsg"></span></div>` : ""}
       <div class="card"><h3>Tracks that disagree with their colour <span class="dim small">(cross-validated: predicted without seeing the track)</span></h3>
         <div class="note" style="margin:0 0 10px">${r.apply_threshold.tracks_meeting_it} meet the recolour threshold (gap ≥ ${r.apply_threshold.min_gap}, confidence ≥ ${pct(r.apply_threshold.min_confidence)}).
         ${r.always_kept ? `${r.always_kept} you chose to keep always.` : ""}
-        ${SNAP ? "" : `<button class="mini" id="c-recolour" style="margin-left:4px">Recolour them in Traktor…</button>`}</div>
+        ${retrain ? `${plural(retrain, "track")} you recoloured since training ${retrain === 1 ? "is" : "are"} marked <b>recoloured</b> until you retrain.` : ""}
+        ${SNAP ? "" : `<button class="mini" id="c-recolour" style="margin-left:4px" ${viewOn ? `disabled title="${viewTip}"` : ""}>Recolour them in Traktor…</button>`}
+        ${SNAP ? "" : `<br>Or mark tracks one by one (or tick several): <b>Approve</b> recolours to what it sounds like, <b>Keep</b> keeps your colour always. Nothing changes until you press Write.`}</div>
+        ${marks.length && !SNAP ? `<div class="selbar"><b>Marked: ${[nA && `${nA} to recolour`, nK && `${nK} to keep`].filter(Boolean).join(", ")}</b>
+          <button class="primary" id="c-write" ${viewOn && nA ? `disabled title="${viewTip}"` : `data-tip="Preview first; Traktor closed${nA ? "" : " isn't needed: keeping writes nothing to Traktor"}"`}>Write…</button>
+          <button id="c-unmark">Unmark all</button><span class="small muted" id="c-markmsg"></span></div>` : ""}
+        <div id="c-sel"></div>
         ${reviewTable(r.tracks.slice(0, 25))}
-        ${r.tracks.length > 25 ? `<details><summary class="small muted" style="margin-top:8px;cursor:pointer">Show ${r.tracks.length - 25} more</summary>${reviewTable(r.tracks.slice(25))}</details>` : ""}
+        ${r.tracks.length > 25 ? `<details ${m.dataset.more ? "open" : ""}><summary class="small muted" style="margin-top:8px;cursor:pointer">Show ${r.tracks.length - 25} more</summary>${reviewTable(r.tracks.slice(25))}</details>` : ""}
       </div>`;
-    m.onclick = e => { const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path); };
-    $("#c-recolour")?.addEventListener("click", e => { e.stopPropagation(); writeDialog("colors_recolour", {}, () => route()); });
+      m.querySelector("details")?.addEventListener("toggle", e => { m.dataset.more = e.target.open ? "1" : ""; });
+      $("#c-recolour")?.addEventListener("click", e => { e.stopPropagation(); writeDialog("colors_recolour", {}, () => route()); });
+      $("#c-write")?.addEventListener("click", () => writeDialog("colors_write_marked", {}, () => route()));
+      $("#c-unmark")?.addEventListener("click", () => mark(marks.map(t => t.path), null));
+      $("#c-retrain")?.addEventListener("click", async e => {
+        e.target.disabled = true; e.target.textContent = "Retraining…";
+        try { const j = await startJob("colors_train", { views: true }); if (j?.error) throw new Error(j.error); route(); }
+        catch (err) { e.target.disabled = false; e.target.textContent = "Retrain now"; $("#c-retrainmsg").textContent = err.message; }
+      });
+      selbar();
+    };
+    const mark = async (paths, action) => {
+      try {
+        await postJSON("/api/colours/mark", { paths, action });
+        for (const p of paths) { const t = byPath.get(p); if (t) { if (action) t.marked = action; else delete t.marked; } }
+        RSEL.clear(); draw();
+      } catch (err) { const el = $("#c-markmsg") || $("#c-selmsg"); if (el) el.textContent = err.message; }
+    };
+    const selbar = () => {
+      const box = $("#c-sel"), n = RSEL.size;
+      m.querySelectorAll("table").forEach(tb => {  // each list's header box: ticked when all its rows are
+        const all = tb.querySelector("[data-ckall]"), cks = [...tb.querySelectorAll("[data-ck]")];
+        if (all) { all.checked = cks.length > 0 && cks.every(c => c.checked); all.indeterminate = !all.checked && cks.some(c => c.checked); }
+      });
+      if (!box) return;
+      if (!n) { box.innerHTML = ""; return; }
+      box.innerHTML = `<div class="selbar"><b>${plural(n, "track")} ticked</b>
+        <button data-sel="approve" data-tip="Mark them: recolour to what they sound like when you press Write">Approve</button>
+        <button data-sel="keep" data-tip="Mark them: keep your colours always when you press Write">Keep</button>
+        <button data-sel="unmark">Unmark</button>
+        <button data-sel="clear">Clear</button><span class="small muted" id="c-selmsg"></span></div>`;
+      box.querySelector('[data-sel="clear"]').onclick = () => { RSEL.clear(); m.querySelectorAll("[data-ck]").forEach(c => { c.checked = false; }); selbar(); };
+      box.querySelector('[data-sel="approve"]').onclick = () => mark([...RSEL], "approve");
+      box.querySelector('[data-sel="keep"]').onclick = () => mark([...RSEL], "keep");
+      box.querySelector('[data-sel="unmark"]').onclick = () => mark([...RSEL], null);
+    };
+    m.onchange = e => {
+      const ck = e.target.closest("[data-ck], [data-ckall]");
+      if (!ck) return;
+      const boxes = ck.dataset.ckall != null ? [...ck.closest("table").querySelectorAll("[data-ck]")] : [ck];
+      for (const b of boxes) { b.checked = ck.checked; if (ck.checked) RSEL.add(b.dataset.ck); else RSEL.delete(b.dataset.ck); }
+      selbar();
+    };
+    m.onclick = e => {
+      if (e.target.closest("input, button:not([data-mark])")) return;  // a tick box or a bar button, not the row
+      const mk = e.target.closest("button[data-mark]");
+      if (mk) return mark([mk.dataset.p], mk.dataset.mark || null);
+      const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path);
+    };
+    draw();
   }
   const x = $("#c-explain"); x.className = "";
   if (ex.status === "rejected") { x.innerHTML = `<div class="card"><h3>Colour profile</h3>${errBox(ex.reason)}</div>`; return; }
@@ -2572,7 +2642,7 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
   const counts = ["written", "would_write", "restored", "would_restore", "top_genre_changed"].filter(k => k in r).map(k => r[k]);
   return (flags.length && !flags.some(Boolean)) || (!flags.length && counts.length && !counts.some(Boolean));
 }
-const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "tempo_load", "tempo_native"]);
+const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
 const NO_PREVIEW = new Set(["traktor_undo"]);
 const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
 const OPEN_WARN = `<div class="warnbox"><b>Traktor is open.</b> Quit it first: it saves its collection when it quits and would undo these changes. Then press Check again.</div>`;
@@ -2618,7 +2688,7 @@ async function writeDialog(action, options = {}, onDone) {
     busy("Writing…");
     const j = await run(act, opts, false);
     if (j.error) return show(`<div class="err">${esc(j.error)}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Try again</button>`), again(act, opts);
-    const r = j.result || {}, undo = j.undo;
+    const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
       ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
       ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
