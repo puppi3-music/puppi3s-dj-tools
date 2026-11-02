@@ -1,0 +1,9 @@
+# Kept in git, but left out of code searches (ripgrep / Claude's Grep): generated or binary, huge, never read whole.
+track-analyzer/dsp/src/bpm_tables.rs
+track-analyzer/dsp/src/fftw_codelets.rs
+track-analyzer/dsp/src/mid_qual_coeffs.rs
+track-analyzer/dsp/src/fft4096.rs
+*.lock
+track-analyzer/docs/img/
+track-analyzer/src/dj_track_analyzer/starter/
+track-analyzer/docs/GUIDE.html

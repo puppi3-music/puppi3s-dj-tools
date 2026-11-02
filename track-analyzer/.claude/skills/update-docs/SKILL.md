@@ -16,8 +16,9 @@ on *behaviour* (not just wording), that may be a bug: ask the user which is righ
 | `README.md` | someone installing or looking something up | Install, every command and option, how the analysis works, LLM setup, settings. The full reference. |
 | `docs/GUIDE.html` | the user on a normal day, in a browser | Task-first: "I bought new tracks" → what to run, what you'll see, how to read it, how to undo. Self-contained (no external files besides Google Fonts). |
 | `docs/IDEAS.md` | the user planning | What exists (short), ideas by theme with status. Not a manual. |
-| `CLAUDE.md` | Claude, for any contributor (public) | Architecture, design rules, verified technical facts, bugs not to reintroduce. Dense is fine; don't prettify it into prose. No personal details. |
-| `CLAUDE.local.md` | Claude, for this one user (gitignored) | Their setup, collection numbers, track names, decisions with dates and *who decided*, test history, current status. |
+| `CLAUDE.md` | Claude, for any contributor (public), loaded every session | Short: overview, working style, a one-line-per-file map pointing at the notes. Keep it under ~6 KB; detail goes in docs/notes. No personal details. |
+| `docs/notes/*.md` | Claude, read on demand (public) | Per-module architecture, verified technical facts, `bugs.md` (bugs not to reintroduce), `tried.md` (no gain). Dense is fine. New facts go in the matching file. |
+| `CLAUDE.local.md` | Claude, for this one user (gitignored) | Their setup, collection numbers, track names, decisions with dates and *who decided*, current status. Dated logs and test history go in `notes-archive.local.md` (read on demand). |
 
 Don't copy long passages between docs; link instead (GUIDE ↔ README sections, README → GUIDE for daily use).
 
