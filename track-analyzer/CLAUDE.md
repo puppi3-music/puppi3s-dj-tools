@@ -125,7 +125,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   ENTRY/PRIMARYKEY KEY = VOLUME+DIR+FILE; EXTENDEDDATA STARTDATE = y<<16|m<<8|d, STARTTIME = seconds of day,
   DURATION = deck run time, which includes faded-out tails, so plays overlap ~70% of a mix). Recording start from
   Traktor's `Recording_YYYY-MM-DD_HHhMMmSSs` name or `--start`. No start or no covering history with `--tracklist` auto → `NoHistory` (a SystemExit): `analyze`
-  carries on without the check and saves `tracklist_skipped` (the reason; page note + summary line); a named file or `--chapters` still stops. Main stretch = start → next start, shifted by a
+  carries on without the check and saves `tracklist_skipped` (the reason; summary line), `tracklist_skipped_kind` (start / history:
+  the page's own wording, `skippedNote`) and `recording_start`; the page's **Started at** (one recording) = `--start`; a named file or `--chapters` still stops. Main stretch = start → next start, shifted by a
   measured blend lag (0-150 s, the one where most keys match), middle 60% judged. Key lock on unless off wins by
   ≥2 tracks. Sped >4%: genre = mix acts at played BPM with PSY_GATE vs native acts per track
   (speed-up and stems/effects both really change the genre, only the psy shortcut is
@@ -170,7 +171,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   get `--dry-run` for the preview; `UNDO` maps writer → undo action. Stop = SIGINT to the group (scans save), SIGTERM
   after 20 s; `web.serve` stops a running job on exit. `analyze_mix` queues: `options.files` = several recordings, run one
   after another by `_wait` (also past a failure); an analyze_mix started while one runs joins `_queue`; `busy()` counts
-  the queue; Stop clears it; `state()` lists it as `job.queued`. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
+  the queue; Stop clears it; `state()` lists it as `job.queued`, and the last jobs that ended as `job.ended` (a queued mix starts
+  the moment the one before ends, so the page's poll may never see that one end: `jobPoll` ends them from this list, `JOB.failed`). Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
   /api/jobs/stop; /api/saved-file/delete (`web.delete_saved`: moves a listed saved file to its folder's deleted/, which
   `saved_files` doesn't read); `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):

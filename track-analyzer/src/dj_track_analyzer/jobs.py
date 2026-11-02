@@ -72,7 +72,11 @@ def _analyze_mix(o: dict) -> list[str]:
         raise ValueError(f"{p.name} isn't an audio file")
     MIX_DIR.mkdir(parents=True, exist_ok=True)
     out = MIX_DIR / f"{p.stem}.json"  # analysed before: replaced by the new result
-    return ["analyze", str(p.resolve()), *(["--tracklist"] if o.get("tracklist", True) else []),
+    start = str(o.get("start") or "").strip()  # when the recording began, for a name that doesn't say
+    if start and not re.fullmatch(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d(:\d\d)?", start):
+        raise ValueError(f"Start time as YYYY-MM-DD HH:MM(:SS), not {start!r}")
+    tl = o.get("tracklist", True)
+    return ["analyze", str(p.resolve()), *(["--tracklist"] if tl else []), *(["--start", start] if tl and start else []),
             *(["--highlights"] if o.get("highlights", True) else []), "--json-only", "--out", str(out)]
 
 
@@ -121,6 +125,8 @@ _job: dict | None = None  # the running or last job
 _proc: subprocess.Popen | None = None
 _seq = 0
 _queue: list[tuple[str, str, list[str]]] = []  # mixes to analyse after the running one: (action, label, args)
+_ended: list[dict] = []  # the last jobs that ended, without their log: a queued mix starts at once, so the page
+ENDED_KEEP = 10          # may never see the one before it as ended
 on_finish = []  # callbacks after a job ends (the web page's caches)
 
 
@@ -159,7 +165,8 @@ def start(action: str, options: dict | None = None, dry_run: bool = False) -> di
     with _lock:
         if busy():
             if action != "analyze_mix" or _job["action"] != "analyze_mix":
-                raise ValueError(f"Busy with: {_job['label']}. Wait for it or stop it first.")
+                now = _job["label"] if _job["running"] else _queue[0][1]  # between two queued mixes: the next one
+                raise ValueError(f"Busy with: {now}. Wait for it or stop it first.")
             _queue.extend((action, lb, a) for lb, a in runs)
             log(f"Job queued: {', '.join(lb for lb, _ in runs)}")
             return state()
@@ -258,6 +265,9 @@ def _wait(job: dict, proc: subprocess.Popen, out: list[str], readers: list[threa
             (ln for ln in reversed(job["lines"]) if ln.strip()), f"Ended with exit code {rc}")
     job.update(returncode=rc, ended=time.time(), running=False, live=None, traktor_running=traktor.traktor_running())
     log(f"Job ended ({'ok' if not rc else job['error']}): {job['command']}")
+    _ended.append({k: job[k] for k in ("id", "action", "label", "command", "dry_run", "writes", "undo", "returncode",
+                                       "error", "traktor_running")} | {"running": False, "elapsed": job["ended"] - job["started"]})
+    del _ended[:-ENDED_KEEP]
     for fn in on_finish:
         try:
             fn(job)
@@ -313,7 +323,8 @@ def state(since: int = 0) -> dict:
         return {"job": None}
     first = j["dropped"]
     lines = j["lines"][max(0, since - first):]
-    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "queued": [lb for _, lb, _ in _queue], "line_from": max(since, first),
+    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "queued": [lb for _, lb, _ in _queue],
+                    "ended": _ended, "line_from": max(since, first),
                     "line_to": first + len(j["lines"]), "lines": lines,
                     "elapsed": (j["ended"] or time.time()) - j["started"]}}
 
