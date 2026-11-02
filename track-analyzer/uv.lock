@@ -288,7 +288,7 @@ sdist = { url = "https://files.pythonhosted.org/packages/87/38/55f835ebd9f443465
 
 [[package]]
 name = "dj-track-analyzer"
-version = "0.1.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "av" },
