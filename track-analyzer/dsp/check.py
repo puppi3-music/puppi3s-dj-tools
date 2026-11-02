@@ -1,8 +1,10 @@
-"""Check the Rust module, PyAV decoding and the EffNet input against Essentia, bit for bit. Run after any change to dsp/ or decode:
+"""Check the Rust module, PyAV decoding, the EffNet input and the models on Python TensorFlow against Essentia, bit for bit.
+Run after any change to dsp/, decode or the model graphs:
 
     uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix,
                                                # decoding test files in each format (made with the ffmpeg command),
-                                               # the models' mel frames, EffNet's patches and batches
+                                               # the models' mel frames, EffNet's patches and batches,
+                                               # every model graph on Python TensorFlow (uv sync --inexact --extra nets)
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
     uv run python dsp/check.py --files-from mixes.txt   # files listed one per line (names with spaces are fine)
     uv run python dsp/check.py --collection --steps linear   # only the step you changed: much faster
@@ -10,7 +12,8 @@
 Prints one line per difference and exits 1 if there is any. A Rust step only replaces Essentia's while this
 passes on the whole test collection; run every step (the default) before a release. Most of the time goes
 into Essentia's own slow steps (about a minute per hour-long mix), so check only what changed while working.
-Tracks run --workers at a time; files over 12 minutes (mixes, ~1.3 GB each in memory) --mix-workers. Compare on a Mac: Essentia's arm64 build fuses multiply-adds that its
+Tracks run --workers at a time; files over 12 minutes (mixes, ~1.3 GB each in memory) --mix-workers. With nets each
+process holds every model twice (~5 GB), so fewer run at once. Compare on a Mac: Essentia's arm64 build fuses multiply-adds that its
 Linux x86_64 build doesn't, and the Rust loudness follows the Mac's (docs/WINDOWS.md).
 """
 
@@ -23,7 +26,7 @@ from pathlib import Path
 
 import numpy as np
 
-STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet")
+STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet", "nets")
 # Test files for decoding: (name, ffmpeg output options, rate, channels). AAC, Vorbis and Opus come out of
 # current FFmpeg's rewritten decoders about 1 in 10 million different (stage 0): printed, not counted.
 CODECS = [(f"{c}.wav", ["-c:a", c], sr, 2) for c in ("pcm_u8", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_f64le")
@@ -166,6 +169,79 @@ def _same_effnet(e, x):
     bad = set(np.flatnonzero(d > 0).tolist())
     return "noise" if bad <= noisy and d.max() < 1e-5 else False
 
+_nets = {}
+
+
+def _net_pairs():
+    """(name, the analyzer's model as it loads it, Essentia's copy) for every downloaded graph; the analyzer's run on
+    Python TensorFlow (analysis.Graph / Head)."""
+    from dj_track_analyzer import analysis as a
+
+    if not _nets:
+        ours = [("effnet", a.style_models()["embed"]), ("styles", a.style_models()["styles"])]
+        ours += [(f"mood {m}", h) for m, (h, _i) in a.mood_models().items()]
+        ours += [("instruments", a.instrument_model()), ("vocals", (a.voice_model() or (None,))[0])]
+        ours += [(h, m) for h, m in a.extra_heads().items()]
+        ours.append(("maest", (a.maest_model() or {}).get("model")))
+        _nets["pairs"] = [(n, m, type(m)(*m.args, essentia=True)) for n, m in ours if m is not None]
+    return _nets["pairs"]
+
+
+def _diff(name, mine, ref) -> str | None:
+    mine, ref = np.asarray(mine, np.float32), np.asarray(ref, np.float32)
+    if mine.shape != ref.shape:
+        return f"{name} shape {mine.shape} vs {ref.shape}"
+    if not np.array_equal(mine.view(np.uint32), ref.view(np.uint32)):
+        return f"{name} {int((mine != ref).sum())} values differ, at most {np.abs(mine - ref).max():.2g}"
+    return None
+
+
+def _nets_diff(mono16, emb=None) -> list[str]:
+    """Each graph on Python TensorFlow vs Essentia's TensorFlow, on the same input: EffNet on mono16's patches, the
+    heads on Essentia's embeddings (or emb), MAEST on its 30 s patches. Lists what differs."""
+    from dj_track_analyzer import analysis as a
+
+    out = []
+    for name, mine, ref in _net_pairs():
+        if name == "effnet":
+            if mono16 is None:
+                continue
+            emb = a.effnet_embeddings(mono16, model=ref)
+            out.append(_diff(name, a.effnet_embeddings(mono16, model=mine), emb))
+        elif name == "maest":
+            if mono16 is None:
+                continue
+            m = a.maest_model()
+            for k, patch in enumerate(a._maest_patches(a._maest_audio(mono16))):
+                feed = {m["input"]: patch[None, None, :, :].copy()}
+                got, want = mine.run(feed), ref.run(feed)
+                out += [_diff(f"maest patch {k} {o}", got[o], want[o]) for o in mine.outputs]
+        elif emb is not None and len(emb):
+            out.append(_diff(name, mine(emb), ref(emb)))
+    return [d for d in out if d]
+
+
+def test_nets() -> int:
+    """Every graph on random embeddings around the heads' batch of 64 rows, and EffNet and MAEST on noise."""
+    from dj_track_analyzer import analysis as a
+
+    if a.tensorflow() is None:
+        print(f"nets: skipped (Python TensorFlow {a.TF_VERSION} isn't installed: uv sync --inexact --extra nets)")
+        return 0
+    rng = np.random.default_rng(3)
+    bad = 0
+    for n in (1, 2, 63, 64, 65, 128, 129, 300):
+        for d in _nets_diff(None, (0.05 * rng.standard_normal((n, 1280))).astype(np.float32)):
+            bad += 1
+            print(f"nets DIFFERENT: {n} rows, {d}")
+    for sec in (5, 31, 95):
+        for d in _nets_diff((0.1 * rng.standard_normal(16000 * sec)).astype(np.float32)):
+            bad += 1
+            print(f"nets DIFFERENT: {sec} s of noise, {d}")
+    print(f"nets: {'all identical' if not bad else f'{bad} different'} ({len(_net_pairs())} graphs)")
+    return bad
+
+
 def _same_loudness(e, dsp, stereo, sr) -> bool:
     stereo = np.ascontiguousarray(stereo, np.float32)
     _m, short, integ, lra = e.LoudnessEBUR128(sampleRate=sr)(stereo)
@@ -227,6 +303,8 @@ def test_signals(steps) -> int:
             bad += 1
             print("effnet DIFFERENT: near-silent first frame")
     print(f"test signals: {'all identical' if not bad else f'{bad} different'}")
+    if "nets" in steps:
+        bad += test_nets()
     if "decode" in steps:
         bad += test_files(e)
     return bad
@@ -248,7 +326,7 @@ def _check_file(steps, path: str) -> str | None:
         out.append("loudness")
     if "mono" in steps and not _same_mono(e, stereo, nch):
         out.append("mono mix")
-    if not {"resample", "linear", "mel", "effnet"} & set(steps):
+    if not {"resample", "linear", "mel", "effnet", "nets"} & set(steps):
         return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
     mono = e.MonoMixer()(stereo, nch)  # Essentia's, so each resample check sees the same input
     if "resample" in steps and sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
@@ -256,7 +334,7 @@ def _check_file(steps, path: str) -> str | None:
     if "linear" in steps and not _same_resample(e, dsp, mono, sr, 16000, linear=True):
         out.append("linear resample")
     varies = None
-    if {"mel", "effnet"} & set(steps):
+    if {"mel", "effnet", "nets"} & set(steps):
         mono16 = np.asarray(e.Resample(inputSampleRate=sr, outputSampleRate=16000, quality=4)(mono), np.float32)
         if "mel" in steps and not _same_mels(e, dsp, mono16):
             out.append("mel")
@@ -266,6 +344,8 @@ def _check_file(steps, path: str) -> str | None:
                 varies = f"effnet: differs only where Essentia adds random noise (near-silent frames; its own output varies from run to run there): {path}"
             elif not r:
                 out.append("effnet")
+        if "nets" in steps and a.tensorflow() is not None:
+            out += _nets_diff(mono16)
     return f"DIFFERENT ({', '.join(out)}): {path}" if out else varies
 
 
@@ -308,11 +388,15 @@ def main() -> None:
     ap.add_argument("--files", nargs="*", default=[], help="more audio files (mixes at 48 kHz, ...)")
     ap.add_argument("--files-from", help="a text file with more audio files, one path per line")
     ap.add_argument("--steps", nargs="+", choices=STEPS, default=list(STEPS), help="only these steps (default: all)")
-    ap.add_argument("--workers", type=int, default=6, help="processes for tracks")
-    ap.add_argument("--mix-workers", type=int, default=2, help="processes for files over 12 minutes (~1.3 GB each)")
+    ap.add_argument("--workers", type=int, help="processes for tracks (default 6; 2 with nets: ~5 GB each)")
+    ap.add_argument("--mix-workers", type=int, help="processes for files over 12 minutes (default 2, ~1.3 GB each; 1 with nets)")
     args = ap.parse_args()
-    print("steps:", " ".join(args.steps), flush=True)
-    bad = test_signals(args.steps)
+    nets = "nets" in args.steps  # every model twice per process, one copy per TensorFlow
+    args.workers = args.workers or (2 if nets else 6)
+    args.mix_workers = args.mix_workers or (1 if nets else 2)
+    print("steps:", " ".join(args.steps), f"({args.workers} processes for tracks, {args.mix_workers} for mixes)", flush=True)
+    with ProcessPoolExecutor(1) as ex:  # its own process, so the models it loads don't stay in this one
+        bad = ex.submit(test_signals, args.steps).result()
     paths = list(args.files)
     if args.files_from:
         paths += [l.strip() for l in Path(args.files_from).read_text(encoding="utf-8").splitlines() if l.strip()]

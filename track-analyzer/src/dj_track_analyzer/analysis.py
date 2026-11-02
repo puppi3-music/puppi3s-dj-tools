@@ -165,6 +165,90 @@ def pyav():
     return _av
 
 
+_tf = False
+TF_VERSION = "2.15.0"  # the version Essentia bundles; another one may change the models' last bits
+
+
+def tensorflow():
+    """Python TensorFlow 2.15 or None. Graph and Head run the models on it, bit for bit as Essentia's own
+    TensorFlow (docs/WINDOWS.md stage 4). Without it (or with another version) Essentia runs them."""
+    global _tf
+    if _tf is False:
+        os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")  # no start-up chatter on stderr
+        try:
+            import tensorflow as m
+        except ImportError:
+            m = None
+        _tf = m if m is not None and m.__version__ == TF_VERSION else None
+    return _tf
+
+
+def _tensor(name: str) -> str:
+    return name if ":" in name else name + ":0"
+
+
+def _session(pb):
+    tf = tensorflow()
+    graph = tf.Graph()
+    with graph.as_default():
+        gd = tf.compat.v1.GraphDef()
+        gd.ParseFromString(Path(pb).read_bytes())
+        tf.import_graph_def(gd, name="")
+    return tf.compat.v1.Session(graph=graph)
+
+
+class Graph:
+    """A frozen model graph with named inputs and outputs, as Essentia's TensorflowPredict: run({input: array})
+    → {output: array}. On Python TensorFlow when installed, else Essentia's (essentia=True forces it). args: what
+    it was made from, so dsp/check.py can make Essentia's copy."""
+
+    def __init__(self, pb, inputs: list[str], outputs: list[str], essentia: bool = False):
+        self.args, self.outputs = (pb, list(inputs), list(outputs)), list(outputs)
+        if tensorflow() is None or essentia:
+            self._sess, self._es = None, es().TensorflowPredict(graphFilename=str(pb), inputs=list(inputs),
+                                                                outputs=self.outputs)
+        else:
+            self._sess, self._es = _session(pb), None
+
+    def run(self, feeds: dict) -> dict:
+        if self._sess is not None:  # as TensorflowPredict: inputs lose their size-1 axes after the batch, outputs
+            got = self._sess.run([_tensor(o) for o in self.outputs],  # get size-1 axes after it up to 4 dimensions
+                                 {_tensor(k): v.reshape(v.shape[:1] + tuple(d for d in v.shape[1:] if d != 1))
+                                  for k, v in feeds.items()})
+            return {o: v.reshape(v.shape[:1] + (1,) * (4 - v.ndim) + v.shape[1:]) if v.ndim < 4 else v
+                    for o, v in zip(self.outputs, got)}
+        from essentia import Pool
+
+        pool = Pool()
+        for k, v in feeds.items():
+            pool.set(k, v)
+        out = self._es(pool)
+        return {o: out[o] for o in self.outputs}
+
+
+class Head:
+    """A classification head on (rows, features), as Essentia's TensorflowPredict2D: batches of 64 rows, the last
+    one shorter (any other batching changes the last bits). On Python TensorFlow when installed, else Essentia's."""
+
+    BATCH = 64
+
+    def __init__(self, pb, input: str, output: str, essentia: bool = False):
+        self.args, self.input, self.output = (pb, input, output), _tensor(input), _tensor(output)
+        if tensorflow() is None or essentia:
+            self._sess, self._es = None, es().TensorflowPredict2D(graphFilename=str(pb), input=input, output=output)
+        else:
+            self._sess, self._es = _session(pb), None
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        if self._es is not None:
+            return np.asarray(self._es(x), dtype=np.float32)
+        x = np.ascontiguousarray(x, dtype=np.float32)
+        if not len(x):
+            raise RuntimeError("empty input")  # as TensorflowPredict2D
+        return np.concatenate([self._sess.run(self.output, {self.input: x[i:i + self.BATCH]})
+                               for i in range(0, len(x), self.BATCH)])
+
+
 def models_present() -> bool:
     return all((MODELS_DIR / name).exists() for name in MODEL_FILES)
 
@@ -244,17 +328,13 @@ def style_models():
             "Style models are not downloaded yet. Run:  uv run dj-track-analyzer setup"
         )
     if not _models:
-        e = es()
         pb = str(MODELS_DIR / "discogs-effnet-bs64-1.pb")
         if _rust_mels():  # the graph alone: effnet_embeddings makes its input as TensorflowPredictEffnetDiscogs does
-            _models["embed"] = e.TensorflowPredict(graphFilename=pb, inputs=[EFFNET_INPUT], outputs=[EFFNET_OUTPUT])
+            _models["embed"] = Graph(pb, [EFFNET_INPUT], [EFFNET_OUTPUT])
         else:
-            _models["embed"] = e.TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
-        _models["styles"] = e.TensorflowPredict2D(
-            graphFilename=str(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb"),
-            input="serving_default_model_Placeholder",
-            output="PartitionedCall:0",
-        )
+            _models["embed"] = es().TensorflowPredictEffnetDiscogs(graphFilename=pb, output=EFFNET_OUTPUT)
+        _models["styles"] = Head(MODELS_DIR / "genre_discogs400-discogs-effnet-1.pb",
+                                 input="serving_default_model_Placeholder", output="PartitionedCall:0")
         meta = json.loads((MODELS_DIR / "genre_discogs400-discogs-effnet-1.json").read_text())
         _models["classes"] = meta["classes"]
     return _models
@@ -289,7 +369,7 @@ def maest_available() -> bool:
 
 
 def maest_model():
-    """MAEST-519, loaded once as a plain TensorflowPredict so a single run gives both the style
+    """MAEST-519, loaded once as a plain graph (Graph) so a single run gives both the style
     predictions and the layer-7 embeddings. None when it's off, not downloaded, or fails to load.
     Any failure disables it for this process and is reported once in results."""
     if _maest.get("disabled"):
@@ -304,9 +384,7 @@ def maest_model():
             outs = {o.get("output_purpose"): o["name"] for o in meta["schema"]["outputs"]}
             pred = outs.get("predictions", "PartitionedCall/Identity_13")
             emb = outs.get("embeddings", "PartitionedCall/Identity_7")
-            _maest["model"] = es().TensorflowPredict(
-                graphFilename=str(MODELS_DIR / "discogs-maest-30s-pw-519l-2.pb"),
-                inputs=[maest_input_name(meta)], outputs=[pred, emb])
+            _maest["model"] = Graph(MODELS_DIR / "discogs-maest-30s-pw-519l-2.pb", [maest_input_name(meta)], [pred, emb])
             _maest.update(classes=meta["classes"], input=maest_input_name(meta), pred=pred, emb=emb)
         except Exception as err:
             _maest.update(disabled=True, why=f"failed to load: {err}")
@@ -367,7 +445,7 @@ def mood_models() -> dict:
             try:
                 classes = json.loads(js.read_text())["classes"]
                 idx = classes.index(m) if m in classes else 0
-                model = es().TensorflowPredict2D(graphFilename=str(pb), output="model/Softmax")
+                model = Head(pb, input="model/Placeholder", output="model/Softmax")
                 _moods["loaded"][m] = (model, idx)
             except Exception as err:
                 log(f"mood model {m} unavailable ({err})")
@@ -425,8 +503,7 @@ def _load_head(name: str, default_output: str):
     schema = meta.get("schema", {})
     ins = [i["name"] for i in schema.get("inputs", [])]
     outs = [o["name"] for o in schema.get("outputs", []) if o.get("output_purpose") == "predictions"]
-    model = es().TensorflowPredict2D(graphFilename=str(pb), input=ins[0] if ins else "model/Placeholder",
-                                     output=outs[0] if outs else default_output)
+    model = Head(pb, input=ins[0] if ins else "model/Placeholder", output=outs[0] if outs else default_output)
     return model, list(meta["classes"])
 
 
@@ -752,14 +829,10 @@ def run_maest(mono16: np.ndarray) -> tuple[np.ndarray | None, np.ndarray | None]
     m = maest_model()
     if m is None:
         return None, None
-    from essentia import Pool
-
     try:
         preds, embs = [], []
         for patch in _maest_patches(_maest_audio(mono16)):  # the graph takes one patch per run
-            pool = Pool()
-            pool.set(m["input"], patch[None, None, :, :].copy())
-            out = m["model"](pool)
+            out = m["model"].run({m["input"]: patch[None, None, :, :].copy()})
             preds.append(np.asarray(out[m["pred"]], dtype=np.float32).reshape(-1))
             emb = np.asarray(out[m["emb"]], dtype=np.float32)
             embs.append(emb.reshape(-1, emb.shape[-1]).mean(axis=0))  # average over tokens
@@ -1371,15 +1444,13 @@ EFFNET_INPUT, EFFNET_OUTPUT = "serving_default_melspectrogram", "PartitionedCall
 EFFNET_PATCH, EFFNET_PATCH_HOP, EFFNET_BATCH = 128, 62, 64
 
 
-def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
+def effnet_embeddings(mono16: np.ndarray, model: Graph | None = None) -> np.ndarray:
     """Discogs-EffNet's embeddings (patches, 1280), as TensorflowPredictEffnetDiscogs gives them (its defaults:
     patches of 128 mel frames every 62, the last incomplete one dropped, batches of 64 with lastBatchMode "same").
     Like padSignal, the audio is zero-padded so that the last batch is full, and the padding patches' outputs are
     dropped; the arithmetic of its patch count (float, with a double step) is copied as is. Checked identical to
     TensorflowPredictEffnetDiscogs (docs/WINDOWS.md stage 3). No patch (under ~3 s): an empty array, as it gives.
-    Without the Rust module, TensorflowPredictEffnetDiscogs itself."""
-    from essentia import Pool
-
+    Without the Rust module, TensorflowPredictEffnetDiscogs itself. model: another EffNet Graph (dsp/check.py)."""
     x = np.ascontiguousarray(mono16, dtype=np.float32)
     if not _rust_mels():
         return np.asarray(style_models()["embed"](x), dtype=np.float32)
@@ -1397,14 +1468,13 @@ def effnet_embeddings(mono16: np.ndarray) -> np.ndarray:
     if not len(starts):
         return np.zeros((0,), dtype=np.float32)
     view = np.lib.stride_tricks.sliding_window_view(frames, (EFFNET_PATCH, 96))[::EFFNET_PATCH_HOP, 0]
-    model = style_models()["embed"]
+    model = model or style_models()["embed"]
     out = []
     # whole batches only: an incomplete last one (when the estimate above is a patch off) is dropped, as
     # VectorRealToTensor's lastBatchMode "discard" does; then the padding's patches come off the end
     for b in range(0, len(starts) - EFFNET_BATCH + 1, EFFNET_BATCH):
-        pool = Pool()
-        pool.set(EFFNET_INPUT, np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :]))
-        y = np.asarray(model(pool)[EFFNET_OUTPUT], dtype=np.float32)
+        y = np.asarray(model.run({EFFNET_INPUT: np.ascontiguousarray(view[b:b + EFFNET_BATCH][:, None, :, :])})[EFFNET_OUTPUT],
+                       dtype=np.float32)
         out.append(y.reshape(-1, y.shape[-1]))
     if not out:
         return np.zeros((0,), dtype=np.float32)

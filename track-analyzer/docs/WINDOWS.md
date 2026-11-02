@@ -35,7 +35,7 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
 | Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
 | Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical (stage 3) |
-| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | bit-identical with TF 2.15 (stage 0) |
+| Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | **done**: bit-identical (stage 4) |
 | Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | bit-identical |
 | BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's codelets for its sizes | bit-identical; gate below |
 
@@ -182,8 +182,20 @@ Without the Rust module, Essentia does both as before.
 - The key and BPM ports need FFTs of other sizes: each size has its own plan and codelets, found and ported the
   same way.
 
-**Stage 4: neural nets.** With stages 1–3, the nets get bit-identical input, so any difference comes from the
-runtime alone.
+**Stage 4: neural nets. Done (November 2026)**: `analysis.Graph` (= `TensorflowPredict`) and `analysis.Head`
+(= `TensorflowPredict2D`) run every graph on Python TensorFlow 2.15 when it's installed, Essentia otherwise. It is an
+opt-in extra (`uv sync --inexact --extra nets`) until stage 7, as PyAV is. Three things Essentia does had to be copied
+to get its bits: the heads run **64 rows at a time**, the last batch shorter (one batch for the whole track differs by
+up to 2e-6); `TensorflowPredict` drops an input's size-1 axes after the batch (EffNet's patches go in as
+(64, 128, 96)) and pads every output to 4 axes. On Apple Silicon and Windows the `tensorflow` package is empty and
+pulls in `tensorflow-macos` / `tensorflow-intel`, which uv's lock misses, so the extra names them. Both TensorFlows
+load in one process without trouble. `dsp/check.py --steps nets` runs each of the 12 graphs both ways (the heads on
+random embeddings of 1-300 rows and on each file's embeddings, EffNet and MAEST on the file's patches): bit-identical
+on the test signals and on all 469 tracks of the test collection. `analyze_file`'s whole output is identical on 4 tracks
+(one 5.1 FLAC) and a mix. Memory: one track's analysis peaks at 2.3 GB vs 2.0 GB with Essentia alone (Essentia's own
+TensorFlow still loads, for key and BPM, until stage 7). The check holds every model twice per process (~5 GB), so
+it runs 2 at a time.
+With stages 1–3, the nets get bit-identical input, so any difference comes from the runtime alone.
 - First choice: Python `tensorflow` 2.15, the same version Essentia bundles: bit-identical in stage 0. Costs:
   Python stays at 3.10-3.11 (no 3.12), and Apple Silicon needs macOS 12 (Essentia's pinned build runs on 11).
 - onnxruntime 1.31 (graphs converted with `tf2onnx` 1.17, opset 17, CPU only) was tried on the same 59 tracks:
@@ -219,8 +231,8 @@ works on Windows, and the rest of this file (Traktor, paths, launcher) is the Wi
 **What changes for users.** On macOS: nothing in the results; analysis gets faster (below). On Linux: the DSP
 numbers become the Mac's. Essentia's Linux build doesn't fuse multiply-adds, so its loudness already differs
 from the Mac's by up to ~0.1 LU (and BPM/key may differ in rare cases); the Rust code gives the same numbers on
-every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8) for Python TensorFlow
-2.15 and PyAV: about the same size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
+every platform. The install swaps Essentia (with its own TensorFlow and FFmpeg 2.8, about 460 MB) for Python
+TensorFlow 2.15 (about 950 MB on Apple Silicon) and PyAV: about twice the size. Apple Silicon then needs macOS 14 (PyAV 16 and newer; TF alone would need 12), and Python 3.11 (PyAV 18 has no 3.10 wheels; TF 2.15 none for 3.12).
 
 **Risks, biggest first.**
 1. *Decoder differences*: one MP3 in the test collection (its header frame, now decoded as Traktor's timeline

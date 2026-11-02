@@ -22,6 +22,14 @@ dependencies = [
 # Decoding with current FFmpeg, bit for bit as Essentia's AudioLoader and faster (analysis.decode). Opt-in until
 # Essentia goes (docs/WINDOWS.md): its Apple Silicon wheels need macOS 14. `uv sync --extra decode`
 decode = ["av==18.1.0; python_version >= '3.11'"]  # Python 3.10: Essentia decodes
+# The model graphs on Python TensorFlow, the version Essentia bundles: bit for bit as Essentia (analysis.Graph). Opt-in
+# until Essentia goes (docs/WINDOWS.md stage 4). `uv sync --extra nets`
+# On Apple Silicon and Windows `tensorflow` is an empty package pulling in these, which uv's lock misses: name them.
+nets = [
+    "tensorflow==2.15.0; python_version < '3.12'",
+    "tensorflow-macos==2.15.0; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "tensorflow-intel==2.15.0; python_version < '3.12' and sys_platform == 'win32'",
+]
 # Vocals and synths in a loop (cues.loop_parts): Demucs separates the loop's audio into stems. PyTorch, about 600 MB.
 # `uv sync --extra stems`
 stems = ["demucs==4.0.1"]
