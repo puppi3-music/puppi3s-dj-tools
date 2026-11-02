@@ -1,0 +1,65 @@
+# The track analyzer's tests (track-analyzer/tests) on Windows and Linux, and its launchers: each one has to install
+# and open the web page. The tests use a made-up library and Traktor collection; see tests/conftest.py.
+name: tests
+
+on:
+  push:
+    branches: [main, windows-port]
+    paths: ["track-analyzer/**", ".github/workflows/tests.yml", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
+  pull_request:
+    paths: ["track-analyzer/**", "!track-analyzer/docs/**", "!track-analyzer/dsp/**"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: track-analyzer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: track-analyzer/uv.lock
+      - name: Install
+        run: uv sync --frozen --group test
+      - name: Tests
+        run: uv run --frozen pytest -v
+
+      - name: Launcher opens the page (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 10
+        run: |
+          $p = Start-Process -FilePath "Start Puppi3's Track Analyzer.bat" -PassThru -NoNewWindow `
+               -RedirectStandardOutput launcher.log -RedirectStandardError launcher.err
+          $ok = $false
+          foreach ($i in 1..120) {
+            try { Invoke-WebRequest http://127.0.0.1:8766/api/libraries -UseBasicParsing -TimeoutSec 2 | Out-Null; $ok = $true; break }
+            catch { if ($p.HasExited) { break }; Start-Sleep 2 }
+          }
+          taskkill /T /F /PID $p.Id 2>$null | Out-Null
+          Get-Content launcher.log, launcher.err -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "The launcher didn't open the page" }
+
+      - name: Launcher opens the page (Linux)
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        run: |
+          ./"Start Puppi3's Track Analyzer.command" < /dev/null > launcher.log 2>&1 &
+          pid=$!
+          ok=
+          for i in $(seq 120); do
+            if curl -fs -o /dev/null http://127.0.0.1:8766/api/libraries; then ok=1; break; fi
+            kill -0 $pid 2>/dev/null || break
+            sleep 2
+          done
+          pkill -INT -f "dj-track-analyzer web" || true
+          cat launcher.log
+          [ -n "$ok" ] || { echo "The launcher didn't open the page"; exit 1; }

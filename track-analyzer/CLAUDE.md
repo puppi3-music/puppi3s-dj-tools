@@ -17,6 +17,13 @@ details go there, never in this file.
 - Anything that writes to files, Traktor or Lexicon gets `--dry-run`, a backup and an undo path.
 - Real Essentia models can't be downloaded in sandboxes; tests there use stand-ins for the TF models.
   Real-model behaviour is only verified by runs on a Mac, or in the Docker test image (below), which has them.
+- `tests/` (pytest, `uv sync --inexact --group test`, `uv run pytest`, ~2 s): a made-up library (FLAC tones with
+  accented and Japanese names) and Traktor collection in a temp home (conftest sets HOME/USERPROFILE and
+  TRACK_ANALYZER_HOME before import), in Windows Traktor's form on Windows. The analysis is a stand-in
+  (`fake_analysis`); scan, `tag`, `traktor` (dry run, write, undo byte for byte), the Traktor-running refusal (a
+  process named "Traktor Pro 4"), paths with Windows' rules simulated, unplugged drive letters (Windows only) are real.
+  `.github/workflows/tests.yml` runs them on windows-latest and ubuntu-latest on every push to main/windows-port,
+  and starts each launcher until the page answers.
 
 ## Files
 Code is the package `src/dj_track_analyzer/` (relative imports; uv installs it editable). Run it as
