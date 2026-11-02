@@ -80,7 +80,9 @@ def test_log_meter_on_mac_and_linux(monkeypatch):
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows priority classes")
 def test_commands_run_below_normal_priority():
     """A scan's process and the workers it starts (they inherit it); the web page itself isn't lowered."""
-    child = "import ctypes; k = ctypes.windll.kernel32; print(k.GetPriorityClass(k.GetCurrentProcess()))"
+    child = ("import ctypes; from ctypes import wintypes as w; k = ctypes.WinDLL('kernel32'); "
+             "k.GetCurrentProcess.restype = w.HANDLE; k.GetPriorityClass.argtypes = (w.HANDLE,); "
+             "print(k.GetPriorityClass(k.GetCurrentProcess()))")
     code = ("import subprocess, sys; from dj_track_analyzer import cli; cli.lower_priority(); "
             f"exec({child!r}); print(subprocess.run([sys.executable, '-c', {child!r}], capture_output=True, "
             "text=True).stdout.strip())")

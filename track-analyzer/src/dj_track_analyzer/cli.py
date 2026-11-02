@@ -54,10 +54,15 @@ def lower_priority() -> None:
     using every core leaves the computer usable. Only the order Windows hands out CPU time changes, not results.
     The web page and the MCP server keep normal priority."""
     import ctypes
+    from ctypes import wintypes
 
     BELOW_NORMAL_PRIORITY_CLASS = 0x4000
-    k32 = ctypes.windll.kernel32
-    k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.GetCurrentProcess.restype = wintypes.HANDLE  # 64-bit: undeclared, ctypes would cut it to a 32-bit int
+    k32.SetPriorityClass.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k32.SetPriorityClass.restype = wintypes.BOOL
+    if not k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS):
+        log(f"(couldn't lower this command's priority: Windows error {ctypes.get_last_error()})")
 
 
 def main() -> None:
