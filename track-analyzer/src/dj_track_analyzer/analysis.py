@@ -1516,7 +1516,8 @@ def rhythm(mono44: np.ndarray, method: str = "multifeature"):
 
 def _rust_rhythm():
     """The Rust module if it has rhythm_multifeature (dsp 0.5.0 on): RhythmExtractor2013(multifeature) as Essentia
-    computes it (same beats; confidence within 1e-6: docs/WINDOWS.md stage 6), with its rand() from seed 1 on every call."""
+    computes it, with more exact libm calls (the same whole-number BPM on every track; docs/WINDOWS.md stage 6), with
+    its rand() from seed 1 on every call."""
     m = dsp()
     return m if m is not None and hasattr(m, "rhythm_multifeature") else None
 
