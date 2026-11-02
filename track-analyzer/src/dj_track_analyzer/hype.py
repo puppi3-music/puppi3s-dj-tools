@@ -66,6 +66,9 @@ def compute(con=None, progress=log) -> dict[str, int]:
     con.execute("UPDATE tracks SET hype = NULL")
     con.executemany("UPDATE tracks SET hype=? WHERE path=?", [(h, p) for p, h in hype.items()])
     con.commit()
+    collection.apply_manual(con)
+    if collection._is_native(con):  # hype you set by hand wins, also in `hype --traktor`
+        hype.update({p: int(f["hype"]) for p, f in collection.manual().items() if "hype" in f})
     progress(f"Hype scored for {len(hype)} tracks")
     return hype
 

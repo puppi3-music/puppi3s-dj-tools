@@ -108,6 +108,84 @@ def set_hold(kind: str, values: dict[str, str | None], on: bool = True) -> int:
     return n
 
 
+# Values set by hand (`edit`, the page's Edit): field → the columns they replace. The analysis rewrites these
+# (scan, regenre, hype, Traktor's BPM), so `apply_manual` puts them back after each; `was` keeps what they
+# replaced, put back when the field is cleared. Colour and key go into Traktor itself, which already wins.
+MANUAL = {"genre": ("genre", "my_genre"), "hype": ("hype",), "bpm": ("traktor_bpm",)}
+
+
+def _manual_table(con) -> None:
+    con.execute("CREATE TABLE IF NOT EXISTS manual (path TEXT, field TEXT, value TEXT, was TEXT, at TEXT, "
+                "PRIMARY KEY (path, field))")
+
+
+def _manual_cols(field: str, value: str) -> tuple:
+    if field == "genre":
+        return value, value  # your genre too, so "your genre, else ours" shows it
+    return (int(value),) if field == "hype" else (float(value),)
+
+
+def manual() -> dict[str, dict[str, str]]:
+    """{path: {field: value}} for the values set by hand."""
+    if not NATIVE_DB.exists():
+        return {}
+    out: dict[str, dict[str, str]] = {}
+    with sqlite3.connect(NATIVE_DB) as con:
+        _manual_table(con)
+        for p, f, v in con.execute("SELECT path, field, value FROM manual"):
+            out.setdefault(p, {})[f] = v
+    return out
+
+
+def _is_native(con) -> bool:
+    f = con.execute("PRAGMA database_list").fetchone()[2]
+    return bool(f) and Path(f).resolve() == NATIVE_DB.resolve()
+
+
+def apply_manual(con) -> int:
+    """Put the hand-set values back over what the analysis just wrote (normal library only). Returns how many."""
+    if not _is_native(con):
+        return 0
+    _manual_table(con)
+    n = 0
+    for p, field, value, was in con.execute("SELECT path, field, value, was FROM manual").fetchall():
+        cols = MANUAL[field]
+        cur = con.execute(f"SELECT {', '.join(cols)} FROM tracks WHERE path=?", (p,)).fetchone()
+        want = _manual_cols(field, value)
+        if cur is None or tuple(cur) == want:
+            continue
+        # per column: what the analysis wrote now, or (still the hand value there) what it replaced before
+        was = [c if c != w else o for c, w, o in zip(cur, want, json.loads(was))]
+        con.execute("UPDATE manual SET was=? WHERE path=? AND field=?", (json.dumps(was), p, field))
+        con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?", [*want, p])
+        n += 1
+    con.commit()
+    return n
+
+
+def set_manual(path: str, field: str, value: str | None) -> None:
+    """Set a field by hand, or (None) clear it: the columns get back what the hand value replaced."""
+    cols = MANUAL[field]
+    with sqlite3.connect(NATIVE_DB) as con:
+        _manual_table(con)
+        had = con.execute("SELECT was FROM manual WHERE path=? AND field=?", (path, field)).fetchone()
+        if value is None:
+            if had:
+                con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?",
+                            [*json.loads(had[0]), path])
+                con.execute("DELETE FROM manual WHERE path=? AND field=?", (path, field))
+        else:
+            if not had:
+                cur = con.execute(f"SELECT {', '.join(cols)} FROM tracks WHERE path=?", (path,)).fetchone()
+                con.execute("INSERT INTO manual VALUES (?, ?, ?, ?, ?)",
+                            (path, field, None, json.dumps(list(cur)), time.strftime("%Y-%m-%d %H:%M")))
+            con.execute("UPDATE manual SET value=?, at=? WHERE path=? AND field=?",
+                        (str(value), time.strftime("%Y-%m-%d %H:%M"), path, field))
+            con.execute(f"UPDATE tracks SET {', '.join(f'{c}=?' for c in cols)} WHERE path=?",
+                        [*_manual_cols(field, str(value)), path])
+    log_feedback("manual", [(path, {"field": field, "value": value})])
+
+
 def holds_list() -> dict:
     with _hold_db() as con:
         return {kind: [{"file": Path(r[0]).name, kind: r[1], "since": r[2], "path": r[0]}
@@ -686,7 +764,11 @@ def load_traktor_info(nml: str | None = None) -> dict[str, tuple[float | None, s
     except (SystemExit, OSError) as err:
         log(f"(Traktor's BPM/key not used: {err})")
         return {}
-    return {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
+    out = {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
+    for p, f in manual().items():  # a BPM set by hand wins over Traktor's (whose grid is never written)
+        if "bpm" in f:
+            out[p] = (float(f["bpm"]), (out.get(p) or (None, None))[1])
+    return out
 
 
 def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
@@ -701,6 +783,7 @@ def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
                                        "OR traktor_camelot IS NOT NULL") if p not in info]
     con.executemany("UPDATE tracks SET traktor_bpm=NULL, traktor_camelot=NULL WHERE path=?", [(p,) for p in stale])
     con.commit()
+    apply_manual(con)
 
 
 def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
@@ -836,6 +919,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
             hype.compute(con)
         except SystemExit as err:
             log(f"(hype not scored: {err})")
+    apply_manual(con)  # rescanned tracks got the analysis' genre again
     if csv_out:
         export_csv(csv_out)
     out = summary(con)
@@ -874,6 +958,7 @@ def regenre(csv_out: Path | None = DEFAULT_CSV) -> dict:
                                      g[2]["genre"] if len(g) > 2 else None, g[1]["score"] if len(g) > 1 else None,
                                      g[2]["score"] if len(g) > 2 else None, r["path"]))
     con.commit()
+    apply_manual(con)
     if csv_out:
         export_csv(csv_out)
     return {"tracks": len(rows) - missing, "not_in_cache": missing, "top_genre_changed": sum(changed.values()),

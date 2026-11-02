@@ -276,6 +276,15 @@ uv run dj-track-analyzer hold --genre "Artist - Title"       # hold the genre of
 uv run dj-track-analyzer hold --colour "Title" --release     # take one off the colour hold list
 ```
 
+**Edit a track by hand.** Press **✎ Edit** at the top right of a track's panel: its BPM, key (Camelot), colour, genre and hype become fields where they're shown. **Save** writes colour, key and genre into Traktor too (quit Traktor first; a backup is made, and **Undo** in the panel puts the track back; **Cancel** leaves it as it was), plus the Hype in Traktor's Comment where the Comment already has one from `hype --traktor`. A colour you set is kept always and counts as yours when the colour model trains; a genre you set is held. Genre, hype and BPM stay yours when the analysis runs again (`scan`, `regenre`, hype scoring); **↺** next to one goes back to the analysis. A BPM you set changes what the analyzer uses (search, mix suggestions, genre rules, sets, tempo views) but not Traktor: Traktor's BPM goes with its beat grid, which the analyzer never writes. Editing works in the normal library, and colour, key and genre are refused while a tempo view is loaded in Traktor. From a terminal:
+
+```bash
+uv run dj-track-analyzer edit "Title" --colour Magenta --key 8A --hype 3 --dry-run   # show what would change
+uv run dj-track-analyzer edit "Title" --genre "Progressive Trance" --bpm 128
+uv run dj-track-analyzer edit "Title" --clear genre --clear hype                     # back to the analysis
+uv run dj-track-analyzer edit                                                        # list tracks edited by hand
+```
+
 **Cue points and a mix loop, learned from yours.** The analyzer can learn where you put cues: it measures every bar on Traktor's own beat grid (loudness, bass, kick, brightness, timbre) and learns from the tracks you cued yourself which bars you cue and where you put your mix loop. Each track's panel in the web page then shows its waveform (coloured like DJ software: lows red, mids green, highs blue, ticks every 8 bars) with your cues on top and the suggestions below, named by what happens there (Intro, Drop, Breakdown, Kick in, Bass in, Lift, Outro, Phrase), plus a suggested loop. Zoom in (+, pinch or ctrl+scroll) down to a single beat: close in, the waveform is cut from the audio at the screen's own resolution, down to single samples.
 
 ```bash
@@ -803,6 +812,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `cues apply [--dry-run]` | Write the cues and corrections you approved in the web page | **Traktor** (undo: `traktor --undo`) |
 | `grids check\|show\|apply [track] [--workers N] [--rescan] [--dry-run]` | Check that Traktor's beat grids sit on the kicks; `apply` moves the grids you approved in the web page, with their cues (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | `check`: app cache; `apply`: **Traktor** (undo: `traktor --undo`) |
 | `hold [--genre TEXT \| --colour TEXT] [--release]` | List, add or remove tracks whose genre / colour the writers leave alone | the hold list (app database) |
+| `edit [TRACK] [--colour C] [--key K] [--genre G] [--hype N] [--bpm N] [--clear FIELD] [--no-traktor] [--dry-run]` | Set a track's values by hand, or list the tracks edited by hand (the panel's ✎ Edit does the same) | collection.nml (colour, key, genre, Hype in Comment; backup) + app database |
 
 ## Settings
 
