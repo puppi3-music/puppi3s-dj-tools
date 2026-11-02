@@ -313,8 +313,10 @@ def db() -> sqlite3.Connection:
     if have and "trained_genre" not in have:
         # Before "Use my genres", a trained genre (in my_genre) was used everywhere at once. It's kept as the
         # trained genre, and used again only when switched on (hand-set genres stay where they were).
-        con.execute("UPDATE tracks SET trained_genre=my_genre, trained_genre_confidence=my_genre_confidence, "
-                    "my_genre=NULL, my_genre_confidence=NULL")
+        _manual_table(con)
+        hand = "path NOT IN (SELECT path FROM manual WHERE field='genre')"  # a hand genre was never a trained one
+        con.execute(f"UPDATE tracks SET trained_genre=my_genre, trained_genre_confidence=my_genre_confidence WHERE {hand}")
+        con.execute("UPDATE tracks SET my_genre=NULL, my_genre_confidence=NULL")
         con.commit()
         apply_manual(con)
     for idx in ("genre", "bpm", "camelot"):

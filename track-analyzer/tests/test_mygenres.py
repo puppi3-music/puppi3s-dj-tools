@@ -131,8 +131,13 @@ def test_older_trained_genres_are_kept_but_not_used(tmp_path, monkeypatch):
     with sqlite3.connect(db) as con:
         con.execute("CREATE TABLE tracks (path TEXT PRIMARY KEY, type TEXT, genre TEXT, my_genre TEXT, my_genre_confidence REAL)")
         con.execute("INSERT INTO tracks VALUES ('/m/a.mp3', 'track', 'House', 'Hyperpop', 0.8)")
+        # set by hand (✎ Edit puts a hand genre in genre and my_genre): not a trained genre
+        con.execute("INSERT INTO tracks VALUES ('/m/b.mp3', 'track', 'Techno', 'Techno', NULL)")
+        con.execute("CREATE TABLE manual (path TEXT, field TEXT, value TEXT, was TEXT, at TEXT, PRIMARY KEY (path, field))")
+        con.execute("""INSERT INTO manual VALUES ('/m/b.mp3', 'genre', 'Techno', '["House", null]', '')""")
     monkeypatch.setattr(collection, "DB", db)
     con = collection.db()
-    row = con.execute("SELECT my_genre, trained_genre, trained_genre_confidence FROM tracks").fetchone()
+    rows = {r[0]: tuple(r[1:]) for r in con.execute("SELECT path, my_genre, trained_genre, trained_genre_confidence FROM tracks")}
     con.close()
-    assert tuple(row) == (None, "Hyperpop", 0.8)
+    assert rows["/m/a.mp3"] == (None, "Hyperpop", 0.8)
+    assert rows["/m/b.mp3"] == (None, None, None)  # (apply_manual puts it back in the real, native database)
