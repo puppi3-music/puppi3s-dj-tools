@@ -318,6 +318,7 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 .banner { padding: 8px 20px; font-size: 13px; background: color-mix(in srgb, var(--warn) 12%, var(--surface)); border-top: 1px solid var(--line); }
 .jobbar { display: flex; gap: 10px; align-items: center; padding: 6px 20px; font-size: 12px; background: var(--accent-soft); border-top: 1px solid var(--line); flex-wrap: wrap; }
 .jobbar .progress { width: 160px; }
+.jobbar .jobnow { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jobbar[hidden], .banner[hidden] { display: none; }
 .jobbar button { padding: 1px 10px; font-size: 12px; }
 .jobbar.bad { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
@@ -2589,18 +2590,25 @@ function progressBar(j, width) {
 }
 const progressText = j => {
   const p = j.progress;
-  if (p && p.total && p.eta) return `${p.done} of ${p.total} · about ${esc(p.eta)} left`;
+  if (p && p.total && !p.steps) return `${p.done} of ${p.total}${p.eta ? ` · about ${esc(p.eta)} left` : ""}${p.what ? ` · ${esc(p.what)}` : ""}`;
   const stage = j.stage ? j.stage[0].toUpperCase() + j.stage.slice(1) : "";
   return `${p && p.total ? `Step ${p.done + 1} of ${p.total}: ` : ""}${esc(stage)}${stage ? " · " : ""}${mmss(j.elapsed)} so far`;
 };
 // Queued mixes that failed before this one (their own bar was never shown): how many, and why on hover
 const failedNote = () => JOB.failed.length ? `<span class="err" data-tip="${esc(JOB.failed.map(e => `${e.label}: ${e.error}`).join("\n"))}">${JOB.failed.length} before this failed</span>` : "";
+// The job's latest log line, when the progress text doesn't already say it (a stage, a counted step's "what")
+const jobLast = j => {
+  const raw = (j.last || "").trim();
+  if (/^\[\d+\/\d+/.test(raw)) return "";  // the progress line itself: progressText says it
+  const l = raw.replace(/^\[[^\]]*\]\s*/, "");
+  return j.stage && l.startsWith(j.stage) ? "" : l;
+};
 function jobBar() {
   const bar = $("#jobbar"), j = JOB.job;
   if (SNAP || !j) { bar.hidden = true; return; }
   if (j.running) {
     bar.className = "jobbar"; bar.hidden = false;
-    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${failedNote()}${progressBar(j)}<span class="muted">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : ""}</span>
+    bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${failedNote()}${progressBar(j)}<span class="muted jobnow" data-tip="${esc(j.live?.trim() || jobLast(j) || "")}">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : jobLast(j) ? ` · ${esc(jobLast(j))}` : ""}</span>
       ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : j.queued?.length ? "Stop all" : "Stop"}</button>`;
     $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll);
   } else if (JOB.flash && JOB.flash.id === j.id) {

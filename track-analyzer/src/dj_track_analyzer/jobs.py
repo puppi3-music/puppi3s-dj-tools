@@ -21,7 +21,8 @@ from .analysis import HOME, log
 
 BREW = analysis.find_tool("brew")
 ERROR_MARK = "\x1eTRACK-ANALYZER-ERROR "  # the child's last line when it stops with a message (SystemExit)
-PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)\s+~(.+?) left\]")  # "[12/470  ~31m left] …" from scan, tempo scan, cues, colours, Lexicon loads
+# "[12/470  ~31m left] what" from scan, tempo scan, cues, colours, Lexicon loads; "[3/17] what" without a time
+PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)(?:\s+~(.+?) left)?\]\s*(.*)")
 STAGE = re.compile(r"^\[\s*[\d.]+s\] (.+)")  # "[ 25.1s] measuring loudness": analyze_file's stages
 # A mix analysis has no [n/total] lines; its stages (in analyze_file's order, roughly even in time) stand in for them
 STEPS = {"analyze_mix": ("decoding", "measuring loudness", "running the style model", "moods, instruments",
@@ -228,11 +229,11 @@ def _read_err(job: dict, proc: subprocess.Popen) -> None:
                 if err:
                     job["error"] = json.loads(err)
                 if (m2 := PROGRESS.match(line)):
-                    job["progress"] = {"done": int(m2[1]), "total": int(m2[2]), "eta": m2[3]}
+                    job["progress"] = {"done": int(m2[1]), "total": int(m2[2]), "eta": m2[3], "what": " ".join(m2[4].split()) or None}
                 elif (m2 := STAGE.match(line)):
                     job["stage"] = m2[1]
                     if (i := next((i for i, x in enumerate(job["steps"]) if m2[1].startswith(x)), None)) is not None:
-                        job["progress"] = {"done": i, "total": len(job["steps"]), "eta": None}
+                        job["progress"] = {"done": i, "total": len(job["steps"]), "eta": None, "steps": True}
                 if line or not err:
                     _add(job, line)
             after_cr = cr
@@ -327,7 +328,9 @@ def state(since: int = 0) -> dict:
     return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "queued": [lb for _, lb, _ in _queue],
                     "ended": _ended, "line_from": max(since, first),
                     "line_to": first + len(j["lines"]), "lines": lines,
-                    "elapsed": (j["ended"] or time.time()) - j["started"]}}
+                    "elapsed": (j["ended"] or time.time()) - j["started"],
+                    # what it's doing now, for the page's bar when there's no progress line to show
+                    "last": next((ln.strip() for ln in reversed(j["lines"]) if ln.strip()), None)}}
 
 
 # ----------------------------------------------------------------------------

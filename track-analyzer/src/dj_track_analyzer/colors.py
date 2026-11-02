@@ -284,6 +284,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         deep_info = extract_deep(sorted(rows), workers, progress)  # all scanned tracks, so new ones get a colour too
     maest_count = instr_count = extra_count = 0
     inputs, y, paths, instr_rows = [], [], [], []
+    t0 = time.time()
     for i, (p, c) in enumerate(pairs, 1):
         try:
             _d, emb_mean, acts_mean = analysis.track_embedding(Path(p))  # cached from the scan
@@ -304,8 +305,9 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         instr_rows.append(instruments or {})
         y.append(c)
         paths.append(p)
-        if i % 100 == 0:
-            progress(f"  loaded {i}/{len(pairs)}")
+        if i % 25 == 0 or i == len(pairs):
+            left = (time.time() - t0) / i * (len(pairs) - i)
+            progress(f"  [{i}/{len(pairs)}  ~{analysis.fmt_time(left)} left] loading your coloured tracks")
     y = np.array(y)
     counts = {COLOR_NAMES[c - 1]: int((y == c).sum()) for c in range(1, len(COLOR_NAMES) + 1)}
     used = sorted(set(y.tolist()))
@@ -329,13 +331,13 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         progress(f"  instrument scores available for {instr_count}/{len(y)} tracks; skipping instrument models")
     have_extra = deep and extra_count >= 0.95 * len(y)
     results = {}
-    for name, (fs, kind, cal) in CANDIDATES.items():
-        if "maest" in fs and not have_maest:
-            continue
-        if "instruments" in analysis.FEATURE_SETS[fs] and not have_instr:
-            continue
-        if "arc" in analysis.FEATURE_SETS[fs] and not have_extra:
-            continue
+    tries = [(name, c) for name, c in CANDIDATES.items()
+             if not ("maest" in c[0] and not have_maest) and not ("instruments" in analysis.FEATURE_SETS[c[0]] and not have_instr)
+             and not ("arc" in analysis.FEATURE_SETS[c[0]] and not have_extra)]
+    t0 = time.time()
+    for k, (name, (fs, kind, cal)) in enumerate(tries):
+        left = f"  ~{analysis.fmt_time((time.time() - t0) / k * (len(tries) - k))} left" if k else ""
+        progress(f"  [{k + 1}/{len(tries)}{left}] testing model: {name}")
         try:
             pos, hard = _cv(kind, cal, Xs[fs], y, folds, block_weights(fs, inputs[0]))
         except Exception as err:
@@ -379,7 +381,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
 
     instrument_check = _instrument_check(instr_rows, y, used) if have_instr else None
 
-    progress(f"  best: {best}. Fitting it on all {len(y)} tracks...")
+    progress(f"  best: {best}. Fitting it on all {len(y)} tracks...")  # the page's bar shows this line
     model, cal = _fit(kind, calibrate, Xs[fs], y, block_weights(fs, inputs[0]))
     COLOR_MODEL.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": model, "calibrator": cal, "kind": kind, "feature_set": fs, "name": best,
