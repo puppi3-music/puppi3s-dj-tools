@@ -24,6 +24,14 @@ from . import analysis, collection, jobs, mixreport, traktor
 from .analysis import COLOR_NAMES, HOME, log
 
 PAGE = Path(__file__).with_name("web") / "index.html"
+_INCLUDE = re.compile(r"^(?:/\* include: (\S+) \*/|// include: (\S+))$", re.M)
+
+
+def page_html() -> str:
+    """The page as the browser gets it: index.html with each `include:` line replaced by that file from web/
+    (style.css, js/*.js), so it stays one document with one script scope, as before the split."""
+    return _INCLUDE.sub(lambda m: (PAGE.parent / (m[1] or m[2])).read_text(encoding="utf-8").removesuffix("\n"),
+                        PAGE.read_text(encoding="utf-8"))
 LOGS = Path(__file__).resolve().parents[2] / "logs"  # where the docs suggest saving run output
 # collection.DB, the cache and the tempo-view state are module globals: one request at a time swaps them
 _lock = threading.RLock()
@@ -1553,7 +1561,7 @@ def snapshot(dirs: list[Path], progress=log) -> str:
             data["files"][f["id"]] = saved_file(dirs, f["id"])
     data["mixes_report"] = _try(mixreport.report, dirs)
     blob = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
-    page = PAGE.read_text(encoding="utf-8")
+    page = page_html()
     return page.replace("<script>\n\"use strict\";", f"<script>window.SNAPSHOT = {blob};</script>\n<script>\n\"use strict\";", 1)
 
 
@@ -1668,7 +1676,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         return Response(data, media_type="audio/wav", headers={"Cache-Control": "no-store"})
 
     async def page(request):
-        return FileResponse(PAGE, headers={"Cache-Control": "no-store"})
+        return HTMLResponse(await run_in_threadpool(page_html), headers={"Cache-Control": "no-store"})
 
     async def export(request):
         html = await run_in_threadpool(snapshot, log_dirs)
