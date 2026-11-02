@@ -1728,6 +1728,8 @@ def _audio_pool_init(npy: str) -> None:
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
+    if hasattr(signal, "SIGBREAK"):  # Windows: a stop from the page is a Ctrl-Break (jobs._interrupt)
+        signal.signal(signal.SIGBREAK, signal.SIG_IGN)
     os.dup2(2, 1)  # stray library output to stderr: stdout may be the MCP channel
     dsp()
     _AUDIO["mono44"] = np.load(npy, mmap_mode="r")

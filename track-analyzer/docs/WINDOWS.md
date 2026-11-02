@@ -460,9 +460,12 @@ Paths are stored as `str(Path)` strings and compared as strings. On Windows that
 
 ## The web page's Setup tab
 
-- **Stopping a job.** `jobs.py` starts each job with `start_new_session=True` and stops it with `os.killpg(…, SIGINT)`,
-  then SIGTERM. Windows has neither. Start with `creationflags=CREATE_NEW_PROCESS_GROUP` and send
-  `CTRL_BREAK_EVENT`; the scans' safe stop listens for SIGINT, so they'd need a SIGBREAK handler too.
+- **Stopping a job.** **Done** (2026-11-02): on Windows each job starts with `CREATE_NEW_PROCESS_GROUP` and Stop
+  sends its group `CTRL_BREAK_EVENT` (`jobs._interrupt`); the job turns SIGBREAK into KeyboardInterrupt
+  (`jobs.child_signals`), so a scan saves what it has as with Ctrl-C, and pool workers ignore it as they ignore
+  SIGINT. The hard stop after 20 s is `taskkill /T /F` (the job and everything it started); also the fallback when
+  Ctrl-Break can't be sent (no console). macOS/Linux unchanged: own session, SIGINT, then SIGTERM.
+  `tests/test_jobs.py` checks it on both.
 - **Installing tools.** The Setup tab installs ffmpeg and rubberband with Homebrew; without it, it shows
   `analysis.install_hint()`. **Done:** the Windows hint (`winget install Gyan.FFmpeg`; Rubber Band's Windows build
   from breakfastquay.com/rubberband, 3.0+ for the R3 engine, on PATH), and `analysis.find_tool()` also looks in
