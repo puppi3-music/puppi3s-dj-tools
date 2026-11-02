@@ -49,6 +49,17 @@ def say_if_nothing(out: dict, dry_run: bool = False) -> None:
         log("Nothing would change." if dry_run else "Nothing to change: everything is already up to date.")
 
 
+def lower_priority() -> None:
+    """Windows: below-normal priority for this command and the workers it starts (they inherit it), so a scan
+    using every core leaves the computer usable. Only the order Windows hands out CPU time changes, not results.
+    The web page and the MCP server keep normal priority."""
+    import ctypes
+
+    BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+    k32 = ctypes.windll.kernel32
+    k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+
+
 def main() -> None:
     if sys.platform == "win32":  # piped or redirected output in UTF-8, not the ANSI code page (accented track names)
         for s in (sys.stdout, sys.stderr):
@@ -322,6 +333,8 @@ def main() -> None:
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
     args = ap.parse_args()
+    if sys.platform == "win32" and args.cmd not in ("web", "serve", None):
+        lower_priority()
     if args.cmd in VIEW_CMDS | NATIVE_CMDS:
         pick_library(args)
 

@@ -15,8 +15,10 @@ only if it still holds the view's value, so edits made in Lexicon while the view
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -29,7 +31,8 @@ from .analysis import COLOR_NAMES, HOME, fmt_time, log
 
 API = "http://localhost:48624/v1"
 STATE = HOME / "tempo-loaded-lexicon.json"
-LIBRARY = Path.home() / "Library/Application Support/lexicon/main.db"
+LIBRARY = (Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "lexicon" / "main.db"
+           if sys.platform == "win32" else Path.home() / "Library/Application Support/lexicon/main.db")
 BACKUPS = HOME / "lexicon-backups"
 KEEP_BACKUPS = 10
 FIELDS = ("genre", "color", "comment", "energy")
