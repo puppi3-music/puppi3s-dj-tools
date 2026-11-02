@@ -489,12 +489,22 @@ x64 builds only. `.gitattributes` checks `.bat` files out with CRLF.
 
 ## Lexicon
 
-Lexicon has a Windows version (**verify**). `lexicon.py` needs:
-- its database path for the backup before each load (now `~/Library/Application Support/lexicon/main.db`;
-  on Windows probably under `%APPDATA%\lexicon`, **verify**);
+Lexicon has a Windows version. `lexicon.py` needs:
+- its database path for the backup before each load: `%APPDATA%\lexicon\main.db` on Windows (confirmed by the
+  user 2026-11-02; done), `~/Library/Application Support/lexicon/main.db` on a Mac;
 - the location prefix it strips (now `/Volumes/<disk>`; Windows Lexicon likely sends `C:\…`, **verify**) so
   Lexicon's tracks match `collection.db` paths.
 The Local API itself (localhost:48624) is the same.
+
+## Using the computer while it scans
+
+Each scan worker runs TensorFlow and the Rust code on every core, so a scan takes the whole CPU. On Windows every
+command except `web` and `serve` runs at below-normal priority (`cli.lower_priority`; its workers inherit it), so
+whatever you're doing comes first and the scan gets the rest. Results don't change. Measured 2026-11-02 on two
+tracks: the analysis is bit-identical with TensorFlow and Rust on 1 thread or on all 10 (only the time differs), so
+giving each worker its share of the cores is safe too; not done yet, its speed is unmeasured.
+No GPU: TensorFlow 2.15 has no GPU support on Windows and none for Vulkan anywhere; a GPU runtime (ONNX Runtime
+with DirectML, TensorFlow's old DirectML plugin) gives results that aren't bit-identical, so it isn't used.
 
 ## Order of work
 

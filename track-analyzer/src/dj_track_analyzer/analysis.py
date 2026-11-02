@@ -158,6 +158,7 @@ def tensorflow():
 
         if tf.__version__ != TF_VERSION:
             raise RuntimeError(f"TensorFlow {tf.__version__} is installed; the models need {TF_VERSION} (uv sync)")
+        tf.get_logger().setLevel("ERROR")  # its deprecation notes (tf.GraphDef) are about TensorFlow 1 code, not ours
         _tf = tf
     return _tf
 

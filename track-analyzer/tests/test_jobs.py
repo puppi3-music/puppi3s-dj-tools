@@ -1,8 +1,11 @@
 """The page's Stop button: a running job gets Ctrl-C (Ctrl-Break on Windows) and stops cleanly, saving what it has."""
 from __future__ import annotations
 
+import subprocess
 import sys
 import time
+
+import pytest
 
 from dj_track_analyzer import jobs
 
@@ -72,3 +75,14 @@ def test_log_meter_on_mac_and_linux(monkeypatch):
     monkeypatch.setattr(jobs, "WINDOWS", False)
     job = read_log([b"start\n", b"10%\r50%\r", b"100%\r", b"\ndone\n"])
     assert job["lines"] == ["start", "done"] and job["live"] is None
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows priority classes")
+def test_commands_run_below_normal_priority():
+    """A scan's process and the workers it starts (they inherit it); the web page itself isn't lowered."""
+    child = "import ctypes; k = ctypes.windll.kernel32; print(k.GetPriorityClass(k.GetCurrentProcess()))"
+    code = ("import subprocess, sys; from dj_track_analyzer import cli; cli.lower_priority(); "
+            f"exec({child!r}); print(subprocess.run([sys.executable, '-c', {child!r}], capture_output=True, "
+            "text=True).stdout.strip())")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert out.stdout.split() == ["16384", "16384"], out  # BELOW_NORMAL_PRIORITY_CLASS
