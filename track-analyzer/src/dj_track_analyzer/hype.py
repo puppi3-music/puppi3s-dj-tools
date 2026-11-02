@@ -45,6 +45,8 @@ def compute(con=None, progress=log) -> dict[str, int]:
         "SELECT path, lufs, mood_party, mood_aggressive, mood_relaxed FROM tracks WHERE type='track' "
         "AND (error IS NULL OR error LIKE 'tags:%') AND lufs IS NOT NULL AND mood_party IS NOT NULL "
         "AND mood_aggressive IS NOT NULL AND mood_relaxed IS NOT NULL").fetchall()
+    if len(rows) < 20:  # before the style labels: a scan of a few tracks shouldn't need them
+        raise SystemExit("Need at least 20 scanned tracks: uv run dj-track-analyzer scan --traktor")
     names = [analysis.split_style(c)[0] for c in analysis.style_classes()]
     rave_i, deep_i = [names.index(s) for s in RAVE], [names.index(s) for s in DEEP]
     paths, vals = [], []
