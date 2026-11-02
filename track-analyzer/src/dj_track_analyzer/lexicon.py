@@ -146,7 +146,7 @@ def backup(tag: str) -> str:
 
 
 def loaded() -> dict | None:
-    return json.loads(STATE.read_text()) if STATE.exists() else None
+    return json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else None
 
 
 def _show(field: str, v):
@@ -219,14 +219,14 @@ def load(bpm: float, folder: str, view_db: sqlite3.Connection, shifted_colour, d
     stats["backup"] = backup("before-tempo-view")
     # Remember before writing, so an interrupted load can still be switched back.
     state = {"bpm": bpm, "loaded_at": time.strftime("%Y-%m-%d %H:%M"), "folder_id": None, "tracks": changes}
-    STATE.write_text(json.dumps(state, ensure_ascii=False))
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     log(f"Lexicon: changing {len(changes)} tracks, one at a time…")
     for tid, ch in _each(list(changes.items()), lambda x: x[1]["title"][:60]):
         _edit(int(tid), {f: v[1] for f, v in ch.items() if f in FIELDS})
     log(f"Lexicon: adding the smartlist folder {folder} ({len(lists)} genres)…")
     folder_id = _call("POST", "/playlist", {"name": folder, "type": "1"})["data"]["id"]
     state["folder_id"] = folder_id
-    STATE.write_text(json.dumps(state, ensure_ascii=False))
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     for g in lists:
         _call("POST", "/playlist", {"name": g, "type": "3", "parentId": folder_id, "smartlist": smartlist(g)})
     stats["now_loaded"] = (f"{bpm:g} BPM view in Lexicon. Back to normal: uv run dj-track-analyzer tempo native --lexicon")
