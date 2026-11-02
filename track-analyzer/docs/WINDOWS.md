@@ -25,6 +25,14 @@ including where Essentia's arm64 build fuses multiply-adds, gives Essentia's exa
 ported **exactly**, not "close". Libraries that compute something similar (librosa, madmom, `samplerate`,
 `rubato`, `symphonia`) are ruled out: they change results.
 
+One exception, decided in November 2026: **accuracy to the real result comes before Essentia's bits**. Where
+Essentia's macOS build calls a float libm function that is a float step off on some inputs (`log10f`, `logf`,
+`exp10f`, `sinf`, `cosf`, `expf`, `atan2f`), the Rust code computes it in double with the `libm` crate (a port of
+musl's) and rounds to float: the nearest float, the same bits on every platform (`dsp/src/math.rs`). Those steps
+then differ from Essentia by a float step on some values, and `dsp/check.py` passes them within a tolerance
+(`TOL`; the BPM within its gate) and counts them as "close". Everything else stays bit for bit, as the check that
+the port has no bugs.
+
 What Essentia bundles, and what each piece needs (versions read from the macOS wheel, `essentia/.dylibs`):
 
 | Job | Essentia now | Replacement | Accuracy target |
@@ -34,10 +42,10 @@ What Essentia bundles, and what each piece needs (versions read from the macOS w
 | Mono mix | `MonoMixer` | Rust | bit-identical |
 | Resample to 16 kHz | `Resample(quality=4)` (libsamplerate linear) | Rust | bit-identical |
 | Decode | `AudioLoader`: FFmpeg 2.8 (libavcodec 56, 2015) + libswresample 1.2 | PyAV (current FFmpeg, wheels for every platform) | **done**: bit-identical on 507 of 508 files, the other measured (stage 2) |
-| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical (stage 3) |
+| Mel front end | `TensorflowInputMusiCNN`, `FrameGenerator`; FFTW 3.3.10 float, `FFTW_ESTIMATE` | Rust, with FFTW's own codelets ported | **done**: bit-identical but a more exact `log10` (stage 3) |
 | Neural nets | `TensorflowPredict*` on TensorFlow 2.15.0 | plain `tensorflow==2.15.0` (onnxruntime tried: not identical) | **done**: bit-identical (stage 4) |
-| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | **done**: bit-identical (stage 5) |
-| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's codelets for its sizes | bit-identical; gate below |
+| Key | `KeyExtractor(profileType="edma")` | Rust port, FFTW's codelets for its sizes | **done**: bit-identical but more exact libm (stage 5) |
+| BPM | `RhythmExtractor2013(method="multifeature")` | Rust port, FFTW's plans for every power of two to 2^22 | **done**: bit-identical but more exact libm (stage 6) |
 
 Essentia is AGPL-3.0, and so is this repo, so porting its code line by line is fine. FFTW (GPL-2.0+) can be
 linked into an AGPL program too.
@@ -66,7 +74,7 @@ track dropped as warm-up) and adds a row to the speed table below. A stage that 
 | Heads (10) | 0.01 s | TF 2.15: 0.01 s; onnxruntime: 0.02 s | same | 58 tracks |
 | MAEST | 2.64 s per track | TF 2.15: 2.64 s; onnxruntime: 3.08 s | same; onnxruntime 17% slower | 58 tracks |
 | Model loading | 0.1 s | TF 2.15: 0.3 s; onnxruntime: 0.3 s | same | |
-| Key | 0.10–0.19 s per 5–8-min track, 1.49 s per 63-min mix | Rust: 0.016–0.029 s, 0.24 s (with the libm tables) | 5.5–8x faster | 5 tracks, 1 mix |
+| Key | 0.10–0.19 s per 5–8-min track, 1.49 s per 63-min mix | Rust: 0.016–0.029 s, 0.24 s | 5.5–8x faster | 5 tracks, 1 mix |
 
 Stage 0's PyAV decode was 12% slower than Essentia because of its Python side (a numpy array per frame, then a join
 and a conversion). Stage 2 copies each frame's raw bytes and converts about a million samples at a time into one
@@ -163,8 +171,9 @@ Without the Rust module, Essentia does both as before.
   `x*10000 + 1`, `log10f`. Essentia's arm64 build fuses the magnitude and the band sums but not the scale and
   shift (clang's default: within one expression); the same here. The window and filter weights are read off
   Essentia (`dsp/tools/gen_musicnn_tables.py`). macOS's `log10f` isn't correctly rounded: it differs from `log10`
-  in double rounded to float on 249 of the 1.07 billion floats ≥ 1 (an exhaustive scan); those, and 30 more where
-  another platform's `log10` could round the other way, are a table (`dsp/tools/log10f_exceptions.c`).
+  in double rounded to float on 249 of the 1.07 billion floats ≥ 1 (an exhaustive scan). These were first copied
+  from a table; since November 2026 the mels take the more exact `log10` (`dsp/src/math.rs`), a float step from
+  Essentia's on those inputs (17 of 180,000 values on 30 s of noise; EffNet's embeddings then move by about 2e-7).
 - **EffNet's input:** the signal zero-padded so the last batch of 64 patches is full (`padSignal`'s float maths),
   patches of 128 frames every 62, an incomplete last batch dropped, the padding's outputs removed. Its frames come
   from the *streaming* `FrameCutter`, whose default `silentFrames="noise"` does two things to a frame below about
@@ -228,24 +237,46 @@ HPCP (12 bins, 4 harmonics), and the streaming Key's mean HPCP against the edma 
 `dsp/check.py --steps key`: bit-identical key, scale and strength on 63 test signals and on all 469 tracks and 41 mix
 recordings, every 2-minute segment of the 34 over 12 minutes included. 5.5–8x faster (speed table).
 
-The same bits on every platform: the libm functions it needs (`logf`, `log10f`, `cos` in HPCP's weights, and
-`exp10f`) are computed in double with the platform's libm, rounded to float, and replaced by macOS's result from a
-table wherever that isn't safely macOS's (`dsp/tools/key_libm_exceptions.c`, as `LOG10F_FIX` for the mels): 13,590
-inputs for `logf`, 506 for `log10f`, 6 for `cos`. macOS's `exp10f` is `powf(10, x)` (identical on all 1.1 billion
-inputs in [-12, 0]), and that `powf` is neither correctly rounded (one float step off on 0.1% of inputs) nor Arm's
-optimized-routines algorithm nor `exp2(y * L)` for any constant L, so its 1.1 million exceptions ship as a 1.8 MB table
-(`key_exp10f.bin`). The tables are used on macOS too, so a macOS update can't change the results. `dsp/check.py
---steps key` checks them against this Mac's libm on every input (4.3 billion, about 10 s): no differences. The
-constants (HPCP's harmonic table and its `exp2` factors) are stored as macOS computes them. Released in dsp 0.4.0: CI's Linux wheel
-(glibc's libm, x86_64, in Docker) gives the same key, scale and strength bits as the Mac on 200 test signals.
+The libm functions it needs (`logf` in `log2`, `log10f`, `cos` in HPCP's weights, `exp10f`) were first macOS's,
+from tables (dsp 0.4.0: 13,590 inputs for `logf`, 506 for `log10f`, 6 for `cos`, and 1.1 million for `exp10f`, whose
+`powf(10, x)` is one float step off on 0.1% of inputs). Since November 2026 they are computed in double with the
+`libm` crate and rounded (`dsp/src/math.rs`), and `log2` is `log2` itself: more exact, the same bits everywhere, and a
+little faster. On 63 test signals the key and scale stay Essentia's and the strength moves by at most 3e-7. The
+constants (HPCP's harmonic table and its `exp2` factors) are stored as Python computes them.
 Gate (decided): key and scale identical on every track and every mix timeline segment, and strength within
 0.01, matching the BPM rule; the aim is bit-identical.
 
-**Stage 6: BPM** (Rust; about 2,700 lines of C++ of its own on top of the shared spectral code: five onset
-functions (RMS, complex, mel flux, beat emphasis, information gain), five Degara trackers, TempoTapMaxAgreement,
-BPM from the beat intervals). Gate (decided): the whole-number BPM equals Essentia's on every track and every
-mix segment, and confidence is within 0.01; the aim is bit-identical beats. Once it matches, run the five onset
-functions on separate threads, kept only if the output stays identical.
+**Stage 6: BPM. Done (November 2026)**: `track_analyzer_dsp.rhythm_multifeature` (dsp/src/bpm.rs) is
+RhythmExtractor2013(method "multifeature") of the same Essentia build, used by `analysis.rhythm` when installed: five
+onset functions (RMS, complex, mel flux, beat emphasis, information gain), five TempoTapDegara trackers,
+TempoTapMaxAgreement, and the BPM from the beat intervals. Found on the way:
+- The trackers' autocorrelations (Essentia's unbiased AutoCorrelation: zero-padded to the next power of two of
+  twice the length, r2c, |X|², c2r, divided by the size, then by size − lag) go through FFTs as long as the whole
+  track's onset function. A direct sum in double is not FFTW's rounding and moved the confidence on short files and
+  one track. So `dsp/src/fftw.rs` ports FFTW 3.3.10's `FFTW_ESTIMATE` plans for every power of two from 2 to 2^22
+  (about 3 h 20 min of audio), r2c and c2r, read off the wheel's FFTW with `fftwf_sprint_plan`: direct codelets to
+  128 points, `rdft2-ct-dit` / `rdft-ct-dit/dif` with radix 16 or 32 above, a complex DFT (radix 2 or 4,
+  `dft-ct-dit` with `dftw-genericbuf` for the large radices) from 2^20. The twiddles come from FFTW's own sqrt(n)
+  trig table (macOS libm's doubles, `dsp/tools/gen_bpm_tables.py`). Every size is bit-identical to the wheel's
+  `fftwf_execute` on random inputs, and `dsp/check.py --steps bpm` checks every size again before the files.
+  Longer audio falls back to a direct sum (not bit for bit; the app never gets there).
+- The five trackers draw from the process's `rand()` (seed 1 at the start of each call), and Essentia's scheduler
+  runs them in the order information gain, beat emphasis, mel flux, RMS, complex. On test signals any order gives
+  the same result; on real recordings exactly one of the 120 orders matched.
+- Essentia can't analyse a long mix as a whole (a 127-min one stops with "OnsetDetectionGlobal: output buffer is
+  full"); the app never asks it to (files over 12 min get only the 2-min segments), so the check compares segments.
+
+`dsp/check.py --steps bpm`: bit-identical BPM, beats and confidence on the test signals and on all 469 tracks and 41
+mix recordings (every 2-minute segment of those over 12 minutes). 5.5–7x faster (speed table). Gate (decided): the
+whole-number BPM equal on every track and every mix segment, and confidence within 0.01; the aim was bit-identical.
+
+The libm calls were first macOS's, from tables too (`sinf` and `cosf` on [-8, 8] for libc++'s `std::polar`, `expf`
+on [-104, 0] for the trackers' HMM), except `atan2f` (the FFT phase): macOS's is one float step off on about 13% of
+inputs, takes two floats and can't be tabulated. Since November 2026 all of them are computed in double with the
+`libm` crate and rounded (`dsp/src/math.rs`), on every platform: more exact than Essentia's, and the same bits on
+macOS, Linux and Windows, at the same speed. `hypotf` is `sqrt(x*x + y*y)` in double, as macOS computes it. The
+Rayleigh and Gaussian weights are stored as Python's `exp` gives them. On the test signals 5 of 15 differ from
+Essentia in bits, all with the same beats and BPM, the confidence at most 1e-6 off. Real recordings: not compared yet.
 
 **Stage 7: drop Essentia.** `track-analyzer-dsp` (prebuilt wheels) becomes a required dependency;
 `essentia-tensorflow` moves to an optional dependency group used only by `dsp/check.py` on macOS and Linux;
@@ -265,7 +296,7 @@ TensorFlow 2.15 (about 950 MB on Apple Silicon) and PyAV: about twice the size. 
 2. *TF runtime bits*: none with TF 2.15 (stage 0). onnxruntime differs (stage 4) and isn't used.
 3. *FFTW*: no longer a build risk (stage 3 ports FFTW's codelets instead of building FFTW). The key and BPM
    ports need the plans for their FFT sizes, each checked against the wheel's FFTW.
-4. *Size of the BPM port.* Large but mechanical; the check finds every slip.
+4. *Size of the BPM port.* Done (stage 6): the check found every slip, down to the trackers' `rand()` order.
 
 ### Rust for the parts that get rewritten
 
@@ -274,7 +305,7 @@ Where the time goes now, on an M1 Pro on mains power (each step timed alone, mod
 
 | Step | 3-min track | 5.5-min track | 8.5-min track | 65-min mix | What it is |
 |---|---|---|---|---|---|
-| BPM (`RhythmExtractor2013`) | 1.7 s | 3.1 s | 4.8 s | (per segment) | DSP, single-threaded C++ |
+| BPM (`RhythmExtractor2013`) | 1.7 s | 3.1 s | 4.8 s | (per segment) | DSP, single-threaded C++; Rust 0.5-0.7 s (stage 6) |
 | MAEST | 2.7 s | 2.7 s | 2.7 s | 2.7 s | neural net, always 3 patches of 30 s; cached, so rescans skip it |
 | Loudness (`LoudnessEBUR128`) | 0.8 s | 1.4 s | 2.2 s | 18.4 s | DSP, two IIR filters and windowed means |
 | EffNet + styles | 0.8 s | 1.2 s | 1.5 s | 9.5 s | neural net |
@@ -294,9 +325,9 @@ the natural language for that code: it runs as fast as C++, and PyO3 + maturin b
 (Windows, macOS, Linux) from one source, in CI, without the build pains that rule out Essentia on Windows.
 
 Candidates, best first:
-- **BPM port** (3.1 s on a typical track, the biggest single step). Must be ported for Windows anyway. In Rust it runs at least as fast as Essentia; the five
-  onset functions are independent and can run on separate threads (Essentia runs them one after another).
-  Mixes gain the most: the rhythm runs again for every 2-minute timeline segment.
+- **BPM port: done** (stage 6). Bit-identical, 6.4-6.9x faster on tracks (5 min: 2.76 s → 0.41 s; 8 min:
+  4.56 s → 0.71 s) and 5.5x on a 63-min mix as a whole (36 s → 6.5 s). Mixes gain the most: the rhythm runs
+  again for every 2-minute timeline segment.
 - **Loudness: done** (`dsp/`, `track_analyzer_dsp.loudness_ebur128`, used by `analysis.loudness()`). A line-by-line
   copy of Essentia's LoudnessEBUR128: the same float32 4th-order IIR, frame cutting and in-order sums, with the
   3 s / 400 ms windows computed in parallel. Bit-identical to Essentia on all 469 tracks of the test collection

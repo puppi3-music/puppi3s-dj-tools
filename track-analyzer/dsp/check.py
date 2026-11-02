@@ -1,17 +1,20 @@
-"""Check the Rust module, PyAV decoding, the EffNet input and the models on Python TensorFlow against Essentia, bit for bit.
+"""Check the Rust module, PyAV decoding, the EffNet input and the models on Python TensorFlow against Essentia.
 Run after any change to dsp/, decode or the model graphs:
 
     uv run python dsp/check.py                 # test signals: resampling (sinc, linear) at 8-192 kHz, loudness, mono mix,
                                                # decoding test files in each format (made with the ffmpeg command),
                                                # the models' mel frames, EffNet's patches and batches,
                                                # every model graph on Python TensorFlow (uv sync --inexact --extra nets),
-                                               # the key (KeyExtractor edma; mixes: every 2-minute segment too)
+                                               # the key (KeyExtractor edma; mixes: every 2-minute segment too),
+                                               # the BPM (RhythmExtractor2013 multifeature; the same segments)
     uv run python dsp/check.py --collection    # also every scanned track and every file given with --files
     uv run python dsp/check.py --files-from mixes.txt   # files listed one per line (names with spaces are fine)
     uv run python dsp/check.py --collection --steps linear   # only the step you changed: much faster
 
-Prints one line per difference and exits 1 if there is any. A Rust step only replaces Essentia's while this
-passes on the whole test collection; run every step (the default) before a release. Most of the time goes
+Each step is compared bit for bit, except where ours computes libm calls more exactly than Essentia's macOS build (the
+mel's log10, the key's and the BPM's: math.rs): those may differ by a float step there, so they pass within a
+tolerance (TOL; the BPM within the user's gate) and are counted as "close". Prints one line per difference and exits 1
+if there is any. A Rust step only replaces Essentia's while this passes on the whole test collection; run every step (the default) before a release. Most of the time goes
 into Essentia's own slow steps (about a minute per hour-long mix), so check only what changed while working.
 Tracks run --workers at a time; files over 12 minutes (mixes, ~1.3 GB each in memory) --mix-workers. With nets each
 process holds every model twice (~5 GB), so fewer run at once. Compare on a Mac: Essentia's arm64 build fuses multiply-adds that its
@@ -27,7 +30,10 @@ from pathlib import Path
 
 import numpy as np
 
-STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet", "nets", "key")
+# Within these, a step whose libm calls are more exact than Essentia's passes (it differs by up to ~3e-7 on test
+# signals): the mels in float steps, EffNet's embeddings and the key's strength in absolute value.
+TOL = {"mel": 1, "effnet": 1e-5, "key": 1e-5}
+STEPS = ("loudness", "mono", "resample", "linear", "decode", "mel", "effnet", "nets", "key", "bpm")
 # Test files for decoding: (name, ffmpeg output options, rate, channels). AAC, Vorbis and Opus come out of
 # current FFmpeg's rewritten decoders about 1 in 10 million different (stage 0): printed, not counted.
 CODECS = [(f"{c}.wav", ["-c:a", c], sr, 2) for c in ("pcm_u8", "pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_f64le")
@@ -127,11 +133,24 @@ def _essentia_mels(e, x):
                     np.float32).reshape(-1, 96)
 
 
-def _same_mels(e, dsp, x) -> bool:
-    """track_analyzer_dsp.musicnn_mels vs TensorflowInputMusiCNN on every FrameGenerator frame."""
+def _float_steps(mine, ref) -> int:
+    """How many floats apart two float32 arrays of one shape are, at most (0: the same bits)."""
+    def order(v):
+        i = np.asarray(v, np.float32).view(np.int32).astype(np.int64)
+        return np.where(i < 0, -(i & 0x7FFFFFFF), i)
+    return int(np.abs(order(mine) - order(ref)).max()) if np.size(mine) else 0
+
+
+def _mels_diff(e, dsp, x) -> str | None:
+    """track_analyzer_dsp.musicnn_mels vs TensorflowInputMusiCNN on every FrameGenerator frame: None if the same bits,
+    "close" within TOL, else what differs."""
     x = np.ascontiguousarray(x, np.float32)
     out = np.empty((dsp.musicnn_frame_count(len(x)), 96), np.float32)
-    return dsp.musicnn_mels(x, out) == len(out) and np.array_equal(out.view(np.uint32), _essentia_mels(e, x).view(np.uint32))
+    ref = _essentia_mels(e, x)
+    if dsp.musicnn_mels(x, out) != len(out) or out.shape != ref.shape:
+        return f"{len(out)} vs {len(ref)} frames"
+    n = _float_steps(out, ref)
+    return None if n == 0 else "close" if n <= TOL["mel"] else f"up to {n} float steps apart"
 
 
 _effnet = {}
@@ -152,7 +171,8 @@ def _same_effnet(e, x):
     (NoiseAdder, seeded from the clock) to frames below isSilent's cutoff; usually it vanishes in the mel's log, but on
     some tracks it tips roundings, and Essentia's own output then changes from run to run (19 different results in
     20 runs on one track), only in patches holding such frames. Ours is the noise-free result. "noise": every
-    differing patch holds a near-silent frame and differs by under 1e-5; anything else is a difference."""
+    differing patch holds a near-silent frame and differs by under 1e-5; "close": differs by under TOL (our mels' log10
+    is more exact); anything else is a difference."""
     from dj_track_analyzer import analysis as a
 
     x = np.ascontiguousarray(x, np.float32)
@@ -168,7 +188,7 @@ def _same_effnet(e, x):
     noisy = {k for f in silent for k in range(max(0, (f - a.EFFNET_PATCH) // a.EFFNET_PATCH_HOP), f // a.EFFNET_PATCH_HOP + 1)
              if k * a.EFFNET_PATCH_HOP <= f < k * a.EFFNET_PATCH_HOP + a.EFFNET_PATCH}
     bad = set(np.flatnonzero(d > 0).tolist())
-    return "noise" if bad <= noisy and d.max() < 1e-5 else False
+    return "noise" if bad <= noisy and d.max() < 1e-5 else "close" if d.max() < TOL["effnet"] else False
 
 _nets = {}
 
@@ -246,27 +266,65 @@ def test_nets() -> int:
 _ke = {}
 
 
-def _key_diff(e, dsp, x) -> str | None:
-    """track_analyzer_dsp.key_edma vs KeyExtractor(profileType="edma"): None if key, scale and strength are the same bits."""
+def _key_diff(e, dsp, x) -> tuple[str | None, str | None]:
+    """track_analyzer_dsp.key_edma vs KeyExtractor(profileType="edma"): (failure, note). A failure is another key or
+    scale, or a strength more than TOL off; a note, a strength in other bits."""
     if "ref" not in _ke:
         _ke["ref"] = e.KeyExtractor(profileType="edma", sampleRate=44100)
     x = np.ascontiguousarray(x, np.float32)
     got, want = dsp.key_edma(x), _ke["ref"](x)
-    if got[:2] == tuple(want[:2]) and np.float32(got[2]).view(np.uint32) == np.float32(want[2]).view(np.uint32):
-        return None
-    return f"{got[0]} {got[1]} {got[2]!r} vs {want[0]} {want[1]} {float(want[2])!r}"
+    if np.float32(got[2]).view(np.uint32) == np.float32(want[2]).view(np.uint32) and got[:2] == tuple(want[:2]):
+        return None, None
+    what = f"{got[0]} {got[1]} {got[2]!r} vs {want[0]} {want[1]} {float(want[2])!r}"
+    return (None, what) if got[:2] == tuple(want[:2]) and abs(got[2] - float(want[2])) <= TOL["key"] else (what, None)
 
 
-def _key_segments(e, dsp, mono44) -> list[str]:
-    """The whole signal and, over 12 minutes, every 2-minute segment as segment_timeline cuts them."""
-    out = [f"key: {d}" for d in [_key_diff(e, dsp, mono44)] if d]
+def _srand1():
+    """TempoTapDegara adds rand() noise and Essentia never seeds it: start Essentia's draw from seed 1, as the Rust code does."""
+    import ctypes
+    import ctypes.util
+
+    ctypes.CDLL(ctypes.util.find_library("c")).srand(1)
+
+
+def _bpm_diff(e, dsp, x, lo=85, hi=220) -> tuple[str | None, str | None]:
+    """rhythm_multifeature vs RhythmExtractor2013(multifeature) as analysis.rhythm calls it: (failure, note). A failure
+    is a different whole-number BPM or a confidence more than 0.01 off (the user's gate); a note says what else differs
+    (the beats, the bits): expected only where our libm calls are more exact than Essentia's."""
+    x = np.ascontiguousarray(x, np.float32)
+    _srand1()
+    bpm, ticks, conf, _e, _i = e.RhythmExtractor2013(method="multifeature", minTempo=lo, maxTempo=hi)(x)
+    b2, t2, c2 = dsp.rhythm_multifeature(x, lo, hi)
+    from dj_track_analyzer import analysis as a
+
+    ticks, t2 = np.asarray(ticks, np.float32), np.asarray(t2, np.float32)
+    whole = a.round_bpm(a.fold_bpm(float(bpm))) == a.round_bpm(a.fold_bpm(float(b2)))
+    fail = None if whole and abs(float(conf) - c2) <= 0.01 else f"BPM {b2:.4f} vs {float(bpm):.4f}, confidence {c2:.4f} vs {float(conf):.4f}"
+    if np.float32(bpm) == np.float32(b2) and np.float32(conf) == np.float32(c2) and np.array_equal(ticks, t2):
+        return fail, None
+    beats = "same beats" if np.array_equal(ticks, t2) else f"{len(t2)} vs {len(ticks)} beats"
+    return fail, f"{beats}, BPM {b2:.6f} vs {float(bpm):.6f}, confidence {c2:.6f} vs {float(conf):.6f}"
+
+
+def _segments(diff, step, e, dsp, mono44, whole=True) -> tuple[list[str], list[str]]:
+    """diff (_key_diff or _bpm_diff) on the whole signal and, over 12 minutes, on every 2-minute segment as
+    segment_timeline cuts them, as analyze_file measures them (the BPM never on a whole mix: Essentia can't on long
+    ones, its onset buffer overflows): (failures, notes)."""
     duration = len(mono44) / 44100.0
+    parts = [("", mono44)] if whole or duration <= 12 * 60 else []
     if duration > 12 * 60:
         for i in range(int(np.ceil(duration / 120))):
             a, b = i * 120, min(duration, (i + 1) * 120)
-            if b - a >= 20 and (d := _key_diff(e, dsp, mono44[int(a * 44100): int(b * 44100)])):
-                out.append(f"key segment {i}: {d}")
-    return out
+            if b - a >= 20:
+                parts.append((f" segment {i}", mono44[int(a * 44100): int(b * 44100)]))
+    fails, notes = [], []
+    for name, x in parts:
+        f, n = diff(e, dsp, x)
+        if f:
+            fails.append(f"{step}{name}: {f}")
+        if n:
+            notes.append(f"{step}{name}: {n}")
+    return fails, notes
 
 
 def test_key(e, dsp, rng) -> int:
@@ -284,15 +342,94 @@ def test_key(e, dsp, rng) -> int:
             x[: rng.integers(0, len(x))] *= 1e-7
         signals.append((f"{len(t)} samples", x))
     signals += [("silence", np.zeros(50000)), ("one sample", np.full(1, 0.3)), ("one frame", 0.1 * rng.standard_normal(4096))]
+    close = 0
     for name, x in signals:
-        if d := _key_diff(e, dsp, x):
-            bad += 1
-            print(f"key DIFFERENT: {name}: {d}")
-    if sys.platform == "darwin":  # key.rs's libm tables against this Mac's libm, every input (~10 s)
-        for f in ("cospi", "log10f", "logf", "exp10f"):
-            if n := dsp._key_libm_mismatches(f):
-                bad += 1
-                print(f"key DIFFERENT: {f} differs from macOS's on {n} inputs")
+        fail, note = _key_diff(e, dsp, x)
+        bad += bool(fail)
+        close += bool(note)
+        if fail:
+            print(f"key DIFFERENT: {name}: {fail}")
+    print(f"key: {len(signals) - bad - close} of {len(signals)} signals identical, {close} close" + (f", {bad} different" if bad else ""))
+    return bad
+
+
+def _fft_diffs(dsp, rng) -> list[str]:
+    """fftw.rs (the BPM's autocorrelations) against the FFTW in Essentia's wheel, forward and inverse, every power of
+    two up to its largest plan, on a few random inputs. Only on macOS: the Rust follows that build's FFTW."""
+    import ctypes
+
+    import essentia
+
+    lib = next((Path(essentia.__file__).parent / ".dylibs").glob("libfftw3f*.dylib"), None) if sys.platform == "darwin" else None
+    if lib is None or not hasattr(dsp, "_rfft_max_p"):
+        return []
+    lib = ctypes.CDLL(str(lib))
+    lib.fftwf_malloc.restype = ctypes.c_void_p
+    lib.fftwf_malloc.argtypes = [ctypes.c_size_t]
+    lib.fftwf_execute.argtypes = [ctypes.c_void_p]
+    for f in ("fftwf_plan_dft_r2c_1d", "fftwf_plan_dft_c2r_1d"):
+        getattr(lib, f).restype = ctypes.c_void_p
+        getattr(lib, f).argtypes = [ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+    bad = []
+    for p in range(1, dsp._rfft_max_p() + 1):
+        n = 1 << p
+        for kind in ("r2c", "c2r"):
+            nin, nout = (n, n + 2) if kind == "r2c" else (n + 2, n)
+            ip, op = lib.fftwf_malloc(4 * n + 8), lib.fftwf_malloc(4 * n + 8)  # as Essentia's (I)FFTW: aligned, apart
+            plan = getattr(lib, f"fftwf_plan_dft_{kind}_1d")(n, ip, op, 1 << 6)  # FFTW_ESTIMATE
+            xin = np.ctypeslib.as_array((ctypes.c_float * nin).from_address(ip))
+            xout = np.ctypeslib.as_array((ctypes.c_float * nout).from_address(op))
+            for k in range(3):
+                x = (rng.standard_normal(nin) * 10.0 ** rng.uniform(-6, 2)).astype(np.float32)
+                if k == 1:
+                    x[rng.integers(0, nin):] = 0
+                xin[:] = x
+                lib.fftwf_execute(plan)
+                out = np.empty(nout, np.float32)
+                dsp._rfft(kind, x, out)
+                if not np.array_equal(out.view(np.uint32), xout.view(np.uint32)):
+                    bad.append(f"{kind} 2^{p}")
+                    break
+    return bad
+
+
+def test_bpm(e, dsp, rng) -> int:
+    """fftw.rs against FFTW, then kick + hat patterns at 85-175 BPM, noise, sparse clicks, a held tone, silence, very
+    short signals."""
+    fft = _fft_diffs(dsp, rng)
+    for what in fft:
+        print(f"bpm DIFFERENT: FFT {what}")
+    sr = 44100
+    signals = []
+    for t in range(12):
+        n = int(sr * rng.uniform(8, 45))
+        tt = np.arange(n) / sr
+        kind = t % 4
+        if kind == 0:
+            bpm = rng.uniform(85, 175)
+            x = 0.5 * (np.sin(2 * np.pi * bpm / 60 * tt) > 0.85) * np.sin(2 * np.pi * 55 * tt)
+            x += (np.sin(2 * np.pi * 2 * bpm / 60 * tt + 1) > 0.95) * rng.standard_normal(n) * 0.2
+        elif kind == 1:
+            x = rng.standard_normal(n) * 0.1
+        elif kind == 2:
+            x = np.zeros(n)
+            x[rng.integers(0, n, rng.integers(5, 60))] = 1.0
+        else:
+            x = 0.2 * np.sin(2 * np.pi * rng.uniform(100, 900) * tt)
+        signals.append((f"{n} samples, kind {kind}", x + 0.01 * rng.standard_normal(n)))
+    signals += [("silence", np.zeros(sr * 10)), ("one frame", 0.1 * rng.standard_normal(2048)),
+                ("three seconds", 0.1 * rng.standard_normal(sr * 3))]
+    bad, close = len(fft), 0
+    for name, x in signals:
+        fail, note = _bpm_diff(e, dsp, x.astype(np.float32))
+        bad += bool(fail)
+        close += bool(note) and not fail
+        if fail:
+            print(f"bpm DIFFERENT: {name}: {fail}")
+        elif note:
+            print(f"bpm close: {name}: {note}")
+    print(f"bpm: {len(signals) - bad + len(fft) - close} of {len(signals)} signals identical, {close} within the gate"
+          + (f", {bad} different" if bad else ""))
     return bad
 
 
@@ -339,9 +476,10 @@ def test_signals(steps) -> int:
     if "mel" in steps:
         for n in (1, 255, 256, 257, 511, 512, 513, 16000, 16000 * 30 + 77):
             for scale in (1e-6, 1e-3, 0.3, 1.5):
-                if not _same_mels(e, dsp, (scale * rng.standard_normal(n)).astype(np.float32)):
+                d = _mels_diff(e, dsp, (scale * rng.standard_normal(n)).astype(np.float32))
+                if d and d != "close":
                     bad += 1
-                    print(f"mel DIFFERENT: {n} samples, scale {scale}")
+                    print(f"mel DIFFERENT: {n} samples, scale {scale}: {d}")
     if "effnet" in steps:  # lengths around patch (128 frames, every 62) and batch (64 patches) boundaries
         for k in (-1, 0, 1, 2, 63, 64, 65):
             for d in (-300, -1, 0, 1, 256, 300):
@@ -358,7 +496,9 @@ def test_signals(steps) -> int:
             print("effnet DIFFERENT: near-silent first frame")
     if "key" in steps:
         bad += test_key(e, dsp, rng)
-    print(f"test signals: {'all identical' if not bad else f'{bad} different'}")
+    if "bpm" in steps:
+        bad += test_bpm(e, dsp, rng)
+    print(f"test signals: {'all identical or close' if not bad else f'{bad} different'}")
     if "nets" in steps:
         bad += test_nets()
     if "decode" in steps:
@@ -382,30 +522,45 @@ def _check_file(steps, path: str) -> str | None:
         out.append("loudness")
     if "mono" in steps and not _same_mono(e, stereo, nch):
         out.append("mono mix")
-    if not {"resample", "linear", "mel", "effnet", "nets", "key"} & set(steps):
+    if not {"resample", "linear", "mel", "effnet", "nets", "key", "bpm"} & set(steps):
         return f"DIFFERENT ({', '.join(out)}): {path}" if out else None
     mono = e.MonoMixer()(stereo, nch)  # Essentia's, so each resample check sees the same input
     if "resample" in steps and sr != 44100 and not _same_resample(e, dsp, mono, sr, 44100):
         out.append("resample")
-    if "key" in steps:  # on Essentia's 44.1 kHz mono, so only the key step is compared
-        mono44 = mono if sr == 44100 else e.Resample(inputSampleRate=sr, outputSampleRate=44100, quality=1)(mono)
-        out += _key_segments(e, dsp, np.asarray(mono44, np.float32))
+    notes = []
+    if {"key", "bpm"} & set(steps):  # on Essentia's 44.1 kHz mono, so only the key / BPM step is compared
+        mono44 = np.asarray(mono if sr == 44100 else e.Resample(inputSampleRate=sr, outputSampleRate=44100, quality=1)(mono),
+                            np.float32)
+        for step, diff in (("key", _key_diff), ("bpm", _bpm_diff)):
+            if step in steps:
+                fails, n = _segments(diff, step, e, dsp, mono44, whole=step == "key")
+                out += fails
+                notes += n
     if "linear" in steps and not _same_resample(e, dsp, mono, sr, 16000, linear=True):
         out.append("linear resample")
     varies = None
     if {"mel", "effnet", "nets"} & set(steps):
         mono16 = np.asarray(e.Resample(inputSampleRate=sr, outputSampleRate=16000, quality=4)(mono), np.float32)
-        if "mel" in steps and not _same_mels(e, dsp, mono16):
-            out.append("mel")
+        if "mel" in steps and (d := _mels_diff(e, dsp, mono16)):
+            if d == "close":
+                notes.append("mel")
+            else:
+                out.append(f"mel: {d}")
         if "effnet" in steps:
             r = _same_effnet(e, mono16)
             if r == "noise":
                 varies = f"effnet: differs only where Essentia adds random noise (near-silent frames; its own output varies from run to run there): {path}"
+            elif r == "close":
+                notes.append("effnet")
             elif not r:
                 out.append("effnet")
         if "nets" in steps and a.tensorflow() is not None:
             out += _nets_diff(mono16)
-    return f"DIFFERENT ({', '.join(out)}): {path}" if out else varies
+    if out:
+        return f"DIFFERENT ({', '.join(out)}): {path}"
+    if notes:  # other bits, within TOL or the BPM gate
+        return f"close ({'; '.join(notes)}): {path}"
+    return varies
 
 
 def _is_long(path: str) -> bool:
@@ -421,7 +576,7 @@ def _is_long(path: str) -> bool:
 def files(paths: list[str], steps, workers: int, mix_workers: int) -> int:
     long = [p for p in paths if _is_long(p)]
     groups = [(f"tracks", [p for p in paths if p not in set(long)], workers, 25), ("mixes", long, mix_workers, 1)]
-    bad = done = varies = 0
+    bad = done = varies = close = 0
     for name, group, n, every in groups:
         if not group:
             continue
@@ -432,11 +587,13 @@ def files(paths: list[str], steps, workers: int, mix_workers: int) -> int:
                     print(msg, flush=True)
                     bad += msg.startswith("DIFFERENT")
                     varies += msg.startswith("effnet: differs only where")
+                    close += msg.startswith("close")
                 if i % every == 0 or i == len(group):
                     print(f"[{done + i}/{len(paths)}] files checked", flush=True)
         done += len(group)
-    print(f"files: {len(paths) - bad - varies} of {len(paths)} identical"
+    print(f"files: {len(paths) - bad - varies - close} of {len(paths)} identical"
           + (f", {varies} differ in EffNet only where Essentia's own output is random (near-silent frames)" if varies else "")
+          + (f", {close} close (other bits where our libm is more exact: within the tolerances, the BPM within the gate)" if close else "")
           + (f", {bad} different" if bad else ""))
     return bad
 

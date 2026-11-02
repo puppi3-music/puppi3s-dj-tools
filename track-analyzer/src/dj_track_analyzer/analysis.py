@@ -137,8 +137,9 @@ _dsp = False
 
 
 def dsp():
-    """The Rust module (dsp/) or None. Its functions give Essentia's results bit for bit, faster; checked
-    over the test collection (docs/WINDOWS.md). Without it Essentia does the same work."""
+    """The Rust module (dsp/) or None. Its functions give Essentia's results, faster: bit for bit, or where its
+    maths is more exact (libm calls, dsp/src/math.rs) within a float step; checked over the test collection
+    (docs/WINDOWS.md). Without it Essentia does the same work."""
     global _dsp
     if _dsp is False:
         try:
@@ -799,7 +800,7 @@ def _rust_mels():
 
 def musicnn_mels(x: np.ndarray, streaming: bool = False) -> np.ndarray:
     """Essentia's TensorflowInputMusiCNN on every frame of 16 kHz audio, cut as FrameGenerator(frameSize=512,
-    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (bit for bit; docs/WINDOWS.md
+    hopSize=256, startFromZero=False): (frames, 96) float32. The Rust copy if installed (within a float step; docs/WINDOWS.md
     stage 3), else Essentia. streaming: frames as the streaming FrameCutter inside TensorflowPredictEffnetDiscogs
     gives them (a silent first frame comes out as silence); Rust only."""
     x = np.ascontiguousarray(x, dtype=np.float32)
@@ -1504,11 +1505,20 @@ def rhythm(mono44: np.ndarray, method: str = "multifeature"):
     """(BPM, confidence, beat count). The extractor's own BPM is used as it is: a line fit through
     its beat grid was tried and made things worse (stray off-beat hits in breakdowns counted as
     beats; checked 2026-10-21 against Traktor's BPMs: 96% within 1 BPM raw vs 50% after the fit)."""
-    e = es()
     lo = max(40, min(180, int(BPM_MIN)))
     hi = max(60, min(250, int(BPM_MAX)))
-    bpm, beats, conf, _est, _int = e.RhythmExtractor2013(method=method, minTempo=lo, maxTempo=hi)(mono44)
+    if method == "multifeature" and (m := _rust_rhythm()):
+        bpm, beats, conf = m.rhythm_multifeature(np.ascontiguousarray(mono44, dtype=np.float32), lo, hi)
+    else:
+        bpm, beats, conf, _est, _int = es().RhythmExtractor2013(method=method, minTempo=lo, maxTempo=hi)(mono44)
     return float(bpm), float(conf), len(beats)
+
+
+def _rust_rhythm():
+    """The Rust module if it has rhythm_multifeature (dsp 0.5.0 on): RhythmExtractor2013(multifeature) as Essentia
+    computes it (same beats; confidence within 1e-6: docs/WINDOWS.md stage 6), with its rand() from seed 1 on every call."""
+    m = dsp()
+    return m if m is not None and hasattr(m, "rhythm_multifeature") else None
 
 
 def _rust_key():
@@ -1519,7 +1529,7 @@ def _rust_key():
 
 def key_of(mono44: np.ndarray):
     """Essentia's KeyExtractor(profileType="edma") on 44.1 kHz mono: (key, scale, strength). The Rust copy if installed
-    (bit for bit; docs/WINDOWS.md stage 5), else Essentia."""
+    (same key and scale, strength within 1e-6; docs/WINDOWS.md stage 5), else Essentia."""
     if m := _rust_key():
         key, scale, strength = m.key_edma(np.ascontiguousarray(mono44, dtype=np.float32))
     else:

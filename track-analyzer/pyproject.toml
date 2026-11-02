@@ -3,6 +3,7 @@ name = "dj-track-analyzer"
 version = "0.1.0"
 description = "Local music analysis for DJs: BPM, key/Camelot, genre, mood and Traktor colour, Traktor/Lexicon sync and an MCP server"
 requires-python = ">=3.10,<3.13"
+license = "AGPL-3.0-only"
 dependencies = [
     # Apple Silicon: this build runs on macOS 11+ (newer builds need macOS 15).
     "essentia-tensorflow==2.1b6.dev1177; sys_platform == 'darwin' and platform_machine == 'arm64'",
