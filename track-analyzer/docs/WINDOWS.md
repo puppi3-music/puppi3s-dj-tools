@@ -472,9 +472,11 @@ Paths are stored as `str(Path)` strings and compared as strings. On Windows that
 
 ## Launcher
 
-`Start Puppi3's Track Analyzer.command` is bash. Add a `Start Puppi3's Track Analyzer.bat` (or `.ps1`) that installs uv
-(`powershell -c "irm https://astral.sh/uv/install.ps1 | iex"`), runs `uv sync` and `uv run dj-track-analyzer web`,
-and sets `PYTHONUTF8=1`.
+`Start Puppi3's Track Analyzer.command` is bash. **Done** (2026-11-02, not yet run on Windows):
+`Start Puppi3's Track Analyzer.bat` does the same: opens the page if 8766 already answers, installs uv if missing
+(`irm https://astral.sh/uv/install.ps1 | iex`), `uv sync --inexact`, `uv run dj-track-analyzer web`, with
+`PYTHONUTF8=1`. On Windows on Arm it asks uv for x64 Python (`UV_PYTHON`), as the dsp wheel and TensorFlow have
+x64 builds only. `.gitattributes` checks `.bat` files out with CRLF.
 
 ## Lexicon
 
@@ -501,7 +503,7 @@ The Local API itself (localhost:48624) is the same.
    a run on Windows itself is step 5.)
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
    and then open (it must refuse).
-6. Setup tab (job stop, tool installs), launcher, Lexicon.
+6. Setup tab (job stop, tool installs), launcher (done 2026-11-02), Lexicon.
 
 ## Stopgap: WSL2
 
