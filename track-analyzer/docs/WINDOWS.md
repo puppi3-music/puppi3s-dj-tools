@@ -411,14 +411,20 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
   Traktor Pro 4 collection: `VOLUME="C:" VOLUMEID="f21b7ddb"`, `DIR` in the same `/:` form as on the Mac), so the
   path is `C:\Users\me\Music\x.mp3`. A playlist's `PRIMARYKEY KEY` is VOLUME + DIR + FILE, as on the Mac:
   `C:/:Users/:me/:Music/:x.mp3`. Every lookup between Traktor's entries
-  and `collection.db` paths goes through this, so get it right first; a wrong mapping means no track matches.
-  Network drives (`\\server\share`) need a rule too.
-- **Case.** Windows paths ignore case; the code compares paths as exact strings. If Traktor stores
-  `Music\House` and the folder is `music\house`, the track doesn't match. Compare with `os.path.normcase`
-  (or a casefolded key column) on Windows.
+  and `collection.db` paths goes through this. **Done** (2026-11-02): a drive-letter `VOLUME` gives the Windows
+  path (decided by the VOLUME, not the platform, so a Mac reads a Windows collection the same way); playlists follow,
+  as their keys are looked up through the collection's own entries. All 417 tracks and every playlist entry of the
+  Windows collection map to their `C:\` paths, and the Mac's results are unchanged (old and new code on the Mac
+  collection: identical). Still open: network drives (`\\server\share`); their `VOLUME` form is unknown.
+- **Case.** Windows paths ignore case. Folder checks (`collection.under()`: excluded folders, recordings, the
+  scan's "gone" check, the page's skip list) ignore case and accept `/` or `\` on Windows (done 2026-11-02). Single
+  tracks are still matched as exact strings: both sides come from the file system's own spelling (Traktor's import,
+  the scan's `os.walk` under a `resolve()`d folder), so they agree. A folder renamed only in case after Traktor
+  imported it would not match until Traktor relocates it.
 - **Settings paths.** `traktor.mac_path()` converts the `.tsi`'s colon paths (`Macintosh HD:Users:Shared:…`). Windows
   Traktor writes plain Windows paths (seen 2026-11-02: `C:\Users\me\Music\Traktor\Samples`, sometimes with a
-  trailing `\`; Recordings on `D:\DJing\…`), which `mac_path` now misreads as a volume called `C`. The list
+  trailing `\`; Recordings on `D:\DJing\…`). **Done** (2026-11-02): `mac_path` returns them as they are (trailing
+  `\` dropped), and `recording_dirs` never skips a whole drive. The list
   entry `Browser.Dir.Music` (Type 7) separates its parts with a literal `\b` (`C:\bUsers\bme…`); we don't read it. Used for
   the sample folder (`web.sample_root()`) and the folders `scan --traktor` skips.
 - **Is Traktor running?** **Done** (2026-11-02): `traktor.running_state()` reads `tasklist /FO CSV /NH` on Windows
@@ -426,10 +432,10 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
   `check_closed` treats that like the container: it asks in the terminal or on the page, or needs
   `TRACK_ANALYZER_TRAKTOR_CLOSED=1`, and refuses otherwise. Before, a failed check meant "closed", so on Windows
   every writer would have edited `collection.nml` under a running Traktor, which overwrites it on quit.
-- **NML text.** The NML is read and written with `Path.read_text()` / `write_text()` without an encoding in many
-  places (18 at the time of writing). Python on Windows defaults to the ANSI code page, so accented
-  names would be garbled or the write would fail. Pass `encoding="utf-8"` everywhere, or run Python in UTF-8
-  mode (`PYTHONUTF8=1`, set in the launcher).
+- **NML text.** Python on Windows defaults to the ANSI code page, so accented names would be garbled or the
+  write would fail. **Done**: every NML and `.tsi` read and write passes `encoding="utf-8"`, and so do the tempo
+  view's and Lexicon's state files (which hold paths); jobs started from the page run with `PYTHONUTF8=1`, so
+  their output reaches the page as the UTF-8 it's read as. The launcher should set `PYTHONUTF8=1` too.
 - **Line endings.** `read_text()` turns `\r\n` into `\n` and writing puts `\n` back. Windows Traktor Pro 4 writes LF
   (seen 2026-11-02 in the collection and the `.tsi`; UTF-8, no BOM), so this is safe as it is. Had it been CRLF, every write would change every line ending and the backup/undo SHA-1 check (`.written-sha1`) would
   report every file as changed. Read and write with `newline=""` so the edits stay surgical.
@@ -441,13 +447,12 @@ Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what 
 
 ## Paths inside the code
 
-Paths are stored as `str(Path)` strings and compared as strings. On Windows that means backslashes, and
-several places assume `/`:
+Paths are stored as `str(Path)` strings and compared as strings. On Windows that means backslashes:
 
-- `collection.py` folder matching: `path.startswith(r.rstrip("/") + "/")` (in `_under`, the scan's exclude list,
-  the "gone" check), `jobs.py` skip check (`d + "/"`).
+- Folder matching (`_under`, the scan's exclude list, the "gone" check, `jobs.py`'s skip check) assumed `/`.
+  **Done** (2026-11-02): all go through `collection.under()`.
 - `collection._missing_for_good()` knows macOS `/Volumes/<disk>` and Linux `/media`, `/run/media`, `/mnt` for
-  unplugged drives. Add drive letters: a missing `E:\` drive means unplugged, not deleted. Network shares too.
+  unplugged drives. **Done**: on Windows a missing drive letter or network share means unplugged, not deleted.
 - `collection.nfc()` composes accented names only where a file has that name (NTFS doesn't normalise),
   so it already behaves on Windows.
 - `clips.py` puts previews in `/tmp` when it exists, else the system temp folder: fine.
@@ -491,7 +496,9 @@ The Local API itself (localhost:48624) is the same.
    `Browser.Dir.*` forms and line endings. Settle every **verify** above from real files. (Done 2026-11-02 from a
    Traktor Pro 4.4.2 install; still open: OneDrive Documents, network drives, MODIFIED seconds.)
 4. Path mapping (`location_paths`, `mac_path`, collection search), case-insensitive matching, the `/` assumptions,
-   drive letters for unplugged drives, UTF-8 and `newline=""` on every NML read and write.
+   drive letters for unplugged drives, UTF-8 and `newline=""` on every NML read and write. (Done 2026-11-02;
+   `newline=""` not needed, Traktor writes LF. Tested on the Mac with the Windows files and Windows' path rules;
+   a run on Windows itself is step 5.)
 5. Run `traktor --dry-run`, then a real write + `traktor --undo` on a copy of the collection, with Traktor closed
    and then open (it must refuse).
 6. Setup tab (job stop, tool installs), launcher, Lexicon.

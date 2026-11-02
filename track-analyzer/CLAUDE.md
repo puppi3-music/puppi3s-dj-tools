@@ -92,7 +92,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   otherwise become ~100 Smartlists). `track_info()` reads Traktor's TEMPO BPM and MUSICAL_KEY (0-11 = C..B major,
   12-23 = C..B minor; INFO KEY is Open Key display text). Also `collection_tracks()` for `scan --traktor` and
   `recording_dirs()` (skips recordings + samples; `mac_path()` converts the .tsi's colon-style paths like
-  `"Macintosh HD:Users:Shared:Traktor:Samples:"`).
+  `"Macintosh HD:Users:Shared:Traktor:Samples:"`; Windows Traktor's plain `C:\…` paths pass through).
+  `location_paths()`: a drive-letter VOLUME (`"C:"`, Windows Traktor) gives `C:\…`; folder checks go through
+  `collection.under()` (any case and `/` or `\` on Windows).
 - `colors.py`: `colors train|review|explain|apply`: learns a Traktor colour scale from already-coloured tracks.
 - Starter models (`src/dj_track_analyzer/starter/{colors,cues}.joblib`, built by `scripts/make_starter.py` from the
   developer's trained models with every track path and the collection path dropped, `starter: True`):

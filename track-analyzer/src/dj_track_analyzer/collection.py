@@ -468,10 +468,16 @@ def write_tags(p: Path, row: dict, fields: list[str], con: sqlite3.Connection | 
         return str(err)
 
 
+def under(path: str, folder: str) -> bool:
+    """path is the folder or inside it. On Windows "\\" or "/" and any case, as Windows treats them."""
+    p, d = os.path.normcase(path), os.path.normcase(folder)
+    return p == d or p.startswith(d.rstrip("/" + os.sep) + os.sep)
+
+
 def _under(path: str, roots: list[str] | None) -> bool:
     if not roots:
         return True
-    return any(path == r or path.startswith(r.rstrip("/") + "/") for r in roots)
+    return any(under(path, r) for r in roots)
 
 
 def _refresh_stat(con: sqlite3.Connection, path: str) -> None:
@@ -642,6 +648,9 @@ def _missing_for_good(path: str) -> bool:
     """The file is gone, and not just on a drive that isn't plugged in right now."""
     if os.path.exists(path):
         return False
+    if sys.platform == "win32":  # a drive letter (or network share) that isn't there now: unplugged
+        drive = os.path.splitdrive(path)[0]
+        return not drive or os.path.isdir(drive + os.sep)
     parts = Path(path).parts
     if len(parts) > 2 and parts[1] == "Volumes":  # macOS: another drive
         return os.path.isdir(os.path.join(*parts[:3]))
@@ -820,12 +829,12 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
         skip_dirs += traktor.recording_dirs(traktor_nml)
     if skip_dirs:
         before = len(files)
-        files = [f for f in files if not any(str(f) == d or str(f).startswith(d.rstrip("/") + "/") for d in skip_dirs)]
+        files = [f for f in files if not any(under(str(f), d) for d in skip_dirs)]
         if before - len(files):
             log(f"Skipping {before - len(files)} files in excluded folders (recordings, samples, --exclude): "
                 + ", ".join(skip_dirs))
         # and drop results for those folders from earlier scans, so they don't show up in searches
-        old = [p for p in known_all(con) if any(p.startswith(d.rstrip("/") + "/") for d in skip_dirs)]
+        old = [p for p in known_all(con) if any(under(p, d) and p != d for d in skip_dirs)]
         if old:
             con.executemany("DELETE FROM tracks WHERE path = ?", [(x,) for x in old])
             con.commit()
@@ -844,8 +853,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     # Forget files that were deleted or moved out of the scanned folders.
     roots_abs = [str(Path(os.path.expanduser(r)).resolve()) for r in roots]
     present = {str(f) for f in files}
-    gone = [path for path in known_all(con) if any(path.startswith(r.rstrip("/") + "/") or path == r for r in roots_abs)
-            and path not in present]
+    gone = [path for path in known_all(con) if any(under(path, r) for r in roots_abs) and path not in present]
     # tracks scanned before that no longer exist anywhere (a drive that isn't plugged in doesn't count)
     gone += [path for path in known_all(con) if path not in present and path not in gone and _missing_for_good(path)]
     if gone:

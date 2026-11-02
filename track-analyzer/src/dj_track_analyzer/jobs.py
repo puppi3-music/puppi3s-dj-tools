@@ -185,7 +185,8 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
         cmd = args
     else:
         cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
-    env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1",
+           "PYTHONUTF8": "1"}  # Windows: the job's output and files in UTF-8, as read here (not the ANSI code page)
     if action in TOUCHES_TRAKTOR and not dry_run and traktor.running_state() is None:
         traktor.check_closed()  # ask the page now, not the job later
         env[traktor.CLOSED_ENV] = "1"
@@ -350,7 +351,7 @@ def _traktor_side(nml: Path) -> dict:
     _, files, missing = traktor.collection_tracks(str(nml))
     skip = traktor.recording_dirs(str(nml))
     files = [str(f) for f in files if not collection.sync_conflict(f)
-             and not any(str(f).startswith(d + "/") for d in skip)]
+             and not any(collection.under(str(f), d) for d in skip)]
     text = nml.read_text(encoding="utf-8")
     coloured = len(re.findall(r'<INFO\b[^>]*\sCOLOR="[1-7]"', text))
     g = cues.grids(str(nml))

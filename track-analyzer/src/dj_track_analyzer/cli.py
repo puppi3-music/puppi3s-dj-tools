@@ -25,7 +25,7 @@ def pick_library(args) -> None:
     from .traktor import TEMPO_STATE
 
     state = HOME / TEMPO_STATE
-    bpm = json.loads(state.read_text()).get("bpm") if state.exists() else None
+    bpm = json.loads(state.read_text(encoding="utf-8")).get("bpm") if state.exists() else None
     if args.cmd in VIEW_CMDS and bpm and not args.native:
         from . import tempo
 

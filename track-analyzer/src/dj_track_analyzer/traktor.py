@@ -22,6 +22,7 @@ import contextlib
 import contextvars
 import glob
 import html
+import ntpath
 import os
 import re
 import shutil
@@ -115,8 +116,8 @@ def refuse_if_tempo_view(path: Path) -> None:
     from .analysis import HOME
 
     state = HOME / TEMPO_STATE
-    if state.exists() and json.loads(state.read_text()).get("collection") == str(path):
-        bpm = json.loads(state.read_text()).get("bpm")
+    if state.exists() and json.loads(state.read_text(encoding="utf-8")).get("collection") == str(path):
+        bpm = json.loads(state.read_text(encoding="utf-8")).get("bpm")
         raise SystemExit(f"The {bpm:g} BPM view is loaded in this Traktor collection. "
                          "Switch back first: uv run dj-track-analyzer tempo native")
 
@@ -213,8 +214,15 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+WINDOWS_DRIVE = re.compile(r"[A-Za-z]:")
+
+
 def location_paths(loc: dict) -> list[str]:
-    """Possible macOS paths for a Traktor LOCATION (boot volume, or /Volumes/<name> for others)."""
+    """Possible paths for a Traktor LOCATION: on a Mac the boot volume or /Volumes/<name>; Windows Traktor's VOLUME is
+    the drive letter ("C:"), the same DIR form ("/:Users/:me/:") then gives C:\\Users\\me\\."""
+    vol = loc.get("VOLUME", "")
+    if WINDOWS_DRIVE.fullmatch(vol):
+        return [vol + loc.get("DIR", "").replace("/:", "\\") + loc.get("FILE", "")]
     d = loc.get("DIR", "").replace("/:", "/")
     rel = d + loc.get("FILE", "")
     out = [rel]
@@ -392,12 +400,15 @@ def install_smartlists(text: str, genres: list[str], folder: str = FOLDER_NAME) 
 
 def mac_path(value: str) -> str | None:
     """Convert Traktor's settings-file paths ("Macintosh HD:Users:me:Music:Recordings:") to
-    normal ones ("/Users/me/Music/Recordings"). Plain "/..." paths are returned as they are."""
+    normal ones ("/Users/me/Music/Recordings"). Plain "/..." paths are returned as they are, and so are
+    Windows Traktor's ("C:\\Users\\me\\Music\\Traktor\\Samples\\", without the last "\\")."""
     v = html.unescape(value or "").strip()
     if not v:
         return None
     if v.startswith("/"):
         return v.rstrip("/") or "/"
+    if WINDOWS_DRIVE.match(v[:2]) and v[2:3] in ("\\", "/") or v.startswith("\\\\"):
+        return ntpath.normpath(v)
     parts = [x for x in v.split(":") if x != ""]
     if len(parts) < 2:
         return None
@@ -433,9 +444,9 @@ def recording_dirs(nml: str | None = None, settings: tuple[str, ...] = SKIP_SETT
             for name in settings:
                 m = re.search(rf'<Entry\s+Name="{re.escape(name)}"[^>]*\sValue="([^"]*)"', text)
                 d = mac_path(m.group(1)) if m else None
-                if d and d != "/":
+                if d and d != "/" and not re.fullmatch(r"[A-Za-z]:\\?", d):  # never a whole drive
                     dirs.add(d)
-    return sorted(d.rstrip("/") for d in dirs)
+    return sorted(os.path.normpath(d) for d in dirs)  # on Windows glob keeps the "/" of "~/Documents/…"; scans use "\\"
 
 
 def setting(collection: Path, name: str) -> str | None:
