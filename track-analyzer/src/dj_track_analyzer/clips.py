@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +19,12 @@ import numpy as np
 
 from .tracklist import _seconds, fmt_time
 
+
+def _tool(name: str) -> str:
+    from .analysis import find_tool
+
+    return find_tool(name) or name  # on PATH or Homebrew's / winget's folders (analysis.TOOL_DIRS)
+
 PREVIEW_HEIGHT, PREVIEW_BITRATE = 720, "4M"
 MOTION_W, MOTION_H, MOTION_FPS = 64, 36, 2  # movement: frame-to-frame change of a tiny greyscale copy
 
@@ -27,12 +32,12 @@ MOTION_W, MOTION_H, MOTION_FPS = 64, 36, 2  # movement: frame-to-frame change of
 @cache
 def _encoder() -> tuple[str, ...]:
     """Hardware H.264 (VideoToolbox) when this ffmpeg has it, else software x264."""
-    out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
+    out = subprocess.run([_tool("ffmpeg"), "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
     return ("-c:v", "h264_videotoolbox") if "h264_videotoolbox" in out else ("-c:v", "libx264", "-preset", "fast")
 
 
 def _duration(video: Path) -> float:
-    out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
+    out = subprocess.run([_tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(video)],
                          capture_output=True, text=True)
     try:
         return float(out.stdout.strip())
@@ -91,7 +96,7 @@ def _cut(video: Path, start: float, end: float, dest: Path, height: int, bitrate
                 "-map", "[m]", "-f", "rawvideo", "pipe:1"]
     else:
         outs = ["-vf", f"scale=-2:{height},fps=30", *clip]
-    cmd = ["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", *hwdec, "-i", str(video),
+    cmd = [_tool("ffmpeg"), "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{end - start:.3f}", *hwdec, "-i", str(video),
            *outs]
     done = subprocess.run(cmd, capture_output=True)
     if done.returncode:
@@ -138,8 +143,9 @@ def _label(c: dict) -> str:
 
 
 def main(args) -> None:
-    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
-        from .analysis import install_hint
+    from .analysis import find_tool, install_hint
+
+    if not find_tool("ffmpeg") or not find_tool("ffprobe"):
 
         raise SystemExit(f"clips needs ffmpeg: {install_hint('ffmpeg')}")
     video, analysis = Path(args.video).expanduser(), Path(args.analysis).expanduser()

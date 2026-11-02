@@ -1,4 +1,5 @@
-"""Translate the FFTW 3.3.10 scalar codelets of the 512-point real FFT into Rust (src/fftw_codelets.rs).
+"""Translate the FFTW 3.3.10 scalar codelets of the real FFTs the Rust code ports (forward 512 and 4096 points, and every
+power of two the BPM's autocorrelation needs, forward and inverse) into Rust (src/fftw_codelets.rs).
 
     curl -LO https://www.fftw.org/fftw-3.3.10.tar.gz   # md5 8ccbf6a5ea78a16dbc3e1306e234cc5c
     tar xzf fftw-3.3.10.tar.gz
@@ -14,7 +15,17 @@ import re
 import sys
 from pathlib import Path
 
-CODELETS = [("r2cf", "r2cf_16"), ("r2cf", "r2cf_32"), ("r2cf", "r2cfII_32"), ("hc2c", "hc2cf_32")]
+# (kind, name): the forward codelets live in rdft/scalar/r2cf, the inverse ones (r2cb*, hc2cb*, hb2*) in rdft/scalar/r2cb,
+# the complex ones (n1, t2) in dft/scalar/codelets. hc2c: rdft2's twiddle step (Rp, Ip, Rm, Im); hc2hc: rdft's (cr, ci, in
+# halfcomplex order); n1: a complex DFT; t2: its twiddle step. From 2^20 points FFTW's real plans go through complex DFTs.
+CODELETS = ([("r2cf", f"r2cf_{n}") for n in (2, 4, 8, 16, 32, 64, 128)] + [("r2cf", "r2cfII_16"), ("r2cf", "r2cfII_32")]
+            + [("hc2c", "hc2cf_32"), ("hc2hc", "hf2_16"), ("hc2hc", "hf2_32")]
+            + [("r2cb", f"r2cb_{n}") for n in (2, 4, 8, 16, 32, 64, 128)]
+            + [("r2cb", f"r2cbIII_{n}") for n in (8, 16, 32)]
+            + [("hc2c", f"hc2cb_{n}") for n in (8, 16, 32)] + [("hc2hc", "hb2_16"), ("hc2hc", "hb2_32")]
+            + [("r2cf", "r2cfII_2"), ("r2cf", "r2cfII_4"), ("r2cb", "r2cbIII_2"), ("r2cb", "r2cbIII_4")]
+            + [("hc2c", "hc2cfdft_2"), ("hc2c", "hc2cfdft_4"), ("hc2c", "hc2cbdft_2"), ("hc2c", "hc2cbdft2_4")]
+            + [("n1", "n1_32"), ("t2", "t2_16"), ("t2", "t2_32")])
 
 
 def fma_section(src: str, variant: str = "plain") -> str:
@@ -265,11 +276,30 @@ def translate(kind, name, header, body):
             rs.append(f"*{arr.lower()}.offset({idx}) = {v(val)};")
     kps = "\n".join(f"    const {k}: f32 = {val.lstrip('+')}_f64 as f32;" for k, val in consts)
     stmts_rs = "\n".join("            " + s for s in rs)
-    if kind == "r2cf":
+    if kind in ("r2cf", "r2cb"):
         sig = (f"pub unsafe fn {name}(mut r0: *mut f32, mut r1: *mut f32, mut cr: *mut f32, mut ci: *mut f32,\n"
                f"        rs: isize, csr: isize, csi: isize, v: isize, ivs: isize, ovs: isize)")
+        r, c = ("ivs", "ovs") if kind == "r2cf" else ("ovs", "ivs")  # r2cb reads the complex side, so it steps by ivs
         lp = ("    let mut i = v;\n    while i > 0 {\n" + stmts_rs.replace("            ", "        ") +
-              "\n        i -= 1; r0 = r0.offset(ivs); r1 = r1.offset(ivs); cr = cr.offset(ovs); ci = ci.offset(ovs);\n    }")
+              f"\n        i -= 1; r0 = r0.offset({r}); r1 = r1.offset({r}); cr = cr.offset({c}); ci = ci.offset({c});\n    }}")
+    elif kind == "n1":
+        sig = (f"pub unsafe fn {name}(mut ri: *const f32, mut ii: *const f32, mut ro: *mut f32, mut io: *mut f32,\n"
+               f"        is: isize, os: isize, v: isize, ivs: isize, ovs: isize)")
+        lp = ("    let mut i = v;\n    while i > 0 {\n" + stmts_rs.replace("            ", "        ") +
+              "\n        i -= 1; ri = ri.offset(ivs); ii = ii.offset(ivs); ro = ro.offset(ovs); io = io.offset(ovs);\n    }")
+    elif kind == "t2":
+        step = int(re.search(r"W = W \+ (\d+)", loop.split(";")[-1]).group(1))
+        assert f"W = W + (mb * {step})" in loop
+        sig = (f"pub unsafe fn {name}(mut ri: *mut f32, mut ii: *mut f32, w: *const f32, rs: isize, mb: isize, me: isize, ms: isize)")
+        lp = (f"    let mut w = w.offset(mb * {step});\n    let mut m = mb;\n    while m < me {{\n" +
+              stmts_rs.replace("            ", "        ") +
+              f"\n        m += 1; ri = ri.offset(ms); ii = ii.offset(ms); w = w.offset({step});\n    }}")
+    elif kind == "hc2hc":
+        step = int(re.search(r"W = W \+ (\d+)", loop.split(";")[-1]).group(1))
+        sig = (f"pub unsafe fn {name}(mut cr: *mut f32, mut ci: *mut f32, w: *const f32, rs: isize, mb: isize, me: isize, ms: isize)")
+        lp = (f"    let mut w = w.offset((mb - 1) * {step});\n    let mut m = mb;\n    while m < me {{\n" +
+              stmts_rs.replace("            ", "        ") +
+              f"\n        m += 1; cr = cr.offset(ms); ci = ci.offset(-ms); w = w.offset({step});\n    }}")
     else:
         step = int(re.search(r"W = W \+ (\d+)", loop.split(";")[-1]).group(1))
         sig = (f"pub unsafe fn {name}(mut rp: *mut f32, mut ip: *mut f32, mut rm: *mut f32, mut im: *mut f32, w: *const f32,\n"
@@ -286,7 +316,11 @@ def main():
              "// Matteo Frigo and Massachusetts Institute of Technology, GPL-2.0-or-later. Do not edit by hand.",
              "#![allow(clippy::all, non_snake_case, unused_mut, unused_variables, unsafe_op_in_unsafe_fn)]", ""]
     for kind, name in CODELETS:
-        sec = fma_section((src / "rdft/scalar/r2cf" / f"{name}.c").read_text())
+        if kind in ("n1", "t2"):
+            path = src / "dft/scalar/codelets" / f"{name}.c"
+        else:
+            path = src / "rdft/scalar" / ("r2cb" if name.startswith(("r2cb", "hc2cb", "hb2")) else "r2cf") / f"{name}.c"
+        sec = fma_section(path.read_text())
         header, body = body_of(sec, name)
         parts.append(translate(kind, name, header, body))
     out.write_text("\n".join(parts))

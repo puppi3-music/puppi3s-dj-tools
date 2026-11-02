@@ -51,14 +51,16 @@ Every command runs from the project folder and starts with `uv run dj-track-anal
 
 ### The easy way: no Terminal (Mac)
 
-On Linux, see [Linux](#linux) below: the same launcher runs from a terminal.
+On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-click. On Linux, see [Linux](#linux): the same launcher runs from a terminal.
 
-1. Download or clone this project and open its folder in Finder.
+1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), unzip it, and open the folder in Finder. Or clone this project and open its `track-analyzer` folder.
 2. Double-click **`Start Puppi3's Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
 3. A Terminal window opens and does the install for you: it installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
-4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew, if you have it) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
+4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew on a Mac, if you have it; on Windows with winget and Rubber Band's own build) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
 
 Keep the Terminal window open while you use the page; close it to stop. Double-click again any time: if the page is already running, it just opens it.
+
+**Updating.** From a zip: unzip the new release, then move the `data` folder from your old copy into the new one (it holds your scans, models and training), and double-click the launcher in the new folder. From a clone: `git pull`, then double-click the launcher. Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ### The Terminal way
 
@@ -72,7 +74,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 2. Go to the project folder (wherever you cloned or unpacked it)
 cd ~/puppi3s-dj-tools/track-analyzer
 
-# 3. Install everything: Python 3.11 + Essentia, about 400 MB
+# 3. Install everything: Python 3.11, TensorFlow and the rest, about 1 GB
 uv sync
 
 # 4. Download the models: a few hundred MB, mostly MAEST
@@ -92,12 +94,8 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 - **Model server unreachable?** `setup` tries a few ways, then prints a download link for each file it couldn't get. Open them in a browser, drop the files into `data/models/`, and run `setup` again to confirm.
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
-- **Requirements.** Apple Silicon with macOS 11 or newer, an Intel Mac with macOS 14 or newer, or Linux on x86_64 (see below). Not Windows yet: [docs/WINDOWS.md](docs/WINDOWS.md) lists what a port needs.
-- **Faster loudness, resampling and model input.** The install includes a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases) that does loudness and resampling 5–7 times faster and the models' mel input faster too (EffNet 1.2–1.8x), with exactly Essentia's results. Nothing to set up; no Rust needed.
-- **Faster decoding (optional).** `uv sync --extra decode` adds PyAV (current FFmpeg), which reads audio files with
-  exactly Essentia's samples, 1.15x faster for MP3 and 2.4x for FLAC, using a third of the memory on long mixes. It needs
-  macOS 14 or newer on Apple Silicon. A plain `uv sync` removes it again (`Start Puppi3's Track Analyzer.command` runs
-  `uv sync --inexact`, which keeps it).
+- **Requirements.** Apple Silicon with macOS 14 or newer, an Intel Mac with macOS 11 or newer, Windows 10 or 11 on x64 (see below), or Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below).
+- **How it measures.** The signal processing (loudness, resampling, the models' mel input, key, BPM) is Essentia's, ported to Rust in a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases): 5–7 times faster, and the same results on every platform. They are Essentia's, or a millionth or less off where its maths is more exact. Audio is decoded with current FFmpeg (PyAV) and the models run on TensorFlow 2.15, the version Essentia used. Nothing to set up; no Rust needed.
 - **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
   which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
   "synth", "no bass" or "drums + bass only", and whether a loop has a kick comes from the drum stem (no bassline in the
@@ -106,11 +104,28 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 ### Linux
 
-Everything that works on your music files works on Linux (x86_64 only; Essentia has no Linux ARM build): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
+Everything that works on your music files works on Linux (x86_64 only: the Rust module is built for that): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
-### Docker (Linux, or Windows from a WSL2 terminal) — experimental
+### Windows
+
+Everything works on Windows 10 and 11 (x64), Traktor and Lexicon included, with the same results as on a Mac.
+
+1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), right-click it, choose **Extract All**, and open the folder. Or clone this project and open its `track-analyzer` folder.
+2. Double-click **`Start Puppi3's Track Analyzer.bat`**. Windows may warn that it's from the internet: choose **More info → Run anyway**.
+3. A Command Prompt window installs **uv**, Python and the analyzer the first time (a few minutes), then the web page opens in your browser. Keep the window open while you use the page; close it to stop.
+4. On the **Setup** tab, **Install with winget** installs ffmpeg, and **Install** under Rubber Band downloads Rubber Band's own Windows build (4.0.0) into the analyzer's `data` folder. Nothing else on your PC changes.
+
+Good to know:
+
+- Scans run at below-normal priority, so the PC stays usable while one uses every core; whatever you're doing comes first.
+- Traktor's collection is found in `Documents\Native Instruments\Traktor <version>`, as on a Mac. Writes to Traktor refuse while Traktor (`Traktor Pro 4.exe`) is running, as on a Mac.
+- A drive letter that isn't plugged in keeps its tracks in the database, as an unplugged drive does on a Mac.
+- Paths longer than 260 characters need Windows' long path support turned on.
+- Windows on Arm runs the x64 build emulated (untested).
+
+### Docker (Linux) — experimental
 
 > **Experimental.** The Docker version is new and much less tested than the launcher above. Back up your Traktor collection (`Documents/Native Instruments/Traktor <version>/collection.nml`) before writing to it from Docker, check each change in Traktor, and prefer the launcher where you can. Problems: open an issue.
 
@@ -125,7 +140,7 @@ docker compose down                      # stop it
 - `MUSIC` is mounted at the same path inside the container, so paths in the database are your real ones. Data (database, models, backups) goes in `data-docker/` (or `TRACK_ANALYZER_DATA`), separate from a native install's `data/`.
 - `TRAKTOR_DIR` mounts the folder holding `Traktor <version>` (your `Documents/Native Instruments`). The container can't see whether Traktor is open, so every write to Traktor asks you to confirm it's closed: the page asks in a dialog, a command asks y/N in a terminal, and without a terminal it needs `TRACK_ANALYZER_TRAKTOR_CLOSED=1`. Traktor on Windows stores `C:` paths, which the analyzer doesn't read yet ([docs/WINDOWS.md](docs/WINDOWS.md)): until then, scan folders rather than `scan --traktor`.
 - The page answers only `127.0.0.1` and `localhost`. To open it from another device, publish the port on more than localhost in `compose.yaml` and list the names in `TRACK_ANALYZER_HOSTS`.
-- Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster, and results come from the Mac's own Essentia build.
+- Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster.
 - `docker compose run --rm test` checks everything end to end on a few synthetic tracks (`scripts/make_fixtures.py`, `scripts/docker_smoke.py`), as CI does.
 
 ### Checking a recorded mix
@@ -138,16 +153,23 @@ Traktor saves a history file for every session (`Documents/Native Instruments/Tr
 track played, on which deck, when it started. Its own recordings are named after the time they started, so
 `--tracklist` finds the right history file and places each track in the recording. For a recording with
 another name add `--start 22:00:00`; to use a particular history file, pass its path after `--tracklist`.
-If no history file covers the recording, it says so: Traktor writes the file when it closes.
+If no history file covers the recording (Traktor writes it when it closes), or the recording's start can't be told
+(another app's recording without `--start`), the mix is analysed without the check and the result says why, so
+`--tracklist` works on any file. A history file you name, or `--chapters`, has to work, or it stops.
 
 After the JSON, a mix gets a readable summary (genre, tempo, loudness, mood, key lock, a table of the tracks
 with their keys and genres, and the timeline's genres); `--json-only` leaves it out. In the JSON, under
 `tracklist`, per track:
 
-- **Key:** Traktor's key against the key heard in the middle of the track's main stretch (from its start to
+- **Key:** Traktor's key against the key heard (by the same key CNN as your library) in the middle of the track's main stretch (from its start to
   the next track's start). Long blends and effects are normal, so the tool measures how long after Traktor
   logs a start a track takes over (`blend_lag_seconds`) as the delay at which most keys match. A mismatch
-  can still be the other deck; a track with under 30 s of its own gets no verdict.
+  can still be the other deck; a track with under 30 s of its own gets no verdict. `matches_per_lag` shows how
+  clearly that lag won. `library_camelot` is our key of the track alone; `transition` rates the change from the
+  track before, key to key as heard (same key, one step, two steps or clash on the Camelot wheel), totalled in
+  `transitions`.
+- **Mood:** `heard_mood` is the track's mood as played (its stretch of the mix), next to `own_mood` (the track
+  alone at its own tempo) and, with a tempo view near the tempo played, `view_mood` and `view_genre`.
 - **Key lock:** history files don't record it. It's taken as on, unless the keys fit the pitch-shifted
   keys (key lock off) clearly better.
 - **Tempo:** the track's own BPM, the BPM it was played at and the change (`speed`).
@@ -221,14 +243,14 @@ uv run dj-track-analyzer scan --traktor ~/Music/Incoming   # both
 uv run dj-track-analyzer web
 ```
 
-Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac does the same). Eight tabs:
+Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac, or `Start Puppi3's Track Analyzer.bat` on Windows, does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts. Click a bar, column or tile to list those tracks.
 - **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both); the filter **Our key doesn't mix with Traktor's** lists the tracks where the two keys don't mix, to check by ear. Each check in the **All tracks** menu shows how many tracks it would list with the other filters you've set. **⇤ Wide** widens the panel for the waveform and cues. A page refresh keeps your filters, sort, scroll position and the open track.
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
-- **Mixes**: saved `analyze` results of recorded mixes, with the timeline, tracklist check, clip suggestions and chapters.
+- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness; click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist), tracklist check (with each track's mood as played and the key change from the track before), clip suggestions and chapters; **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another (a mix asked for while one is analysed waits its turn; **Stop all** empties the queue; the bar says when one of them failed). **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**; **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
@@ -259,6 +281,7 @@ The writers are there too, each with **Preview…** first (the command's `--dry-
 | Hype in Traktor's Comment | `hype --traktor` | `traktor --undo`, or **Take it out…** (`hype --traktor --remove`) |
 | Colour new tracks | `colors apply` | `traktor --undo` |
 | Recolour clear disagreements | `colors review --apply --yes` (also on the Colours tab) | `traktor --undo` |
+| Recolour or keep the listed tracks you pick | Mark rows **Approve** / **Keep** in the Colours tab (or tick several), then **Write…** (`colors review --apply --planned`; one by one: `--track PATH`) | `traktor --undo` |
 | Load into Traktor (tempo view) | `tempo load` (`--lexicon` when ticked; also on the Tempo view tab) | `tempo native` |
 | Undo the last change to Traktor | `traktor --undo` (refuses if Traktor saved since; no `--force` from the page) | |
 
@@ -270,6 +293,15 @@ The Traktor writers refuse while Traktor is open, exactly as in a terminal; the 
 uv run dj-track-analyzer hold                                # list held tracks
 uv run dj-track-analyzer hold --genre "Artist - Title"       # hold the genre of tracks whose path contains this
 uv run dj-track-analyzer hold --colour "Title" --release     # take one off the colour hold list
+```
+
+**Edit a track by hand.** Press **✎ Edit** at the top right of a track's panel: its BPM, key (Camelot), colour, genre and hype become fields where they're shown. **Save** writes colour, key and genre into Traktor too (quit Traktor first; a backup is made, and **Undo** in the panel puts the track back; **Cancel** leaves it as it was), plus the Hype in Traktor's Comment where the Comment already has one from `hype --traktor`. A colour you set is kept always and counts as yours when the colour model trains; a genre you set is held. Genre, hype and BPM stay yours when the analysis runs again (`scan`, `regenre`, hype scoring); **↺** next to one goes back to the analysis. A BPM you set changes what the analyzer uses (search, mix suggestions, genre rules, sets, tempo views) but not Traktor: Traktor's BPM goes with its beat grid, which the analyzer never writes. Editing works in the normal library, and colour, key and genre are refused while a tempo view is loaded in Traktor. From a terminal:
+
+```bash
+uv run dj-track-analyzer edit "Title" --colour Magenta --key 8A --hype 3 --dry-run   # show what would change
+uv run dj-track-analyzer edit "Title" --genre "Progressive Trance" --bpm 128
+uv run dj-track-analyzer edit "Title" --clear genre --clear hype                     # back to the analysis
+uv run dj-track-analyzer edit                                                        # list tracks edited by hand
 ```
 
 **Cue points and a mix loop, learned from yours.** The analyzer can learn where you put cues: it measures every bar on Traktor's own beat grid (loudness, bass, kick, brightness, timbre) and learns from the tracks you cued yourself which bars you cue and where you put your mix loop. Each track's panel in the web page then shows its waveform (coloured like DJ software: lows red, mids green, highs blue, ticks every 8 bars) with your cues on top and the suggestions below, named by what happens there (Intro, Drop, Breakdown, Kick in, Bass in, Lift, Outro, Phrase), plus a suggested loop. Zoom in (+, pinch or ctrl+scroll) down to a single beat: close in, the waveform is cut from the audio at the screen's own resolution, down to single samples.
@@ -314,7 +346,7 @@ On the test collection 403 of 473 grids were on the kicks (median 0 ms), 62 off,
 
 **Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From a terminal: `uv run dj-track-analyzer web --export set.html`.
 
-The Mixes and Files tabs read `logs/`. Save a mix's analysis there with `analyze <mix> --tracklist --json-only > logs/<name>.json`, or drop a JSON file onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
+The Mixes and Files tabs read `logs/`. Analyse a mix from the Mixes tab (**Analyse a mix…**: one of Traktor's recordings, or drop any mix file on it; saved as `logs/<recording>.json`, replacing an earlier analysis of it), save one there yourself with `analyze <mix> --tracklist --out logs/<name>.json`, or drop a JSON file saved elsewhere onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
 
 ---
 
@@ -376,6 +408,7 @@ Each run recreates that folder, so keep customised copies of a Smartlist outside
 | `--undo` | Restore `collection.nml` from before the last run; run again to step back further | |
 | `--undo --force` | Restore even though Traktor saved the collection since (loses what Traktor saved: plays, cues, edits) | |
 | `--smartlists-only` / `--no-smartlists` | Only rebuild the Smartlists / only update genres | |
+| `--genres-from-analysis` | Genres straight from the analysis (as `tag --multi` picks them; a genre set by hand as typed), leaving your files' tags as they are. Traktor may bring back a file's own genre when it re-reads that file's tags; writing again fixes it. On the page: "only in Traktor" | |
 | `--no-colors` | Don't colour uncoloured tracks | |
 | `--color-min-confidence 0.3` | Only colour the more reliable guesses | 0 |
 | `--overwrite-colors` | Also replace colours you set yourself. Not recommended | off |
@@ -453,6 +486,9 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `--min-confidence` | `apply` / `review --apply` | Only set guesses at least this reliable | 0 / 0.75 |
 | `--min-gap 2.5` | `review --apply` | How many colours away from yours a track must sound | 2.5 |
 | `--yes` | `review --apply` | Recolour every qualifying track without asking about each one | off |
+| `--track PATH` | `review --apply` | Recolour only this track (full path, as `review` lists it), whatever the thresholds, without asking; repeat for several | off |
+| `--planned` | `review --apply` | Write what's marked in the web page's Colours tab: recolour the approved tracks, keep the kept ones always | off |
+| `--refresh-views` | `train` | Afterwards redo every tempo view's colours with the new model (`tempo refresh`) | off |
 | `--kept` | `review` | List the tracks on your keep-always list | off |
 | `--keep TEXT` | `review --kept` | Put the coloured tracks whose path contains TEXT on the keep-always list (10 matches at most) | — |
 | `--forget TEXT` | `review --kept` | Take tracks whose path contains TEXT off the keep-always list | — |
@@ -693,7 +729,7 @@ In LM Studio open the **Program** tab in the right sidebar, choose **Install →
 }
 ```
 
-- On Linux the paths start with `/home/YOUR_NAME/` instead. `which uv` in a terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
+- On Linux the paths start with `/home/YOUR_NAME/` instead. On Windows `command` is `C:\\Users\\YOUR_NAME\\.local\\bin\\uv.exe` (`where uv` in a Command Prompt gives it), with every `\` written as `\\` in JSON. `which uv` in a terminal gives the exact path for `command`; LM Studio doesn't always see your shell's PATH.
 - Use a model that's good at tool calling, such as Qwen3, Mistral Small or gpt-oss.
 
 ### Open WebUI
@@ -770,8 +806,9 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | Command | What it does | Changes |
 |---|---|---|
 | `setup [--no-maest]` | Download or check the models | model files |
-| `analyze <file> [--segments 60] [--json-only]` | One track as JSON; mixes get a timeline (`--segments`: step in seconds) and a readable summary after the JSON, on stderr (`--json-only` leaves it out) | nothing |
-| `analyze <mix> --highlights [N] [--clip-length 40] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
+| `analyze <file> [--segments 60] [--json-only] [--out FILE]` | One track as JSON; mixes get a timeline (`--segments`: step in seconds) and a readable summary after the JSON, on stderr (`--json-only` leaves it out); `--out` saves the JSON in a file instead (replacing it) | nothing, or the `--out` file |
+| `analyze <mix> --highlights [N] [--clip-length 40] [--clip-mood 0] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best) and `energy` (how party / aggressive it sounds, 0-1); `--clip-mood 3` also favours energetic clips, worth up to 3 LU of loudness (default 0: loudness only; untested against clips you liked). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
+| `mixes [--logs DIR] [--json]` | What your saved mix analyses add up to: your sets start to end (hype and loudness per 5% of each set, stretched to the same length, and their mean), keys Traktor may have wrong (heard in your mixes = our key, not Traktor's), mood as played vs each track alone and in the tempo view, your sets' mood by fifth, and key changes between tracks. Also the Mixes tab's **All N mixes** button | nothing |
 | `clips <analysis.json> --video <final.mp4> [--pick 1 4] [--height 1440] [--bitrate 16M] [--out DIR] [--previews DIR] [--force]` | 720p previews of the clip suggestions in `/tmp/clip-previews/`; with `--pick`, the chosen clips (numbers or ranges like `20:30-21:10`) at full quality next to the video. Needs ffmpeg | new video files |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |
 | `analyze <mix> --tracklist [history.nml] [--start HH:MM:SS]` | A recorded mix checked against Traktor's history file: each track's key heard vs Traktor's, the tempo it was played at, key lock, and the mix's genre with the psy-at-speed habit held back (see [Checking a recorded mix](#checking-a-recorded-mix)) | nothing |
@@ -795,6 +832,7 @@ You get an accuracy estimate per genre and the pairs it confuses most (`Hard Tra
 | `cues apply [--dry-run]` | Write the cues and corrections you approved in the web page | **Traktor** (undo: `traktor --undo`) |
 | `grids check\|show\|apply [track] [--workers N] [--rescan] [--dry-run]` | Check that Traktor's beat grids sit on the kicks; `apply` moves the grids you approved in the web page, with their cues (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | `check`: app cache; `apply`: **Traktor** (undo: `traktor --undo`) |
 | `hold [--genre TEXT \| --colour TEXT] [--release]` | List, add or remove tracks whose genre / colour the writers leave alone | the hold list (app database) |
+| `edit [TRACK] [--colour C] [--key K] [--genre G] [--hype N] [--bpm N] [--clear FIELD] [--no-traktor] [--dry-run]` | Set a track's values by hand, or list the tracks edited by hand (the panel's ✎ Edit does the same) | collection.nml (colour, key, genre, Hype in Comment; backup) + app database |
 
 ## Settings
 
@@ -845,6 +883,6 @@ dj-track-analyzer/
 ## Good to know
 
 - **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA): it agreed with Traktor's key on 75% of a test collection of about 470 tracks, Essentia's key-finder on 58% (it mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
-- **Surround (5.1) files** are mixed down to stereo with ffmpeg, so install ffmpeg to analyse them (`brew install ffmpeg` on a Mac). Without it, those files fail with a message saying how to install it (the web page's Setup tab can install it too).
-- **Licences.** This project and Essentia are AGPL; the Discogs models are CC BY-NC-SA (non-commercial). The resampler in `dsp/` contains libsamplerate's filter table (BSD). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine.
+- **Surround (5.1) files** are mixed down to stereo with FFmpeg's standard downmix.
+- **Licences.** This project and Essentia are AGPL. The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results; each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine.
 - **Uninstall.** Delete this folder and `data`.

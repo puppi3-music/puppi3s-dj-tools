@@ -25,7 +25,7 @@ def pick_library(args) -> None:
     from .traktor import TEMPO_STATE
 
     state = HOME / TEMPO_STATE
-    bpm = json.loads(state.read_text()).get("bpm") if state.exists() else None
+    bpm = json.loads(state.read_text(encoding="utf-8")).get("bpm") if state.exists() else None
     if args.cmd in VIEW_CMDS and bpm and not args.native:
         from . import tempo
 
@@ -49,18 +49,40 @@ def say_if_nothing(out: dict, dry_run: bool = False) -> None:
         log("Nothing would change." if dry_run else "Nothing to change: everything is already up to date.")
 
 
+def lower_priority() -> None:
+    """Windows: below-normal priority for this command and the workers it starts (they inherit it), so a scan
+    using every core leaves the computer usable. Only the order Windows hands out CPU time changes, not results.
+    The web page and the MCP server keep normal priority."""
+    import ctypes
+    from ctypes import wintypes
+
+    BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.GetCurrentProcess.restype = wintypes.HANDLE  # 64-bit: undeclared, ctypes would cut it to a 32-bit int
+    k32.SetPriorityClass.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    k32.SetPriorityClass.restype = wintypes.BOOL
+    if not k32.SetPriorityClass(k32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS):
+        log(f"(couldn't lower this command's priority: Windows error {ctypes.get_last_error()})")
+
+
 def main() -> None:
+    if sys.platform == "win32":  # piped or redirected output in UTF-8, not the ANSI code page (accented track names)
+        for s in (sys.stdout, sys.stderr):
+            if hasattr(s, "reconfigure") and not s.isatty():
+                s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Local track analyzer + MCP server")
     sub = ap.add_subparsers(dest="cmd")
     su = sub.add_parser("setup", help="download the style models")
     su.add_argument("--no-maest", action="store_true", help="skip the larger MAEST genre model")
+    it = sub.add_parser("install", help="install a tool the analyzer needs (Windows: Rubber Band's own build)")
+    it.add_argument("tool", choices=["rubberband"])
     sub.add_parser("styles", help="list the 400 Discogs style names and check dj_genres.json")
     a = sub.add_parser("analyze", help="analyze one file and print JSON")
     a.add_argument("file")
     a.add_argument("--segments", type=float, default=None, help="timeline segment length in seconds")
     a.add_argument("--tracklist", nargs="?", const="auto", default=None, metavar="HISTORY.nml",
                    help="for a recorded mix: check it against Traktor's history file of that session "
-                        "(default: found from the recording's date)")
+                        "(default: found from the recording's date; when none is found, the mix is analysed without it)")
     a.add_argument("--chapters", action="store_true",
                    help="with --tracklist: YouTube chapter lines for the video's description (needs --offset)")
     a.add_argument("--offset", default=None, metavar="SECONDS",
@@ -70,7 +92,12 @@ def main() -> None:
                    help="for a mix: suggest the N best stretches for short clips (default 2)")
     a.add_argument("--clip-length", type=float, default=40.0, metavar="SECONDS",
                    help="length of each --highlights clip (default 40)")
+    a.add_argument("--clip-mood", type=float, default=0.0, metavar="LU",
+                   help="with --highlights: also favour clips that sound party / aggressive, worth up to this many LU "
+                        "of loudness (default 0: loudness and rise only; try 3)")
     a.add_argument("--json-only", action="store_true", help="for a mix: leave out the readable summary after the JSON")
+    a.add_argument("--out", default=None, metavar="FILE.json",
+                   help="save the JSON in this file instead of printing it (replaced once the analysis is done)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
     cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")
@@ -117,6 +144,8 @@ def main() -> None:
     tk.add_argument("--smartlists-only", action="store_true", help="only (re)create the Smartlists, don't update genres")
     tk.add_argument("--no-smartlists", action="store_true", help="only update genres in the collection")
     tk.add_argument("--undo", action="store_true", help="restore collection.nml from before the last run")
+    tk.add_argument("--genres-from-analysis", action="store_true",
+                    help="genres straight from the analysis (as tag --multi picks them), leaving the files' tags alone")
     tk.add_argument("--force", action="store_true",
                     help="with --undo: restore even if Traktor changed the collection since (loses those changes)")
     tk.add_argument("--no-colors", action="store_true", help="don't set predicted colours")
@@ -142,6 +171,14 @@ def main() -> None:
                     help="review --apply: recolour every track over the thresholds without asking about each one")
     co.add_argument("--min-gap", type=float, default=2.5,
                     help="review --apply: only recolour tracks this many colours away from yours or more (default 2.5)")
+    co.add_argument("--track", metavar="PATH", action="append", default=None,
+                    help="review --apply: recolour only this track (its full path, as review lists it), "
+                         "whatever the thresholds, without asking; repeat for several")
+    co.add_argument("--planned", action="store_true",
+                    help="review --apply: write what's marked on the web page's Colours tab (approved tracks recoloured, "
+                         "kept ones on the keep-always list)")
+    co.add_argument("--refresh-views", action="store_true",
+                    help="train: afterwards redo every tempo view's colours with the new model (tempo refresh)")
     co.add_argument("--kept", action="store_true",
                     help="review: list the tracks you answered [k]eep always for (review --apply skips them)")
     co.add_argument("--keep", metavar="TEXT", default=None,
@@ -276,39 +313,71 @@ def main() -> None:
     w.add_argument("--no-open", action="store_true", help="don't open the browser")
     w.add_argument("--export", metavar="FILE.html", default=None,
                    help="save a read-only snapshot of the page as one HTML file instead of serving it")
+    mx = sub.add_parser("mixes", help="what your analysed recorded mixes add up to: keys Traktor may have wrong, "
+                                      "mood as played vs the tempo view, your sets by fifth, key changes")
+    mx.add_argument("--logs", action="append", default=None, metavar="FOLDER",
+                    help="folder with the saved mix analyses (default logs/; repeat for several)")
+    mx.add_argument("--json", action="store_true", help="print the report as JSON")
     ho = sub.add_parser("hold", help="keep tracks' genre or colour as they are when writing to files, Traktor or Lexicon")
     ho.add_argument("--genre", metavar="TEXT", default=None, help="hold the genre of the scanned tracks whose path contains TEXT")
     ho.add_argument("--colour", "--color", dest="colour", metavar="TEXT", default=None,
                     help="hold the colour of the scanned tracks whose path contains TEXT")
     ho.add_argument("--release", action="store_true", help="with --genre/--colour: take those tracks off the hold list")
+    ed = sub.add_parser("edit", help="set a track's colour, key, genre, hype or BPM by hand (into Traktor too)")
+    ed.add_argument("track", nargs="?", default=None,
+                    help="the track's path, or text in it (one match); none = list the tracks edited by hand")
+    ed.add_argument("--colour", "--color", dest="colour", default=None, help="Red … Magenta, or 1-7")
+    ed.add_argument("--key", default=None, help="Camelot (8A) or a key like Am, F#, Eb minor")
+    ed.add_argument("--genre", default=None, help="genre (held, so tag / traktor / tempo load keep it)")
+    ed.add_argument("--hype", default=None, help="1-10 (kept when hype is scored again)")
+    ed.add_argument("--bpm", default=None, help="whole BPM the analyzer uses; Traktor's own BPM and grid stay")
+    ed.add_argument("--clear", action="append", default=[], choices=["colour", "genre", "hype", "bpm"],
+                    help="back to the analysis (colour: off the keep-always list); repeat for several")
+    ed.add_argument("--no-traktor", action="store_true", help="change the analyzer only, not Traktor")
+    ed.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     s = sub.add_parser("serve", help="run the MCP server")
     s.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
     args = ap.parse_args()
+    if sys.platform == "win32" and args.cmd not in ("web", "serve", None):
+        lower_priority()
     if args.cmd in VIEW_CMDS | NATIVE_CMDS:
         pick_library(args)
 
     if args.cmd == "setup":
         download_models(maest=not args.no_maest)
         check_rules()
+    elif args.cmd == "install":
+        from .analysis import install_rubberband
+
+        print(json.dumps(install_rubberband(), indent=2, ensure_ascii=False))
     elif args.cmd == "styles":
         names = [split_style(c)[0] for c in style_classes()]
         print("\n".join(sorted(set(names))))
         check_rules()
     elif args.cmd == "analyze":
-        tracklist = None
+        tracklist = skipped = None
         if args.chapters and not args.tracklist:
             raise SystemExit("--chapters needs --tracklist (the chapters are the tracks you played)")
         if args.chapters and args.offset is None:
             raise SystemExit("--chapters needs --offset: how many seconds into the finished video the first "
                              "track starts (check it in your video editor), e.g. --offset 0:14")
         if args.tracklist:
-            from .tracklist import prepare
+            from .tracklist import NoHistory, prepare
 
-            tracklist = prepare(args.file, args.tracklist, args.start)
+            try:
+                tracklist = prepare(args.file, args.tracklist, args.start)
+            except NoHistory as e:
+                if args.chapters or args.tracklist != "auto":  # the chapters need it; a file given has to work
+                    raise
+                skipped = {"tracklist_skipped": str(e.code), "tracklist_skipped_kind": e.kind,
+                           **({"recording_start": e.start.isoformat(sep=" ")} if e.start else {})}
+                log(f"No tracklist check: {e.code}")
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
-                              highlights=args.highlights, clip_seconds=args.clip_length)
+                              highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood)
+        if skipped and result.get("type") == "dj_mix":
+            result.update(skipped)
         if result.get("type") == "dj_mix":
             from . import tracklist as tl
 
@@ -316,7 +385,14 @@ def main() -> None:
             if args.chapters:
                 result["chapters"] = tl.chapters(result, offset)
             tl.describe_highlights(result, offset)
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+        if args.out:
+            out = Path(args.out).expanduser()
+            tmp = out.with_name(f".{out.name}.part")  # a run that fails or is stopped leaves the old file alone
+            tmp.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            tmp.replace(out)
+            log(f"Saved: {args.out}")
+        else:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
         if result.get("type") == "dj_mix" and not args.json_only:
             from .tracklist import summary
 
@@ -358,7 +434,8 @@ def main() -> None:
             out = traktor.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
                                make_smartlists=not args.no_smartlists, colors=not args.no_colors,
                                overwrite_colors=args.overwrite_colors,
-                               color_min_confidence=args.color_min_confidence)
+                               color_min_confidence=args.color_min_confidence,
+                               genres_from_analysis=args.genres_from_analysis)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         if not args.undo:
             say_if_nothing(out, args.dry_run)
@@ -371,6 +448,14 @@ def main() -> None:
             return
         if args.action == "train":
             out = colors.train(args.nml, deep=not args.no_deep, workers=args.workers)
+            if args.refresh_views:
+                from . import analysis, tempo
+
+                views = sorted(float(d.name[3:]) for d in analysis.HOME.glob("at-*") if (d / "collection.db").exists())
+                for k, bpm in enumerate(views, 1):
+                    log(f"[{k}/{len(views)}] refreshing the {bpm:g} BPM tempo view with the new model")
+                    tempo.refresh(bpm)
+                out["views_refreshed"] = views
         elif args.action == "guessed":
             out = colors.guessed(accept=args.accept, nml=args.nml)
         elif args.accept:
@@ -378,6 +463,8 @@ def main() -> None:
         elif args.action == "apply":
             out = colors.apply(args.nml, dry_run=args.dry_run, min_confidence=args.min_confidence or 0.0,
                                workers=args.workers)
+        elif args.planned and not args.apply:
+            raise SystemExit("--planned goes with --apply: uv run dj-track-analyzer colors review --apply --planned")
         elif (args.forget or args.keep) and not args.kept:
             raise SystemExit("--keep and --forget go with --kept: uv run dj-track-analyzer colors review --kept --keep \"<name>\"")
         elif args.kept:
@@ -385,7 +472,8 @@ def main() -> None:
         else:
             out = colors.review(apply=args.apply, dry_run=args.dry_run, min_gap=args.min_gap,
                                 min_confidence=0.75 if args.min_confidence is None else args.min_confidence,
-                                nml=args.nml, ask=sys.stdin.isatty() and not args.yes)
+                                nml=args.nml, ask=sys.stdin.isatty() and not args.yes and not args.track and not args.planned,
+                                only=args.track, planned=args.planned)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         if args.action == "apply" or args.apply:
             say_if_nothing(out, args.dry_run)
@@ -440,6 +528,12 @@ def main() -> None:
         from . import collection
 
         print(json.dumps(collection.summary(), indent=2, ensure_ascii=False))
+    elif args.cmd == "mixes":
+        from . import mixreport
+        from .web import LOGS
+
+        r = mixreport.report([Path(d).expanduser().resolve() for d in (args.logs or [])] or [LOGS])
+        print(json.dumps(r, indent=2, ensure_ascii=False) if args.json else mixreport.text(r))
     elif args.cmd == "web":
         from . import web
 
@@ -459,6 +553,22 @@ def main() -> None:
             raise SystemExit("--release goes with --genre TEXT or --colour TEXT")
         else:
             out = collection.holds_list()
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    elif args.cmd == "edit":
+        from . import edit
+
+        changes = {f: getattr(args, f) for f in edit.FIELDS if getattr(args, f) is not None}
+        if not args.track:
+            if changes or args.clear:
+                raise SystemExit("Name the track: uv run dj-track-analyzer edit TEXT --colour Red")
+            out = edit.listing()
+        else:
+            path = edit.find_track(args.track)
+            try:
+                out = (edit.edit(path, changes, args.clear, dry_run=args.dry_run, to_traktor=not args.no_traktor)
+                       if changes or args.clear else edit.current(path))
+            except ValueError as e:
+                raise SystemExit(str(e))
         print(json.dumps(out, indent=2, ensure_ascii=False))
     elif args.cmd == "serve" and args.http:
         log(f"Puppi3's Track Analyzer MCP on http://{args.host}:{args.port}/mcp")

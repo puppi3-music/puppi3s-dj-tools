@@ -7,7 +7,7 @@ it played. Traktor's own recordings are named Recording_YYYY-MM-DD_HHhMMmSSs.wav
 started, so each track's place in the recording follows. For other recordings pass --start.
 
 With that, each track gets its stretch of the mix analysed on its own:
-- key: Traktor's key for the track against the key heard in the middle of its main stretch (from its
+- key: Traktor's key for the track against the key heard (by the key CNN) in the middle of its main stretch (from its
   start to the next track's start, without the blends at either end). Key lock is assumed on; when it doesn't fit, the keys the tracks would
   have with key lock off (pitch moved with the tempo) are tried too, and the better fit is reported.
 - tempo: the track's own BPM against the BPM it was played at.
@@ -55,6 +55,15 @@ SPEED_GENRE = 0.04   # tempo changed by more than this: judge the genre at the t
 # ----------------------------------------------------------------------------
 
 
+class NoHistory(SystemExit):
+    """No history file to check against: `analyze --tracklist` (found automatically) carries on without it.
+    `kind`: "start" (the recording's name doesn't say when it began) or "history" (no file covers that time)."""
+
+    def __init__(self, message: str, kind: str, start: datetime | None = None):
+        super().__init__(message)
+        self.kind, self.start = kind, start
+
+
 def recording_start(path: str | Path) -> datetime | None:
     """Start time from a Traktor recording's name (Recording_2026-10-12_16h27m17s.wav)."""
     m = RECORDING_RE.search(Path(path).name)
@@ -63,7 +72,7 @@ def recording_start(path: str | Path) -> datetime | None:
 
 def parse_start(text: str, day: date | None) -> datetime:
     """--start: 'HH:MM:SS' (on the recording's date, or today) or 'YYYY-MM-DD HH:MM:SS'."""
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M"):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%dT%H:%M"):
         try:
             return datetime.strptime(text, fmt)
         except ValueError:
@@ -214,18 +223,44 @@ def _speed(played: float | None, own: float | None) -> float | None:
     return r
 
 
-def _library_genres(paths: list[str]) -> dict[str, str]:
-    """Genres from the normal library (each track at its own tempo), where scanned."""
+def _library(paths: list[str], db: Path | None = None) -> dict[str, dict]:
+    """{path: {genre, camelot (our CNN key), mood}} from a library (the normal one: each track at its own tempo;
+    or a tempo view's collection.db), where scanned."""
     from .collection import DB, nfc
 
-    if not DB.exists():
+    db = db or DB
+    if not db.exists():
         return {}
+    cols = ", ".join(f"mood_{m}" for m in analysis.MOODS)
     out = {}
-    with sqlite3.connect(f"file:{DB}?mode=ro", uri=True) as con:
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
         for p in paths:
-            row = con.execute("SELECT genre FROM tracks WHERE path=?", (str(nfc(p)),)).fetchone()
-            if row and row[0]:
-                out[p] = row[0]
+            row = con.execute(f"SELECT genre, cnn_camelot, {cols} FROM tracks WHERE path=?", (str(nfc(p)),)).fetchone()
+            if row:
+                mood = {m: v for m, v in zip(analysis.MOODS, row[2:]) if v is not None}
+                out[p] = {"genre": row[0], "camelot": row[1], "mood": mood}
+    finally:
+        con.close()
+    return out
+
+
+def camelot_step(a: str | None, b: str | None) -> str | None:
+    """How a change of key from a to b sits on the Camelot wheel: "same key", "one step" (the relative key or a
+    neighbour), "two steps" (a neighbour's relative, or two numbers along) or "clash"."""
+    if not a or not b:
+        return None
+    (n1, l1), (n2, l2) = (int(a[:-1]), a[-1]), (int(b[:-1]), b[-1])
+    d = min((n1 - n2) % 12, (n2 - n1) % 12) + (l1 != l2)
+    return "same key" if d == 0 else "one step" if d == 1 else "two steps" if d == 2 else "clash"
+
+
+def _patch_mean(patches: dict, duration: float, a: float, b: float) -> dict:
+    """Mood scores (mood_patches) averaged over a stretch of the recording."""
+    out = {}
+    for m, p in patches.items():
+        i0 = int(a / duration * len(p))
+        out[m] = round(float(p[i0: max(i0 + 1, int(b / duration * len(p)))].mean()), 3)
     return out
 
 
@@ -243,15 +278,22 @@ def _off_key(p: dict) -> str | None:
 def _fit_keys(placed: list[dict], pool) -> dict:
     """Pick the blend lag and key lock setting under which most heard keys match Traktor's.
     Key lock on wins ties, and off has to win by two tracks: on is how most DJs play."""
-    cells = [(i, lag) for lag in LAGS for i, p in enumerate(placed)
+    cells = [(i, lag) for i, p in enumerate(placed) for lag in LAGS
              if p.get("key") and window(p, lag)[1] - window(p, lag)[0] >= MIN_MAIN]
-    measured = pool.measure([(*window(placed[i], lag), False, True) for i, lag in cells])
-    heard = {cell: camelot(*m["key"][:2]) for cell, m in zip(cells, measured)}
-    best = {}
+    # track by track (each at every blend lag), so the count can say how many tracks are done
+    last = {i: k for k, (i, _lag) in enumerate(cells)}
+    n_tracks = len(last)
+    meter = lambda n: f"  matching keys: {sum(k < n for k in last.values())}/{n_tracks} tracks ({n}/{len(cells)} stretches)"  # noqa: E731
+    # heard with the CNN, as the library's keys: Essentia's edma heard 4 of 20 tracks of a test set with major and
+    # minor swapped (11A as 2B)
+    measured = pool.measure([(*window(placed[i], lag), False, "cnn") for i, lag in cells], meter)
+    heard = {cell: m["cnn_camelot"] for cell, m in zip(cells, measured)}
+    best, per_lag = {}, {"on": {}, "off": {}}
     for lag in LAGS:
         on = sum(heard.get((i, lag)) == p["camelot"] for i, p in enumerate(placed) if (i, lag) in heard)
         off = sum(heard.get((i, lag)) == p.get("off_key") for i, p in enumerate(placed) if (i, lag) in heard)
         for mode, n in (("on", on), ("off", off)):
+            per_lag[mode][str(lag)] = n
             if mode not in best or n > best[mode][0]:
                 best[mode] = (n, lag)
     mode = "off" if best["off"][0] >= best["on"][0] + 2 else "on"
@@ -260,21 +302,22 @@ def _fit_keys(placed: list[dict], pool) -> dict:
         if (i, lag) in heard:
             p["heard"] = heard[i, lag]
     return {"verdict": mode, "matches_with_keylock_on": best["on"][0], "matches_with_keylock_off": best["off"][0],
-            "blend_lag_seconds": lag}
+            "blend_lag_seconds": lag, "matches_per_lag": per_lag[mode]}  # how clearly that lag won
 
 
 def check(result: dict, pool, acts, scores: dict | None, duration: float,
-          plays: list[dict], history: Path, start: datetime) -> None:
-    """Add a per-track report to an analysed mix (result), and judge its genres at the tracks' own BPMs."""
+          plays: list[dict], history: Path, start: datetime, moods: dict | None = None) -> None:
+    """Add a per-track report to an analysed mix (result), and judge its genres at the tracks' own BPMs.
+    moods: analysis.mood_patches of the mix, for each track's mood as heard."""
     placed = place(plays, start, duration)
     if not placed:
         raise SystemExit(f"None of the tracks in {history} play during this recording "
                          f"(taken to start at {start:%Y-%m-%d %H:%M:%S}; set it with --start)")
-    library = _library_genres([p["path"] for p in placed if p.get("path")])
+    library = _library([p["path"] for p in placed if p.get("path")])
     # the tempo each was played at: any stretch of it will do
     timed = [p for p in placed if p.get("bpm") and window(p, 0)[1] - window(p, 0)[0] >= MIN_MAIN]
-    analysis.log(f"  tempo of {len(timed)} tracks")
-    for p, m in zip(timed, pool.measure([(*window(p, 0), True, False) for p in timed])):
+    tempo_meter = lambda n: f"  tempo played: {n}/{len(timed)} tracks"  # noqa: E731
+    for p, m in zip(timed, pool.measure([(*window(p, 0), True, False) for p in timed], tempo_meter)):
         if "bpm" in m:
             p["played_bpm"] = round_bpm(fold_bpm(m["bpm"]))
             p["speed"] = _speed(p["played_bpm"], p["bpm"])
@@ -282,9 +325,10 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
         p["camelot"] = camelot(*p["key"]) if p.get("key") else None
         p["off_key"] = _off_key(p)
         if p.get("path") in library:
-            p["library_genre"] = library[p["path"]]
+            p["own"] = library[p["path"]]
+            if p["own"]["genre"]:
+                p["library_genre"] = p["own"]["genre"]
     _sound_references(placed)
-    analysis.log(f"  matching keys ({len(LAGS)} blend lags)")
     keylock = _fit_keys(placed, pool)
     lag = keylock["blend_lag_seconds"]
     have_model = acts is not None and len(acts) > 0
@@ -314,6 +358,21 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
                 t["key_check"] += " (fits key lock off for this track)"
         if p.get("library_genre"):
             t["library_genre"] = p["library_genre"]
+        if (p.get("own") or {}).get("camelot"):
+            t["library_camelot"] = p["own"]["camelot"]  # our CNN key of the track alone, to tell a wrong Traktor key
+        # what you played against what the track sounds like alone: at its own tempo, and sped up in a tempo view
+        if moods and b - a >= MIN_MAIN:
+            t["heard_mood"] = _patch_mean(moods, duration, a, b)
+        if (p.get("own") or {}).get("mood"):
+            t["own_mood"] = p["own"]["mood"]
+        if p.get("view"):
+            t["view_bpm"] = p["view_bpm"]
+            if p["view"]["mood"]:
+                t["view_mood"] = p["view"]["mood"]
+            if p["view"]["genre"]:
+                t["view_genre"] = p["view"]["genre"]
+        if p.get("path"):
+            t["path"] = p["path"]  # the page looks up its hype and colour in the library by it
         if have_model and b - a >= MIN_MAIN:
             heard = _acts(acts, duration, a, b)
             bpm = p.get("played_bpm") or own
@@ -329,6 +388,13 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
                 t["mixing"] = mixing_effect(heard - p["view_acts"])
         tracks.append(t)
 
+    # each change of track as heard (with key lock off, the pitch moved with the tempo; heard has that)
+    for prev, t in zip(tracks, tracks[1:]):
+        step = camelot_step(prev.get("heard_camelot"), t.get("heard_camelot"))
+        if step:
+            t["transition"] = step
+    steps = [t["transition"] for t in tracks if t.get("transition")]
+
     checks = [t.get("key_check", "") for t in tracks]
     judged = sum(bool(c) for c in checks)
     match = sum(c.startswith("match") for c in checks)
@@ -340,7 +406,9 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
                           + (f"; {len(tracks) - judged} too short to judge" if len(tracks) > judged else ""))
     result["tracklist"] = {"history": str(history), "recording_start": f"{start:%Y-%m-%d %H:%M:%S}",
                            "keylock": keylock, "overlap_share": round(_overlap_share(placed, duration), 2),
-                           "tracks": tracks}
+                           "key_model": "cnn", "tracks": tracks,
+                           "transitions": {k: steps.count(k) for k in ("same key", "one step", "two steps", "clash")
+                                           if k in steps}}
     _rejudge_genres(result, placed, acts, scores, duration, lag)
 
 
@@ -390,6 +458,10 @@ def _sound_references(placed: list[dict]) -> None:
     if not near:
         return
     view = min(near, key=lambda v: abs(v - bpm))
+    rows = _library([p["path"] for p in placed if p.get("path")], analysis.HOME / f"at-{view:g}" / "collection.db")
+    for p in placed:
+        if p.get("path") in rows and abs((p.get("played_bpm") or bpm) - view) <= 3:
+            p["view"], p["view_bpm"] = rows[p["path"]], view
     with _in_view(view):
         for p in placed:
             if p.get("native_acts") is not None and abs((p.get("played_bpm") or bpm) - view) <= 3:
@@ -490,15 +562,16 @@ def prepare(recording: str, history: str, start_text: str | None) -> tuple[list[
     elif named:
         start = named
     else:
-        raise SystemExit(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
-                         "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
-                         "the time of day the recording began.")
+        raise NoHistory(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
+                        "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
+                        "the time of day the recording began.", "start")
     if history == "auto":
         found = find_history(start, analysis._audio_length(rec) or 6 * 3600)
         if not found:
-            raise SystemExit(f"No Traktor history file covers a recording starting {start:%Y-%m-%d %H:%M:%S} "
-                             f"(looked in {HISTORY_GLOB}). Traktor saves one per session when it closes: quit "
-                             "Traktor once after the set, or pass the file: --tracklist /path/to/history_….nml")
+            raise NoHistory(f"No Traktor history file covers a recording starting {start:%Y-%m-%d %H:%M:%S} "
+                            f"(looked in {HISTORY_GLOB}). Traktor saves one per session when it closes: quit "
+                            "Traktor once after the set, or pass the file: --tracklist /path/to/history_….nml",
+                            "history", start)
         path = found
     else:
         path = Path(os.path.expanduser(history))
@@ -548,6 +621,8 @@ def _runs(timeline: list[dict], field: str) -> list[str]:
 def summary(result: dict) -> str:
     """A readable report of an analysed DJ mix (with or without --tracklist), for the terminal."""
     lines = [f"DJ mix: {Path(result['file']).name} ({result['duration']})", ""]
+    if result.get("tracklist_skipped"):
+        lines += [f"  No tracklist check: {result['tracklist_skipped']}", ""]
     lines.append(f"  Genre      {_genres(result.get('dj_genre'))}")
     if result.get("dj_genre_uncorrected"):
         lines.append(f"             without the psy limit: {_genres(result['dj_genre_uncorrected'])}")
@@ -578,8 +653,14 @@ def summary(result: dict) -> str:
                   f"             recording started {report['recording_start']}; two decks playing "
                   f"{report['overlap_share']:.0%} of the time",
                   f"  Key lock   {k['verdict']} ({k['matches_with_keylock_on']} keys fit on, "
-                  f"{k['matches_with_keylock_off']} off); blends take ~{k['blend_lag_seconds']} s",
-                  f"  Keys       {k['summary']}", ""]
+                  f"{k['matches_with_keylock_off']} off); blends take ~{k['blend_lag_seconds']} s"
+                  + (f" (keys matching per lag: {', '.join(f'{lag} s {n}' for lag, n in k['matches_per_lag'].items())})"
+                     if k.get("matches_per_lag") else ""),
+                  f"  Keys       {k['summary']}"]
+        if report.get("transitions"):
+            lines.append("  Changes    " + ", ".join(f"{n} {k}" for k, n in report["transitions"].items())
+                         + "  (key to key as heard, on the Camelot wheel)")
+        lines.append("")
         lines.append(f"  {'#':>2}  {'start':>7}  {'track':<34} {'bpm':>9}  {'key':>3} {'heard':>5}  "
                      f"{'library genre':<22} genre in the mix")
         mark = {"match": "✓", "neighbour": "~", "relative major/minor": "~"}
@@ -603,14 +684,17 @@ def summary(result: dict) -> str:
             span = h.get("video") or f"{h['start']}-{h['end']}"
             rise = f", rises {h['rise_lu']:+.1f} LU" if h["rise_lu"] > 1 else ""
             best = f"  #{h['rank']} best" if len(result["highlights"]) > 1 and h.get("rank") else ""
-            lines.append(f"    Clip {i}: {span}{best}  {h['lufs']} LUFS{rise}" + (f"  ({h['track']})" if h.get("track") else ""))
+            energy = f", energy {h['energy']:.2f}" if h.get("energy") is not None else ""
+            lines.append(f"    Clip {i}: {span}{best}  {h['lufs']} LUFS{rise}{energy}"
+                         + (f"  ({h['track']})" if h.get("track") else ""))
     if tl:
         lines += ["", "  Timeline (genre)"]
         lines += [f"    {r}" for r in _runs(tl, "dj_genre")]
         if not report:
             lines += ["", "  Timeline (key)"]
             lines += [f"    {r}" for r in _runs(tl, "camelot")]
-            lines += ["", "  Add --tracklist to check this against Traktor's history of the session."]
+            if not result.get("tracklist_skipped"):
+                lines += ["", "  Add --tracklist to check this against Traktor's history of the session."]
     return "\n".join(lines)
 
 
@@ -679,10 +763,20 @@ def chapters(result: dict, offset: float) -> list[str]:
     return [f"{fmt_time(at)} {name}" for at, name in marks] if len(marks) >= 3 else []
 
 
+def mood_energy(moods: dict | None, duration: float) -> np.ndarray | None:
+    """Per second of the recording, how party / aggressive it sounds (mean of the two mood heads, 0-1)."""
+    if not moods or not {"party", "aggressive"} <= set(moods):
+        return None
+    e = (moods["party"] + moods["aggressive"]) / 2
+    return np.interp(np.arange(int(duration)) + 0.5, (np.arange(len(e)) + 0.5) / len(e) * duration, e)
+
+
 def highlights(short: np.ndarray, duration: float, n: int = 2, length: float = 40.0,
-               hop: float = 0.1) -> list[dict]:
+               hop: float = 0.1, energy: np.ndarray | None = None, energy_weight: float = 0.0) -> list[dict]:
     """The n best stretches of `length` seconds for a social clip: loud, and starting where the music
-    rises out of something quieter (a drop after a build or breakdown). From EBU short-term loudness."""
+    rises out of something quieter (a drop after a build or breakdown). From EBU short-term loudness.
+    energy (mood_energy): each clip says how party / aggressive it sounds; energy_weight (LU for a clip that
+    sounds fully so, default 0 = loudness only) adds it to the score."""
     loud = np.where(np.isfinite(short), short, -70.0).astype(float)
     per_s = int(round(1 / hop))
     sec = loud[: len(loud) // per_s * per_s].reshape(-1, per_s).mean(axis=1)  # one value per second
@@ -695,13 +789,16 @@ def highlights(short: np.ndarray, duration: float, n: int = 2, length: float = 4
             continue  # next to silence: the start or end of the set, not a moment in it
         level = sec[s: s + win].mean()
         rise = sec[s: s + hit].mean() - sec[s - before: s].mean()
-        cands.append((level + 0.5 * min(max(rise, 0.0), 8.0), s, level, rise))
+        e = float(energy[s: s + win].mean()) if energy is not None and len(energy[s: s + win]) else None
+        bonus = energy_weight * e if e is not None and energy_weight else 0.0
+        cands.append((level + 0.5 * min(max(rise, 0.0), 8.0) + bonus, s, level, rise, e))
     cands.sort(reverse=True)
     picked = []
-    for score, s, level, rise in cands:
+    for score, s, level, rise, e in cands:
         if all(abs(s - p["_s"]) >= 2 * win for p in picked):
             picked.append({"_s": s, "start": fmt_time(s), "end": fmt_time(min(duration, s + win)),
                            "lufs": round(float(level), 1), "rise_lu": round(float(rise), 1),
+                           **({"energy": round(e, 2)} if e is not None else {}),
                            "rank": len(picked) + 1})  # 1 = best score; the list itself is in time order
         if len(picked) == n:
             break

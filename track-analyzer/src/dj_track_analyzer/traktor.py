@@ -22,6 +22,7 @@ import contextlib
 import contextvars
 import glob
 import html
+import ntpath
 import os
 import re
 import shutil
@@ -115,30 +116,51 @@ def refuse_if_tempo_view(path: Path) -> None:
     from .analysis import HOME
 
     state = HOME / TEMPO_STATE
-    if state.exists() and json.loads(state.read_text()).get("collection") == str(path):
-        bpm = json.loads(state.read_text()).get("bpm")
+    if state.exists() and json.loads(state.read_text(encoding="utf-8")).get("collection") == str(path):
+        bpm = json.loads(state.read_text(encoding="utf-8")).get("bpm")
         raise SystemExit(f"The {bpm:g} BPM view is loaded in this Traktor collection. "
                          "Switch back first: uv run dj-track-analyzer tempo native")
 
 
-def traktor_running() -> bool:
+def running_state() -> bool | None:
+    """True/False: Traktor is or isn't running. None: this process can't tell (in a container, or the process list
+    failed), and a write must not assume it's closed."""
+    if CONTAINER:
+        return None
     try:
-        out = subprocess.run(["pgrep", "-i", "-x", "traktor.*"], capture_output=True, text=True)
-        return bool(out.stdout.strip())
-    except FileNotFoundError:
-        return False
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, errors="replace",
+                                 timeout=30)
+            names = [ln.split('","')[0].strip('"') for ln in out.stdout.splitlines() if ln.startswith('"')]
+            if out.returncode or not names:
+                return None
+            return any(re.fullmatch(r"traktor.*\.exe", n, re.I) for n in names)
+        out = subprocess.run(["pgrep", "-i", "-x", "traktor.*"], capture_output=True, text=True, timeout=30)
+        return {0: True, 1: False}.get(out.returncode)  # 2, 3: pgrep failed
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
-# In a container (the Dockerfile sets TRACK_ANALYZER_CONTAINER=1) pgrep sees only the container, never the Traktor on
-# the computer, so a write asks instead: in a terminal once per run, otherwise TRACK_ANALYZER_TRAKTOR_CLOSED=1 (jobs
-# started from the page get it) or the page's own answer (`page_answer`).
+def traktor_running() -> bool:
+    """For the page's warnings; writes go through check_closed, which also stops when it can't tell."""
+    return running_state() is True
+
+
+# When the process list can't be read (in a container, where the Dockerfile sets TRACK_ANALYZER_CONTAINER=1 and pgrep
+# sees only the container; or pgrep/tasklist failing), a write asks instead: in a terminal once per run, otherwise
+# TRACK_ANALYZER_TRAKTOR_CLOSED=1 (jobs started from the page get it) or the page's own answer (`page_answer`).
 CONTAINER = os.environ.get("TRACK_ANALYZER_CONTAINER") == "1"
 CLOSED_ENV = "TRACK_ANALYZER_TRAKTOR_CLOSED"
 _page_closed: contextvars.ContextVar[bool | None] = contextvars.ContextVar("page_closed", default=None)
 
 
 class ConfirmClosed(SystemExit):
-    """A write in a container nobody has said Traktor is closed for. The web page asks and sends the request again."""
+    """A write nobody has said Traktor is closed for, where we can't see. The web page asks and sends it again."""
+
+    def __init__(self, why: str):
+        self.why = why
+        where = "a terminal (docker compose run)" if CONTAINER else "a terminal"
+        super().__init__(f"{why} Quit Traktor, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
 
 
 @contextlib.contextmanager
@@ -152,26 +174,29 @@ def page_answer(closed: bool):
 
 
 def closed_confirmed() -> bool:
-    return not CONTAINER or os.environ.get(CLOSED_ENV) == "1" or bool(_page_closed.get())
+    return os.environ.get(CLOSED_ENV) == "1" or bool(_page_closed.get())
 
 
 def check_closed(dry_run: bool = False, what: str = "these changes") -> None:
-    """Refuse to write collection.nml while Traktor is open: it rewrites the file when it closes and would undo it."""
+    """Refuse to write collection.nml while Traktor is open: it rewrites the file when it closes and would undo it.
+    When we can't tell, ask rather than assume it's closed."""
     if dry_run:
         return
-    if traktor_running():
+    state = running_state()
+    if state:
         raise SystemExit(f"Traktor is running. Quit Traktor first: it rewrites collection.nml when it closes "
                          f"and would undo {what}.")
-    if closed_confirmed():
+    if state is False or closed_confirmed():
         return
+    why = ("This runs in a container, which can't see whether Traktor is open." if CONTAINER else
+           f"Couldn't check whether Traktor is open ({'tasklist' if sys.platform == 'win32' else 'pgrep'} failed).")
     if _page_closed.get() is None and sys.stdin.isatty():
-        sys.stderr.write("This runs in a container, which can't see whether Traktor is open. Is Traktor closed? [y/N] ")
+        sys.stderr.write(f"{why} Is Traktor closed? [y/N] ")
         sys.stderr.flush()
         if sys.stdin.readline().strip().lower() in ("y", "yes"):
             os.environ[CLOSED_ENV] = "1"  # once per run
             return
-    raise ConfirmClosed(f"This runs in a container, which can't see whether Traktor is open. Quit Traktor, then "
-                        f"answer y when asked in a terminal (docker compose run), or set {CLOSED_ENV}=1.")
+    raise ConfirmClosed(why)
 
 
 # ----------------------------------------------------------------------------
@@ -189,8 +214,15 @@ def esc(s: str) -> str:
     return s.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+WINDOWS_DRIVE = re.compile(r"[A-Za-z]:")
+
+
 def location_paths(loc: dict) -> list[str]:
-    """Possible macOS paths for a Traktor LOCATION (boot volume, or /Volumes/<name> for others)."""
+    """Possible paths for a Traktor LOCATION: on a Mac the boot volume or /Volumes/<name>; Windows Traktor's VOLUME is
+    the drive letter ("C:"), the same DIR form ("/:Users/:me/:") then gives C:\\Users\\me\\."""
+    vol = loc.get("VOLUME", "")
+    if WINDOWS_DRIVE.fullmatch(vol):
+        return [vol + loc.get("DIR", "").replace("/:", "\\") + loc.get("FILE", "")]
     d = loc.get("DIR", "").replace("/:", "/")
     rel = d + loc.get("FILE", "")
     out = [rel]
@@ -368,12 +400,15 @@ def install_smartlists(text: str, genres: list[str], folder: str = FOLDER_NAME) 
 
 def mac_path(value: str) -> str | None:
     """Convert Traktor's settings-file paths ("Macintosh HD:Users:me:Music:Recordings:") to
-    normal ones ("/Users/me/Music/Recordings"). Plain "/..." paths are returned as they are."""
+    normal ones ("/Users/me/Music/Recordings"). Plain "/..." paths are returned as they are, and so are
+    Windows Traktor's ("C:\\Users\\me\\Music\\Traktor\\Samples\\", without the last "\\")."""
     v = html.unescape(value or "").strip()
     if not v:
         return None
     if v.startswith("/"):
         return v.rstrip("/") or "/"
+    if WINDOWS_DRIVE.match(v[:2]) and v[2:3] in ("\\", "/") or v.startswith("\\\\"):
+        return ntpath.normpath(v)
     parts = [x for x in v.split(":") if x != ""]
     if len(parts) < 2:
         return None
@@ -392,10 +427,10 @@ def mac_path(value: str) -> str | None:
 SKIP_SETTINGS = ("Browser.Dir.Recordings", "Browser.Dir.Loops")
 
 
-def recording_dirs(nml: str | None = None) -> list[str]:
+def recording_dirs(nml: str | None = None, settings: tuple[str, ...] = SKIP_SETTINGS) -> list[str]:
     """Folders to leave out of scans: Traktor's mix recordings (its default Recordings folder and
     the one set in Preferences, Browser.Dir.Recordings in Traktor Settings.tsi) and its sample/loop
-    folder (Browser.Dir.Loops)."""
+    folder (Browser.Dir.Loops). `settings=("Browser.Dir.Recordings",)`: the recordings only."""
     dirs = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*/Recordings")))
     bases = set(glob.glob(os.path.expanduser("~/Documents/Native Instruments/Traktor*")))
     if nml:
@@ -406,12 +441,12 @@ def recording_dirs(nml: str | None = None) -> list[str]:
                 text = Path(tsi).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            for name in SKIP_SETTINGS:
+            for name in settings:
                 m = re.search(rf'<Entry\s+Name="{re.escape(name)}"[^>]*\sValue="([^"]*)"', text)
                 d = mac_path(m.group(1)) if m else None
-                if d and d != "/":
+                if d and d != "/" and not re.fullmatch(r"[A-Za-z]:\\?", d):  # never a whole drive
                     dirs.add(d)
-    return sorted(d.rstrip("/") for d in dirs)
+    return sorted(os.path.normpath(d) for d in dirs)  # on Windows glob keeps the "/" of "~/Documents/…"; scans use "\\"
 
 
 def setting(collection: Path, name: str) -> str | None:
@@ -646,7 +681,9 @@ def _set_info_attr(entry: str, name: str, value: str) -> tuple[str, str | None]:
 
 def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = True,
          make_smartlists: bool = True, colors: bool = True, overwrite_colors: bool = False,
-         color_min_confidence: float = 0.0) -> dict:
+         color_min_confidence: float = 0.0, genres_from_analysis: bool = False) -> dict:
+    """Genres from the files' tags (written by `tag`), or with genres_from_analysis straight from the analysis
+    (as `tag --multi` would pick them; a genre set by hand as typed), leaving the files as they are."""
     from . import analysis
 
     path = find_collection(nml)
@@ -657,6 +694,13 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     scanned = {r["path"] for r in con.execute("SELECT path FROM tracks")}
     if not scanned:
         raise SystemExit("Nothing scanned yet. Run `uv run dj-track-analyzer scan <music folder>` and `tag` first.")
+    analysed: dict[str, str] = {}
+    if genres_from_analysis:
+        hand = {p: f["genre"] for p, f in collection.manual().items() if "genre" in f}
+        for r in con.execute("SELECT * FROM tracks WHERE error IS NULL OR error LIKE 'tags:%'"):
+            if (g := hand.get(r["path"]) or collection.multi_genre(dict(r))):
+                analysed[r["path"]] = g
+    genre_of = analysed.get if genres_from_analysis else file_genre
     predicted = {}
     if colors:
         for r in con.execute("SELECT path, color, color_confidence FROM tracks WHERE color IS NOT NULL"):
@@ -666,6 +710,9 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     stats = {"collection": str(path), "traktor_tracks": 0, "matched_scanned_tracks": 0}
     if update_genres:
         stats.update(genres_updated=0, already_up_to_date=0, no_genre_tag_in_file=0)
+        if genres_from_analysis:
+            stats["genres_from"] = "the analysis (files' tags left as they are)"
+            stats["no_genre_from_analysis"] = stats.pop("no_genre_tag_in_file")
     if colors:
         stats.update(colours_set=0, colours_kept=0, no_colour_prediction=0)
     examples, genres_seen, traktor_colors = [], set(), {}
@@ -689,9 +736,9 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
             if g:  # still gets its Smartlist
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
         elif update_genres:
-            g = file_genre(p)
+            g = genre_of(p)
             if not g:
-                stats["no_genre_tag_in_file"] += 1
+                stats["no_genre_from_analysis" if genres_from_analysis else "no_genre_tag_in_file"] += 1
             else:
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
                 info_m = re.search(r"<INFO\b[^>]*>", entry)
@@ -737,7 +784,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
         new_text = text
     if not update_genres and make_smartlists:  # still need the genre list for the Smartlists
         for p in scanned:
-            g = file_genre(p) if os.path.exists(p) else None
+            g = analysed.get(p) if genres_from_analysis else file_genre(p) if os.path.exists(p) else None
             if g:
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
     if colors and not dry_run:  # remember which tracks carry which colour in Traktor
@@ -937,6 +984,112 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
     if out.get("changed") and not dry_run:
         collection.accept_guesses(changed)  # you said yes to these: yours now, even where the app had guessed
     return out
+
+
+def camelot_value(cam: str) -> int:
+    """'6A' → MUSICAL_KEY VALUE 19 (0-11 = C..B major, 12-23 = C..B minor)."""
+    from . import analysis
+
+    n, minor = int(cam[:-1]), cam[-1].upper() == "A"
+    pc = next(pc for pc, c in (analysis.CAMELOT_MINOR if minor else analysis.CAMELOT_MAJOR).items() if c == n)
+    return pc + 12 if minor else pc
+
+
+def open_key(cam: str) -> str:
+    """'6A' → '11m', Traktor's INFO KEY text (Open Key = Camelot + 5, d for major)."""
+    return f"{(int(cam[:-1]) + 4) % 12 + 1}{'m' if cam[-1].upper() == 'A' else 'd'}"
+
+
+def read_track(path: str, nml: str | None = None) -> dict | None:
+    """What Traktor has for one track now: {colour 1-7, camelot, genre, comment}, or None if it isn't listed."""
+    text = find_collection(nml).read_text(encoding="utf-8")
+    c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
+    for entry in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
+        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc or path not in location_paths(attrs(loc.group(0))):
+            continue
+        info_m, key_m = re.search(r"<INFO\b[^>]*>", entry), re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+        info = attrs(info_m.group(0)) if info_m else {}
+        kv = attrs(key_m.group(0)).get("VALUE", "") if key_m else ""
+        cam = None
+        if kv.isdigit() and int(kv) < 24:
+            from . import analysis
+
+            v = int(kv)
+            cam = f"{analysis.CAMELOT_MINOR[v - 12]}A" if v >= 12 else f"{analysis.CAMELOT_MAJOR[v]}B"
+        c = info.get("COLOR", "")
+        return {"colour": int(c) if c.isdigit() and 1 <= int(c) <= 7 else None, "camelot": cam,
+                "genre": info.get("GENRE"), "comment": info.get("COMMENT")}
+    return None
+
+
+def set_track(path: str, colour: int | None = None, camelot: str | None = None, genre: str | None = None,
+              hype: int | None = None, nml: str | None = None, dry_run: bool = False) -> dict:
+    """One track's values set by hand: INFO COLOR, the key (MUSICAL_KEY VALUE + INFO KEY as Open Key), INFO
+    GENRE, and the Hype in Comment only where Comment already carries one (from `hype --traktor`) and Traktor
+    doesn't write tags into the files. None = leave as it is. Backup + `traktor --undo` as every write."""
+    p = find_collection(nml)
+    refuse_if_tempo_view(p)
+    check_closed(dry_run, "this edit")
+    text = p.read_text(encoding="utf-8")
+    stats = {"collection": str(p), "changed_fields": []}
+    found = []
+
+    def fix_entry(m: re.Match) -> str:
+        entry = m.group(0)
+        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc_m or path not in (paths := location_paths(attrs(loc_m.group(0)))):
+            return entry
+        found.append(1)
+        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info = attrs(info_m.group(0)) if info_m else {}
+        if colour is not None and info.get("COLOR") != str(colour):
+            entry = _set_info_attr(entry, "COLOR", str(colour))[0]
+            stats["changed_fields"].append("colour")
+        if genre is not None and (info.get("GENRE") or "") != genre:  # "" takes it off
+            entry = _set_or_drop_info(entry, "GENRE", genre)
+            stats["changed_fields"].append("genre")
+        if camelot is not None:
+            v = str(camelot_value(camelot))
+            key_m = re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+            if not key_m or attrs(key_m.group(0)).get("VALUE") != v:
+                if key_m:
+                    entry = entry[:key_m.start()] + set_attr(key_m.group(0), "VALUE", v) + entry[key_m.end():]
+                else:  # where Traktor puts it: after LOUDNESS, else TEMPO, else INFO
+                    after = next((x for x in (re.search(rf"<{t}\b[^>]*>.*?</{t}>", entry, re.S)
+                                              for t in ("LOUDNESS", "TEMPO", "INFO")) if x), None)
+                    at = after.end() if after else entry.rfind("</ENTRY>")
+                    entry = entry[:at] + f'\n<MUSICAL_KEY VALUE="{v}"></MUSICAL_KEY>' + entry[at:]
+                stats["changed_fields"].append("key")
+            if info.get("KEY") != open_key(camelot):
+                entry = _set_info_attr(entry, "KEY", open_key(camelot))[0]
+                if "key" not in stats["changed_fields"]:
+                    stats["changed_fields"].append("key")
+        new = with_hype(info.get("COMMENT"), hype) if hype is not None else None
+        if new is not None and HYPE_RE.search(info.get("COMMENT") or "") and new != info.get("COMMENT"):
+            if tag_writing_on(p):
+                stats["hype_comment_skipped"] = ("Traktor writes tags into your files, so the Hype in Comment "
+                                                 "wasn't changed (it would go into the file's comment)")
+            else:
+                entry = _set_info_attr(entry, "COMMENT", new)[0]
+                stats["changed_fields"].append("hype comment")
+        if stats["changed_fields"]:  # or Traktor reads the file's tags on deck load and they replace these
+            entry, how = stamp_if_unchanged(entry, paths)
+            if how == "tags_changed":
+                stats["warning"] = ("This file's tags changed since Traktor read them: when Traktor reads them "
+                                    "again, the file's genre/colour/comment may replace what was set here")
+        return entry
+
+    c0 = text.find("<COLLECTION")
+    c1 = text.find("</COLLECTION>", c0)
+    if c0 == -1 or c1 == -1:
+        raise SystemExit(f"{p} doesn't look like a Traktor collection (no COLLECTION section).")
+    body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
+    if not found:
+        stats["not_in_collection"] = True
+        stats["changed"] = False
+        return stats
+    return _save(p, text, text[:c0] + body + text[c1:], stats, dry_run)
 
 
 WRITTEN_SUFFIX = ".written-sha1"

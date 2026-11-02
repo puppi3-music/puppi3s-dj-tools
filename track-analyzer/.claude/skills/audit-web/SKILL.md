@@ -30,13 +30,13 @@ phone emulation: Chrome's own `--window-size` stops at ~500 px, so a CLI screens
 Look at the screenshots yourself (Read the PNGs). Chrome follows macOS dark mode unless forced, so check the
 "light" shots are really light.
 
-Baselines (2026-10-28 after the fixes, 473 tracks, views at-135 and at-145):
+Baselines (2026-10-28 after the fixes, 473 tracks, views at-135 and at-145; rechecked 2026-11-01, unchanged):
 - endpoints warm: tracks 20-35 ms / ~540 KB per library (60 ms when `gridfix.results` re-classified every grid each call), hype ~20-40 ms, colours/explain ~250 ms (reads the NML +
   History every call), setup ~85 ms (~850 cold: the new-labels count), everything else < 25 ms. Cold hype 450 ms (module load).
 - tracks: /api/cues 30-70 ms warm; `_saved_db` 3 ms (the sample-folder walk runs once per server run, was
   29 ms per call); whole-track /api/wave 0.7-1.6 s, 180-310 KB (decode; first zoom only); suggest < 15 ms.
 - errors: all ok (JSON 4xx). hosts: all refused (400), foreign Origin 403.
-- static: node ok; the 8 CSS hex colours left are white text on accent buttons and the yellow corrections box
+- static: node ok; the 9 CSS hex colours left are white text on accent buttons and the yellow corrections box
   (fine in both themes); no per-render global listener (drawWave's mouseup has an AbortController `signal`).
 - overflow: no page scrolls sideways at 390 px.
 - Fixed 2026-10-25 (don't reintroduce): DNS rebinding answered; 500 text pages on bad bodies; drawWave leaked a
@@ -48,6 +48,10 @@ Baselines (2026-10-28 after the fixes, 473 tracks, views at-135 and at-145):
 - Fixed 2026-10-28: Tick all corrections ticked moves of cues ticked for deletion and didn't update pads/slots
   (set `checked` in code → dispatch `change` on `#approve`); an ignore/rescan/loop-length save reset an unsaved
   Number cues in order (`RENUM` cleared only in `save`); two requests both recounted corrections (`_fixes_lock`).
+- Fixed 2026-11-01: a queued mix starts the moment the one before ends, so the page never saw that one end (no result
+  opened, no refresh, a failure lost): `job.ended` + `jobPoll`; deleting the only mix at `#mixes` didn't redraw;
+  "Busy with" named the finished job between two queued mixes; timeline time labels clipped to one bar's width
+  (`tlAxis`); the no-tracklist note gave terminal flags on the page (`skippedNote`, **Started at**).
 
 ## 2. Read the code with this checklist
 

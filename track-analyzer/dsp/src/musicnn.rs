@@ -1,12 +1,13 @@
 //! Essentia's TensorflowInputMusiCNN (the mel input of the EffNet and MAEST models) over a whole 16 kHz signal,
 //! cut as FrameCutter(frameSize=512, hopSize=256, startFromZero=False) cuts it. Per frame, as the C++ does it:
 //! Windowing (Hann, zero-phase), Spectrum (FFTW, then sqrt(re*re + im*im)), MelBands (96 bands, power, summed bin
-//! by bin), x*10000 then +1, log10f. Essentia's arm64 build fuses `re*re + im*im` and the band sum
+//! by bin), x*10000 then +1, log10 (in double, rounded: math.rs). Essentia's arm64 build fuses `re*re + im*im` and the band sum
 //! `acc + (s*s)*w` (clang's default contraction, within one expression) but not the separate `*=`/`+=` of the
 //! scale and shift; the same here. Frames are independent, so they run in parallel.
 
 use crate::fft512::rfft512;
-use crate::musicnn_tables::{LOG10F_FIX, MEL_LEN, MEL_START, MEL_WEIGHTS, WINDOW};
+use crate::math::log10f;
+use crate::musicnn_tables::{MEL_LEN, MEL_START, MEL_WEIGHTS, WINDOW};
 use rayon::prelude::*;
 
 pub const FRAME: usize = 512;
@@ -28,17 +29,6 @@ pub fn frame_starts(n: usize) -> Vec<isize> {
         start += HOP as isize;
     }
     out
-}
-
-/// macOS's log10f, which isn't correctly rounded: (float)log10((double)x), except at the inputs listed in
-/// LOG10F_FIX (where it differs, or where another libm's double log10 could round the other way).
-#[inline]
-fn log10f(x: f32) -> f32 {
-    let b = x.to_bits();
-    match LOG10F_FIX.binary_search_by_key(&b, |&(k, _)| k) {
-        Ok(i) => f32::from_bits(LOG10F_FIX[i].1),
-        Err(_) => (x as f64).log10() as f32,
-    }
 }
 
 fn mel_frame(frame: &[f32; FRAME], out: &mut [f32]) {

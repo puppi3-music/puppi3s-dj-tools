@@ -15,8 +15,10 @@ only if it still holds the view's value, so edits made in Lexicon while the view
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
+import sys
 import time
 import unicodedata
 import urllib.error
@@ -29,7 +31,8 @@ from .analysis import COLOR_NAMES, HOME, fmt_time, log
 
 API = "http://localhost:48624/v1"
 STATE = HOME / "tempo-loaded-lexicon.json"
-LIBRARY = Path.home() / "Library/Application Support/lexicon/main.db"
+LIBRARY = (Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")) / "lexicon" / "main.db"
+           if sys.platform == "win32" else Path.home() / "Library/Application Support/lexicon/main.db")
 BACKUPS = HOME / "lexicon-backups"
 KEEP_BACKUPS = 10
 FIELDS = ("genre", "color", "comment", "energy")
@@ -100,8 +103,11 @@ def _edit(track_id: int, edits: dict) -> None:
 
 
 def _paths(location: str) -> list[str]:
-    """Lexicon writes the boot drive as /Volumes/Macintosh HD/…; our databases use /Users/…"""
+    """Lexicon writes the boot drive as /Volumes/Macintosh HD/…; our databases use /Users/…. On Windows it writes
+    C:/Users/… (seen 2026-11-02); our databases use C:\\Users\\…"""
     loc = unicodedata.normalize("NFC", location or "")
+    if re.match(r"[A-Za-z]:/", loc):
+        return [loc.replace("/", "\\")]
     out = [loc]
     m = re.match(r"/Volumes/[^/]+(/.*)$", loc)
     if m:
@@ -146,7 +152,7 @@ def backup(tag: str) -> str:
 
 
 def loaded() -> dict | None:
-    return json.loads(STATE.read_text()) if STATE.exists() else None
+    return json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else None
 
 
 def _show(field: str, v):
@@ -219,14 +225,14 @@ def load(bpm: float, folder: str, view_db: sqlite3.Connection, shifted_colour, d
     stats["backup"] = backup("before-tempo-view")
     # Remember before writing, so an interrupted load can still be switched back.
     state = {"bpm": bpm, "loaded_at": time.strftime("%Y-%m-%d %H:%M"), "folder_id": None, "tracks": changes}
-    STATE.write_text(json.dumps(state, ensure_ascii=False))
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     log(f"Lexicon: changing {len(changes)} tracks, one at a time…")
     for tid, ch in _each(list(changes.items()), lambda x: x[1]["title"][:60]):
         _edit(int(tid), {f: v[1] for f, v in ch.items() if f in FIELDS})
     log(f"Lexicon: adding the smartlist folder {folder} ({len(lists)} genres)…")
     folder_id = _call("POST", "/playlist", {"name": folder, "type": "1"})["data"]["id"]
     state["folder_id"] = folder_id
-    STATE.write_text(json.dumps(state, ensure_ascii=False))
+    STATE.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
     for g in lists:
         _call("POST", "/playlist", {"name": g, "type": "3", "parentId": folder_id, "smartlist": smartlist(g)})
     stats["now_loaded"] = (f"{bpm:g} BPM view in Lexicon. Back to normal: uv run dj-track-analyzer tempo native --lexicon")

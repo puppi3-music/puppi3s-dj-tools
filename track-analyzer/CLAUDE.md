@@ -17,6 +17,13 @@ details go there, never in this file.
 - Anything that writes to files, Traktor or Lexicon gets `--dry-run`, a backup and an undo path.
 - Real Essentia models can't be downloaded in sandboxes; tests there use stand-ins for the TF models.
   Real-model behaviour is only verified by runs on a Mac, or in the Docker test image (below), which has them.
+- `tests/` (pytest, `uv sync --inexact --group test`, `uv run pytest`, ~2 s): a made-up library (FLAC tones with
+  accented and Japanese names) and Traktor collection in a temp home (conftest sets HOME/USERPROFILE and
+  TRACK_ANALYZER_HOME before import), in Windows Traktor's form on Windows. The analysis is a stand-in
+  (`fake_analysis`); scan, `tag`, `traktor` (dry run, write, undo byte for byte), the Traktor-running refusal (a
+  process named "Traktor Pro 4"), paths with Windows' rules simulated, unplugged drive letters (Windows only) are real.
+  `.github/workflows/tests.yml` runs them on windows-latest and ubuntu-latest on every push to main/windows-port,
+  and starts each launcher until the page answers.
 
 ## Files
 Code is the package `src/dj_track_analyzer/` (relative imports; uv installs it editable). Run it as
@@ -27,7 +34,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `color_model()` aliases `sys.modules["colors"]` because bundles trained before the package move pickled
   `colors.BlockWeights` under that name.
 - `dsp/`: Rust (PyO3 + maturin) module `track_analyzer_dsp`, replacing Essentia steps bit for bit, faster
-  (`analysis.dsp()`; Essentia when it isn't installed). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
+  (`analysis.dsp()`, required since stage 7). Now: `loudness_ebur128` (= LoudnessEBUR128, needs FMA
   in the coefficients and `b*x - a*y` to match the arm64 build) and `resample_sinc_medium` (= Resample quality 1,
   libsamplerate 0.2.2: its ring-buffer walk replayed on one thread, dot products in parallel; via
   `analysis.resample_medium`) and `resample_linear` (= Resample quality 4, the models' 16 kHz input via
@@ -38,9 +45,23 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   padding/patches/batches as TensorflowPredictEffnetDiscogs, graph via plain TensorflowPredict). Its 512-point FFT is
   FFTW 3.3.10's plan with the codelets ported (`dsp/tools/gen_fftw_codelets.py`: Essentia's FFTW runs the PLAIN
   codelet variant and gcc -O3 fuses mul+add across statements, modelled with mul_add; checked by calling the
-  wheel's local `_r2cf_16` etc. via ctypes). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
-  it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
-  after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
+  wheel's local `_r2cf_16` etc. via ctypes). `key_edma` (= KeyExtractor edma, `analysis.key_of`; dsp/src/key.rs, the 4096
+  FFT in fft4096.rs with `r2cf_128`, tables from `dsp/tools/gen_key_tables.py`): SpectralWhitening's vectorised loop (blocks of 16 unfused, tail fused), Key's std
+  unfused / correlation fused; per-frame work `#[inline(never)]` with heap buffers (inlined into rayon's splitting it
+  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). `rhythm_multifeature`
+  (= RhythmExtractor2013 multifeature, `analysis.rhythm`; dsp/src/bpm.rs, tables from `dsp/tools/gen_bpm_tables.py`):
+  the trackers' autocorrelations need FFTW's own rounding, so dsp/src/fftw.rs ports FFTW's ESTIMATE plans for every
+  power of two to 2^22 (r2c + c2r; plans read with `fftwf_sprint_plan`, twiddles from FFTW's sqrt(n) trig table);
+  the five Degara trackers draw rand() (seed 1 per call) in Essentia's scheduler order infogain, beat_emphasis,
+  melflux, rms, complex (`order` [4, 3, 2, 0, 1]; test signals can't tell orders apart, real recordings can).
+  Essentia fails on a whole long mix (output buffer full), so check.py compares only a mix's 2-min segments, as the
+  app measures. Accuracy beats Essentia's bits (user, 2026-11-02): every libm call (log, log2, log10, exp, pow(10, x),
+  sin/cos, atan2) is the `libm` crate's double rounded to float (dsp/src/math.rs), more exact than Essentia's macOS
+  float libm and the same bits on every platform; check.py passes those steps within `TOL` (mel 1 float step, EffNet
+  and key strength 1e-5, key/scale equal; BPM its gate) as "close". Mel tables (window, mel weights, twiddles) from
+  `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
+  after a check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
+  `uv sync --inexact --group check` (Essentia, the reference; the analyzer itself doesn't use it since stage 7), then
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
   release). While working, `--steps <changed step>` (~3 min: Essentia's own steps are most of the time).
   uv installs the wheels CI attaches to the `dsp-v<version>` release (`.github/workflows/dsp-wheels.yml`; the
@@ -50,30 +71,37 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   docs/WINDOWS.md.
   Essentia's `AudioLoader` (checked 2026-10, docs/WINDOWS.md stage 0): MP3 via FFmpeg's fixed-point `mp3`
   decoder (16-bit, clipped), mono files as left = signal / right = silence (so loudness reads mono ~3 dB low),
-  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV when installed (`analysis.pyav()`), bit
+  AAC/Opus untrimmed. `analysis.decode()` = AudioLoader's output from PyAV (`analysis.pyav()`), bit
   for bit on 507/508 files (stage 2; the other: FFmpeg 2.8 decoded one MP3's LAME Info frame as 1152 samples of audio,
   current FFmpeg doesn't, as `traktor.audio_offset` assumes); raw frame bytes converted ~1M samples at a time (per-frame
   numpy was slower than Essentia), FLAC/ALAC frame threads; >2 channels via PyAV's resampler = `ffmpeg -ac 2` bits.
-  Opus length = sum of packet durations (FFmpeg 2.8's). Python `tensorflow==2.15.0` runs the model graphs bit-identically to Essentia's TF, at the same
-  speed; onnxruntime (tf2onnx) doesn't (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
+  Opus length = sum of packet durations (FFmpeg 2.8's). Every model graph goes through `analysis.Graph` (= TensorflowPredict:
+  run({in: x}) → {out: y}; inputs lose size-1 axes after the batch, outputs padded to 4 axes) or `Head` (= TensorflowPredict2D,
+  64 rows per run, the last shorter: one batch per track is off by 2e-6): Python `tensorflow==2.15.0`
+  (`analysis.tensorflow()`; pyproject.toml also names tensorflow-macos/-intel: uv's lock misses them); bit-identical
+  to Essentia's, same speed (stage 4; `dsp/check.py --steps nets`). onnxruntime (tf2onnx) isn't identical
+  (MAEST embeddings off by up to 5e-4) and is slower on MAEST.
 - `cli.py`: argparse CLI (`main`). `mcp_server.py`: `build_mcp()` (mcp SDK **2.x**:
   `from mcp.server.mcpserver import MCPServer`) + `protect_stdout()`.
-  Essentia (`essentia-tensorflow`, pinned dev1177 on Apple Silicon for macOS 11+ support).
+  No Essentia at run time (stage 7): `essentia-tensorflow` is only in the `check` dependency group, for dsp/check.py.
 - `collection.py`: `scan` (resumable, parallel spawn workers, SQLite `collection.db`), CSV export,
   `tag`/`untag` (mutagen; originals backed up in `original_tags` table), search, mix suggestions, `regenre`
   (genres again from cached scores + current dj_genres.json; reproduces scan exactly).
 - `traktor.py`: `traktor` command. Surgical text edits of collection.nml (never a full XML rewrite),
   timestamped backups + `--undo` (refuses if the NML changed since our write, via a `.written-sha1` file next to
-  the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer:
-  in a container, `CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor, so it needs a y in a terminal,
+  the backup; `--force` overrides), refuses while Traktor runs (`check_closed(dry_run)`, used by every NML writer;
+  `running_state()`: pgrep, `tasklist` on Windows, None when it can't tell. Never assumed closed: in a container
+  (`CONTAINER` = TRACK_ANALYZER_CONTAINER=1, pgrep can't see Traktor) or when the check fails, it needs a y in a terminal,
   TRACK_ANALYZER_TRAKTOR_CLOSED=1, or the page's answer (`page_answer`; else `ConfirmClosed` → web 409
-  {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE, INFO COLOR (only where
+  {confirm: "traktor_closed"}, the page's `postJSON` asks and resends with traktor_closed; jobs check before starting). Sets INFO GENRE (from the files' tags; `--genres-from-analysis` / the page's "only in Traktor": `multi_genre` of the DB row, a hand genre as typed, files untouched), INFO COLOR (only where
   missing unless `--overwrite-colors`), and a "Genres (Track Analyzer)" Smartlist folder, only for
   `known_genres()` = dj_genres.json names + trained genres (shop tags like "melodic techno, indie dance" would
   otherwise become ~100 Smartlists). `track_info()` reads Traktor's TEMPO BPM and MUSICAL_KEY (0-11 = C..B major,
   12-23 = C..B minor; INFO KEY is Open Key display text). Also `collection_tracks()` for `scan --traktor` and
   `recording_dirs()` (skips recordings + samples; `mac_path()` converts the .tsi's colon-style paths like
-  `"Macintosh HD:Users:Shared:Traktor:Samples:"`).
+  `"Macintosh HD:Users:Shared:Traktor:Samples:"`; Windows Traktor's plain `C:\…` paths pass through).
+  `location_paths()`: a drive-letter VOLUME (`"C:"`, Windows Traktor) gives `C:\…`; folder checks go through
+  `collection.under()` (any case and `/` or `\` on Windows).
 - `colors.py`: `colors train|review|explain|apply`: learns a Traktor colour scale from already-coloured tracks.
 - Starter models (`src/dj_track_analyzer/starter/{colors,cues}.joblib`, built by `scripts/make_starter.py` from the
   developer's trained models with every track path and the collection path dropped, `starter: True`):
@@ -84,7 +112,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   [--track TEXT]` (+ `readme_shots.mjs`, headless Chrome) from the real library, with titles/artists/albums/paths
   swapped for made-up ones in the page's fetch answers and text. Retake after visible page changes; look at every PNG
   for leftover names before committing.
-- Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (no Linux arm64 Essentia; on Apple
+- Docker (`Dockerfile`, `compose.yaml`; README "Docker"): linux/amd64 only (the dsp wheels and `[tool.uv] environments` cover Linux x86_64 only; on Apple
   Silicon it runs emulated, TF included). Target `app` (web on 0.0.0.0, HOME=/home/dj so Traktor's folder mounts at
   ~/Documents/Native Instruments, data /data, any uid) and `test` (+ `setup` models baked in, never published:
   licence; + `scripts/make_fixtures.py` library: 4 synthetic tracks 124-145 BPM, MP3/FLAC/WAV, NML with grid, 5 cues,
@@ -116,15 +144,26 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   movement in the same decode (64x36 grey at 2 fps, mean frame diff) → overall rank = mean(audio rank, movement
   rank) among the clips; files named "#overall clip-N MmSSs.mp4" (a new preview run deletes the old ones), --pick still takes N. Test set: audio #2 was at
   the 6th percentile of movement (checked: static), audio #4 at the 97th (lively).
+- `mixreport.py`: `mixes` command + /api/mixes-report (Mixes tab `#mixes/~all`, `renderMixReport`; in snapshots): saved mix
+  JSONs (newest per recording) added up: `keys` (heard = our CNN key ≠ Traktor's, key lock on, any heard model), `view`
+  (heard_mood vs own_mood / view_mood, mean and mean abs distance; genre as heard = view's / own), `shape` (each set in 20 equal slices: hype time-weighted over the tracks playing via
+  `web.played_tracks` + blend lag, colour played longest, LUFS; per mix and mean, drawn by `shapeTimeline`), `arc` (timeline segment
+  mood by fifth, each mix once), transitions (CNN-keyed mixes only). Read-only.
 - `tracklist.py`: `analyze <mix> --tracklist`: Traktor history NML (COLLECTION entries joined to PLAYLIST
   ENTRY/PRIMARYKEY KEY = VOLUME+DIR+FILE; EXTENDEDDATA STARTDATE = y<<16|m<<8|d, STARTTIME = seconds of day,
   DURATION = deck run time, which includes faded-out tails, so plays overlap ~70% of a mix). Recording start from
-  Traktor's `Recording_YYYY-MM-DD_HHhMMmSSs` name or `--start`. Main stretch = start → next start, shifted by a
+  Traktor's `Recording_YYYY-MM-DD_HHhMMmSSs` name or `--start`. No start or no covering history with `--tracklist` auto → `NoHistory` (a SystemExit): `analyze`
+  carries on without the check and saves `tracklist_skipped` (the reason; summary line), `tracklist_skipped_kind` (start / history:
+  the page's own wording, `skippedNote`) and `recording_start`; the page's **Started at** (one recording) = `--start`; a named file or `--chapters` still stops. Main stretch = start → next start, shifted by a
   measured blend lag (0-150 s, the one where most keys match), middle 60% judged. Key lock on unless off wins by
   ≥2 tracks. Sped >4%: genre = mix acts at played BPM with PSY_GATE vs native acts per track
   (speed-up and stems/effects both really change the genre, only the psy shortcut is
   removed; earlier "native + (mix − view)" and "library genres by time" were dropped). `mixing` = mix − view
-  acts. Fields `*_uncorrected` = no gate. `--chapters`/`--highlights`/`--offset`: video time = recording time −
+  acts. Fields `*_uncorrected` = no gate. Since 2026-11-01 also `key_model: "cnn"`, `keylock.matches_per_lag`, per track
+  `library_camelot`, `heard_mood` (mood_patches over the judged window), `own_mood`, `view_mood`/`view_genre` (the view
+  db near the played tempo), `transition` (`camelot_step` from the previous heard key) + `transitions` totals.
+  Highlights carry `energy` (`mood_energy`: mean of party + aggressive heads per second); `--clip-mood W` adds W × energy
+  to the score (default 0 = the same picks as before, checked). `--chapters`/`--highlights`/`--offset`: video time = recording time −
   first track's start (`anchor()`; `first_sound_seconds` without a tracklist) + offset, offset read off the
   finished video by the user (required for --chapters; never guessed from the audio); highlights from 1 s means
   of EBU short-term loudness, level + 0.5·rise (capped 8 LU), windows touching < −45 LUFS skipped. Missing data → SystemExit saying how to get it.
@@ -135,7 +174,17 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   restores them (the saved globals are read inside the lock, or a view's stayed for good). In a view the Tracks tab,
   Overview colours and hype show `tempo.view_colours` (your colour from the NATIVE db + the model's shift, as `tempo
   load` writes it; held stays yours; `web.colours`, `hype.find(colours=)`), not the view db's unshifted copy. Mixes/Files tabs read run output JSON from `logs/` (`--logs`; endpoints are /api/saved*, since
-  tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Writes: POST /api/hold, cue/sample endpoints (all JSON
+  tracker blockers block `/api/log?`); `_json_in` tolerates teed stderr. Mixes' **Analyse a mix…** = job `analyze_mix` (`analyze <file> --out
+  <first logs folder>/<stem>.json`, `jobs.MIX_DIR`; replaces an earlier one, via a .part file so a failed run keeps it), its list from /api/recordings (`web.recordings`: Browser.Dir.Recordings
+  + the default folder, one row per stem, lossless preferred, > MIX_THRESHOLD_SEC). A dropped file: POST /api/recordings/find
+  (name + size → that recording's path, no copy), else /api/mix-upload streams it to data/uploads/ (header
+  X-Track-Analyzer: upload + Origin check instead of a JSON body; refused while a job runs), deleted when the job ends. Timeline: hype view (default, `ta-mix-view`) = per 2-min segment the
+  library hype (time-weighted) + Traktor colour (longest) of the tracks playing, from `web.played_tracks` (saved_file adds
+  `library`, by path, which tracklist output carries since 2026-10-31, else artist+title; native db) and the tracks'
+  start + blend lag; not measured from the mix audio (at 145 the models hear psy, as in the psy gate). Clicking a mix genre/style/mood
+  bar (`MIX_SEL`) fades the segments without it (style/mood against the strongest segment) and tints tracklist rows (genre = the
+  track's heard genre, else its main stretch's segments time-weighted); segment `mood` = the mood heads over its patches
+  (`mood_patches`, analyses since 2026-11-01; whole-mix `mood` unchanged). Writes: POST /api/hold, cue/sample endpoints (all JSON
   body + Origin check against CSRF, `from_this_page`), and jobs (below). Host header must be 127.0.0.1/localhost
   (TrustedHostMiddleware, `allowed_hosts`; any with --host 0.0.0.0, except in a container: + TRACK_ANALYZER_HOSTS): against DNS rebinding, which passes the Origin check.
   Every failure answers JSON {error} (`failed()`: SystemExit 409, bad input 400, else 500 + logged); the page's
@@ -148,10 +197,15 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   stderr line) in its own process group, stdin DEVNULL (so `colors review --apply` never asks; the page passes `--yes`
   after a dry-run preview). Only `ACTIONS` (name → label, argv builder that validates options, writes?) can run; writers
   get `--dry-run` for the preview; `UNDO` maps writer → undo action. Stop = SIGINT to the group (scans save), SIGTERM
-  after 20 s; `web.serve` stops a running job on exit. Log = stderr lines (`[n/total ~eta left]` → progress; `\r`
+  after 20 s; `web.serve` stops a running job on exit. `analyze_mix` queues: `options.files` = several recordings, run one
+  after another by `_wait` (also past a failure); an analyze_mix started while one runs joins `_queue`; `busy()` counts
+  the queue; Stop clears it; `state()` lists it as `job.queued`, and the last jobs that ended as `job.ended` (a queued mix starts
+  the moment the one before ends, so the page's poll may never see that one end: `jobPoll` ends them from this list, `JOB.failed`). Log = stderr lines (`[n/total ~eta left] what` or `[n/total] what` → progress with `what`; the page's bar falls back to
+  `job.last`, the latest log line, so every action says what it's doing; `\r`
   segments → `live`, curl's meter); result = the JSON on stdout. Routes /api/setup, /api/jobs?since=, /api/jobs/start,
-  /api/jobs/stop; `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
-  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers. Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
+  /api/jobs/stop; /api/saved-file/delete (`web.delete_saved`: moves a listed saved file to its folder's deleted/, which
+  `saved_files` doesn't read); `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
+  installs uv if missing, `uv sync --inexact` (keeps the opt-in extras), `exec uv run dj-track-analyzer web`; opens the page if 8766 already answers. `Start Puppi3's Track Analyzer.bat` is its Windows twin (CRLF via `.gitattributes`; also `PYTHONUTF8=1`, x64 Python on Arm). Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
 - `cues.py`: `cues train|scan|show`. Traktor's grid (AutoGrid CUE_V2 TYPE 4 START ms + TEMPO BPM; `grids()`,
   read-only; your cues = TYPE 0 cue / 5 loop, LEN ms) → bars. Per bar (cache.db `bars`, keyed path+grid, valid
   while mutagen length is within 0.25 s): 6 band dB, 40 mel dB (2048 FFT, 10 ms hop, 44.1k mono), kick body
@@ -253,12 +307,25 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   Skipped by `_wanted` (tag, scan --write-tags), `traktor.sync` (genre and colour, even --overwrite-colors),
   `colors review --apply`, `tempo.build_view` and `lexicon.build` (held genre keeps its Smartlist); stats
   `genre_held` / `colour_held`.
+- Hand edits (`edit.py`, `edit` command, POST /api/track/edit → `web.edit_track`, the panel head's ✎ Edit
+  (`S.editing` = path; `ed()` turns the facts into fields, `editBar`/`bindEdit` Save/Cancel/↺/Undo)): colour/key/genre → `traktor.set_track` (INFO COLOR; MUSICAL_KEY VALUE + INFO KEY as Open
+  Key = Camelot + 5, `open_key`/`camelot_value`, MUSICAL_KEY inserted after LOUDNESS if missing; INFO GENRE; Hype in
+  COMMENT only where it already has one and tag writing is off; `stamp_if_unchanged`; `_save` backup) first, then the
+  NATIVE db: colour → traktor_color + colour hold + `accept_guesses` (a training label), key → traktor_camelot (Traktor
+  stays their source, so a later Traktor edit wins). Genre/hype/BPM → collection.db `manual` (path, field, value,
+  `was` JSON of the replaced columns, per column) via `collection.set_manual`; `apply_manual(con)` (native db only)
+  puts them back after `store_traktor_info`, scan, regenre and `hype.compute` (whose returned dict gets them, so
+  `hype --traktor` writes them); `MANUAL` = genre → genre + my_genre, hype, bpm → traktor_bpm (also merged into
+  `load_traktor_info`, so genre rules and tempo views use it; Traktor's BPM is never written). Genre set = held.
+  `edit()` returns `undo` {changes, clear, traktor_genre}: the page's Undo sends it back (colour may be set and
+  cleared at once: set + release the keep-always hold). Refused while a job runs (web) and, for Traktor fields,
+  while a tempo view is loaded. Feedback kind `manual`.
 - `keycnn.py`: key from MusicalKeyCNN (puppi3-music/MusicalKeyCNN-CKA, from a1ex90/MusicalKeyCNN; MIT): KeyNet in
   numpy (`forward`; weights `starter/keynet.npz`, BN folded, made by `scripts/convert_keynet.py` from keynet.pt),
   input = librosa CQT exactly as the repo trained on (hence the librosa pin). Checked: same key as torch on 32/32
   (probabilities within 2e-7) and as the repo's own pipeline on 459/459. `_conv` is im2col (one matmul per layer,
   0.35 vs 0.78 s/track; same key and 3-decimal confidence as the per-position loop on 443/443). `analysis.key_cnn` → `cnn_key`,
-  `cnn_camelot`, `cnn_confidence` (tracks and tempo views; mix segments still use Essentia).
+  `cnn_camelot`, `cnn_confidence` (tracks, tempo views and the tracklist check's heard keys, `_measure` want key "cnn"; mix timeline segments still use Essentia).
   `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
   The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
 - `dj_genres.json`: maps Discogs styles to DJ genre names (rules with "needs" groups + BPM range); a user copy in
@@ -299,7 +366,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   is trimmed: identical to the old silence-dropping version on all 469 test tracks, whose silence was all at the end).
 - Files > 12 min are DJ mixes → timeline per 2-min segment (`--tracklist` adds a per-track check). Their BPM/key
   measurements run in `analysis.AudioPool` (spawn workers as `scan`, audio via a memory-mapped .npy, worker
-  stdout → stderr for MCP); output identical to serial, 121 → 71 s on a 65-min mix.
+  stdout → stderr for MCP); output identical to serial, 121 → 71 s on a 65-min mix. `measure(jobs, meter)`
+  keeps a count line updated with \r (segments; the tracklist's tempo and key matching, by track), which the job bar shows as `live`.
 
 ### Colour
 - Traktor INFO COLOR 1..7 = Red, Orange, Yellow, Green, Blue, Violet, Magenta. Treated as an ordered scale; labels
@@ -313,10 +381,21 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   that really had that colour (+5 pseudo-tracks of the overall rate). Bundles store `cv` (positions, truth);
   bundles without it → None (retrain). Typical 0.2-0.3. `review` uses within=1.
 - `colors review --apply` recolours CV disagreements with gap ≥ 2.5 and within-one confidence ≥ 0.75
-  (`traktor.set_colors`, skips tracks recoloured since). Asks per track (y/n/k/a/c; `--yes` skips); `k` = keep always → collection.db `color_keep`, which
+  (`traktor.set_colors`, skips tracks recoloured since). `--track PATH` (repeatable; `review(only=)`) = only those listed tracks,
+  thresholds ignored, refused if any is kept always. The page's Approve / Keep only mark rows: native collection.db `colour_plan`
+  (`colors.set_plan/plans`, POST /api/colours/mark; stale marks dropped by review); **Write…** = job `colors_write_marked` =
+  `review --apply --planned` (set_colors for approvals, then keep-always + colour_keep feedback, marks cleared; no undo offered when
+  only keeps). **Retrain now** (shown when `recoloured_since_training`) = job `colors_train` {views} = `train --refresh-views`.
+  `colors.sync_traktor_colours()` (review, web `tracks`/`stats`) copies Traktor's colours into the native db's `traktor_color` whenever
+  collection.nml's mtime changes (not while a view is loaded), so recolours, undos and hand edits show at once; review lists a track
+  whose colour changed since training with `recoloured` (its colour now; not approvable or markable, not counted toward the
+  threshold, skipped by --apply; `recoloured_since_training` shows Retrain now) until retraining drops it from `disagreements`. Asks per track (y/n/k/a/c; `--yes` skips); `k` = keep always → collection.db `color_keep`, which
   `--apply` skips. `colors review --kept [--keep|--forget TEXT]` shows/edits it (`--keep` alone is refused; ≤10 matches).
   `read_traktor_colors` refuses while a tempo view is loaded (train, explain, apply, `--keep`). `colors apply`: scan --traktor (new only) → deep features
   for uncoloured → refresh predictions → `traktor.sync(update_genres=False, make_smartlists=False)`.
+- The page never shows the final model's guess for a track it learned from (it leans toward your colour): `web._unbiased_colours`
+  swaps in the CV position (`colors.unbiased_positions`: bundle `cv.paths`, or older bundles' `labels` order when lengths and
+  truths match) + the view's shift; `colour_unbiased` on /api/tracks. Approve / Recolour are disabled while a view is loaded.
 - `colors explain`: per-colour profile + playlists + History set position + artist consistency (read-only).
 - Learn from what was set or accepted, whoever suggested it (user, 2026-10-26). `traktor.sync` (colour fills and
   `--overwrite-colors`, i.e. `traktor` and `colors apply`) records each colour it writes in NATIVE collection.db
@@ -431,7 +510,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (view-only `source_bpm`/`native_color_position`; `hype` is in `KEEP_ON_RESCAN`).
 - NFC vs NFD paths create duplicate rows (`_drop_decomposed_duplicates`). Syncthing `*.sync-conflict-*` copies are
   skipped by `scan` (and earlier rows dropped). >2-channel files (Essentia's AudioLoader rejects them) are mixed down to
-  stereo by PyAV's resampler (`decode`), or by the ffmpeg command without PyAV (`_load_downmixed`, float; same bits). Rows for files that are gone are dropped by every scan unless they're on
+  stereo by PyAV's resampler (`decode`; = the `ffmpeg -ac 2` bits). Rows for files that are gone are dropped by every scan unless they're on
   a drive that isn't mounted (/Volumes/<disk>; Linux /media, /run/media, /mnt via ismount). `nfc()` composes a
   path on macOS always, on Linux only if that spelling exists (ext4 compares bytes).
 - `scan` recomputes hype after analysing anything (it's a rank within the collection); `hype` is also kept on rescan.
@@ -460,6 +539,9 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 - Loop cuts (`web._cut`, page loops and saved samples): `-ss` straight to the loop start starts the MP3 decoder cold and
   its first ~660 samples (15 ms) came out wrong, a click every time round. Decode from 0.5 s earlier and cut with an
   output `-ss`: identical to the whole decoded track (0 diff, MP3 + FLAC, also at 0.2 s).
+- LoudnessEBUR128 (Essentia, so also our bit-identical Rust copy) reads 96 kHz as silence (-70 LUFS, range 0) and 192 kHz
+  ~3 LU loud; 22.05-88.2 kHz are right. `analysis.loudness` resamples above `LOUDNESS_MAX_SR` (88.2k) to 48 kHz first
+  (`resample_medium`). Found on a 96 kHz Traktor recording (2026-10-31); no collection track was affected.
 - `mix_suggestions` same genre = exact genre name (genre/genre_2/my_genre, the columns it always searched), as the Smartlists; `search(genre=)`
   stays a substring search over genres, styles and the genre tag.
 

@@ -241,7 +241,6 @@ def scan(bpm: float = DEFAULT_BPM, workers: int | None = None, rescan: bool = Fa
         pool = None
         try:
             if workers == 1:
-                analysis.es()
                 results = map(_scan_one, jobs)
             else:
                 import multiprocessing as mp
@@ -639,7 +638,7 @@ def build_view(text: str, bpm: float, path: Path) -> tuple[str, dict, dict]:
 
 
 def loaded() -> dict | None:
-    return json.loads(STATE.read_text()) if STATE.exists() else None
+    return json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else None
 
 
 def write_nml(bpm: float = DEFAULT_BPM, nml: str | None = None, out: str | None = None) -> dict:
@@ -685,7 +684,7 @@ def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False
             traktor.set_setting(path, traktor.MASTER_TEMPO, clock, backup_tag="before-tempo-view-")
             remembered["clock"] = [yours, clock]
         STATE.write_text(json.dumps({"bpm": bpm, "collection": str(path), "loaded_at": time.strftime("%Y-%m-%d %H:%M"),
-                                     **remembered}, ensure_ascii=False))
+                                     **remembered}, ensure_ascii=False), encoding="utf-8")
         (view_home(bpm) / "collection.nml").write_text(new_text, encoding="utf-8")
         stats["now_loaded"] = f"{bpm:g} BPM view. Back to normal: uv run dj-track-analyzer tempo native"
     return stats

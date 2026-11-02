@@ -20,8 +20,14 @@ from . import analysis, collection, traktor
 from .analysis import HOME, log
 
 BREW = analysis.find_tool("brew")
+WINGET = analysis.find_tool("winget") if sys.platform == "win32" else None
 ERROR_MARK = "\x1eTRACK-ANALYZER-ERROR "  # the child's last line when it stops with a message (SystemExit)
-PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)\s+~(.+?) left\]")  # "[12/470  ~31m left] …" from scan, tempo scan, cues, colours, Lexicon loads
+# "[12/470  ~31m left] what" from scan, tempo scan, cues, colours, Lexicon loads; "[3/17] what" without a time
+PROGRESS = re.compile(r"^\s*\[(\d+)/(\d+)(?:\s+~(.+?) left)?\]\s*(.*)")
+STAGE = re.compile(r"^\[\s*[\d.]+s\] (.+)")  # "[ 25.1s] measuring loudness": analyze_file's stages
+# A mix analysis has no [n/total] lines; its stages (in analyze_file's order, roughly even in time) stand in for them
+STEPS = {"analyze_mix": ("decoding", "measuring loudness", "running the style model", "moods, instruments",
+                         "building the timeline", "checking against the tracklist")}
 KEEP_LINES = 3000
 
 
@@ -55,12 +61,49 @@ def _scan(o: dict) -> list[str]:
     return args
 
 
+MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
+
+
+def _analyze_mix(o: dict) -> list[str]:
+    if not str(o.get("file") or "").strip():
+        raise ValueError("Pick a recording")
+    p = Path(str(o["file"]).strip()).expanduser()
+    if not p.is_absolute() or not p.is_file():
+        raise ValueError(f"No such file: {o.get('file')} (give the full path)")
+    if p.suffix.lower() not in analysis.AUDIO_EXTS:
+        raise ValueError(f"{p.name} isn't an audio file")
+    MIX_DIR.mkdir(parents=True, exist_ok=True)
+    out = MIX_DIR / f"{p.stem}.json"  # analysed before: replaced by the new result
+    start = str(o.get("start") or "").strip()  # when the recording began, for a name that doesn't say
+    if start and not re.fullmatch(r"\d{4}-\d\d-\d\d[T ]\d\d:\d\d(:\d\d)?", start):
+        raise ValueError(f"Start time as YYYY-MM-DD HH:MM(:SS), not {start!r}")
+    tl = o.get("tracklist", True)
+    return ["analyze", str(p.resolve()), *(["--tracklist"] if tl else []), *(["--start", start] if tl and start else []),
+            *(["--highlights"] if o.get("highlights", True) else []), "--json-only", "--out", str(out)]
+
+
 def _tool_install(o: dict) -> list[str]:
     if o.get("tool") not in ("ffmpeg", "rubberband"):
         raise ValueError("unknown tool")
-    if not BREW:
-        raise ValueError(f"Homebrew isn't installed. In a terminal: {analysis.install_hint(o['tool'])}")
-    return [BREW, "install", o["tool"]]
+    if BREW:
+        return [BREW, "install", o["tool"]]
+    if WINDOWS and o["tool"] == "rubberband":
+        return ["install", "rubberband"]  # its own build (analysis.install_rubberband): winget doesn't have it
+    if WINGET:
+        return [WINGET, "install", "--id", "Gyan.FFmpeg", "--exact", "--silent", "--disable-interactivity",
+                "--accept-source-agreements", "--accept-package-agreements"]
+    raise ValueError(f"Homebrew isn't installed. In a terminal: {analysis.install_hint(o['tool'])}")
+
+
+def _installer(tool: str) -> str | None:
+    """The Setup tab's install button for a tool, or None (then it shows install_hint)."""
+    if BREW:
+        return "Install with Homebrew"
+    if WINDOWS and tool == "rubberband":
+        return "Install"
+    if WINDOWS and WINGET:
+        return "Install with winget"
+    return None
 
 
 # name: (label, args from options, writes = changes files / Traktor / Lexicon, so the page previews it first)
@@ -68,36 +111,43 @@ ACTIONS = {
     "setup": ("Download the models", lambda o: ["setup", *(["--no-maest"] if o.get("no_maest") else [])], False),
     "scan": ("Scan your music", _scan, False),
     "hype": ("Score hype", lambda o: ["hype", "--limit", "1", "--json", "--native"], False),
-    "colors_train": ("Learn your colours", lambda o: ["colors", "train"], False),
+    "colors_train": ("Learn your colours", lambda o: ["colors", "train", *(["--refresh-views"] if o.get("views") else [])], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),
     "regenre": ("Genres again from the saved scores", lambda o: ["regenre"], False),
+    "analyze_mix": ("Analyse a mix", _analyze_mix, False),
     "install": ("Install a tool", _tool_install, False),
     "tag": ("Write genres into your files' tags", lambda o: ["tag", *(["--multi"] if o.get("multi", True) else [])], True),
     "untag": ("Put your files' original tags back", lambda o: ["untag"], True),
     "traktor": ("Genres, colours and Smartlists into Traktor",
-                lambda o: ["traktor", *([] if o.get("colours", True) else ["--no-colors"])], True),
-    "traktor_undo": ("Undo the last change to Traktor", lambda o: ["traktor", "--undo"], True),
+                lambda o: ["traktor", *([] if o.get("colours", True) else ["--no-colors"]),
+                           *(["--genres-from-analysis"] if o.get("only_traktor") is True else [])], True),
+    "traktor_undo": ("Undo the last change to Traktor",
+                     lambda o: ["traktor", "--undo", *(["--force"] if o.get("force") is True else [])], True),
     "hype_traktor": ("Hype into Traktor's Comment", lambda o: ["hype", "--traktor", "--native"], True),
     "hype_remove": ("Take hype out of Comment", lambda o: ["hype", "--traktor", "--remove", "--native"], True),
     "colors_apply": ("Colour new and uncoloured tracks in Traktor", lambda o: ["colors", "apply"], True),
     "colors_recolour": ("Recolour the clearest disagreements in Traktor", lambda o: ["colors", "review", "--apply", "--yes"], True),
+    "colors_write_marked": ("Write the colours you marked", lambda o: ["colors", "review", "--apply", "--yes", "--planned"], True),
     "tempo_load": ("Switch Traktor to the tempo view",
                    lambda o: ["tempo", "load", "--bpm", _bpm(o), *(["--lexicon"] if o.get("lexicon") else [])], True),
     "tempo_native": ("Switch Traktor back to normal", lambda o: ["tempo", "native", *(["--lexicon"] if o.get("lexicon") else [])], True),
 }
 UNDO = {"tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
-        "colors_recolour": "traktor_undo", "tempo_load": "tempo_native"}
+        "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native"}
 NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
 TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
-                   "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
+                   "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
 _lock = threading.Lock()
 _job: dict | None = None  # the running or last job
 _proc: subprocess.Popen | None = None
 _seq = 0
+_queue: list[tuple[str, str, list[str]]] = []  # mixes to analyse after the running one: (action, label, args)
+_ended: list[dict] = []  # the last jobs that ended, without their log: a queued mix starts at once, so the page
+ENDED_KEEP = 10          # may never see the one before it as ended
 on_finish = []  # callbacks after a job ends (the web page's caches)
 
 
@@ -105,52 +155,113 @@ def command_line(args: list[str]) -> str:
     """The same command as you'd type it in Terminal (shown on the page, so it's no mystery what runs)."""
     import shlex
 
-    if args and args[0] == BREW:
-        return " ".join(["brew", *args[1:]])
+    if args and args[0] in (BREW, WINGET):
+        return " ".join(["brew" if args[0] == BREW else "winget", *args[1:]])
     return "uv run dj-track-analyzer " + " ".join(shlex.quote(a) for a in args)
 
 
 def busy() -> bool:
-    return bool(_job and _job["running"])
+    return bool(_job and _job["running"] or _queue)
 
 
 def start(action: str, options: dict | None = None, dry_run: bool = False) -> dict:
-    global _job, _proc, _seq
+    """Run a job. analyze_mix takes several recordings (`files`): the first runs now, the rest one after another;
+    a mix asked for while another is analysed waits its turn too."""
     if action not in ACTIONS:
         raise ValueError(f"unknown action {action!r}")
     label, build, writes = ACTIONS[action]
-    args = build(options or {})
+    options = options or {}
+    many = action == "analyze_mix" and isinstance(options.get("files"), list)
+    runs = [build({**options, "file": f}) for f in options["files"]] if many else [build(options)]
+    if not runs:
+        raise ValueError("Pick a recording")
+    if action == "analyze_mix":
+        runs = [(f"Analysing {Path(a[1]).name}", a) for a in runs]
+    else:
+        runs = [(label, runs[0])]
     if dry_run:
         if not writes or action in NO_DRY_RUN:
             raise ValueError(f"{label} has no preview")
-        args.append("--dry-run")
+        runs[0][1].append("--dry-run")
     with _lock:
         if busy():
-            raise ValueError(f"Busy with: {_job['label']}. Wait for it or stop it first.")
-        if args[0] == BREW:
-            cmd = args
-        else:
-            cmd = [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1"}
-        if traktor.CONTAINER and action in TOUCHES_TRAKTOR and not dry_run:
-            traktor.check_closed()  # ask the page now, not the job later
-            env[traktor.CLOSED_ENV] = "1"
-        _seq += 1
-        _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
-                "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,
-                "returncode": None, "lines": [], "dropped": 0, "progress": None, "live": None, "result": None, "error": None,
-                "stopping": False}
-        _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                 env=env, cwd=str(Path(__file__).resolve().parents[2]), start_new_session=True)
-        job, proc = _job, _proc
+            if action != "analyze_mix" or _job["action"] != "analyze_mix":
+                now = _job["label"] if _job["running"] else _queue[0][1]  # between two queued mixes: the next one
+                raise ValueError(f"Busy with: {now}. Wait for it or stop it first.")
+            _queue.extend((action, lb, a) for lb, a in runs)
+            log(f"Job queued: {', '.join(lb for lb, _ in runs)}")
+            return state()
+        _queue.extend((action, lb, a) for lb, a in runs[1:])
+        _launch(action, *runs[0], dry_run)
+    return state()
+
+
+def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> None:
+    """Start the job's process (holding _lock, nothing running)."""
+    global _job, _proc, _seq
+    writes = ACTIONS[action][2]
+    cmd = _command(args)
+    env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1",
+           "PYTHONUTF8": "1"}  # Windows: the job's output and files in UTF-8, as read here (not the ANSI code page)
+    if action in TOUCHES_TRAKTOR and not dry_run and traktor.running_state() is None:
+        traktor.check_closed()  # ask the page now, not the job later
+        env[traktor.CLOSED_ENV] = "1"
+    _seq += 1
+    _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
+            "writes": writes, "undo": UNDO.get(action), "started": time.time(), "ended": None, "running": True,
+            "returncode": None, "lines": [], "dropped": 0, "progress": None, "live": None, "result": None, "error": None,
+            "stopping": False, "stage": None,
+            "steps": [x for x in STEPS.get(action, ()) if "--tracklist" in args or "tracklist" not in x]}
+    _proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             env=env, cwd=str(Path(__file__).resolve().parents[2]), **_own_group())
+    job, proc = _job, _proc
     out: list[str] = []
     readers = [threading.Thread(target=_read_err, args=(job, proc), daemon=True),
-               threading.Thread(target=_read_out, args=(job, proc, out, args[0] == BREW), daemon=True)]
+               threading.Thread(target=_read_out, args=(job, proc, out, args[0] in (BREW, WINGET)), daemon=True)]
     for t in readers:
         t.start()
     threading.Thread(target=_wait, args=(job, proc, out, readers), daemon=True).start()
     log(f"Job started: {job['command']}")
-    return state()
+
+
+def _command(args: list[str]) -> list[str]:
+    return args if args[0] in (BREW, WINGET) else [sys.executable, "-m", "dj_track_analyzer.jobs", *args]
+
+
+# Each job runs in its own process group, so a stop reaches its worker processes too and never the page itself.
+WINDOWS = sys.platform == "win32"
+
+
+def _own_group() -> dict:
+    return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if WINDOWS else {"start_new_session": True}
+
+
+def _interrupt(proc: subprocess.Popen) -> None:
+    """Ctrl-C for the job's group. Windows can only send a group Ctrl-Break, which `child_signals` makes a Ctrl-C."""
+    if WINDOWS:
+        try:
+            os.kill(proc.pid, signal.CTRL_BREAK_EVENT)
+        except OSError:  # no console to send it through (or already gone): stop it the hard way
+            _kill(proc)
+    else:
+        os.killpg(proc.pid, signal.SIGINT)
+
+
+def _kill(proc: subprocess.Popen) -> None:
+    """Harder: SIGTERM to the group; on Windows the job and every process it started, at once."""
+    if proc.poll() is not None:
+        return
+    if WINDOWS:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)], capture_output=True)
+    else:
+        os.killpg(proc.pid, signal.SIGTERM)
+
+
+def child_signals() -> None:
+    """In a job: Ctrl-Break (Windows' stop, see _interrupt) raises KeyboardInterrupt as Ctrl-C does, so scans save
+    what they have."""
+    if WINDOWS:
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
 
 
 def _add(job: dict, line: str) -> None:
@@ -161,11 +272,15 @@ def _add(job: dict, line: str) -> None:
 
 
 def _read_err(job: dict, proc: subprocess.Popen) -> None:
-    """Log lines; a line that ends in a carriage return (curl's download meter) is shown as `live` until replaced."""
+    """Log lines; a line that ends in a carriage return (curl's download meter) is shown as `live` until replaced.
+    On Windows "\r\n" (its line end) is a plain line end."""
     buf, after_cr = b"", False
+    ends = rb"\r\n|[\r\n]" if WINDOWS else rb"[\r\n]"
     while chunk := proc.stderr.read1(65536):
         buf += chunk
-        while (m := re.search(rb"[\r\n]", buf)):
+        while (m := re.search(ends, buf)):
+            if WINDOWS and m.group() == b"\r" and m.end() == len(buf):
+                break  # maybe the "\r" of a "\r\n" whose "\n" comes in the next read
             line, cr, buf = buf[:m.start()].decode("utf-8", "replace"), buf[m.start():m.end()] == b"\r", buf[m.end():]
             if cr:
                 job["live"] = line.strip() or job.get("live")
@@ -175,7 +290,11 @@ def _read_err(job: dict, proc: subprocess.Popen) -> None:
                 if err:
                     job["error"] = json.loads(err)
                 if (m2 := PROGRESS.match(line)):
-                    job["progress"] = {"done": int(m2[1]), "total": int(m2[2]), "eta": m2[3]}
+                    job["progress"] = {"done": int(m2[1]), "total": int(m2[2]), "eta": m2[3], "what": " ".join(m2[4].split()) or None}
+                elif (m2 := STAGE.match(line)):
+                    job["stage"] = m2[1]
+                    if (i := next((i for i, x in enumerate(job["steps"]) if m2[1].startswith(x)), None)) is not None:
+                        job["progress"] = {"done": i, "total": len(job["steps"]), "eta": None, "steps": True}
                 if line or not err:
                     _add(job, line)
             after_cr = cr
@@ -188,7 +307,7 @@ def _read_out(job: dict, proc: subprocess.Popen, out: list[str], text: bool) -> 
     for raw in iter(proc.stdout.readline, b""):
         line = raw.decode("utf-8", "replace")
         if text:
-            _add(job, line.rstrip("\n"))
+            _add(job, line.rstrip("\r\n"))
         else:
             out.append(line)
 
@@ -209,31 +328,41 @@ def _wait(job: dict, proc: subprocess.Popen, out: list[str], readers: list[threa
             (ln for ln in reversed(job["lines"]) if ln.strip()), f"Ended with exit code {rc}")
     job.update(returncode=rc, ended=time.time(), running=False, live=None, traktor_running=traktor.traktor_running())
     log(f"Job ended ({'ok' if not rc else job['error']}): {job['command']}")
+    _ended.append({k: job[k] for k in ("id", "action", "label", "command", "dry_run", "writes", "undo", "returncode",
+                                       "error", "traktor_running")} | {"running": False, "elapsed": job["ended"] - job["started"]})
+    del _ended[:-ENDED_KEEP]
     for fn in on_finish:
         try:
             fn(job)
         except Exception as err:  # a cache refresh must never break the job runner
             log(f"  after-job refresh failed: {err}")
+    with _lock:  # the next queued mix, also after one failed; Stop empties the queue
+        while _queue and not (_job and _job["running"]):
+            action, label, args = _queue.pop(0)
+            try:
+                _launch(action, label, args)
+            except Exception as err:  # e.g. the recording was moved meanwhile: on to the next
+                log(f"  queued job didn't start ({label}): {err}")
 
 
 def stop() -> dict:
     """Ctrl-C for the job (scans save what they have); harder if it hasn't stopped after 20 s."""
     proc, job = _proc, _job
+    _queue.clear()
     if not (proc and job and job["running"]):
         return state()
     job["stopping"] = True
     try:
-        os.killpg(proc.pid, signal.SIGINT)
+        _interrupt(proc)
     except ProcessLookupError:
         return state()
 
     def harder():
         time.sleep(20)
-        if proc.poll() is None:
-            try:
-                os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
+        try:
+            _kill(proc)
+        except ProcessLookupError:
+            pass
     threading.Thread(target=harder, daemon=True).start()
     return state()
 
@@ -243,7 +372,7 @@ def stop_on_exit() -> None:
     proc = _proc
     if proc and proc.poll() is None:
         try:
-            os.killpg(proc.pid, signal.SIGINT)
+            _interrupt(proc)
             proc.wait(timeout=15)
         except (ProcessLookupError, subprocess.TimeoutExpired):
             pass
@@ -256,9 +385,12 @@ def state(since: int = 0) -> dict:
         return {"job": None}
     first = j["dropped"]
     lines = j["lines"][max(0, since - first):]
-    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "line_from": max(since, first),
+    return {"job": {**{k: v for k, v in j.items() if k != "lines"}, "queued": [lb for _, lb, _ in _queue],
+                    "ended": _ended, "line_from": max(since, first),
                     "line_to": first + len(j["lines"]), "lines": lines,
-                    "elapsed": (j["ended"] or time.time()) - j["started"]}}
+                    "elapsed": (j["ended"] or time.time()) - j["started"],
+                    # what it's doing now, for the page's bar when there's no progress line to show
+                    "last": next((ln.strip() for ln in reversed(j["lines"]) if ln.strip()), None)}}
 
 
 # ----------------------------------------------------------------------------
@@ -278,7 +410,7 @@ def _traktor_side(nml: Path) -> dict:
     _, files, missing = traktor.collection_tracks(str(nml))
     skip = traktor.recording_dirs(str(nml))
     files = [str(f) for f in files if not collection.sync_conflict(f)
-             and not any(str(f).startswith(d + "/") for d in skip)]
+             and not any(collection.under(str(f), d) for d in skip)]
     text = nml.read_text(encoding="utf-8")
     coloured = len(re.findall(r'<INFO\b[^>]*\sCOLOR="[1-7]"', text))
     g = cues.grids(str(nml))
@@ -305,6 +437,16 @@ def _new_labels(nml: Path) -> tuple:
     return _new_cache["data"]
 
 
+def to_learn() -> dict:
+    """What retraining your colour and cue models would learn that they haven't (the Colours and Tracks tabs offer it):
+    {colours, cues}, each {added, changed, removed}, or None (no Traktor, a starter or an older model, a tempo view loaded)."""
+    try:
+        return dict(zip(("colours", "cues"), _new_labels(Path(traktor.find_collection(None)))))
+    except (SystemExit, OSError, ValueError) as e:
+        log(f"New-labels count skipped: {e}")
+        return {"colours": None, "cues": None}
+
+
 def _changed(path: str, size, mtime) -> bool:
     """A scanned file that's different on disk now (edited by another tagger, Traktor or a sync): `tag` skips it
     until it's scanned again. A file that's gone doesn't count."""
@@ -328,7 +470,8 @@ def setup_status() -> dict:
     st["tools"] = {"ffmpeg": bool(_tool("ffmpeg")), "rubberband": bool(_tool("rubberband"))}
     st["mac"] = sys.platform == "darwin"
     st["container"] = traktor.CONTAINER  # the page says Docker is experimental
-    st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no Homebrew
+    st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no install button
+    st["install"] = {t: _installer(t) for t in st["tools"]}
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
@@ -396,6 +539,7 @@ def setup_status() -> dict:
 if __name__ == "__main__":
     # A job: the CLI with these arguments; its message on SystemExit goes to the page as one marked line.
     sys.argv = ["dj-track-analyzer", *sys.argv[1:]]
+    child_signals()
     from .cli import main
 
     try:
