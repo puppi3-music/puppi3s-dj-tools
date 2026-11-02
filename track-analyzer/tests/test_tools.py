@@ -28,11 +28,13 @@ def test_rubberband_download_is_checked(monkeypatch):
         dest.write_bytes(b"not the zip")
         return True
 
+    dest = analysis.TOOLS_HOME / "rubberband"
+    before = sorted(p.name for p in dest.iterdir()) if dest.exists() else None  # a Rubber Band installed earlier
     monkeypatch.setattr(sys, "platform", "win32")
     monkeypatch.setattr(analysis, "_fetch", fetch)
     with pytest.raises(SystemExit, match="isn't the expected file"):
         analysis.install_rubberband()
-    assert not (analysis.TOOLS_HOME / "rubberband").exists()
+    assert (sorted(p.name for p in dest.iterdir()) if dest.exists() else None) == before  # left as it was
 
 
 @pytest.mark.parametrize("brew, winget, windows, tool, want, button", [

@@ -6,14 +6,16 @@ import time
 
 from dj_track_analyzer import jobs
 
-# Stands in for a scan: waits, and on Ctrl-C says so and exits as a stopped job does (as jobs.py's __main__ would)
+# Stands in for a scan: works in short steps (Windows delivers Ctrl-Break between Python steps, not inside one long
+# sleep), and on Ctrl-C says so and exits as a stopped job does (as jobs.py's __main__ would)
 JOB = """
 import sys, time
 from dj_track_analyzer import jobs
 jobs.child_signals()
 print("ready", file=sys.stderr, flush=True)
 try:
-    time.sleep(120)
+    for _ in range(1200):
+        time.sleep(0.1)
 except KeyboardInterrupt:
     print("stopped cleanly, saved what it had", file=sys.stderr, flush=True)
     sys.exit(130)
