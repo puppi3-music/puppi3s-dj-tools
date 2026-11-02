@@ -101,8 +101,8 @@ def build_mcp():
         Layout: one subfolder per genre (folder/Acid Trance/*.mp3, folder/Hard Trance/*.mp3 ...)
         or one .m3u8 playlist per genre named after the genre. Aim for 20-50 tracks per genre.
         It also learns what the rest of the user's scanned collection sounds like, so only tracks that clearly
-        fit get one of these genres; the collection uses them once the user switches on "Use my genres" (Setup
-        tab of the web page). Replaces any previous custom model. Large sets can take several minutes the first time
+        fit get one of these genres; the collection uses them once the user sets the genre switch (Setup tab of the
+        web page) to Both (theirs where one fits) or Mine only (the nearest of theirs on every track). Replaces any previous custom model. Large sets can take several minutes the first time
         (embeddings are cached afterwards); for big libraries the CLI is better:
         `uv run dj-track-analyzer train <folder>`.
 
@@ -123,11 +123,12 @@ def build_mcp():
             import joblib
 
             b = joblib.load(GENRE_MODEL)
-            from .analysis import use_my_genres
+            from .analysis import my_genres_mode
 
             info.update({"my_genres": b["counts"], "trained_at": b["trained_at"], "trained_from": b["source"],
-                         # the user's "Use my genres" switch: while off, their collection shows the built-in genres
-                         "my_genres_in_use": use_my_genres()})
+                         # the user's genre switch: starter = their collection shows the built-in genres, both =
+                         # theirs where one fits, mine = the nearest of theirs on every track
+                         "my_genres_mode": my_genres_mode()})
         else:
             info["my_genres"] = None
             info["note"] = "No custom genres trained (optional). dj_genre names come from dj_genres.json."

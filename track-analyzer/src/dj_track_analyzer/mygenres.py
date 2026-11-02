@@ -1,10 +1,11 @@
-"""Your own genres: `train` (also the Setup tab's "Learn your genres") and the "Use my genres" switch.
+"""Your own genres: `train` (also the Setup tab's "Learn your genres") and the genre switch.
 
 Training learns your genres from example folders plus what the rest of your scanned collection sounds like
-(analysis.train). Every scanned track then gets `trained_genre`: one of yours where it clearly fits, else none.
-Only while "Use my genres" is on (setting `use_my_genres`, and analysis.my_genres_not_ready() is None) is that
-copied into `my_genre`, the column the page, mix suggestions, sets, the LLM, tags and Traktor read; tracks none
-of your genres fits keep the built-in genre. Hand-set genres always stay."""
+(analysis.train). Every scanned track then gets `trained_genre` (one of yours where it clearly fits, else none)
+and `nearest_genre` (the closest of yours, always). The switch (setting `my_genres_mode`; only once
+analysis.my_genres_not_ready() is None) picks what goes into `my_genre`, the column the page, mix suggestions,
+sets, the LLM, tags and Traktor read: "starter" nothing (the built-in genres), "both" the trained genre (tracks
+none of yours fits keep the built-in one), "mine" the nearest (every track one of yours). Hand-set genres always stay."""
 from __future__ import annotations
 
 from . import analysis, collection
@@ -55,14 +56,16 @@ def train(folder: str, progress=log) -> dict:
     return report
 
 
-def set_use(on: bool) -> dict:
-    """The "Use my genres" switch. Changes only the analyzer's own data: files and Traktor get your genres the next
-    time genres are written (tag / traktor)."""
-    if on:
+def set_mode(mode: str) -> dict:
+    """The genre switch: "starter", "both" or "mine". Changes only the analyzer's own data: files and Traktor get
+    your genres the next time genres are written (tag / traktor)."""
+    if mode not in analysis.MY_GENRE_MODES:
+        raise ValueError(f"mode must be one of {', '.join(analysis.MY_GENRE_MODES)}")
+    if mode != "starter":
         why = analysis.my_genres_not_ready()
         if why:
             raise SystemExit(why)
-    analysis.save_app_setting("use_my_genres", True if on else None)
+    analysis.save_app_setting("my_genres_mode", None if mode == "starter" else mode)
     return refresh(False)
 
 
@@ -71,8 +74,9 @@ def status() -> dict:
     import sqlite3
 
     b = analysis.my_genre_bundle()
-    out = {"trained": bool(b), "on": bool(analysis.app_setting("use_my_genres", False)),
-           "in_use": analysis.use_my_genres(), "not_ready": analysis.my_genres_not_ready(b),
+    mode = analysis.my_genres_mode()
+    out = {"trained": bool(b), "mode": mode, "chosen": analysis.app_setting("my_genres_mode") or "starter",
+           "in_use": mode != "starter", "not_ready": analysis.my_genres_not_ready(b),
            "min_total": analysis.MY_GENRES_MIN_TOTAL, "min_each": analysis.MY_GENRES_MIN_EACH,
            "tracks_with_yours": 0}
     if b:
@@ -87,9 +91,11 @@ def status() -> dict:
     return out
 
 
-def preview() -> dict:
+def preview(mode: str = "both") -> dict:
+    if mode not in ("both", "mine"):
+        raise ValueError("preview mode must be both or mine")
     con = collection.db()
     try:
-        return collection.my_genres_preview(con)
+        return collection.my_genres_preview(con, mode)
     finally:
         con.close()

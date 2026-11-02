@@ -358,12 +358,13 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   (`accuracy_per_genre`, `kept_built_in`, `others_given_yours`). Tested 2026-11-02 on the test collection's genres
   (pairs trained from 7-20 tracks): plain probability or distance gates let 40-85% of other tracks through, the
   everything-else class 2-13% (own tracks found 18-69%, harsher than a distinct genre would be). Columns:
-  `trained_genre` (+ confidence; None = none fits) for every track, `my_genre` = it only while "Use my genres" is on
-  (setting `use_my_genres` and `my_genres_not_ready()` None: 30 examples, ≥ 10 each, an everything-else model), else
-  None or a hand genre (MANUAL). Everything that uses your genre reads `my_genre` (page, mix suggestions, sets, LLM,
+  `trained_genre` (+ confidence; None = none fits) and `nearest_genre` (the closest of yours, everything else
+  ignored) for every track; `my_genre` per the switch `my_genres_mode()` (setting `my_genres_mode`, starter unless
+  `my_genres_not_ready()` is None: 30 examples, ≥ 10 each, an everything-else model): starter None, both
+  trained_genre, mine nearest_genre; or a hand genre (MANUAL). Everything that uses your genre reads `my_genre` (page, mix suggestions, sets, LLM,
   `tag`, `traktor --genres-from-analysis`; `known_genres` adds trained names only while in use). The switch/train
-  refresh the native db and every tempo view (`_refresh_views`), then `apply_manual`. Page: Setup step 7, /api/genres/
-  preview, use, browse (folder dialog via `pick_file(folder=True)`). A db from before gets `my_genre` moved to
+  refresh the native db and every tempo view (`_refresh_views`), then `apply_manual`. Page: Setup step 7 ("Genres used" Starter / Both /
+  Mine only; Both and Mine preview first), /api/genres/preview?mode=, use {mode}, browse (folder dialog via `pick_file(folder=True)`). A db from before gets `my_genre` moved to
   `trained_genre` once (collection.db()).
 - `dj_genres.json`: maps Discogs styles to DJ genre names (rules with "needs" groups + BPM range); a user copy in
   `data/dj_genres.json` wins.

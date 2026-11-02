@@ -17,13 +17,15 @@ module's builds, which installs download by themselves.
   split. Choose a folder with one subfolder or playlist per genre. It now also learns what the rest of your scanned
   music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps
   its built-in genre. It shows how well it did on your own tracks.
-- **Use my genres**: trained genres are no longer used everywhere the moment they're trained. **Preview…** lists the
-  tracks that would change, and the switch puts your genres on the page, in mix suggestions, sets and the LLM, and in
-  your files and Traktor the next time you write genres. It waits for 30 example tracks with at least 10 per genre.
+- **Genres used: Starter / Both / Mine only**: trained genres are no longer used everywhere the moment they're
+  trained. Starter = the built-in genres; Both = yours where one clearly fits, built-in elsewhere; Mine only = the
+  closest of yours on every track. Picking Both or Mine only first lists the tracks that would change; then your
+  genres go on the page, in mix suggestions, sets and the LLM, and in your files and Traktor the next time you write
+  genres. Both and Mine only wait for 30 example tracks with at least 10 per genre.
 - A note in the README and guide: the built-in genres don't know hyperpop, and how to teach it.
 
 **Trained your own genres before?** They're kept but not used until you learn them again (so they get "everything
-else") and switch on **Use my genres**. Genres you set by hand aren't affected.
+else") and set **Genres used** to Both or Mine only. Genres you set by hand aren't affected.
 
 **Updating from 1.0.1:** use **Update now…** on the Setup tab once this release is out. On Windows, close the
 launcher's window afterwards and double-click `Start Puppi3's Track Analyzer.bat` again (the 1.0.1 launcher can't

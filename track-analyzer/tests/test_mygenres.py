@@ -1,5 +1,5 @@
-"""Your own genres: training with "everything else" from the scanned collection, the "Use my genres" switch
-(off by default, greyed out until there are enough examples), and what it changes and leaves alone.
+"""Your own genres: training with "everything else" from the scanned collection, the genre switch (starter by
+default; both and mine greyed out until there are enough examples), and what it changes and leaves alone.
 
 The "sound" of each track is a made-up embedding put straight into the analysis cache (as a scan would), in
 three clear groups: two trained genres and the rest of a house collection. Training reads the cache, so no
@@ -63,7 +63,7 @@ def setup(monkeypatch):
 def genres() -> dict[str, tuple]:
     with sqlite3.connect(collection.NATIVE_DB) as con:
         return {r[0].rsplit("/", 1)[-1].rsplit("\\", 1)[-1]: r[1:] for r in
-                con.execute("SELECT path, trained_genre, my_genre, genre FROM tracks")}
+                con.execute("SELECT path, trained_genre, my_genre, genre, nearest_genre FROM tracks")}
 
 
 def test_train_gives_your_genre_only_where_it_fits_and_waits_for_the_switch(setup):
@@ -76,45 +76,60 @@ def test_train_gives_your_genre_only_where_it_fits_and_waits_for_the_switch(setu
     assert all(g[f"Copy {i}.flac"][0] == "Hyperpop" for i in range(3))
     assert all(g[f"House {i}.mp3"][0] is None for i in range(40))  # none of your genres: keeps ours
     assert all(v[1] is None for v in g.values())  # switch off: nothing uses them yet
+    assert all(g[f"House {i}.mp3"][3] in ("Hyperpop", "Pop") for i in range(40))  # the closest of yours, always
     st = mygenres.status()
-    assert st["trained"] and not st["on"] and not st["in_use"] and st["not_ready"] is None and st["tracks_with_yours"] == 3
+    assert st["trained"] and st["mode"] == "starter" and not st["in_use"] and st["not_ready"] is None
+    assert st["tracks_with_yours"] == 3
     assert "Hyperpop" not in traktor.known_genres()
 
     prev = mygenres.preview()
     assert prev["changes"] == 3 and prev["by_genre"] == {"Hyperpop": 3}
-    assert {t["genre"] for t in prev["tracks"]} == {"IDM"}
+    assert {t["genre"] for t in prev["tracks"]} == {"IDM"} and {t["would_be"] for t in prev["tracks"]} == {"Hyperpop"}
+    assert mygenres.preview("mine")["changes"] == 43  # mine only: every track
 
 
-def test_switch_on_and_off(setup):
+def test_switch_starter_both_starter(setup):
     mygenres.train(str(setup()))
-    mygenres.set_use(True)
+    mygenres.set_mode("both")
     g = genres()
     assert all(g[f"Copy {i}.flac"][1] == "Hyperpop" for i in range(3))
     assert all(g[f"House {i}.mp3"][1] is None for i in range(40))
     assert analysis.use_my_genres() and "Hyperpop" in traktor.known_genres()
 
-    mygenres.set_use(False)
+    mygenres.set_mode("starter")
     assert all(v[1] is None for v in genres().values())
     assert not analysis.use_my_genres() and "Hyperpop" not in traktor.known_genres()
+
+
+def test_mine_only_gives_every_track_one_of_yours(setup):
+    mygenres.train(str(setup()))
+    mygenres.set_mode("mine")
+    g = genres()
+    assert all(g[f"Copy {i}.flac"][1] == "Hyperpop" for i in range(3))
+    assert all(g[f"House {i}.mp3"][1] in ("Hyperpop", "Pop") for i in range(40))
+    assert mygenres.status()["mode"] == "mine"
+    with pytest.raises(ValueError):
+        mygenres.set_mode("on")
 
 
 def test_switch_stays_greyed_out_with_too_few_examples(setup):
     report = mygenres.train(str(setup(n_hyper=12, n_pop=8)))  # 20 in all, Pop under 10
     assert "Needs 30 example tracks, at least 10 in each genre" in report["not_usable_yet"]
     assert "Pop has 8" in report["not_usable_yet"]
-    with pytest.raises(SystemExit, match="Needs 30"):
-        mygenres.set_use(True)
-    assert analysis.app_setting("use_my_genres") is None
+    for mode in ("both", "mine"):
+        with pytest.raises(SystemExit, match="Needs 30"):
+            mygenres.set_mode(mode)
+    assert analysis.app_setting("my_genres_mode") is None and mygenres.status()["mode"] == "starter"
 
 
 def test_a_hand_set_genre_stays(setup):
     mygenres.train(str(setup()))
     house = str(TMP / "coll" / "House 0.mp3")
     collection.set_manual(house, "genre", "Hyperpop")
-    for on in (True, False):
-        mygenres.set_use(on)
-        assert genres()["House 0.mp3"][1:] == ("Hyperpop", "Hyperpop")
-    assert house not in {t["path"] for t in mygenres.preview()["tracks"]}
+    for mode in ("both", "mine", "starter"):
+        mygenres.set_mode(mode)
+        assert genres()["House 0.mp3"][1:3] == ("Hyperpop", "Hyperpop")
+    assert house not in {t["path"] for m in ("both", "mine") for t in mygenres.preview(m)["tracks"]}
 
 
 def test_needs_a_scanned_collection(setup):
