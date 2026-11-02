@@ -144,6 +144,8 @@ def main() -> None:
     tk.add_argument("--smartlists-only", action="store_true", help="only (re)create the Smartlists, don't update genres")
     tk.add_argument("--no-smartlists", action="store_true", help="only update genres in the collection")
     tk.add_argument("--undo", action="store_true", help="restore collection.nml from before the last run")
+    tk.add_argument("--genres-from-analysis", action="store_true",
+                    help="genres straight from the analysis (as tag --multi picks them), leaving the files' tags alone")
     tk.add_argument("--force", action="store_true",
                     help="with --undo: restore even if Traktor changed the collection since (loses those changes)")
     tk.add_argument("--no-colors", action="store_true", help="don't set predicted colours")
@@ -432,7 +434,8 @@ def main() -> None:
             out = traktor.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
                                make_smartlists=not args.no_smartlists, colors=not args.no_colors,
                                overwrite_colors=args.overwrite_colors,
-                               color_min_confidence=args.color_min_confidence)
+                               color_min_confidence=args.color_min_confidence,
+                               genres_from_analysis=args.genres_from_analysis)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         if not args.undo:
             say_if_nothing(out, args.dry_run)

@@ -681,7 +681,9 @@ def _set_info_attr(entry: str, name: str, value: str) -> tuple[str, str | None]:
 
 def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = True,
          make_smartlists: bool = True, colors: bool = True, overwrite_colors: bool = False,
-         color_min_confidence: float = 0.0) -> dict:
+         color_min_confidence: float = 0.0, genres_from_analysis: bool = False) -> dict:
+    """Genres from the files' tags (written by `tag`), or with genres_from_analysis straight from the analysis
+    (as `tag --multi` would pick them; a genre set by hand as typed), leaving the files as they are."""
     from . import analysis
 
     path = find_collection(nml)
@@ -692,6 +694,13 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     scanned = {r["path"] for r in con.execute("SELECT path FROM tracks")}
     if not scanned:
         raise SystemExit("Nothing scanned yet. Run `uv run dj-track-analyzer scan <music folder>` and `tag` first.")
+    analysed: dict[str, str] = {}
+    if genres_from_analysis:
+        hand = {p: f["genre"] for p, f in collection.manual().items() if "genre" in f}
+        for r in con.execute("SELECT * FROM tracks WHERE error IS NULL OR error LIKE 'tags:%'"):
+            if (g := hand.get(r["path"]) or collection.multi_genre(dict(r))):
+                analysed[r["path"]] = g
+    genre_of = analysed.get if genres_from_analysis else file_genre
     predicted = {}
     if colors:
         for r in con.execute("SELECT path, color, color_confidence FROM tracks WHERE color IS NOT NULL"):
@@ -701,6 +710,9 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     stats = {"collection": str(path), "traktor_tracks": 0, "matched_scanned_tracks": 0}
     if update_genres:
         stats.update(genres_updated=0, already_up_to_date=0, no_genre_tag_in_file=0)
+        if genres_from_analysis:
+            stats["genres_from"] = "the analysis (files' tags left as they are)"
+            stats["no_genre_from_analysis"] = stats.pop("no_genre_tag_in_file")
     if colors:
         stats.update(colours_set=0, colours_kept=0, no_colour_prediction=0)
     examples, genres_seen, traktor_colors = [], set(), {}
@@ -724,9 +736,9 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
             if g:  # still gets its Smartlist
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
         elif update_genres:
-            g = file_genre(p)
+            g = genre_of(p)
             if not g:
-                stats["no_genre_tag_in_file"] += 1
+                stats["no_genre_from_analysis" if genres_from_analysis else "no_genre_tag_in_file"] += 1
             else:
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
                 info_m = re.search(r"<INFO\b[^>]*>", entry)
@@ -772,7 +784,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
         new_text = text
     if not update_genres and make_smartlists:  # still need the genre list for the Smartlists
         for p in scanned:
-            g = file_genre(p) if os.path.exists(p) else None
+            g = analysed.get(p) if genres_from_analysis else file_genre(p) if os.path.exists(p) else None
             if g:
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
     if colors and not dry_run:  # remember which tracks carry which colour in Traktor
