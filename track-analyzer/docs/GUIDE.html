@@ -127,7 +127,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <a class="sub" href="#tempo">At your play tempo</a>
   <a class="sub" href="#mixes">Recorded mixes</a>
   <a class="sub" href="#llm">Local LLM</a>
-  <a class="sub" href="#update">After an update</a>
+  <a class="sub" href="#update">Updating the app</a>
   <a href="#reading">Reading the page</a>
   <a href="#how">How it works</a>
   <a href="#undo">Undo and safety</a>
@@ -340,14 +340,15 @@ li > figure.shot { margin: 12px 0 4px; }
     </ul></li>
 </ol>
 
-<h3 id="update">After updating the app</h3>
+<h3 id="update">Updating the app</h3>
 <ol>
-  <li>From a release zip: download the new zip from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a>, unzip it and move the <code>data</code> folder from your old copy into it (your scans, models and training live there). From a clone: <code>git pull</code>.</li>
-  <li>Double-click <code>Start Puppi3's Track Analyzer.command</code> (on Windows, the <code>.bat</code>) again: it installs new dependencies before opening the page.</li>
-  <li>Check the Setup tab: if a new model is needed, <b>Analysis models</b> offers the download.</li>
-  <li>Press <b>Your colour scale → Update training</b>. The first run after an update may fill in new data for every track (about 10–15 minutes); later runs take a minute.</li>
-  <li>If the update notes say the genre list changed or everything should be analysed again, those are <a href="#cli-update">terminal steps</a>.</li>
+  <li>When a new release is out, the <b>Setup</b> link gets a dot, and the card at the top of the Setup tab says <b>Version … is out</b>, with <b>What's new</b> under it.</li>
+  <li>Press <b>Update now…</b>. It shows how many of the app's files change, then <b>Write it</b> installs them. Your <code>data</code> folder (scans, models, training, settings) isn't touched.</li>
+  <li>The page starts again by itself with the new version (it installs new packages first, which can take a minute) and reloads.</li>
+  <li>If the release needs something done once (work out the genres again, analyse everything again, new models), the card lists it under <b>After updating to version …</b>, each with a <b>Run</b> button. <b>Done, hide this</b> when you've done them.</li>
+  <li>Something wrong with the new version? <b>Go back to …</b> on the same card installs the version you had (the app's files were backed up before the update).</li>
 </ol>
+<p class="small">The page asks GitHub for the newest release at most every 6 hours, and nothing else is sent; untick <b>check when the page opens</b> to turn that off. A clone is updated with <code>git pull</code> (only on <code>main</code> without changes of your own); in Docker, build the image again. <i>Updating from 1.0.1 on Windows:</i> after that one update, close the launcher's window and double-click <code>Start Puppi3's Track Analyzer.bat</code> again; later updates restart by themselves.</p>
 
 <!-- ───────────────────────────── -->
 <h2 id="reading">Reading the page</h2>
@@ -645,10 +646,13 @@ li > figure.shot { margin: 12px 0 4px; }
 <p><b>Posting it as a video:</b> add <code>--chapters --offset 0:14</code> (how far into the finished video the first track starts: check it in the video itself) for YouTube chapters to paste into the description, and <code>--highlights</code> for two suggested 40-second clips, in video times (<code>--highlights 5</code> for five, ranked). Then <code>clips &lt;analysis&gt;.json --video final.mp4</code> makes 720p previews of them to watch, ranked by the audio and by how much moves on screen, and <code>--pick 1 4</code> makes the ones you choose at full quality next to the video.</p>
 
 
-<h3 id="cli-update">After updating the app</h3>
+<h3 id="cli-update">Updating the app</h3>
 <ol>
-  <li>Install new dependencies, then download any new models:
-    <div class="cmd"><pre>uv sync</pre></div>
+  <li>See what's new, then install it (<code>--dry-run</code> first shows what would change; <code>--undo</code> goes back to the version before):
+    <div class="cmd"><pre>uv run dj-track-analyzer update --check</pre></div>
+    <div class="cmd"><pre>uv run dj-track-analyzer update</pre></div></li>
+  <li>Install new dependencies (<code>--inexact</code> keeps extras you installed, such as stems), then download any new models:
+    <div class="cmd"><pre>uv sync --inexact</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer setup</pre></div></li>
   <li>Run <code>colors explain</code> or <code>colors train</code>. The first run fills in new data for every track (about 10–15 minutes); later runs take seconds.</li>
   <li>If the genre list changed, redo the genres from the saved analysis (seconds), then tag and sync as in <a href="#cli-genres">Genres</a>:
@@ -692,6 +696,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>tempo refresh</code></td><td>Redoes the view's genres, colours and hype from its saved analysis (seconds)</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
 <tr><td><code>tempo status</code></td><td>Which view is loaded, and which views exist</td><td>Nothing</td></tr>
 <tr><td><code>styles</code></td><td>Lists the 400 Discogs style names and checks dj_genres.json</td><td>Nothing</td></tr>
+<tr><td><code>update</code></td><td>Installs the newest release, keeping your data folder (<code>--check</code>: only what's new; <code>--dry-run</code>; <code>--undo</code>: back to the version before). See <a href="#cli-update">Updating the app</a></td><td>The app's own files (backed up)</td></tr>
 <tr><td><code>train &lt;folder&gt;</code></td><td>Optional: teach your own genre names from example folders</td><td>App files only</td></tr>
 <tr><td><code>serve</code></td><td>Runs the MCP server for LM Studio (<code>--http</code> for Open WebUI)</td><td>Nothing</td></tr>
 <tr><td><code>web</code></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>

@@ -1,51 +1,39 @@
 @echo off
-rem Double-click this in File Explorer to start Puppi3's Track Analyzer: the first time it installs what it needs (uv,
-rem Python and the analyzer), then it opens the web page, where the Setup tab takes it from there.
-rem Keep this window open while you use the page; close it (or press Ctrl-C) to stop.
-rem The Windows twin of "Start Puppi3's Track Analyzer.command" (macOS, Linux).
-
+rem Double-click to start Puppi3's Track Analyzer (installs what it needs the first time). Twin of the .command.
+rem Keep it under 1800 bytes (tests/test_update.py says why).
 setlocal
 cd /d "%~dp0" || goto :eof
 set "PATH=%USERPROFILE%\.local\bin;%USERPROFILE%\.cargo\bin;%PATH%"
-rem Python's text files and output in UTF-8, not the ANSI code page (accented track names)
 set "PYTHONUTF8=1"
+set "TRACK_ANALYZER_LAUNCHER=1"
 set "URL=http://127.0.0.1:8766/"
-
 curl.exe -fs -o NUL "%URL%api/libraries" >NUL 2>&1
 if not errorlevel 1 (
   echo Puppi3's Track Analyzer is already running: opening the page.
   start "" "%URL%"
   exit /b 0
 )
-
-rem Windows on Arm: the analyzer's audio library and TensorFlow have x64 builds only, which Windows runs emulated
+rem Arm: x64 Python (the audio library and TensorFlow have x64 builds only)
 if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "UV_PYTHON=cpython-3.11-windows-x86_64-none"
-
-where uv >NUL 2>&1
-if errorlevel 1 (
-  echo Installing uv, the Python manager the analyzer runs with ^(from astral.sh^)...
-  powershell -NoProfile -ExecutionPolicy ByPass -Command "irm https://astral.sh/uv/install.ps1 | iex"
-)
-where uv >NUL 2>&1
-if errorlevel 1 (
-  set "MSG=Couldn't install uv. Check the internet connection and try again, or close this window and double-click again."
-  goto :fail
-)
-
+where uv >NUL 2>&1 || powershell -NoProfile -ExecutionPolicy ByPass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+set "MSG=Couldn't install uv. Check the internet connection and try again."
+where uv >NUL 2>&1 || goto :fail
+set "OPEN="
+:run
 echo Getting Python and the analyzer ready (the first time takes a few minutes)...
-uv sync --inexact
-if errorlevel 1 (
-  set "MSG=Couldn't install the analyzer's Python packages."
-  goto :fail
+set "MSG=Couldn't install the analyzer's Python packages."
+uv sync --inexact || goto :fail
+echo Starting Puppi3's Track Analyzer. The page opens in your browser. Close this window to stop it.
+rem One block, read whole: an update may replace this file. 75 = restart after an update.
+(
+  uv run dj-track-analyzer web %OPEN%
+  if errorlevel 75 if not errorlevel 76 (
+    set "OPEN=--no-open"
+    echo Restarting with the new version...
+    goto :run
+  )
+  exit /b
 )
-
-echo.
-echo Starting Puppi3's Track Analyzer. The page opens in your browser.
-echo Keep this window open while you use it; close it (or press Ctrl-C) to stop.
-echo.
-uv run dj-track-analyzer web
-exit /b %errorlevel%
-
 :fail
 echo.
 echo %MSG%

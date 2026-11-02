@@ -58,7 +58,7 @@ def _scan(o: dict) -> list[str]:
     args = ["scan", *(["--traktor"] if o.get("traktor") else []), *_folders(o)]
     if len(args) == 1:
         raise ValueError("Pick your Traktor collection, a folder, or both")
-    return args
+    return [*args, "--rescan"] if o.get("rescan") is True else args
 
 
 MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
@@ -134,8 +134,10 @@ ACTIONS = {
     "tempo_load": ("Switch Traktor to the tempo view",
                    lambda o: ["tempo", "load", "--bpm", _bpm(o), *(["--lexicon"] if o.get("lexicon") else [])], True),
     "tempo_native": ("Switch Traktor back to normal", lambda o: ["tempo", "native", *(["--lexicon"] if o.get("lexicon") else [])], True),
+    "update": ("Update the app", lambda o: ["update"], True),
+    "update_undo": ("Go back to the version before", lambda o: ["update", "--undo"], True),
 }
-UNDO = {"tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
+UNDO = {"update": "update_undo", "tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
         "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native"}
 NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
 TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",

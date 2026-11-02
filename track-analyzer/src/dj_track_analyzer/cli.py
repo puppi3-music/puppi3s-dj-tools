@@ -76,6 +76,10 @@ def main() -> None:
     su.add_argument("--no-maest", action="store_true", help="skip the larger MAEST genre model")
     it = sub.add_parser("install", help="install a tool the analyzer needs (Windows: Rubber Band's own build)")
     it.add_argument("tool", choices=["rubberband"])
+    up = sub.add_parser("update", help="install the newest release (keeps data/), or go back with --undo")
+    up.add_argument("--check", action="store_true", help="only say whether a newer release is out, and what's new")
+    up.add_argument("--undo", action="store_true", help="go back to the version before the last update")
+    up.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
     sub.add_parser("styles", help="list the 400 Discogs style names and check dj_genres.json")
     a = sub.add_parser("analyze", help="analyze one file and print JSON")
     a.add_argument("file")
@@ -352,6 +356,13 @@ def main() -> None:
         from .analysis import install_rubberband
 
         print(json.dumps(install_rubberband(), indent=2, ensure_ascii=False))
+    elif args.cmd == "update":
+        from . import update
+
+        res = update.check() if args.check else update.undo(args.dry_run) if args.undo else update.update(args.dry_run)
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+        if not args.check and not args.dry_run and res.get("restart"):
+            log("Start the analyzer again (its launcher, or `uv run dj-track-analyzer web`) to use this version.")
     elif args.cmd == "styles":
         names = [split_style(c)[0] for c in style_classes()]
         print("\n".join(sorted(set(names))))

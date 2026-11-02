@@ -3,6 +3,21 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**New**
+- **Update from the Setup tab.** A card at the top of the Setup tab says when a new release is out, with its notes.
+  **Update now…** previews what changes, installs it and starts the page again with the new version. Your `data`
+  folder isn't touched; the app's own files are backed up first, and **Go back to …** returns to the version you had.
+  Steps a release needs afterwards (genres again, a rescan, new models) show up there as buttons. The page asks GitHub
+  at most every 6 hours; untick **check when the page opens** to turn that off. In a terminal: `update` (`--check`,
+  `--dry-run`, `--undo`). A clone is updated with `git pull`.
+- The launchers start the page again after an update, installing its new packages first.
+
+**Updating from 1.0.1:** use **Update now…** on the Setup tab once this release is out. On Windows, close the
+launcher's window afterwards and double-click `Start Puppi3's Track Analyzer.bat` again (the 1.0.1 launcher can't
+restart by itself); after that, updates restart on their own.
+
 ## 1.0.1 (2026-11-02)
 
 **Fixes**
