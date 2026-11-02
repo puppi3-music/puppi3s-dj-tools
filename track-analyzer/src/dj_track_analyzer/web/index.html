@@ -2916,7 +2916,7 @@ async function pageSetup(main) {
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
       ${st.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Previews work, but quit Traktor before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
       <div class="steps">
-      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, which Traktor, Lexicon and other players read. Do this before the next step: Traktor gets its genres from these tags (unless you tick "only in Traktor" there).
+      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players and the next step. Not needed if you only want genres in Traktor: tick "only in Traktor" in the next step instead.
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
