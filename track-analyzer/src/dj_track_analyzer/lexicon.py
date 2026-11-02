@@ -103,8 +103,11 @@ def _edit(track_id: int, edits: dict) -> None:
 
 
 def _paths(location: str) -> list[str]:
-    """Lexicon writes the boot drive as /Volumes/Macintosh HD/…; our databases use /Users/…"""
+    """Lexicon writes the boot drive as /Volumes/Macintosh HD/…; our databases use /Users/…. On Windows it writes
+    C:/Users/… (seen 2026-11-02); our databases use C:\\Users\\…"""
     loc = unicodedata.normalize("NFC", location or "")
+    if re.match(r"[A-Za-z]:/", loc):
+        return [loc.replace("/", "\\")]
     out = [loc]
     m = re.match(r"/Volumes/[^/]+(/.*)$", loc)
     if m:
