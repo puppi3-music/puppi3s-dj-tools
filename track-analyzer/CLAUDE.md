@@ -536,7 +536,7 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   stereo by PyAV's resampler (`decode`; = the `ffmpeg -ac 2` bits). Rows for files that are gone are dropped by every scan unless they're on
   a drive that isn't mounted (/Volumes/<disk>; Linux /media, /run/media, /mnt via ismount). `nfc()` composes a
   path on macOS always, on Linux only if that spelling exists (ext4 compares bytes).
-- `scan` recomputes hype after analysing anything (it's a rank within the collection); `hype` is also kept on rescan.
+- `scan` recomputes hype after analysing anything (it's a rank within the collection), and on any scan (even with nothing new: the early return too) while no track has hype yet (a first scan used to leave the column empty until `hype` ran); `hype` is also kept on rescan.
 - `refresh_predictions` clears a track's prediction when the current model can't place it (no stale colours).
 - `stretch` writes 32-bit float WAV for Rubber Band (16-bit input clipped peaks above full scale; R3 output then
   differs in phase only: style scores ±0.004, same key, LUFS ±0.001). R3 stays: accuracy over speed.

@@ -797,6 +797,20 @@ def store_traktor_info(con: sqlite3.Connection, info: dict) -> None:
     apply_manual(con)
 
 
+def _score_hype(con, analysed: bool) -> None:
+    """Hype ranks within the collection, so new and changed tracks move everyone's: re-scored after analysing
+    anything, and whenever no track has hype yet (a first scan used to leave it to `hype`, so the column stayed
+    empty, also on every later scan with nothing new)."""
+    if not analysed and con.execute("SELECT 1 FROM tracks WHERE hype IS NOT NULL LIMIT 1").fetchone():
+        return
+    from . import hype
+
+    try:
+        hype.compute(con)
+    except SystemExit as err:
+        log(f"(hype not scored: {err})")
+
+
 def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
          tag_fields: list[str] | None = None, csv_out: Path | None = DEFAULT_CSV,
          traktor_nml: str | None = None, use_traktor: bool = False,
@@ -869,6 +883,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     if pruned:
         log(f"Dropped {pruned} cache entries nothing can use any more (old versions, gone files, replaced keys)")
     if not todo:
+        _score_hype(con, analysed=False)
         if csv_out:
             export_csv(csv_out)
         return summary(con)
@@ -922,13 +937,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
             pool.close()
             pool.join()
 
-    if done and con.execute("SELECT 1 FROM tracks WHERE hype IS NOT NULL LIMIT 1").fetchone():
-        from . import hype
-
-        try:  # ranks within the collection: new and changed tracks move everyone's
-            hype.compute(con)
-        except SystemExit as err:
-            log(f"(hype not scored: {err})")
+    _score_hype(con, analysed=bool(done))
     apply_manual(con)  # rescanned tracks got the analysis' genre again
     if csv_out:
         export_csv(csv_out)
