@@ -27,9 +27,10 @@ EXPOSE 8766
 CMD ["dj-track-analyzer", "web", "--host", "0.0.0.0", "--no-open"]
 
 FROM app AS test
-RUN dj-track-analyzer setup
+# chmod in the same layer that made the files: a later layer changing their mode would hold a second copy of the models
+RUN dj-track-analyzer setup && chmod -R a+rwX /data /home/dj
 COPY scripts ./scripts
 RUN python scripts/make_fixtures.py --music /fixtures/music \
         --nml "/home/dj/Documents/Native Instruments/Traktor 4.0.0/collection.nml" \
-    && chmod -R a+rwX /data /fixtures /home/dj
+    && chmod -R a+rwX /fixtures /home/dj
 CMD ["python", "scripts/docker_smoke.py"]
