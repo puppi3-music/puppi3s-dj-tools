@@ -299,6 +299,18 @@ def main() -> None:
     ho.add_argument("--colour", "--color", dest="colour", metavar="TEXT", default=None,
                     help="hold the colour of the scanned tracks whose path contains TEXT")
     ho.add_argument("--release", action="store_true", help="with --genre/--colour: take those tracks off the hold list")
+    ed = sub.add_parser("edit", help="set a track's colour, key, genre, hype or BPM by hand (into Traktor too)")
+    ed.add_argument("track", nargs="?", default=None,
+                    help="the track's path, or text in it (one match); none = list the tracks edited by hand")
+    ed.add_argument("--colour", "--color", dest="colour", default=None, help="Red … Magenta, or 1-7")
+    ed.add_argument("--key", default=None, help="Camelot (8A) or a key like Am, F#, Eb minor")
+    ed.add_argument("--genre", default=None, help="genre (held, so tag / traktor / tempo load keep it)")
+    ed.add_argument("--hype", default=None, help="1-10 (kept when hype is scored again)")
+    ed.add_argument("--bpm", default=None, help="whole BPM the analyzer uses; Traktor's own BPM and grid stay")
+    ed.add_argument("--clear", action="append", default=[], choices=["colour", "genre", "hype", "bpm"],
+                    help="back to the analysis (colour: off the keep-always list); repeat for several")
+    ed.add_argument("--no-traktor", action="store_true", help="change the analyzer only, not Traktor")
+    ed.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
     s = sub.add_parser("serve", help="run the MCP server")
     s.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
     s.add_argument("--host", default="127.0.0.1")
@@ -510,6 +522,22 @@ def main() -> None:
             raise SystemExit("--release goes with --genre TEXT or --colour TEXT")
         else:
             out = collection.holds_list()
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+    elif args.cmd == "edit":
+        from . import edit
+
+        changes = {f: getattr(args, f) for f in edit.FIELDS if getattr(args, f) is not None}
+        if not args.track:
+            if changes or args.clear:
+                raise SystemExit("Name the track: uv run dj-track-analyzer edit TEXT --colour Red")
+            out = edit.listing()
+        else:
+            path = edit.find_track(args.track)
+            try:
+                out = (edit.edit(path, changes, args.clear, dry_run=args.dry_run, to_traktor=not args.no_traktor)
+                       if changes or args.clear else edit.current(path))
+            except ValueError as e:
+                raise SystemExit(str(e))
         print(json.dumps(out, indent=2, ensure_ascii=False))
     elif args.cmd == "serve" and args.http:
         log(f"Puppi3's Track Analyzer MCP on http://{args.host}:{args.port}/mcp")
