@@ -2851,10 +2851,24 @@ async function pageSetup(main) {
         st.models.maest ? "" : jb("su-maest", "Download MAEST too"))
     : step("todo", 1, "Download the analysis models", "A few hundred MB, mostly MAEST (the better genre model). Only once.",
         `<label class="inline small"><input type="checkbox" id="su-nomaest" ${SF.noMaest ? "checked" : ""}> skip MAEST (smaller, less accurate genres)</label>${jb("su-setup", "Download", true)}`);
+  // Where collection.nml is: found automatically, or chosen here (the system's file dialog via the server, or a pasted path).
+  const nmlPick = `<span id="su-nml-pick" style="display:${tk.collection ? "none" : "contents"}">
+      ${tk.can_browse ? jb("su-nml-browse", "Browse…", !tk.collection) : ""}
+      <input type="text" id="su-nml-path" placeholder="${tk.can_browse ? "or paste its path" : "paste the path of collection.nml"}">${jb("su-nml-use", "Use")}</span>`;
+  const nmlAct = `${tk.collection ? jb("su-nml-change", "Change…") : ""}${tk.chosen ? jb("su-nml-auto", "Find automatically") : ""}${nmlPick}`;
+  const newer = tk.newer ? `<div class="small" style="margin-top:6px"><b>Traktor has a newer collection</b> (it makes a new folder when it updates): <span class="mono">${esc(tk.newer)}</span>
+      ${jb("su-nml-newer", "Use the newer one", true)}</div>` : "";
+  const V = tk.version || {}, issue = `<a href="https://github.com/puppi3-music/dj-tools/issues" target="_blank" rel="noopener">report it</a>`;
+  const untested = V.untested === "format"
+    ? `<b>This collection's file format is new to the analyzer</b> (NML version ${esc(V.format ?? "unknown")}; tested: ${esc(V.tested_formats.join(", "))}${V.traktor ? `, Traktor ${esc(V.traktor)}` : ""}). Reading it may go wrong in places: check each change in Traktor before relying on it. Every write is backed up and can be undone. If something looks wrong, ${issue}.`
+    : V.untested === "newer"
+    ? `<b>Traktor ${esc(V.traktor)} isn't verified with the analyzer yet</b> (tested up to ${esc(V.tested_traktor)}). Its collection file format is the same, so it should work fine; you might still run into issues. Every write is backed up and can be undone. If something looks wrong, ${issue}.`
+    : "";
   const traktorStep = tk.collection
-    ? step("done", 2, "Traktor's collection", `Found <span class="mono">${esc(tk.collection)}</span>: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
-        ${tk.coloured} coloured by you, ${tk.cued} with 3+ of your own cue points.`)
-    : step("blocked", 2, "Traktor's collection", `${esc(tk.why)} Without Traktor you can still scan folders below; the colour and cue steps learn from Traktor and need it.`);
+    ? step("done", 2, "Traktor's collection", `${tk.chosen ? "Using" : "Found"} <span class="mono">${esc(tk.collection)}</span>${tk.chosen ? " (chosen here)" : ""}: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
+        ${tk.coloured} coloured by you, ${tk.cued} with 3+ of your own cue points.${untested ? `<div class="note" style="margin:6px 0 0">${untested}</div>` : ""}${newer}<div id="su-nml-msg" class="small" hidden></div>`, nmlAct)
+    : step("blocked", 2, "Traktor's collection", `${esc(tk.why)} It's the file <span class="mono">collection.nml</span> in Documents › Native Instruments › Traktor <i>version</i>.
+        Without Traktor you can still scan folders below; the colour and cue steps learn from Traktor and need it.<div id="su-nml-msg" class="small" hidden></div>`, nmlAct);
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
     : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
@@ -2914,6 +2928,7 @@ async function pageSetup(main) {
       ${tool(8, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
     <div class="card"><h3>Into your files and Traktor</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
+      ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
       ${st.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Previews work, but quit Traktor before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
       <div class="steps">
       ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in Traktor: tick "only in Traktor" in the next step instead.
@@ -2936,6 +2951,20 @@ async function pageSetup(main) {
   const bindVal = (id, key, prop = "value") => { const el = $("#" + id); if (el) el.addEventListener("input", () => { SF[key] = el[prop]; }); };
   bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked");
   bindVal("wr-colours", "colours", "checked"); bindVal("wr-only-traktor", "onlyTraktor", "checked"); bindVal("su-lexicon", "lexicon", "checked");
+  const nml = async (body, btn) => {
+    const msg = $("#su-nml-msg"), label = btn?.textContent;
+    msg.hidden = true;
+    if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
+    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) route(); }
+    catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+    finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
+  };
+  on("su-nml-change", () => { $("#su-nml-pick").style.display = "contents"; $("#su-nml-change").style.display = "none"; ($("#su-nml-browse") || $("#su-nml-path")).focus(); });
+  on("su-nml-browse", e => nml({ browse: true }, e.currentTarget));
+  on("su-nml-use", e => { const p = $("#su-nml-path").value.trim(); p ? nml({ path: p }, e.currentTarget) : $("#su-nml-path").focus(); });
+  $("#su-nml-path")?.addEventListener("keydown", e => { if (e.key === "Enter") $("#su-nml-use").click(); });
+  on("su-nml-auto", e => nml({ auto: true }, e.currentTarget));
+  on("su-nml-newer", e => nml({ path: tk.newer }, e.currentTarget));
   on("su-setup", () => go("setup", { no_maest: SF.noMaest }));
   on("su-maest", () => go("setup", {}));
   on("su-scan-tk", () => go("scan", { traktor: true }));

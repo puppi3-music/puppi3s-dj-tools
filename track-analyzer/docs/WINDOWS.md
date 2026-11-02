@@ -402,11 +402,13 @@ Windows x86_64 and attaches them to a release on a `dsp-v*` tag; `pyproject.toml
 
 Traktor runs on Windows (not on Linux), so the Traktor half of the tool is what a port really adds.
 
-- **Collection location.** `traktor.find_collection()` globs `~/Documents/Native Instruments/Traktor*/collection.nml`.
-  On Windows that's the same relative to the user folder, so `expanduser` finds it (seen 2026-11-02:
-  `C:\Users\<user>\Documents\Native Instruments\Traktor 4.4.2`; still open: OneDrive can move Documents to
-  `~/OneDrive/Documents`, and may keep files there as online-only placeholders). History files
-  (`tracklist.HISTORY_GLOB`) and recordings (`traktor.recording_dirs()`) use the same base.
+- **Collection location.** `traktor.find_collection()`: `--nml`, else the one chosen on the Setup tab
+  (`data/settings.json` → `traktor_collection`; Browse… opens the system's file dialog from the server, since a browser
+  never gives a page a file's path), else the newest `Native Instruments/Traktor*/collection.nml` in every
+  `traktor.documents_dirs()`: `~/Documents`, and on Windows the real Documents folder (`SHGetKnownFolderPath`, which
+  follows OneDrive backup and Properties → Location) and `%OneDrive%\Documents` (seen 2026-11-02:
+  `C:\Users\<user>\Documents\Native Instruments\Traktor 4.4.2`; still open: OneDrive may keep files as online-only
+  placeholders). History files (`traktor.traktor_glob`) use the same folders; recordings (`traktor.recording_dirs()`) come from the .tsi.
 - **Track paths.** `traktor.location_paths()` turns an NML `LOCATION` (`VOLUME`, `DIR="/:Users/:me/:Music/:"`, `FILE`)
   into `/Users/…` or `/Volumes/<VOLUME>/…`. On Windows `VOLUME` is the drive letter with its colon (seen 2026-11-02 in a
   Traktor Pro 4 collection: `VOLUME="C:" VOLUMEID="f21b7ddb"`, `DIR` in the same `/:` form as on the Mac), so the
