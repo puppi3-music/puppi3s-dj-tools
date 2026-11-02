@@ -94,7 +94,8 @@ def build_mcp():
 
     @mcp.tool()
     @friendly
-    def train_genres(folder: str = "", traktor_playlists: str = "", traktor_genres: list[str] | None = None) -> dict:
+    def train_genres(folder: str = "", traktor_playlists: list[str] | None = None,
+                     traktor_genres: list[str] | None = None) -> dict:
         """OPTIONAL. Teach the analyzer the user's own genre labels from example tracks.
         Not needed for normal use: dj_genre already works without training.
 
@@ -109,8 +110,8 @@ def build_mcp():
 
         Args (give one):
             folder: Full path to the training folder.
-            traktor_playlists: A playlist folder in Traktor ("Genre Training", nested "DJ / Genre Training"):
-                each playlist in it is one genre.
+            traktor_playlists: Traktor playlists (at least 2; in folders as "DJ / Hyperpop"): each is one genre,
+                named after the playlist.
             traktor_genres: Genres from Traktor's Genre field (at least 2): the tracks with each are its examples.
         """
         from . import mygenres

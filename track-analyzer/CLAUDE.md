@@ -352,8 +352,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   `keys.py`: `keys` command, backfill for tracks scanned before (spawn pool, resumable) + MIREX-category report.
   The Cross-Key Analysis part of that repo lives on branch `cka` (it didn't beat the CNN; kept for development).
 - `mygenres.py` (+ `analysis.train`, `collection.refresh_my_genres`): your own genres. Examples from a folder
-  (`collect_training_set`), a Traktor playlist folder (`traktor.playlist_folders`: folders with ≥ 2 playlists, own
-  folders `OWN_FOLDERS` skipped, a track in two playlists dropped) or Traktor's Genre field (`traktor.genre_field`:
+  (`collect_training_set`), ticked Traktor playlists (`traktor.playlists`: any with tracks, `OWN_FOLDERS` skipped;
+  genre = playlist name, same names merged, a track in two genres dropped) or Traktor's Genre field (`traktor.genre_field`:
   multi-genre values dropped; refused while a tempo view is loaded); `mygenres.traktor_choices` = /api/genres/traktor,
   bundle `source_kind` for Learn again. `train` learns the examples' genres + `OTHER_GENRE` ("∅ everything else") from the scanned collection's cached EffNet means
   (`background_embeddings`: examples and copies of them, cosine ≥ `SAME_TRACK_COS` 0.995, left out; ≥ 30 needed, ≤ 1500;
