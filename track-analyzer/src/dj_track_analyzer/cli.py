@@ -50,6 +50,10 @@ def say_if_nothing(out: dict, dry_run: bool = False) -> None:
 
 
 def main() -> None:
+    if sys.platform == "win32":  # piped or redirected output in UTF-8, not the ANSI code page (accented track names)
+        for s in (sys.stdout, sys.stderr):
+            if hasattr(s, "reconfigure") and not s.isatty():
+                s.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser(description="Local track analyzer + MCP server")
     sub = ap.add_subparsers(dest="cmd")
     su = sub.add_parser("setup", help="download the style models")

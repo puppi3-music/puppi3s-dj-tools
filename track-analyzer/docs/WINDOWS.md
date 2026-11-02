@@ -489,6 +489,11 @@ The Local API itself (localhost:48624) is the same.
 
 ## Order of work
 
+Testing without a Windows PC (2026-11-02): `tests/` runs on GitHub's Windows runners on every push
+(`.github/workflows/tests.yml`): scan, tag, the Traktor write and undo on a collection in Windows Traktor's form,
+the Traktor-running refusal, unplugged drive letters, UTF-8 output through pipes, and the `.bat` launcher opening
+the page. What it can't check is real Traktor reading what we wrote; that stays a check on the PC before a release.
+
 1. **Replace Essentia, on the Mac** (done 2026-11-02), in the stages above: probes, mono mix and 16 kHz resample, decoding, mel
    front end, neural nets, key, BPM, then drop Essentia. Each checked against Essentia over the whole test
    collection and the mixes before it ships. Ship on macOS and Linux before Windows, so there is one engine
