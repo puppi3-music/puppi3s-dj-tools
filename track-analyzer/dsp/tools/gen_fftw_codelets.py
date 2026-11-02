@@ -1,4 +1,4 @@
-"""Translate the FFTW 3.3.10 scalar codelets of the 512-point real FFT into Rust (src/fftw_codelets.rs).
+"""Translate the FFTW 3.3.10 scalar codelets of the 512- and 4096-point real FFTs into Rust (src/fftw_codelets.rs).
 
     curl -LO https://www.fftw.org/fftw-3.3.10.tar.gz   # md5 8ccbf6a5ea78a16dbc3e1306e234cc5c
     tar xzf fftw-3.3.10.tar.gz
@@ -14,7 +14,7 @@ import re
 import sys
 from pathlib import Path
 
-CODELETS = [("r2cf", "r2cf_16"), ("r2cf", "r2cf_32"), ("r2cf", "r2cfII_32"), ("hc2c", "hc2cf_32")]
+CODELETS = [("r2cf", "r2cf_16"), ("r2cf", "r2cf_32"), ("r2cf", "r2cfII_32"), ("hc2c", "hc2cf_32"), ("r2cf", "r2cf_128")]
 
 
 def fma_section(src: str, variant: str = "plain") -> str:

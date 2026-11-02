@@ -58,15 +58,23 @@ def fma(x, y, z):  # exact, then one rounding to double
     return float(Fraction(x) * Fraction(y) + Fraction(z))
 
 
-def twiddles():
-    n, shift = 512, 5  # choose_twshft(512) = 5
+def choose_twshft(n):  # FFTW kernel/twiddle.c
+    k = 0
+    while n > 0:
+        k, n = k + 1, n // 4
+    return k
+
+
+def twiddles(n=512):
+    """hc2cf_32's twiddles for the n-point plan (rdft2-ct-dit/32, m = n / 32): TW_FULL 1..31 for m = 1..m/2 - 1."""
+    shift = choose_twshft(n)
     W0 = [real_cexp(i, n) for i in range(1 << shift)]
     W1 = [real_cexp(i << shift, n) for i in range((n + (1 << shift) - 1) >> shift)]
     out = []
-    for j in range(7):
+    for j in range(n // 64 - 1):
         for i in range(1, 32):
             m = (j + 1) * i
-            wr0, wi0 = W0[m & 31]
+            wr0, wi0 = W0[m & ((1 << shift) - 1)]
             wr1, wi1 = W1[m >> shift]
             out += [bits(fma(wr1, wr0, -(wi1 * wi0))), bits(fma(wi1, wr0, wr1 * wi0))]
     return out

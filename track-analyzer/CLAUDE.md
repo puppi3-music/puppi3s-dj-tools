@@ -38,7 +38,11 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
   padding/patches/batches as TensorflowPredictEffnetDiscogs, graph via plain TensorflowPredict). Its 512-point FFT is
   FFTW 3.3.10's plan with the codelets ported (`dsp/tools/gen_fftw_codelets.py`: Essentia's FFTW runs the PLAIN
   codelet variant and gcc -O3 fuses mul+add across statements, modelled with mul_add; checked by calling the
-  wheel's local `_r2cf_16` etc. via ctypes). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
+  wheel's local `_r2cf_16` etc. via ctypes). `key_edma` (= KeyExtractor edma, `analysis.key_of`; dsp/src/key.rs, the 4096
+  FFT in fft4096.rs with `r2cf_128`, tables from `dsp/tools/gen_key_tables.py`): clang's `exp10f`/`exp2` for pow(10/2, x),
+  Essentia's log2 = logf/ln2 in double, SpectralWhitening's vectorised loop (blocks of 16 unfused, tail fused), Key's std
+  unfused / correlation fused; per-frame work `#[inline(never)]` with heap buffers (inlined into rayon's splitting it
+  overflowed a worker's 2 MB stack in check.py). Source read at Essentia commit 1d1cc983 (= dev1177). Tables (window, mel weights, twiddles, 268 macOS log10f exceptions:
   it isn't correctly rounded) from `dsp/tools/gen_musicnn_tables.py` (macOS + Essentia). A step goes in only
   after a bitwise check against Essentia over the whole collection + 48 kHz mixes (test signals aren't enough):
   `uv run python dsp/check.py --collection --files-from <list of mixes>` (all steps, ~25 min; before a
