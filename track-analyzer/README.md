@@ -53,12 +53,14 @@ Every command runs from the project folder and starts with `uv run dj-track-anal
 
 On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-click. On Linux, see [Linux](#linux): the same launcher runs from a terminal.
 
-1. Download or clone this project and open its folder in Finder.
+1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), unzip it, and open the folder in Finder. Or clone this project and open its `track-analyzer` folder.
 2. Double-click **`Start Puppi3's Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
 3. A Terminal window opens and does the install for you: it installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
 4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew on a Mac, if you have it; on Windows with winget and Rubber Band's own build) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
 
 Keep the Terminal window open while you use the page; close it to stop. Double-click again any time: if the page is already running, it just opens it.
+
+**Updating.** From a zip: unzip the new release, then move the `data` folder from your old copy into the new one (it holds your scans, models and training), and double-click the launcher in the new folder. From a clone: `git pull`, then double-click the launcher. Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ### The Terminal way
 
@@ -110,7 +112,7 @@ Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command
 
 Everything works on Windows 10 and 11 (x64), Traktor and Lexicon included, with the same results as on a Mac.
 
-1. Download or clone this project and open its `track-analyzer` folder in File Explorer.
+1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), right-click it, choose **Extract All**, and open the folder. Or clone this project and open its `track-analyzer` folder.
 2. Double-click **`Start Puppi3's Track Analyzer.bat`**. Windows may warn that it's from the internet: choose **More info → Run anyway**.
 3. A Command Prompt window installs **uv**, Python and the analyzer the first time (a few minutes), then the web page opens in your browser. Keep the window open while you use the page; close it to stop.
 4. On the **Setup** tab, **Install with winget** installs ffmpeg, and **Install** under Rubber Band downloads Rubber Band's own Windows build (4.0.0) into the analyzer's `data` folder. Nothing else on your PC changes.
