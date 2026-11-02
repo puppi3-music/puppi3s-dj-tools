@@ -32,9 +32,19 @@ def add_file(path, emb) -> None:
 
 
 @pytest.fixture
-def setup(monkeypatch):
-    """A training folder (Hyperpop, Pop) and a scanned collection: house tracks plus copies of 3 Hyperpop examples."""
-    for d in (TMP / "data", TMP / "genres", TMP / "coll"):
+def setup(monkeypatch, tmp_path):
+    """A training folder (Hyperpop, Pop) and a scanned collection: house tracks plus copies of 3 Hyperpop examples.
+    Each test gets its own data folder (database, cache, model, settings): nothing to delete afterwards (Windows
+    can't delete the cache while its connection is open) and nothing seen by the other test files."""
+    data = (tmp_path / "data").resolve()
+    data.mkdir()
+    for mod, name, value in ((analysis, "HOME", data), (analysis, "CACHE_DB", data / "cache.db"),
+                             (analysis, "GENRE_MODEL", data / "my_genres.joblib"),
+                             (analysis, "SETTINGS", data / "settings.json"), (collection, "HOME", data),
+                             (collection, "DB", data / "collection.db"), (collection, "NATIVE_DB", data / "collection.db"),
+                             (collection, "DEFAULT_CSV", data / "collection.csv")):
+        monkeypatch.setattr(mod, name, value)
+    for d in (TMP / "genres", TMP / "coll"):
         shutil.rmtree(d, ignore_errors=True)
     analysis._genre_bundle.clear()
 
@@ -47,14 +57,17 @@ def setup(monkeypatch):
                 add_file(folder / g / f"{g} {i}.mp3", emb)
                 if g == "Hyperpop" and i < 3:
                     copies.append(emb)
-        con = collection.db()
         rows = [(TMP / "coll" / f"House {i}.mp3", sound("House"), "House") for i in range(40)]
         rows += [(TMP / "coll" / f"Copy {i}.flac", e, "IDM") for i, e in enumerate(copies)]  # the same songs, elsewhere
-        for p, emb, genre in rows:
-            add_file(p, emb)
-            con.execute("INSERT INTO tracks (path, filename, type, genre) VALUES (?, ?, 'track', ?)", (str(p), p.name, genre))
-        con.commit()
-        con.close()
+        con = collection.db()
+        try:
+            for p, emb, genre in rows:
+                add_file(p, emb)
+                con.execute("INSERT INTO tracks (path, filename, type, genre) VALUES (?, ?, 'track', ?)",
+                            (str(p), p.name, genre))
+            con.commit()
+        finally:
+            con.close()
         return folder
 
     return make
