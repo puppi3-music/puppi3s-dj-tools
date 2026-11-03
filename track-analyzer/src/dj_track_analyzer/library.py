@@ -3,9 +3,10 @@ rest of the app uses, routed to traktor.py or rekordbox.py. Callers move here fr
 support grows (stage 1b of the Rekordbox plan); Traktor's behaviour is unchanged."""
 from __future__ import annotations
 
+from pathlib import Path
 from types import ModuleType
 
-from .analysis import app_setting, save_app_setting
+from .analysis import app_setting, log, save_app_setting
 
 APP_SETTING = "dj_app"  # in data/settings.json
 APPS = {"traktor": "Traktor", "rekordbox": "Rekordbox"}
@@ -50,6 +51,27 @@ def collection_tracks(path: str | None = None):
     return backend().collection_tracks(_path(path))
 
 
+def all_collection_tracks(path: str | None = None) -> tuple[list[str], list[Path], int]:
+    """Every audio file in every DJ app found here (Traktor and Rekordbox, whichever app is chosen), so a track added
+    in either gets scanned and sync can carry it to the other. An app that isn't installed or can't be read is left
+    out. Returns ([\"Traktor <collection path>\", ...], files, number listed but missing)."""
+    from . import rekordbox, traktor
+
+    seen, files, missing = [], set(), 0
+    for name, mod, arg in (("Traktor", traktor, path), ("Rekordbox", rekordbox, None)):
+        try:
+            where, f, m = mod.collection_tracks(arg)
+        except (SystemExit, OSError, ValueError, ImportError) as err:
+            if app() == name.lower():
+                raise
+            log(f"Scan: {name} left out ({err})")
+            continue
+        seen.append(f"{name} {where}")
+        files.update(f)
+        missing += m
+    return seen, sorted(files), missing
+
+
 def track_info(path: str | None = None):
     return backend().track_info(_path(path))
 
@@ -74,6 +96,10 @@ def check_closed(dry_run: bool = False, what: str = "these changes") -> None:
 
 def sync(path: str | None = None, *args, **kw) -> dict:
     return backend().sync(_path(path), *args, **kw)
+
+
+def sync_tracks(path: str | None = None, **kw) -> dict:
+    return backend().sync_tracks(_path(path), **kw)
 
 
 def set_colors(changes: dict, path: str | None = None, dry_run: bool = False) -> dict:
