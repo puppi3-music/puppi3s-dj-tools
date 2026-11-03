@@ -73,7 +73,7 @@ def _genres_train(o: dict) -> list[str]:
         raise ValueError("Choose the folder with your example tracks (one subfolder or playlist per genre)")
     if not Path(folder).expanduser().is_dir():
         raise ValueError(f"Not a folder: {folder}")
-    return ["train", str(Path(folder).expanduser())]
+    return ["train", str(Path(folder).expanduser()), *(["--by-tag"] if o.get("by_tag") else [])]
 
 
 MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
