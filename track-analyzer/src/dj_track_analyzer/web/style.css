@@ -322,8 +322,8 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 .jobbar.good { background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
 .progress { height: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 99px; overflow: hidden; flex: none; }
 .progress div { height: 100%; background: var(--accent); transition: width .4s; }
-.progress.indet div { width: 30%; animation: indet 1.4s infinite linear; }
-@keyframes indet { from { margin-left: -30%; } to { margin-left: 100%; } }
+.progress.indet div { width: 30%; animation: indet 1.4s infinite linear; }  /* 1.4s also in progressBar() */
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(334%); } }
 /* loop ideas while Demucs listens to them: a spinner by the note, and the buttons' orange edges breathe */
 .parts-wait { display: inline-flex; align-items: center; gap: 6px; margin-left: 6px; }
 .parts-wait::before { content: ""; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--line-strong);

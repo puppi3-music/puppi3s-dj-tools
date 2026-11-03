@@ -486,7 +486,8 @@ def _new_labels(nml: Path) -> tuple:
     key = (str(nml), mt(nml), *lib, mt(analysis.COLOR_MODEL), mt(cues.MODEL), mt(collection.NATIVE_DB))
     if _new_cache["key"] != key:
         _nml, tk_colours, _n = colors.read_traktor_colors(str(nml))
-        _new_cache.update(key=key, data=(colors.new_labels(tk_colours), cues.new_labels(cues.grids(str(nml)))))
+        src = None if lib[0] == "rekordbox" else str(nml)  # a path given is always Traktor's; None = the chosen app's
+        _new_cache.update(key=key, data=(colors.new_labels(tk_colours), cues.new_labels(cues.grids(src))))
     return _new_cache["data"]
 
 
@@ -494,7 +495,7 @@ def to_learn() -> dict:
     """What retraining your colour and cue models would learn that they haven't (the Colours and Tracks tabs offer it):
     {colours, cues}, each {added, changed, removed}, or None (no Traktor, a starter or an older model, a tempo view loaded)."""
     try:
-        return dict(zip(("colours", "cues"), _new_labels(Path(traktor.find_collection(None)))))
+        return dict(zip(("colours", "cues"), _new_labels(Path(library.find_collection(None)))))
     except (SystemExit, OSError, ValueError) as e:
         log(f"New-labels count skipped: {e}")
         return {"colours": None, "cues": None}
@@ -531,14 +532,24 @@ def dj_app_status() -> dict:
     rb: dict = {"chosen": str(chosen) if chosen else None}
     try:
         path = rekordbox.find_collection(None)
-        key = (str(path), path.stat().st_mtime)
+        wal = path.with_name(path.name + "-wal")  # Rekordbox's changes can sit in the WAL before master.db changes
+        key = (str(path), path.stat().st_mtime, wal.stat().st_mtime if wal.exists() else None)
         if _rb_cache["key"] != key:
+            from . import cues
+
             _, files, missing = rekordbox.collection_tracks(str(path))
-            _rb_cache.update(key=key, data={"tracks": len(files), "missing": missing})
+            data = {"tracks": len(files), "missing": missing}
+            try:  # counted as the Traktor side counts them; a failed count only hides the colour/cue steps' numbers
+                each = cues._one_path_each(cues.grids())
+                data.update(coloured=rekordbox.colors(str(path))[2],
+                            cued=sum(sum(c["type"] == "cue" for c in d["cues"]) >= cues.MIN_CUES for _p, d in each))
+            except Exception as e:
+                log(f"Rekordbox colour/cue counts skipped: {e}")
+            _rb_cache.update(key=key, data=data)
         rb.update(database=str(path), **_rb_cache["data"])
     except SystemExit as e:
         rb.update(database=None, why=str(e.code or e))
-    except (OSError, ValueError, ImportError) as e:
+    except Exception as e:  # pyrekordbox/SQLAlchemy errors (a damaged or not-really-master.db file) too: never break Setup
         rb.update(database=None, why=f"Couldn't read Rekordbox's database: {e}")
     out["rekordbox"] = rb
     return out
@@ -615,11 +626,12 @@ def setup_status() -> dict:
 
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
-    if st["traktor"].get("collection"):
+    lib = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else st["traktor"].get("collection")
+    if lib:  # the chosen DJ app's library (cues.grids and the label counts read that one)
         from . import cues, gridfix
 
         try:
-            st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(st["traktor"]["collection"]))
+            st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(lib))
         except (SystemExit, OSError) as e:  # e.g. a tempo view is loaded: its colours aren't yours
             log(f"New-labels count skipped: {e}")
         try:

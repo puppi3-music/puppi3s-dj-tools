@@ -3,7 +3,7 @@ async function loadLibs() {
   S.libs = await api("libraries");
   const sel = $("#lib");
   const inTraktor = l => (l.bpm || null) === (S.libs.loaded_view || null);  // the one Traktor has loaded
-  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? " (as Traktor)" : ""}</option>`).join("");
+  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? ` (as ${DJ()})` : ""}</option>`).join("");
   if (!S.libs.libraries.some(l => l.id === S.lib)) S.lib = "native";
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
@@ -74,7 +74,8 @@ addEventListener("hashchange", route);
 
 // ---------- overview ----------
 async function pageOverview(main) {
-  const d = await api("stats", { lib: S.lib });
+  const me = S.routeId, d = await api("stats", { lib: S.lib });
+  if (me !== S.routeId) return;  // a newer page or library was picked meanwhile
   if (!d.tracks) {
     main.innerHTML = `<div class="page-head"><div><h2>Overview</h2></div></div>` + empty("Nothing scanned yet",
       "Once your music is scanned, this shows your genres, tempos, keys and colours at a glance.", toSetup("Scan your music"));
@@ -82,7 +83,7 @@ async function pageOverview(main) {
   }
   const genres = Object.entries(d.genres).map(([g, v]) => ({ label: g, value: v.tracks, valText: `${v.tracks} · ${v.avg_bpm ?? "–"} BPM`, go: { genre: g, genreTop: true },
     tip: `${g}: ${v.tracks} tracks with it as their top genre, average ${v.avg_bpm ?? "–"} BPM` }));
-  const hist = Object.entries(d.bpm_histogram).map(([b, n]) => { const [lo, hi] = b.split("-"); return { label: `${b} BPM`, short: lo, value: n, go: { bpmMin: lo, bpmMax: hi } }; });
+  const hist = Object.entries(d.bpm_histogram).map(([b, n]) => { const [lo, hi] = b.split("-"); return { label: `${b} BPM`, short: lo, value: n, go: n ? { bpmMin: lo, bpmMax: hi } : null }; });
   const keys = Object.entries(d.top_camelot_keys).map(([k, n]) => ({ label: k, value: n, go: { key: k } }));
   const cols = COLOURS.filter(c => d.colours[c]).map(c => ({ label: c, value: d.colours[c], go: { colour: c } }));
   const st = S.libs.status;
@@ -97,14 +98,14 @@ async function pageOverview(main) {
     <div class="grid two">
       <div class="card"><h3>Genres <span class="dim small">(top genre per track)</span></h3>${bars(genres)}</div>
       <div>
-        <div class="card"><h3>BPM <span class="dim small">(${DJ()}'s where it has one, in 5-BPM bins)</span></h3>${columns(hist)}</div>
+        <div class="card"><h3>BPM <span class="dim small">(${DJ()}'s where it has one, in 5-BPM bins)</span></h3>${hist.length ? columns(hist) : `<div class="dim">Nothing yet.</div>`}</div>
         <div class="card"><h3>Colours <span class="dim small">(yours, else predicted)</span></h3>${bars(cols, { colourLabels: true })}</div>
         <div class="card"><h3>Most common keys <span class="dim small">(Camelot)</span></h3>${bars(keys)}</div>
       </div>
     </div>
     <div class="card"><h3>Tempo views</h3>
-      <dl class="facts"><dt>${DJ()}</dt><dd>${esc(st.loaded_in_traktor)}</dd><dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>
-      ${Object.entries(st.views).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v.tracks} tracks <span class="dim mono">${esc(v.folder)}</span></dd>`).join("") || "<dt>Views</dt><dd class='dim'>none scanned (tempo scan --bpm 145)</dd>"}</dl>
+      <dl class="facts"><dt>${DJ()}</dt><dd>${esc(st.loaded_in_traktor)}</dd>${S.libs.lexicon ? `<dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>` : ""}
+      ${Object.entries(st.views).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v.tracks} tracks <span class="dim mono">${esc(v.folder)}</span></dd>`).join("") || "<dt>Views</dt><dd class='dim'>none scanned yet: make one on the <a href='#tempo'>Tempo view</a> tab</dd>"}</dl>
     </div>`;
 }
 

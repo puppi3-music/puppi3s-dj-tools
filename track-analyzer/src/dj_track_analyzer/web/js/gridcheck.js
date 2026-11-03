@@ -40,7 +40,7 @@ function renderGrid(g) {
   if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
-    ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split("/").slice(-2).join("/"))}</span></div>`
+    ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
     : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;
@@ -163,14 +163,15 @@ async function writeGrids(onDone) {
     <div class="note small">A backup of the collection${DJ() === "Rekordbox" ? " (master.db and the grid files)" : ""} is made first; Undo puts it back.</div>`,
     d.changed ? `<button class="primary" data-write ${d.traktor_running ? "disabled" : ""}>Write to ${DJ()}</button>` : "");
   dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
-    e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
-    let r; try { r = await postJSON("/api/grid/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = `Write to ${DJ()}`; return fail(err); }
+    const btn = e.currentTarget;  // currentTarget is null once the handler awaits
+    btn.disabled = true; btn.textContent = "Writing…";
+    let r; try { r = await postJSON("/api/grid/write", { dry_run: false }); } catch (err) { btn.disabled = false; btn.textContent = `Write to ${DJ()}`; return fail(err); }
     show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.tracks} grid${r.tracks === 1 ? "" : "s"} moved${r.cues_moved ? `, with ${r.cues_moved} cues, loops and markers` : ""}.</div>
       <div class="note">Your approved cues on these tracks moved with them. Backup: <span class="mono">${esc(r.backup || "")}</span><br>${DJ() === "Rekordbox" ? "Undo works until Rekordbox changes master.db again." : "Undo works until Traktor saves the collection again (it does when it quits)."}</div>`, `<button data-undo>Undo</button>`);
     dlg.querySelector("[data-undo]").onclick = async ev => {
-      ev.currentTarget.disabled = true;
+      const btn = ev.currentTarget; btn.disabled = true;
       try { const u = await postJSON("/api/grid/undo", {}); show(`<div><b>Undone.</b> ${DJ() === "Rekordbox" ? "master.db and the grid files are" : "collection.nml is"} back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} grid fix${u.approvals_restored > 1 ? "es are" : " is"} approved again` : ""}.</div>`, ""); onDone?.(); }
-      catch (err) { ev.currentTarget.disabled = false; fail(err); }
+      catch (err) { btn.disabled = false; fail(err); }
     };
     onDone?.();
   });
@@ -191,8 +192,8 @@ async function openTrack(path) {
       <div class="acts">${canEdit(t) ? `<button id="dr-edit" class="${editing(t) ? "on" : ""}" aria-pressed="${editing(t)}" data-tip="${editing(t) ? "Stop editing without saving" : "Change this track's BPM, key, colour, genre or hype by hand"}">✎ Edit</button>` : ""}<button class="wide-btn" id="dr-wide" aria-pressed="${drawerWide()}" data-tip="${drawerWide() ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"}">${drawerWide() ? "⇥ Narrow" : "⇤ Wide"}</button>
       <button id="dr-close" aria-label="Close" data-tip="Close (Esc)">✕</button></div></div>
     <dl class="facts">
-      <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">Traktor ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
-      <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot ? `Traktor ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
+      <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">${DJ()} ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
+      <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot ? `${DJ()} ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
       <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? ` (${pct(t.color_confidence)})` : ""}${t.color_confidence_near != null ? ` · ${pct(t.color_confidence_near)} sure it's ${esc(nearRange(t.color))}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
       <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">1-10 within your collection</span></dd>
@@ -220,11 +221,11 @@ async function openTrack(path) {
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
-      <div class="note">A held genre or colour stays as it is in your files, Traktor and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
+      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
       <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
       hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
     ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
-      hint(t.path.split("/").pop()))}`;
+      hint(t.path.split(/[\\/]/).pop()))}`;
   $("#dr-close").onclick = closeDrawer;
   $("#dr-wide").onclick = () => {
     const wide = !drawerWide();
@@ -252,18 +253,21 @@ async function openTrack(path) {
   if (t.type !== "track") return;
   if (!SNAP) loadGrid(t);
   api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
-    .catch(e => { const b = $("#cuebox"); if (b) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
+    .catch(e => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
+  let sgSeq = 0;
   const load = async () => {
-    const box = $("#sugg");
+    const box = $("#sugg"), k = ++sgSeq;
+    const fresh = () => k === sgSeq && box.isConnected && d.dataset.path === t.path;  // a slower earlier reply, or another track's, doesn't land here
     try {
-      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: $("#sg-tol").value });
+      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: $("#sg-tol").value || 4 });
+      if (!fresh()) return;
       box.className = "";
       box.innerHTML = `<div class="dim small" style="margin-bottom:6px">${esc(r.rule)} · ${r.matches} matches</div>` + table([
         { h: "", f: s => sw(s.traktor_color || s.color, !s.traktor_color) }, { h: "Track", f: trackName },
         { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") }, { h: "Genre", f: s => esc(s.genre || "–") },
       ], r.tracks, { rowAttr: s => `class="click" data-path="${esc(s.path)}"` });
       box.onclick = e => { const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path); };
-    } catch (e) { box.className = ""; box.innerHTML = errBox(e); }
+    } catch (e) { if (fresh()) { box.className = ""; box.innerHTML = errBox(e); } }
   };
   $("#sg-same").onchange = load; $("#sg-tol").onchange = load; load();
 }
@@ -296,9 +300,9 @@ function editBar(t) {
   const msg = S.editMsg?.path === t.path ? S.editMsg : null;
   if (!editing(t)) return msg ? `<div class="filters small" id="ed-bar">${msg.undo ? `<button type="button" id="ed-undo">Undo</button>` : ""}<span class="muted" id="ed-msg">${esc(msg.text)}</span></div>` : "";
   return `<div class="filters" id="ed-bar"><button type="button" class="primary" id="ed-save" disabled>Save</button><button type="button" id="ed-cancel">Cancel</button><span class="small muted" id="ed-msg"></span></div>
-    <div class="note">Colour, key and genre are written into Traktor as well (quit Traktor first; a backup is made, and Undo puts it back).
+    <div class="note">${DJ() === "Rekordbox" ? "Colour and genre are written into Rekordbox as well (the key stays in the analyzer; quit Rekordbox first;" : "Colour, key and genre are written into Traktor as well (quit Traktor first;"} a backup is made, and Undo puts it back).
       A colour you set is kept always and teaches the colour model; a genre you set is held. Genre, hype and BPM stay yours when the
-      analysis runs again (↺ goes back to it). BPM changes only what the analyzer uses: Traktor's BPM goes with its beat grid.</div>`;
+      analysis runs again (↺ goes back to it). BPM changes only what the analyzer uses: ${DJ()}'s BPM goes with its beat grid.</div>`;
 }
 function bindEdit(t) {
   const box = $("#drawer-body");
@@ -311,7 +315,7 @@ function bindEdit(t) {
     msg.textContent = "Saving…";
     try {
       const d = await postJSON("/api/track/edit", { path: t.path, ...body });
-      const tk = typeof d.traktor === "string" ? d.traktor : d.traktor?.changed ? `Traktor: ${d.traktor.changed_fields.join(", ")} written` : "Traktor already had it";
+      const tk = typeof d.traktor === "string" ? d.traktor : d.traktor?.changed ? `${DJ()}: ${d.traktor.changed_fields.join(", ")} written${d.traktor.key ? ` (${d.traktor.key})` : ""}` : `${DJ()} already had it`;
       S.editMsg = { path: t.path, text: `${done} · ${tk}${d.traktor?.warning ? ` · ${d.traktor.warning}` : ""}${d.traktor?.hype_comment_skipped ? ` · ${d.traktor.hype_comment_skipped}` : ""}`,
         undo: body.undo ? null : d.undo };
       S.editing = null; S.tracks = {}; SETUP = null;
@@ -357,17 +361,17 @@ const yourPads = (c, pend) => [...myCues(c).map(y => { const to = pendSlot(y, pe
     ...(pend?.adds || []).map(a => ({ ...a, status: "pending", bars: a.type === "loop" && a.len_ms ? a.len_ms / 1000 / c.bar_seconds : 0, hotcue: a.nofit || a.hotcue == null ? -1 : a.hotcue }))].sort((a, b) => (a.hotcue < 0) - (b.hotcue < 0) || a.hotcue - b.hotcue || a.ms - b.ms)
       .map(y => { const del = isDel(y, pend), was = origOf(y).hotcue, rn = was >= 0 && y.hotcue >= 0 && was !== y.hotcue;  // rn: pushed to another slot, the pad reads "2→3"
         const x = SNAP || y.status === "new" ? "" : y.status === "pending" ? `<button class="padx" type="button" data-unadd="${y.ms}" data-tip="Take it out: untick it (a cue you set by hand is dropped)">✕</button>`
-        : `<button class="padx" type="button" data-del="${esc(delKey(y))}" data-tip="${del ? "Keep it: untick its deletion" : `Delete your ${esc(cueKind(y).toLowerCase())}${was >= 0 ? " " + (was + 1) : ""}${rn ? ` (shown as ${y.hotcue + 1} ${y.renum ? "once the ticked cues are approved" : "after the approved changes"})` : ""} from Traktor (ticks it under Delete your cues; written when you approve and write)`}">${del ? "↺" : "✕"}</button>`;
-        return `<span class="pad">` + `<button class="mine${del ? " del" : y.status === "new" ? " new" + (y.nofit ? " nofit" : "") : y.status === "pending" ? " pend" + (y.nofit ? " nofit" : "") : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${del ? `Marked for deletion: ${y.status === "deleted" ? "approved, " : ""}not deleted in Traktor yet · ` : ""}${y.status === "pending" ? (y.nofit ? `Ticked ${esc(y.name || y.type)}: no free slot, won't be written` : `Ticked ${esc(y.name || y.type)}, not approved yet`) : y.status === "new" ? (y.nofit ? `Approved ${esc(y.name || y.type)}, but with the ticked cues there's no slot left for it` : `Approved ${esc(y.name || y.type)}, not written yet`) : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""}${y.was_hotcue != null ? ` (was slot ${y.was_hotcue + 1}, renumbered${y.renum ? " once the ticked cues are approved" : ""})` : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.nofit ? "✕" : y.hotcue >= 0 ? (rn ? `${was + 1}→` : "") + (y.hotcue + 1) : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>${x}</span>`; }).join("") || `<span class="dim small">none</span>`;
+        : `<button class="padx" type="button" data-del="${esc(delKey(y))}" data-tip="${del ? "Keep it: untick its deletion" : `Delete your ${esc(cueKind(y).toLowerCase())}${was >= 0 ? " " + (was + 1) : ""}${rn ? ` (shown as ${y.hotcue + 1} ${y.renum ? "once the ticked cues are approved" : "after the approved changes"})` : ""} from ${DJ()} (ticks it under Delete your cues; written when you approve and write)`}">${del ? "↺" : "✕"}</button>`;
+        return `<span class="pad">` + `<button class="mine${del ? " del" : y.status === "new" ? " new" + (y.nofit ? " nofit" : "") : y.status === "pending" ? " pend" + (y.nofit ? " nofit" : "") : ""}" data-t="${y.ms / 1000}" ${y.type === "loop" && y.bars ? `data-loop="${y.bars * c.bar_seconds}"` : ""} data-tip="${del ? `Marked for deletion: ${y.status === "deleted" ? "approved, " : ""}not deleted in ${DJ()} yet · ` : ""}${y.status === "pending" ? (y.nofit ? `Ticked ${esc(y.name || y.type)}: no free slot, won't be written` : `Ticked ${esc(y.name || y.type)}, not approved yet`) : y.status === "new" ? (y.nofit ? `Approved ${esc(y.name || y.type)}, but with the ticked cues there's no slot left for it` : `Approved ${esc(y.name || y.type)}, not written yet`) : y.status === "moved" ? "Your cue, approved to move here, not written yet" : "Your " + cueKind(y).toLowerCase()}${y.hotcue >= 0 ? " · slot " + (y.hotcue + 1) : ""}${y.was_hotcue != null ? ` (was slot ${y.was_hotcue + 1}, renumbered${y.renum ? " once the ticked cues are approved" : ""})` : ""} · ${barLabel(c, Math.round((y.ms / 1000 - c.first_bar_s) / c.bar_seconds)).text}${y.type === "loop" ? " (plays looped)" : ""}">${y.nofit ? "✕" : y.hotcue >= 0 ? (rn ? `${was + 1}→` : "") + (y.hotcue + 1) : y.type === "loop" ? "L" : "•"}${y.status === "moved" ? "→" : ""}</button>${x}</span>`; }).join("") || `<span class="dim small">none</span>`;
 function renderCues(c) {
   if (!c.bars) return `<div class="dim small">${esc(c.note || "No suggestions yet.")}</div>` + ((c.yours || []).length ? cueTable(c, []) : "");
   if (!c.wave) return `<div class="dim small">No waveform for this track yet: run <span class="mono">cues scan</span>.</div>` + cueTable(c, c.cues);
   const deck = SNAP ? "" : `<div class="deck"><button class="primary" id="dk-play" style="min-width:84px">▶ Play</button><span class="time" id="dk-time">0:00.0</span>
-      <label class="vol small" data-tip="Playback volume (here only: not the track or Traktor)">Vol <input type="range" id="dk-vol" min="0" max="100" step="1" value="${Math.round(deckVolume() * 100)}"></label>
+      <label class="vol small" data-tip="Playback volume (here only: not the track or ${DJ()})">Vol <input type="range" id="dk-vol" min="0" max="100" step="1" value="${Math.round(deckVolume() * 100)}"></label>
       ${deckViewBpm() ? `<label class="inline small" data-tip="Hear the track as the ${deckViewBpm()} BPM tempo view does: stretched with key lock by Rubber Band, the same way its scan heard it. A few seconds the first time for a track, started when you open it"><input type="checkbox" id="dk-stretch" ${deckBpm() ? "checked" : ""}> at ${deckViewBpm()} BPM</label><span class="small dim parts-wait" id="dk-stretching" hidden data-tip="Rubber Band stretches the track in pieces on every core: a few seconds, once per track (the last few are kept)">Stretching to ${deckViewBpm()} BPM…</span>` : ""}
       <label class="inline small"><input type="checkbox" id="dk-follow" checked> follow when zoomed</label>
-      <button id="dk-cue" data-tip="Set a cue where the playhead is, on the nearest beat (C): it's ticked under New cues; Approve ticked keeps it, Write to Traktor writes it">+ Cue</button>
-      <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from Traktor (Traktor saves them when it quits)">Rescan track</button></div>
+      <button id="dk-cue" data-tip="Set a cue where the playhead is, on the nearest beat (C): it's ticked under New cues; Approve ticked keeps it, Write to ${DJ()} writes it">+ Cue</button>
+      <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from ${DJ()} (${DJ()} saves them when it quits)">Rescan track</button></div>
     <div class="pads"><span class="small muted">${c.approved_view ? "Yours, with approved:" : "Yours:"}</span><span id="your-pads" style="display:contents">${yourPads(c, null)}</span>
       <span class="small muted" style="margin-left:8px">Suggested:</span>${c.cues.filter(q => !sugHidden(c, q)).map(q => `<button class="sug" data-t="${q.ms / 1000}">${esc(q.name)} · ${barLabel(c, q.bar).n}</button>`).join("")}
       </div>${loopPads(c)}`;
@@ -532,7 +536,7 @@ function approveBox(c) {
       <option value="loop" ${asCue ? "" : "selected"}>as loop</option><option value="cue" ${asCue ? "selected" : ""}>as cue point</option></select>` : "";
     const len = it.lenOf && !SNAP ? `<select class="len" data-len="${esc(it.key)}" data-tip="How long the loop is. ${it.lenOf.learned ? `Suggested: ${it.lenOf.picked} bar${it.lenOf.picked === 1 ? "" : "s"}, the length you'd likely give a loop here (learned from your loops by cues train)` : `Suggested: ${it.lenOf.picked} bars, your most common loop length`}. Press ▶ to hear another length before approving">
       ${[...new Set([...LOOP_BARS.filter(n => n <= it.lenOf.room), it.lenOf.picked, it.lenOf.bars])].sort((a, b) => a - b).map(n => `<option value="${n}" ${n === it.lenOf.bars ? "selected" : ""}>${n} bar${n === 1 ? "" : "s"}${n === it.lenOf.picked ? " (suggested)" : ""}</option>`).join("")}</select>` : "";
-    const nm = it.hand && !SNAP ? `<input class="nm" data-nm="${esc(it.key)}" value="${esc(it.data.name)}" maxlength="40" placeholder="name" style="width:130px;font-size:12px;padding:1px 4px" data-tip="Its name in Traktor (saved when you press Approve ticked)">${isOn(it) ? "" : ` <button class="mini" type="button" data-unhand="${it.data.ms}" data-tip="Remove this hand-set cue">✕</button>`}` : "";
+    const nm = it.hand && !SNAP ? `<input class="nm" data-nm="${esc(it.key)}" value="${esc(it.data.name)}" maxlength="40" placeholder="name" style="width:130px;font-size:12px;padding:1px 4px" data-tip="Its name in ${DJ()} (saved when you press Approve ticked)">${isOn(it) ? "" : ` <button class="mini" type="button" data-unhand="${it.data.ms}" data-tip="Remove this hand-set cue">✕</button>`}` : "";
     const note = it.disabled ? ` <span class="small" style="color:${it.disabled.startsWith("✓") ? "var(--good)" : "var(--text-3)"}">· ${esc(it.disabled)}</span>` : "";
     const from = it.kind === "move" ? it.data.from_ms : it.data.ms;  // a deletion: its place (data.ms)
     const left = isOn(it) && (c.approved_view?.skipped_ms || []).some(m => Math.abs(m - from) < 1);  // approved but won't fit
@@ -546,22 +550,22 @@ function approveBox(c) {
   };
   const summary = [fixes.length && `<b style="color:var(--warn)">${fixes.length} correction${fixes.length > 1 ? "s" : ""} to your cues</b>`,
     `${newCues} new cue${newCues === 1 ? "" : "s"}`, loops.length && `${loops.length} loop idea${loops.length > 1 ? "s" : ""}`].filter(Boolean).join(" · ");
-  return `<div class="section" style="margin-top:12px"><h3>Approve for Traktor</h3>
-    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length + (ap.renumber ? 1 : 0)} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in Traktor yet: press <b>Write to Traktor…</b> below (Traktor closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
+  return `<div class="section" style="margin-top:12px"><h3>Approve for ${DJ()}</h3>
+    ${ap ? `<div class="note" style="margin:0 0 6px"><b style="color:var(--good)">✓ ${ap.add.length + ap.move.length + (ap.remove || []).length + (ap.renumber ? 1 : 0)} approved</b> ${esc(ap.at)}${ap.grid_changed ? ` · <b>the beat grid changed since: approve again</b>` : ` · shown above as your cues (green = new, → = moved${(ap.remove || []).length ? ", red struck through = deleted" : ""})`}. Not in ${DJ()} yet: press <b>Write to ${DJ()}…</b> below (${DJ()} closed).${(c.approved_view?.skipped || []).length ? `<br>Won't be written: ${c.approved_view.skipped.map(esc).join("; ")}` : ""}</div>` : ""}
     <div class="small muted">${summary}</div>
     <div id="approve">
-      ${approved.length ? `<div class="apgroup"><h4 style="color:var(--good)">✓ Approved · not in Traktor yet <span class="small muted" style="font-weight:400">· untick and press Approve ticked to take one back</span></h4>${approved.map(row).join("")}</div>` : ""}
+      ${approved.length ? `<div class="apgroup"><h4 style="color:var(--good)">✓ Approved · not in ${DJ()} yet <span class="small muted" style="font-weight:400">· untick and press Approve ticked to take one back</span></h4>${approved.map(row).join("")}</div>` : ""}
       ${fixes.length ? `<div class="apgroup"><h4>Corrections to your cues <button class="mini" id="ap-fixall" type="button">Tick all corrections</button></h4><div class="fixbox" id="fixes">${fixes.map(row).join("")}</div></div>` : ""}
       ${ignoredFixes.length ? `<details class="apgroup"><summary class="small muted">${ignoredFixes.length} ignored correction${ignoredFixes.length > 1 ? "s" : ""} · show</summary><div class="fixbox">${ignoredFixes.map(row).join("")}</div></details>` : ""}
       ${others.length ? `<div class="apgroup" id="byhand" hidden><h4>Your cues moved by hand</h4><div class="fixbox">${others.map(it => `<div data-hand="${esc(it.key)}" hidden>${row(it)}</div>`).join("")}</div></div>` : ""}
-      ${cues_.length || more.length ? `<div class="apgroup"><h4>New cues <span class="small muted" style="font-weight:400">· ${c.free_slots > 0 ? `${c.free_slots} free hot-cue slot${c.free_slots > 1 ? "s" : ""}` : `<b style="color:var(--warn)">all 8 hot-cue slots are used</b>: free one in Traktor first, or use a correction to move a cue`}</span></h4>${cues_.map(row).join("")}${more.length ? `<details class="apgroup"${newCues ? "" : " open"}><summary class="small muted">${more.length} more place${more.length > 1 ? "s" : ""} for a new cue (lower scores than the picks above)</summary>${more.map(row).join("")}</details>` : ""}</div>` : ""}
+      ${cues_.length || more.length ? `<div class="apgroup"><h4>New cues <span class="small muted" style="font-weight:400">· ${c.free_slots > 0 ? `${c.free_slots} free hot-cue slot${c.free_slots > 1 ? "s" : ""}` : `<b style="color:var(--warn)">all 8 hot-cue slots are used</b>: free one in ${DJ()} first, or use a correction to move a cue`}</span></h4>${cues_.map(row).join("")}${more.length ? `<details class="apgroup"${newCues ? "" : " open"}><summary class="small muted">${more.length} more place${more.length > 1 ? "s" : ""} for a new cue (lower scores than the picks above)</summary>${more.map(row).join("")}</details>` : ""}</div>` : ""}
       ${loops.length ? `<div class="apgroup"><h4>Loops ${SNAP ? "" : `<span class="small muted" style="font-weight:400">· save as WAV sample to <select id="smp-folder" style="font-size:12px;padding:1px 4px"></select> <button class="mini" type="button" id="smp-open" data-tip="Open this folder">Open folder</button></span>`}
         <label class="inline small" style="font-weight:400;margin-left:8px" data-tip="Fade the loop's last 5 ms into the audio just before its start, so a sound ringing over the end isn't cut off with a click. Changes the loop pads and saved samples; off = the track's exact samples"><input type="checkbox" id="smooth-loops" ${smoothLoops() ? "checked" : ""}> smooth loop point</label></h4>${loops.map(row).join("")}</div>` : ""}
       ${dels.length ? `<details class="apgroup" id="delbox"><summary class="small muted">Delete your cues · ${dels.length} · or press ✕ next to a pad above</summary><div class="small dim" style="margin:2px 0 4px">Your cues after it in slots 1–7 slide back to close the gap; slot 8 keeps its cue.</div>${dels.map(row).join("")}</details>` : ""}
     </div>
-    <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>${SNAP ? "" : `<button id="ap-renum" class="${renumOn(c) ? "primary" : ""}" aria-pressed="${renumOn(c)}" data-tip="Number your cue points 1-7 in the order they play, filling the slots no loop holds. Shows on the pads at once; Approve ticked keeps it, Write to Traktor writes it">Number cues in order</button>`}
-      ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into Traktor (shows what changes first)">Write to Traktor…</button>`}<span class="small muted" id="ap-msg"></span></div>
-    ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to Traktor…</b> writes all approved tracks at once, with Traktor closed: it shows what would change first, makes a backup and can be undone
+    <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>${SNAP ? "" : `<button id="ap-renum" class="${renumOn(c) ? "primary" : ""}" aria-pressed="${renumOn(c)}" data-tip="Number your cue points 1-7 in the order they play, filling the slots no loop holds. Shows on the pads at once; Approve ticked keeps it, Write to ${DJ()} writes it">Number cues in order</button>`}
+      ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into ${DJ()} (shows what changes first)">Write to ${DJ()}…</button>`}<span class="small muted" id="ap-msg"></span></div>
+    ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to ${DJ()}…</b> writes all approved tracks at once, with ${DJ()} closed: it shows what would change first, makes a backup and can be undone
       (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div>`)}</div>
     ${cueTable(c, c.cues)}`;
 }
@@ -570,7 +574,7 @@ async function postJSON(url, body) {
   const d = await readJSON(r);
   // When the server can't see whether Traktor is open (a container): ask, then send the write again with the answer.
   if (r.status === 409 && d.confirm === "traktor_closed" && !body.traktor_closed &&
-      confirm(`${d.why || "The analyzer can't see whether Traktor is open."}\n\nIs Traktor closed?`)) {
+      confirm(`${d.why || `The analyzer can't see whether ${DJ()} is open.`}\n\nIs ${DJ()} closed?`)) {
     return postJSON(url, { ...body, traktor_closed: true });
   }
   if (!r.ok) throw new Error(d.error || r.statusText);
@@ -582,7 +586,7 @@ async function writeToTraktor(onDone) {
   dlg.addEventListener("close", () => dlg.remove());
   const list = (items, max = 400) => items.length ? `<ul>${items.slice(0, max).map(x => `<li>${esc(x)}</li>`).join("")}${items.length > max ? `<li class="muted">… ${items.length - max} more</li>` : ""}</ul>` : "";
   const show = (html, buttons) => {
-    dlg.innerHTML = `<h3>Write approved cues to Traktor</h3>${html}<div class="filters" style="margin-top:12px">${buttons}<button data-close>Close</button><span class="small muted" id="wr-msg"></span></div>`;
+    dlg.innerHTML = `<h3>Write approved cues to ${DJ()}</h3>${html}<div class="filters" style="margin-top:12px">${buttons}<button data-close>Close</button><span class="small muted" id="wr-msg"></span></div>`;
     dlg.querySelector("[data-close]").onclick = () => dlg.close();
   };
   const fail = e => { const m = dlg.querySelector("#wr-msg"); if (m) m.textContent = e.message; else show(errBox(e), ""); };
@@ -591,26 +595,27 @@ async function writeToTraktor(onDone) {
     let d; try { d = await postJSON("/api/cues/write", { dry_run: true }); } catch (e) { return show(`<div class="err">${esc(e.message)}</div>`, ""); }
     const what = [d.cues_added && `<b>${d.cues_added}</b> new cue${d.cues_added > 1 ? "s" : ""}`, d.cues_moved && `<b>${d.cues_moved}</b> correction${d.cues_moved > 1 ? "s" : ""}`, d.cues_renumbered && `<b>${d.cues_renumbered}</b> cue${d.cues_renumbered > 1 ? "s" : ""} renumbered to stay in time order`,
       d.cues_deleted && `<b>${d.cues_deleted}</b> deleted`].filter(Boolean).join(" and ");
-    const running = d.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Quit Traktor first: it saves its collection when it closes and would undo these changes. Then press Check again.</div>` : "";
-    show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : "Nothing to write: everything approved is already in Traktor or can't be placed."}</div>`}
-      ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in Traktor):</div>${list(d.skipped)}` : ""}
+    const running = d.traktor_running ? `<div class="err" style="margin:8px 0">${DJ()} is open. Quit ${DJ()} first: it saves its collection when it closes and would undo these changes. Then press Check again.</div>` : "";
+    show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : `Nothing to write: everything approved is already in ${DJ()} or can't be placed.`}</div>`}
+      ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in ${DJ()}):</div>${list(d.skipped)}` : ""}
       ${running}
       <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
       d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to ${DJ()}</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
-      e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
-      let r; try { r = await postJSON("/api/cues/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = `Write to ${DJ()}`; return fail(err); }
+      const btn = e.currentTarget;  // currentTarget is null once the handler awaits
+      btn.disabled = true; btn.textContent = "Writing…";
+      let r; try { r = await postJSON("/api/cues/write", { dry_run: false }); } catch (err) { btn.disabled = false; btn.textContent = `Write to ${DJ()}`; return fail(err); }
       S.tracks = {};
       show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.cues_added} new cue${r.cues_added === 1 ? "" : "s"}, ${r.cues_moved} correction${r.cues_moved === 1 ? "" : "s"}${r.cues_renumbered ? `, ${r.cues_renumbered} renumbered` : ""}${r.cues_deleted ? `, ${r.cues_deleted} deleted` : ""} on ${r.tracks} track${r.tracks === 1 ? "" : "s"}.</div>
         <div class="note">Open ${DJ()}: the cues are there. Backup: <span class="mono">${esc(r.backup || "")}</span><br>${DJ() === "Rekordbox" ? "Undo works until Rekordbox changes master.db again." : "Undo works until Traktor saves the collection again (it does when it quits)."}</div>`,
         `<button data-undo>Undo</button>`);
       dlg.querySelector("[data-undo]").onclick = async ev => {
-        ev.currentTarget.disabled = true;
+        const btn = ev.currentTarget; btn.disabled = true;
         try { const u = await postJSON("/api/cues/undo", {}); S.tracks = {};
           show(`<div><b>Undone.</b> ${DJ() === "Rekordbox" ? "master.db is" : "collection.nml is"} back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} approval${u.approvals_restored > 1 ? "s are" : " is"} back` : ""}.</div>`, "");
           onDone?.(); }
-        catch (err) { ev.currentTarget.disabled = false; fail(err); }
+        catch (err) { btn.disabled = false; fail(err); }
       };
       onDone?.();
     });
@@ -844,6 +849,7 @@ function bindApprove(c, box, t) {
       at = key;
       const it = key && items.find(i => i.key === key), bar = c.bar_seconds;
       if (!it) box._hover = [];
+      else if (it.kind === "remove") box._hover = [[it.data.ms / 1000, it.data.ms / 1000 + (it.data.len_ms ? it.data.len_ms / 1000 : bar)]];  // a deletion: the cue itself (it has no from_ms)
       else if (it.kind === "add") box._hover = [[it.data.ms / 1000, it.data.ms / 1000 + (it.data.len_ms ? it.data.len_ms / 1000 : bar)]];
       else {
         const s = box.querySelector(`select[data-target="${CSS.escape(key)}"]`), to = (s ? +s.value : it.data.to_ms) / 1000;

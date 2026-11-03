@@ -3,6 +3,18 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.2.1 (2026-11-03)
+
+**Fixed**
+- With Rekordbox chosen, editing a track's colour or genre in its panel now writes Rekordbox (one backup, one undo),
+  not Traktor. The key stays in the analyzer.
+- The Setup tab with Rekordbox: colour and cue counts, the "new to learn" numbers, and changes Rekordbox hasn't
+  saved into master.db yet are picked up; a damaged database no longer breaks the tab. Choosing another database
+  reads it again.
+- Labels across the page (track panel, deck, cue approval, beat grids, mixes) name the DJ app you chose.
+- Library overview: BPM chart in whole BPMs with no gaps in its axis.
+- Beat-grid and cue buttons no longer stick on "Writing…"; a slow suggestion reply no longer lands on another track.
+
 ## 1.2.0 (2026-11-03)
 
 **New**
