@@ -93,7 +93,7 @@ function jobBar() {
 }
 
 // What a writer reported, readably: the counts, notes, a few examples, and everything else folded away.
-const HIDE = new Set(["dry_run", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
+const HIDE = new Set(["dry_run", "app", "undone", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
   "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps"]);
 const LABELS = { would_write: "files that would get a new tag", written: "files tagged", would_restore: "files that would get their old tags back",
   restored: "files given their old tags back", skipped_changed_since_scan: "skipped: changed on disk since the scan (scan again first)",
@@ -111,7 +111,7 @@ function resultSummary(r, depth = 0) {
   const ex = r.examples || r.changes || [];
   return `${nums.length ? `<ul style="max-height:none">${nums.map(([k, v]) => `<li>${esc(human(k))}: <b>${v}</b></li>`).join("")}</ul>` : ""}
     ${r.warning ? `<div class="warnbox">${esc(r.warning)}</div>` : ""}
-    ${[r.note, r.clock && `Clock: ${r.clock}`, r.now_loaded && `Now loaded: ${r.now_loaded}`, r.smartlist_folder && `Smartlist folder: ${r.smartlist_folder}`]
+    ${[r.skipped && `Skipped: ${r.skipped}`, r.undone && `Put back: ${r.undone.join(", ")}`, r.note, r.clock && `Clock: ${r.clock}`, r.now_loaded && `Now loaded: ${r.now_loaded}`, r.smartlist_folder && `Smartlist folder: ${r.smartlist_folder}`]
       .filter(Boolean).map(t => `<div class="small">${esc(t)}</div>`).join("")}
     ${Array.isArray(r.smartlists) && r.smartlists.length ? `<div class="small muted">${r.smartlists.length} Smartlists: ${esc(r.smartlists.join(", "))}</div>` : ""}
     ${ex.length ? `<div class="small" style="margin-top:6px"><b>For example</b></div><ul>${ex.slice(0, 15).map(x => `<li>${esc(exampleText(x))}</li>`).join("")}</ul>` : ""}
@@ -125,8 +125,8 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
   const counts = ["written", "would_write", "restored", "would_restore", "top_genre_changed"].filter(k => k in r).map(k => r[k]);
   return (flags.length && !flags.some(Boolean)) || (!flags.length && counts.length && !counts.some(Boolean));
 }
-const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
-const NO_PREVIEW = new Set(["traktor_undo"]);
+const TOUCHES_TRAKTOR = new Set(["sync", "sync_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
+const NO_PREVIEW = new Set(["traktor_undo", "sync_undo"]);
 const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
 const OPEN_WARN = `<div class="warnbox"><b>Your DJ app is open.</b> Quit it first: it saves its library when it quits and would undo these changes. Then press Check again.</div>`;
 
@@ -150,7 +150,7 @@ async function writeDialog(action, options = {}, onDone) {
     title = label(act);
     if (NO_PREVIEW.has(act)) {
       const rb = st?.dj_app?.app === "rekordbox", app = rb ? "Rekordbox" : "Traktor";
-      show(`<div>Puts ${rb ? "master.db" : "collection.nml"} back to how it was before the analyzer's last change${st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
+      show(`<div>Puts ${rb ? "master.db" : "collection.nml"} back to how it was before the analyzer's ${act === "sync_undo" ? "last sync (all of its steps at once)" : "last change"}${act !== "sync_undo" && st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
         It refuses if ${app} saved ${rb ? "its library" : "the collection"} since then, so nothing of yours is lost. ${app} must be closed.</div>`,
         `<button class="primary" data-go>Undo it</button>`);
       dlg.querySelector("[data-go]").onclick = () => write(act, opts);
@@ -175,7 +175,7 @@ async function writeDialog(action, options = {}, onDone) {
     busy("Writing…");
     const j = await run(act, opts, false);
     // An undo refused because Traktor saved the collection since: offer to restore anyway, losing what it saved
-    const forceable = act === "traktor_undo" && !opts.force && /--force/.test(j.error || "");
+    const forceable = (act === "traktor_undo" || act === "sync_undo") && !opts.force && /--force/.test(j.error || "");
     if (j.error) {
       show(`<div class="err">${esc(j.error.replace(/ Run again with --force to restore anyway\./, ""))}</div>${j.command ? cmdNote(j) : ""}`,
         `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
@@ -187,7 +187,7 @@ async function writeDialog(action, options = {}, onDone) {
     const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
     if (r.restart) return restartApp((html, buttons) => show(html, buttons), r);
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
-      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
+      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" || undo === "sync_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
       ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
       undo ? `<button data-undo>${esc(label(undo))}…</button>` : "");
     dlg.querySelector("[data-undo]")?.addEventListener("click", () => preview(undo, opts));
