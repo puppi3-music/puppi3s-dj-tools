@@ -198,6 +198,7 @@ async function pageSetup(main) {
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
+      ${w("wr-sync", `Everything into ${APP} in one go`, `Genres and colours, hype, approved cues, grid fixes and crates, one after another: one preview, one write, one undo for all of it. Steps with nothing ready yet are skipped.`, "", (noScan || !LIB) && "disabled")}
       ${w("wr-traktor", `Genres, colours and ${LISTS} in ${APP}`, `Puts the genre tags into ${APPLIB}, sets the predicted colour on tracks you haven't coloured (yours are never changed),
         and adds a "Genres (Track Analyzer)" folder of ${LISTS}.`,
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>
@@ -206,6 +207,7 @@ async function pageSetup(main) {
         `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !LIB) && "disabled")}
       ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in ${APP} and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !LIB && "disabled") : ""}
       ${cm.model ? w("wr-recolour", "Recolour clear disagreements", "Recolours the few tracks whose colour clearly disagrees with how they sound (gap 2.5+ colours, confidence 75%+; the Colours tab lists them). Tracks you keep always are skipped.", "", !LIB && "disabled") : ""}
+      ${st.sync_undo ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last sync to ${APP}</div><div class="small muted">Puts back every step of it at once.</div></div><div class="act"><button id="wr-sync-undo">Undo sync…</button></div></div>` : ""}
       ${st.traktor_backup ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last change to ${APP}</div><div class="small muted">Last backup: <span class="mono">${esc(st.traktor_backup)}</span></div></div><div class="act"><button id="wr-undo">Undo…</button></div></div>` : ""}
       </div></div>
     <div class="note">Data folder: <span class="mono">${esc(st.home)}</span></div>`;
@@ -350,6 +352,8 @@ async function pageSetup(main) {
   on("wr-capply", () => writeDialog("colors_apply"));
   on("wr-recolour", () => writeDialog("colors_recolour"));
   on("wr-undo", () => writeDialog("traktor_undo"));
+  on("wr-sync", () => writeDialog("sync", {}, () => getSetup(true).then(route)));
+  on("wr-sync-undo", () => writeDialog("sync_undo", {}, () => getSetup(true).then(route)));
   updateCard();
   jobPanel();
 }
