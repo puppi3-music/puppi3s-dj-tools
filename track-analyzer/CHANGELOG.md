@@ -3,6 +3,28 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.2.0 (2026-11-03)
+
+**New**
+- **Rekordbox support.** On the Setup tab, pick your DJ app: Traktor or Rekordbox (its library is found for you).
+  With Rekordbox, everything that worked with Traktor works there too: scanning and the BPM/key comparison, writing
+  genres, colours, Hype (in Comments) and genre smart playlists, cue suggestions, beat-grid fixes, set and crate
+  playlists, the tempo view, and learning from your History and playlists. Every write is backed up first, has an
+  undo, and waits until Rekordbox is closed. Not included: exporting to a USB stick (OneLibrary).
+- **Sync everything** on the Setup tab: one preview of every change for your DJ app (moved files found again,
+  analysed tracks added, genres and colours, Hype, cues, beat grids, crates, loops), one button to write it and one
+  undo for all of it. Using both apps? **Copy Rekordbox into Traktor** (or the other way) brings over what the other
+  one has.
+- Your loops and samples go into your DJ app too: a "Track Analyzer loops" playlist in Traktor, or Rekordbox's
+  Sampler folder.
+- **Learn your genres from the genre tags of a folder's files** (Setup tab: Learn from › **Genre tags in a folder**;
+  in a terminal `train --by-tag`). Subfolders are searched too.
+
+**Better**
+- The Setup tab opens faster with Rekordbox (beat grids are remembered until the library changes).
+- Cue approvals survive a sync, and approved cues you deleted in the DJ app are put back.
+- A list of every third-party project, model and package the app uses (`THIRD-PARTY.md`).
+
 ## 1.1.0 (2026-11-02)
 
 **New**

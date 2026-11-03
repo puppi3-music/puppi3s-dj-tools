@@ -840,11 +840,12 @@ Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; t
 └── Melodic House/
 ```
 
-On the **Setup** tab, **Learn your genres**, **Learn from** offers three places for the examples:
+On the **Setup** tab, **Learn your genres**, **Learn from** offers four places for the examples:
 
 | Learn from | What you pick | Each genre is |
 |---|---|---|
 | **A folder** | The folder above (**Browse…**, or paste its path) | A subfolder or playlist file |
+| **Genre tags in a folder** | A folder of tagged tracks (subfolders are searched too) | The genre in each file's own tags (ID3 etc.) |
 | **Traktor playlists** | The playlists to learn, ticked from a list of all of Traktor's (in folders or not) | A ticked playlist, the genre named after it; a track in two of them is left out |
 | **Traktor's Genre field** | The genres to learn, ticked from a list with track counts | The tracks with that Genre; tracks with several genres in the field are left out |
 
@@ -852,6 +853,7 @@ Then press **Learn your genres**. Genres with a built-in name are marked in the 
 
 ```bash
 uv run dj-track-analyzer train ~/Music/"Genre Training"
+uv run dj-track-analyzer train --by-tag ~/Music/"Tagged Examples"
 uv run dj-track-analyzer train --traktor-playlist Hyperpop --traktor-playlist "DJ / Afro House"
 uv run dj-track-analyzer train --traktor-genre Hyperpop --traktor-genre "Afro House"
 ```
