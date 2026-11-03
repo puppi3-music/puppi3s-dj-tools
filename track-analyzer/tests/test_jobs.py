@@ -88,3 +88,29 @@ def test_commands_run_below_normal_priority():
             "text=True).stdout.strip())")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert out.stdout.split() == ["16384", "16384"], out  # BELOW_NORMAL_PRIORITY_CLASS
+
+
+def test_new_labels_recount_on_app_switch_and_master_db_write(monkeypatch, tmp_path):
+    """Setup's colour/cue 'new' counts: swapping Traktor/Rekordbox, or a write to master.db's -wal, reads them again."""
+    from dj_track_analyzer import colors, cues, library, rekordbox
+
+    nml, db = tmp_path / "collection.nml", tmp_path / "master.db"
+    nml.write_text("x")
+    db.write_text("x")
+    app = {"v": "traktor"}
+    reads = []
+    monkeypatch.setattr(library, "app", lambda: app["v"])
+    monkeypatch.setattr(rekordbox, "find_collection", lambda _db=None: db)
+    monkeypatch.setattr(colors, "read_traktor_colors", lambda _n=None: (nml, {app["v"]: 1}, 1))
+    monkeypatch.setattr(colors, "new_labels", lambda c: reads.append(dict(c)) or dict(c))
+    monkeypatch.setattr(cues, "grids", lambda _n=None: {})
+    monkeypatch.setattr(cues, "new_labels", lambda g: None)
+    monkeypatch.setitem(jobs._new_cache, "key", None)
+    assert jobs._new_labels(nml)[0] == {"traktor": 1}
+    jobs._new_labels(nml)
+    assert len(reads) == 1  # unchanged: cached
+    app["v"] = "rekordbox"
+    assert jobs._new_labels(nml)[0] == {"rekordbox": 1}
+    (tmp_path / "master.db-wal").write_text("w")
+    jobs._new_labels(nml)
+    assert len(reads) == 3
