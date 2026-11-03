@@ -28,7 +28,7 @@ async function pageMixes(main, id) {
       ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}${older.has(f.id) ? ` <span class="chip warn small" data-tip="The same recording is saved again, newer: All ${sets} mixes counts that one. Open this one and delete it if you don't need it.">older copy</span>` : ""}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
       <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
     </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
-      `Analyse a recorded DJ mix to see its genre, mood, a loudness timeline, a tracklist check against Traktor's history and clip ideas.
+      `Analyse a recorded DJ mix to see its genre, mood, a loudness timeline, a tracklist check against ${DJ()}'s history and clip ideas.
       ${SNAP ? "" : `<div style="margin:12px 0"><button class="primary" id="mx-new2">Analyse a mix…</button></div>Or in a terminal:<br>`}
       <span class="mono">uv run dj-track-analyzer analyze &lt;mix.wav&gt; --tracklist --out logs/mix.json</span>`)}</div></div>`;
   $("#mx-new")?.addEventListener("click", () => mixDialog());
@@ -68,7 +68,7 @@ async function mixDialog(file) {
       <input type="checkbox" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
-    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against Traktor's history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
+    <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against ${DJ()}'s history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
       <div id="mx-startrow" style="margin:2px 0 4px 22px"><label class="inline" style="white-space:normal;flex-wrap:wrap">Started at <input type="datetime-local" step="1" id="mx-start"> <span class="dim small">only for a recording whose name doesn't say (Traktor's do)</span></label></div>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
@@ -289,7 +289,7 @@ function shapeTimeline(sh) {
     ${tlAxis([0, 0.25, 0.5, 0.75].map(x => [x, `${x * 100}%`]), "100%")}
     <div class="tl-key">
       <div class="sw">${(used.length ? used : [null]).map((c, i) => `<i style="height:${[60, 100, 75, 45][i]}%;background:${c ? `var(--c-${c.toLowerCase()})` : "var(--bar)"}"></i>`).join("")}</div>
-      <div><b>Bar</b>: the average ${view === "hype" ? "hype" : "loudness"} of your sets there${used.length ? `; its colour is the Traktor colour played there most` : ""}</div>
+      <div><b>Bar</b>: the average ${view === "hype" ? "hype" : "loudness"} of your sets there${used.length ? `; its colour is the ${DJ()} colour played there most` : ""}</div>
       <svg viewBox="0 0 26 16" aria-hidden="true"><g class="halo"><line x1="13" y1="2" x2="13" y2="14"/><line x1="9" y1="2" x2="17" y2="2"/><line x1="9" y1="14" x2="17" y2="14"/></g><g class="range"><line x1="13" y1="2" x2="13" y2="14"/><line x1="9" y1="2" x2="17" y2="2"/><line x1="9" y1="14" x2="17" y2="14"/></g></svg>
       <div><b>Range</b>: from your lowest set to your highest there. Short: your sets agree; long: they don't, so read the bar loosely</div>
       <svg viewBox="0 0 26 16" aria-hidden="true"><polyline points="1,12 9,5 17,10 25,3" style="fill:none;stroke:var(--accent);stroke-width:2.5"/></svg>
@@ -311,11 +311,11 @@ function renderMixReport(r) {
   return `
     <div class="page-head"><div><h2>All your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
     ${SHAPE_SHOWN ? `<div class="card" id="shape">${shapeTimeline(SHAPE_SHOWN)}</div>` : ""}
-    <div class="card"><h3>Keys Traktor may have wrong <span class="dim small">(heard in your mixes = our key, not Traktor's; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
+    <div class="card"><h3>Keys ${DJ()} may have wrong <span class="dim small">(heard in your mixes = our key, not ${DJ()}'s; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
       ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || f.path.split("/").pop())}<div class="dim small">${esc(f.artist || "")}</div>` },
-        { h: "Traktor", f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
+        { h: DJ(), f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
         : `<div class="dim">None${k.mixes ? "" : " yet: needs mixes analysed with the CNN reading the heard key, played with key lock on"}.</div>`}
-      <div class="note">A track heard in one mix only is a hint; the same key in several mixes is a good reason to check it in Traktor.</div></div>
+      <div class="note">A track heard in one mix only is a hint; the same key in several mixes is a good reason to check it in ${DJ()}.</div></div>
     <div class="card"><h3>Mood as played vs the track alone <span class="dim small">(${v.tracks} tracks)</span></h3>
       ${moodRows.length ? table([{ h: "Mood", f: ([m]) => esc(m) }, { h: "As played", r: 1, f: ([, x]) => pct(x.heard) },
         { h: "Tempo view", r: 1, f: ([, x]) => `${pct(x.view)} <span class="dim small">off by ${pct(x.view_error)}</span>` },
@@ -335,8 +335,8 @@ function renderMixReport(r) {
 }
 function skippedNote(d) {
   const kind = d.tracklist_skipped_kind || (/^Can't tell when/.test(d.tracklist_skipped) ? "start" : /^No Traktor history/.test(d.tracklist_skipped) ? "history" : "");  // saved before the kind was
-  if (kind === "start") return `Its name doesn't say when it started, so Traktor's history of that session can't be found. If you played it in Traktor, analyse it again with its start time (Analyse a mix… → Started at).`;
-  if (kind === "history") return `No Traktor history covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. Traktor saves a session's history when it closes: quit Traktor once after the set, then analyse the mix again.`;
+  if (kind === "start") return `Its name doesn't say when it started, so ${DJ()}'s history of that session can't be found. If you played it in ${DJ()}, analyse it again with its start time (Analyse a mix… → Started at).`;
+  if (kind === "history") return `No ${DJ()} history covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. ${DJ()} saves a session's history when it closes: quit ${DJ()} once after the set, then analyse the mix again.`;
   return esc(d.tracklist_skipped);
 }
 function renderMix(d) {
@@ -380,18 +380,18 @@ function renderMix(d) {
     ${tl.length ? `<div class="card"><div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Timeline</h3><div class="spacer"></div>
         ${sel ? `<button class="chip" data-mixsel="${esc(JSON.stringify(sel))}" data-tip="Stop showing it">${esc(selName)} ✕</button>` : ""}
         ${canHype ? `<div class="seg-toggle"><button data-mixview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-mixview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
-      <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? " and Traktor colour of the tracks you played" : ""} per ${segLength(tl[0])} segment; hover for more, click a genre, style or mood above to show where it is</div>
+      <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? ` and ${DJ()} colour of the tracks you played` : ""} per ${segLength(tl[0])} segment; hover for more, click a genre, style or mood above to show where it is</div>
       <div class="timeline">${tl.map(segBar).join("")}</div>
       ${str ? `<div class="tl-clips tl-sel">${tl.map((s, i) => `<span style="opacity:${str[i] ?? 0}"></span>`).join("")}</div>` : ""}
       ${hl.length ? `<div class="tl-clips">${tl.map(s => `<span class="${segHl(s) ? "on" : ""}"></span>`).join("")}</div>` : ""}
       ${tlAxis(tl.flatMap((s, i) => i % everyX ? [] : [[i / tl.length, s.start]]), tl[tl.length - 1].end)}
       <div class="legend">${sel ? `<span><i style="background:var(--accent)"></i>${esc(selName)}: ${sel.kind === "genre" ? "the segment's genre" : sel.kind === "mood" ? "brighter = more of the segment sounds it, against the most" : "brighter = higher among the segment's top 3 styles, against the highest"}${str.every(v => !v) ? " (in no segment)" : ""}</span>` : ""}
-        ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your Traktor colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
+        ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your ${DJ()} colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
         ${view === "hype" && plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}
         ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${canHype || d.tracklist ? "" : `<span>${d.tracklist_skipped ? "No tracklist check (see above), so no hype or colours of what you played." : "Analyse it with the tracklist check to see the hype and colours of what you played."}</span>`}</div>
       <details style="margin-top:10px"><summary class="small muted">Table</summary>${table([{ h: "Time", f: s => `${esc(s.start)}–${esc(s.end)}` }, { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") },
         { h: "LUFS", r: 1, f: s => fmt(s.lufs, 1) }, ...(canHype ? [{ h: "Hype", r: 1, f: s => { const pl = plays[tl.indexOf(s)]; return pl.hype == null ? "–" : `${sw(pl.colour, pl.guessed)} ${fmt(pl.hype, 1)}`; } }] : []), { h: "Genre", f: s => esc(s.dj_genre || "–") }, { h: "Styles", f: s => `<span class="small">${esc((s.styles || []).join(", "))}</span>` }, { h: "Tracks", f: s => `<span class="small">${esc((s.tracks || []).join(" · "))}</span>` }], tl)}</details></div>` : ""}
-    ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against Traktor's history</span></h3>
+    ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against ${DJ()}'s history</span></h3>
       <dl class="facts"><dt>History</dt><dd class="mono" style="word-break:break-all">${esc(tlist.history)}</dd><dt>Recording start</dt><dd>${esc(tlist.recording_start)}</dd>
       ${kl ? `<dt>Key lock</dt><dd><b>${esc(kl.verdict)}</b> · ${esc(kl.summary)} <span class="dim small">(${esc(kl.basis)}; blend lag ${kl.blend_lag_seconds} s)</span></dd>` : ""}
       ${kl?.matches_per_lag ? `<dt>Blend lag</dt><dd>${Object.entries(kl.matches_per_lag).map(([lag, n]) => `<span class="${+lag === kl.blend_lag_seconds ? "" : "dim"}">${lag} s: ${n}</span>`).join(" · ")} <span class="dim small">keys matching at each lag; a clear winner means the tracks' stretches are placed right</span></dd>` : ""}
@@ -401,7 +401,7 @@ function renderMix(d) {
         ...(canHype ? [{ h: "Hype", r: 1, f: t => lib[t.n] ? `<span class="nowrap">${sw(lib[t.n].colour, lib[t.n].guessed)} ${lib[t.n].hype ?? "–"}</span>` : "–" }] : []),
         { h: "BPM", f: t => `${fmt(t.bpm)}${t.played_bpm ? ` → ${t.played_bpm} <span class="dim small">${esc(t.speed || "")}</span>` : ""}` },
         { h: "Key", f: t => `${esc(t.camelot || "–")}${t.heard_camelot && t.heard_camelot !== t.camelot ? ` <span class="dim small">heard ${esc(t.heard_camelot)}</span>` : ""} ${keyChip(t)}`
-          + (t.library_camelot && t.library_camelot !== t.camelot ? `<div class="dim small" data-tip="Our key (the CNN's, of the track alone) differs from Traktor's">ours ${esc(t.library_camelot)}</div>` : "")
+          + (t.library_camelot && t.library_camelot !== t.camelot ? `<div class="dim small" data-tip="Our key (the CNN's, of the track alone) differs from ${DJ()}'s">ours ${esc(t.library_camelot)}</div>` : "")
           + (t.transition ? `<div class="small"><span class="chip ${t.transition === "clash" ? "bad" : t.transition === "two steps" ? "warn" : "good"}" data-tip="From the track before, key to key as heard">${esc(t.transition)}</span></div>` : "") },
         ...(tlist.tracks?.some(t => t.heard_mood) ? [{ h: "Mood", f: moodCell }] : []),
         { h: "Genre", f: t => `${esc(t.library_genre || "–")}${t.genre && t.genre !== t.library_genre ? ` → <b>${esc(t.genre)}</b>` : ""}${t.genre_uncorrected && t.genre_uncorrected !== t.genre ? `<div class="dim small">ungated ${esc(t.genre_uncorrected)}</div>` : ""}` },

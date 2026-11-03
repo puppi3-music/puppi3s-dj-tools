@@ -1092,6 +1092,12 @@ def export_csv(path: Path) -> Path:
     return path
 
 
+def _bpm_bins(rows) -> dict:
+    """5-BPM bins from the lowest to the highest, empty ones as 0, so the chart's axis has no silent gaps."""
+    n = {r["b"]: r["n"] for r in rows}
+    return {f"{b}-{b + 4}": n.get(b, 0) for b in range(min(n), max(n) + 1, 5)} if n else {}
+
+
 def summary(con: sqlite3.Connection | None = None) -> dict:
     con = con or db()
     total = con.execute("SELECT COUNT(*) FROM tracks").fetchone()[0]
@@ -1103,8 +1109,8 @@ def summary(con: sqlite3.Connection | None = None) -> dict:
         f"SELECT {CAMELOT_SQL} camelot, COUNT(*) n FROM tracks WHERE {CAMELOT_SQL} IS NOT NULL "
         "GROUP BY 1 ORDER BY n DESC LIMIT 8").fetchall()
     bpm = con.execute(
-        f"SELECT CAST({BPM_SQL}/5 AS INT)*5 b, COUNT(*) n FROM tracks WHERE {BPM_SQL} IS NOT NULL "
-        "GROUP BY b ORDER BY b").fetchall()
+        f"SELECT CAST(ROUND({BPM_SQL})/5 AS INT)*5 b, COUNT(*) n FROM tracks WHERE {BPM_SQL} > 0 "
+        "GROUP BY b ORDER BY b").fetchall()  # whole BPMs, as the Tracks tab's BPM filter compares them
     last = con.execute("SELECT MAX(scanned_at) FROM tracks").fetchone()[0]
     cols = con.execute(
         "SELECT COALESCE(traktor_color, color) c, COUNT(*) n FROM tracks WHERE COALESCE(traktor_color, color) "
@@ -1114,7 +1120,7 @@ def summary(con: sqlite3.Connection | None = None) -> dict:
         "tracks": total, "errors": errors, "last_scan": last,
         "genres": {r["genre"]: {"tracks": r["n"], "avg_bpm": r["avg_bpm"]} for r in genres},
         "top_camelot_keys": {r["camelot"]: r["n"] for r in keys},
-        "bpm_histogram": {f'{r["b"]}-{r["b"] + 4}': r["n"] for r in bpm},
+        "bpm_histogram": _bpm_bins(bpm),
         "colours": {r["c"]: r["n"] for r in sorted(cols, key=lambda r: order.get(r["c"], 99))},
     }
 

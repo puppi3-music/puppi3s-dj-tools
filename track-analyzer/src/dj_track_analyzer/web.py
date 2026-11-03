@@ -1043,6 +1043,7 @@ def set_rekordbox_database(b: dict) -> dict:
         if not path.strip():
             raise ValueError("Give the path of Rekordbox's master.db (or the rekordbox folder holding it).")
     now = rekordbox.choose_database(path)
+    _guesses["key"] = _grids["mtime"] = _fixes["key"] = None  # read the (other) database again
     return {"database": str(now) if now else None}
 
 
