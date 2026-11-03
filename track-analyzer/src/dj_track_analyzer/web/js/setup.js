@@ -14,7 +14,7 @@ async function refreshSetupNote() {
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
 let G_TRAKTOR = null;  // the Setup tab's Traktor choices for learning genres (/api/genres/traktor), read once per visit
-const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, cuesOther: false, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -192,14 +192,14 @@ async function pageSetup(main) {
     <div class="card"><h3>Into your files and ${APP}</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. ${APPLIB} is backed up before each write, and you can undo it.</div>
       ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
-      ${st.traktor_running ? `<div class="err" style="margin:8px 0">${APP} is open. Previews work, but quit ${APP} before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
+      <div id="app-open-warn" class="err" style="margin:8px 0" ${st.traktor_running ? "" : "hidden"}>${APP} is open. Previews work, but quit ${APP} before writing to it: it saves its collection when it quits and would undo the changes.</div>
       <div class="steps">
       ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in ${APP}: tick "only in ${APP}" in the next step instead.
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
-      ${w("wr-sync", `Everything into ${APP} in one go`, `Genres and colours, hype, approved cues, grid fixes and crates, one after another: one preview, one write, one undo for all of it. Steps with nothing ready yet are skipped. Approved cues deleted in ${APP} since are put back.`,
-        `<label class="inline small"><input type="checkbox" id="wr-sync-other" ${SF.cuesOther ? "checked" : ""}> also copy hot cues from ${dj.app === "rekordbox" ? "Traktor" : "Rekordbox"} (into free slots only)</label>`, (noScan || !LIB) && "disabled")}
+      ${w("wr-sync", `Sync everything into ${APP}`, `New and moved tracks, genres and colours, hype, approved cues, grid fixes, crates and saved loop samples${dj.other_found ? `, plus hot cues from ${dj.app === "rekordbox" ? "Traktor" : "Rekordbox"} into free slots${dj.app === "rekordbox" ? " and, if you tick it, Traktor's beat grids" : ""}` : ""}. A preview comes first: tick which steps to write. One undo for all of it. Steps with nothing to transfer are listed, not written. Approved cues deleted in ${APP} since are put back.`,
+        "", (noScan || !LIB) && "disabled")}
       ${w("wr-traktor", `Genres, colours and ${LISTS} in ${APP}`, `Puts the genre tags into ${APPLIB}, sets the predicted colour on tracks you haven't coloured (yours are never changed),
         and adds a "Genres (Track Analyzer)" folder of ${LISTS}.`,
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>
@@ -215,7 +215,7 @@ async function pageSetup(main) {
   const on = (id, fn) => { const el = $("#" + id); if (el) el.onclick = fn; };
   const go = (action, opts) => startJob(action, opts).catch(e => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(e.message)}</div>`; });
   const bindVal = (id, key, prop = "value") => { const el = $("#" + id); if (el) el.addEventListener("input", () => { SF[key] = el[prop]; }); };
-  bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked"); bindVal("wr-sync-other", "cuesOther", "checked");
+  bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked");
   bindVal("wr-colours", "colours", "checked"); bindVal("wr-only-traktor", "onlyTraktor", "checked"); bindVal("su-lexicon", "lexicon", "checked");
   const nml = async (body, btn) => {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
@@ -353,7 +353,7 @@ async function pageSetup(main) {
   on("wr-capply", () => writeDialog("colors_apply"));
   on("wr-recolour", () => writeDialog("colors_recolour"));
   on("wr-undo", () => writeDialog("traktor_undo"));
-  on("wr-sync", () => writeDialog("sync", { cues_from_other: SF.cuesOther }, () => getSetup(true).then(route)));
+  on("wr-sync", () => writeDialog("sync", {}, () => getSetup(true).then(route)));
   on("wr-sync-undo", () => writeDialog("sync_undo", {}, () => getSetup(true).then(route)));
   updateCard();
   jobPanel();
@@ -381,3 +381,13 @@ function jobPanel() {
 }
 JOB.listeners.add(jobPanel);
 
+
+// Is the DJ app open? A cheap check every 5 s while the page is visible, so the "quit it first" warning on the Setup
+// tab follows the app opening or closing. Writes still check for themselves just before they write.
+setInterval(async () => {
+  if (document.hidden || !SETUP) return;
+  let r; try { r = await api("app-running"); } catch { return; }
+  if (r.running === SETUP.traktor_running) return;
+  SETUP.traktor_running = r.running;
+  const w = document.getElementById("app-open-warn"); if (w) w.hidden = !r.running;  // just the warning, no redraw
+}, 5000);

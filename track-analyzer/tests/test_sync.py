@@ -65,3 +65,248 @@ def test_undo_refuses_after_the_app_changed_it(scanned):
     nml.write_text(nml.read_text(encoding="utf-8") + "\n", encoding="utf-8")
     with pytest.raises(SystemExit, match="changed since"):
         sync.undo(str(nml))
+
+
+def _move_and_add(lib):
+    """One track's file moved to a new folder, one new analysed file the DJ app doesn't list."""
+    import shutil
+
+    moved = lib["files"][0]
+    new_dir = lib["music"] / "Moved"
+    new_dir.mkdir()
+    dest = new_dir / moved.name
+    shutil.move(moved, dest)
+    extra = lib["music"] / "Extra" / "brand new.flac"
+    extra.parent.mkdir()
+    shutil.copy(lib["files"][1], extra)
+    collection.scan([str(lib["music"])], workers=1, csv_out=None, traktor_nml=str(lib["nml"]))
+    return dest, extra
+
+
+def test_tracks_traktor(scanned):
+    nml = str(scanned["nml"])
+    kb = scanned["files"][0].stat().st_size // 1024  # the made-up NML's FILESIZE is a stand-in; Traktor's is real
+    scanned["nml"].write_text(scanned["nml"].read_text(encoding="utf-8").replace('FILESIZE="200"', f'FILESIZE="{kb}"'),
+                              encoding="utf-8")
+    dest, extra = _move_and_add(scanned)
+    before = scanned["nml"].read_bytes()
+    prev = sync.run(nml, dry_run=True, steps=["tracks"])["steps"]["tracks"]
+    assert prev["relinked"] == 1 and prev["added"] == 1 and scanned["nml"].read_bytes() == before
+    sync.run(nml, steps=["tracks"])
+    _, files, missing = traktor.collection_tracks(nml)
+    assert missing == 0 and {str(collection.nfc(dest)), str(collection.nfc(extra))} <= {str(collection.nfc(f)) for f in files}
+    text = scanned["nml"].read_text(encoding="utf-8")
+    import re
+    n = lambda t: int(re.search(r'<COLLECTION ENTRIES="(\d+)"', t).group(1))
+    assert n(text) == n(before.decode("utf-8")) + 1
+    assert "skipped" in sync.run(nml, dry_run=True, steps=["tracks"])["steps"]["tracks"]  # nothing left to do
+    sync.undo(nml)
+    assert scanned["nml"].read_bytes() == before
+
+
+def test_tracks_rekordbox(scanned, monkeypatch, tmp_path):
+    db = make_master_db(tmp_path / "rekordbox", scanned["files"])
+    dest, extra = _move_and_add(scanned)  # while Traktor is the app: its Recordings folder stays out of the scan
+    monkeypatch.setattr(rekordbox, "running_state", lambda: False)
+    monkeypatch.setattr(rekordbox, "BACKUPS", tmp_path / "rekordbox-backups")
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    out = sync.run(None, steps=["tracks"])["steps"]["tracks"]
+    assert out["relinked"] == 1 and out["added"] == 1, out["examples"]
+    _, files, missing = rekordbox.collection_tracks()
+    assert missing == 0 and len(files) == len(scanned["files"]) + 1
+    sync.undo()
+    assert rekordbox.collection_tracks()[2] == 1
+
+
+def _saved_samples(folder):
+    """Two loops saved as samples (tiny WAVs) and one whose file is gone, as the page's saved_sample table lists them."""
+    import wave
+
+    from dj_track_analyzer import web
+
+    folder.mkdir(parents=True, exist_ok=True)
+    files = [folder / "A - Loop 1.wav", folder / "B - Loop 2.wav"]
+    for f in files:
+        with wave.open(str(f), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(44100), w.writeframes(b"\0\0" * 441)
+    con = web._saved_db()
+    con.executemany("INSERT OR REPLACE INTO saved_sample (file, src_name, start, len) VALUES (?,?,?,?)",
+                    [(str(f), "x.flac", 1.0, 2.0) for f in files + [folder / "Gone.wav"]])
+    con.commit()
+    con.close()
+    return files
+
+
+def _sample_rows():
+    from dj_track_analyzer import web
+
+    con = web._saved_db()
+    try:
+        return {r[0] for r in con.execute("SELECT file FROM saved_sample")}
+    finally:
+        con.close()
+
+
+def test_samples_traktor(scanned, tmp_path):
+    files = _saved_samples(tmp_path / "Samples")
+    nml = scanned["nml"]
+    before = nml.read_bytes()
+    prev = sync.run(None, dry_run=True, steps=["samples"])["steps"]["samples"]
+    assert prev["added"] == 2 and prev["forgotten"] == 1 and nml.read_bytes() == before
+    assert len(_sample_rows()) == 3  # a preview forgets nothing
+    out = sync.run(None, steps=["samples"])["steps"]["samples"]
+    assert out["added"] == 2 and out["relinked"] == 0 and out["backup"]
+    assert _sample_rows() == {str(f) for f in files}
+    assert "A - Loop 1.wav" in nml.read_text(encoding="utf-8")
+    again = sync.run(None, dry_run=True, steps=["samples"])["steps"]["samples"]
+    assert "already in" in again["skipped"]
+    sync.undo()
+    assert nml.read_bytes() == before
+
+
+def test_samples_rekordbox(scanned, monkeypatch, tmp_path):
+    db = make_master_db(tmp_path / "rekordbox", scanned["files"])
+    monkeypatch.setattr(rekordbox, "running_state", lambda: False)
+    monkeypatch.setattr(rekordbox, "BACKUPS", tmp_path / "rekordbox-backups")
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
+    monkeypatch.setattr(rekordbox, "SAMPLER", tmp_path / "Sampler")
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    _saved_samples(tmp_path / "Samples")
+    prev = sync.run(None, dry_run=True, steps=["samples"])["steps"]["samples"]
+    assert prev["added"] == 2 and not (tmp_path / "Sampler").exists()
+    out = sync.run(None, steps=["samples"])["steps"]["samples"]
+    copies = sorted((tmp_path / "Sampler" / sync.RB_SAMPLES).iterdir())
+    assert out["added"] == 2 and [c.name for c in copies] == ["A - Loop 1.wav", "B - Loop 2.wav"]
+    _, tracks, _ = rekordbox.collection_tracks()
+    assert len(tracks) == len(scanned["files"])  # the sampler's WAVs aren't tracks to scan
+    sync.undo()
+
+
+def test_scan_reads_every_dj_app(monkeypatch):
+    """A track added in Traktor while Rekordbox is chosen (or the other way) still gets scanned; a missing app is
+    left out unless it's the chosen one."""
+    from pathlib import Path
+
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    monkeypatch.setattr(traktor, "collection_tracks", lambda nml=None: (Path("c.nml"), [Path("/m/a.flac"), Path("/m/b.flac")], 1))
+    monkeypatch.setattr(rekordbox, "collection_tracks", lambda db=None: (Path("master.db"), [Path("/m/b.flac"), Path("/m/c.flac")], 0))
+    apps, files, missing = library.all_collection_tracks()
+    assert files == [Path("/m/a.flac"), Path("/m/b.flac"), Path("/m/c.flac")] and missing == 1 and len(apps) == 2
+
+    def gone(nml=None):
+        raise SystemExit("no Traktor")
+    monkeypatch.setattr(traktor, "collection_tracks", gone)
+    assert library.all_collection_tracks()[1] == [Path("/m/b.flac"), Path("/m/c.flac")]
+    monkeypatch.setattr(library, "app", lambda: "traktor")
+    with pytest.raises(SystemExit):
+        library.all_collection_tracks()
+
+
+def test_othercues_into_ungridded_rekordbox_track(scanned, monkeypatch, tmp_path):
+    """Traktor's hot cues go into a Rekordbox track that has no beat grid yet (no ANLZ files, e.g. just added by a
+    sync): cues are times, so they're written at once, at the same time (no MP3 shift for these FLACs)."""
+    nml = scanned["nml"]
+    t = nml.read_text(encoding="utf-8")
+    k = t.find("</ENTRY>")
+    t = t[:k] + ('<CUE_V2 NAME="AutoGrid" TYPE="4" START="100.0" LEN="0" REPEATS="-1" HOTCUE="-1"></CUE_V2>'
+                 '<CUE_V2 NAME="Drop" TYPE="0" START="2500.0" LEN="0" REPEATS="-1" HOTCUE="2"></CUE_V2>') + t[k:]
+    nml.write_text(t, encoding="utf-8")
+    monkeypatch.setattr(traktor, "find_collection", lambda n=None: nml)
+    db = make_master_db(tmp_path / "rekordbox", scanned["files"])
+    monkeypatch.setattr(rekordbox, "running_state", lambda: False)
+    monkeypatch.setattr(rekordbox, "BACKUPS", tmp_path / "rekordbox-backups")
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    assert not rekordbox.grids()  # nothing analysed in Rekordbox yet
+    out = sync.run(None, steps=["othercues"])["steps"]["othercues"]
+    assert out.get("cues_added") == 1, out
+    got = [c for v in rekordbox.cues().values() for c in v]
+    assert [(c["ms"], c["hot"], c["name"]) for c in got] == [(2500, 2, "Drop")]
+
+
+
+def test_othercues_preview_counts_tracks_the_sync_adds(scanned, monkeypatch, tmp_path):
+    """A preview writes nothing, so a track the tracks step would add isn't in Rekordbox yet: the cue step's preview
+    still lists the Traktor cues it will copy into it."""
+    from pathlib import Path
+
+    from dj_track_analyzer import cues
+
+    nml = scanned["nml"]
+    t = nml.read_text(encoding="utf-8")
+    k = t.find("</ENTRY>")
+    t = t[:k] + ('<CUE_V2 NAME="AutoGrid" TYPE="4" START="100.0" LEN="0" REPEATS="-1" HOTCUE="-1"></CUE_V2>'
+                 '<CUE_V2 NAME="Drop" TYPE="0" START="2500.0" LEN="0" REPEATS="-1" HOTCUE="2"></CUE_V2>'
+                 '<CUE_V2 NAME="n.n." TYPE="0" START="4000.0" LEN="0" REPEATS="-1" HOTCUE="3"></CUE_V2>') + t[k:]
+    nml.write_text(t, encoding="utf-8")
+    monkeypatch.setattr(traktor, "find_collection", lambda n=None: nml)
+    cued = next(p for p, d in cues.grids(str(nml)).items() if d["cues"])
+    files = [f for f in scanned["files"] if Path(f).name != Path(cued).name]
+    assert len(files) == len(scanned["files"]) - 1
+    db = make_master_db(tmp_path / "rekordbox", files)
+    monkeypatch.setattr(rekordbox, "running_state", lambda: False)
+    monkeypatch.setattr(rekordbox, "BACKUPS", tmp_path / "rekordbox-backups")
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    out = sync.run(None, dry_run=True, steps=["tracks", "othercues"])["steps"]
+    assert out["tracks"]["added"] >= 1 and "add_paths" not in out["tracks"]
+    assert "+  at" in out["othercues"]["changes"][1]  # Traktor's "n.n." (unnamed) isn't copied as a name
+    assert out["othercues"].get("cues_added") == 2 and out["othercues"]["changed"], out["othercues"]
+    assert "added by this sync" in out["othercues"]["changes"][0]
+    assert not cues.PENDING_TRACKS  # reset after the run
+
+def _anlz_dat(path, t0: float, bpm: float, n: int) -> bytes:
+    """A minimal ANLZ .DAT: just a PQTZ beat grid (beat 1 at t0 s)."""
+    from pyrekordbox.anlz.structs import AnlzFileHeader, AnlzTag
+
+    beat = 60 / bpm
+    tag = AnlzTag.build({"type": "PQTZ", "len_header": 24, "len_tag": 24 + 8 * n, "content": {
+        "u1": None, "u2": 0x80000, "entry_count": n,
+        "entries": [{"beat": k % 4 + 1, "tempo": round(bpm * 100), "time": round((t0 + k * beat) * 1000)} for k in range(n)]}})
+    data = AnlzFileHeader.build({"type": "PMAI", "len_header": 28, "len_file": 28 + len(tag), "u1": 1, "u2": 0x10000,
+                                 "u3": 0x10000, "u4": 0}) + tag
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return data
+
+
+def test_othergrids_traktor_grid_into_rekordbox(scanned, monkeypatch, tmp_path):
+    """Traktor's grid replaces Rekordbox's in an analysed track (PQTZ in its .DAT, BPM in master.db); a track with
+    no ANLZ files is only listed; the sync's undo puts the .DAT back byte for byte."""
+    nml = scanned["nml"]
+    t = nml.read_text(encoding="utf-8")
+    k = t.find("</ENTRY>")
+    t = t[:k] + '<CUE_V2 NAME="AutoGrid" TYPE="4" START="250.0" LEN="0" REPEATS="-1" HOTCUE="-1"></CUE_V2>' + t[k:]
+    k = t.find("</ENTRY>", k + 100)
+    t = t[:k] + '<CUE_V2 NAME="AutoGrid" TYPE="4" START="80.0" LEN="0" REPEATS="-1" HOTCUE="-1"></CUE_V2>' + t[k:]
+    nml.write_text(t, encoding="utf-8")
+    monkeypatch.setattr(traktor, "find_collection", lambda n=None: nml)
+    db = make_master_db(tmp_path / "rekordbox", scanned["files"], bpm=12500)
+    monkeypatch.setattr(rekordbox, "running_state", lambda: False)
+    monkeypatch.setattr(rekordbox, "BACKUPS", tmp_path / "rekordbox-backups")
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    dat = db.parent / "share/PIONEER/USBANLZ/abc/123/ANLZ0000.DAT"
+    before = _anlz_dat(dat, 0.3, 125, 60)
+    m = rekordbox.open_database(db)
+    c = m.get_content(ID="1")
+    c.AnalysisDataPath, c.Length = "/PIONEER/USBANLZ/abc/123/ANLZ0000.DAT", 30
+    m.commit()
+    rekordbox.close_database(m)
+    p = next(iter(rekordbox.grids()))
+    assert rekordbox.grids()[p]["bpm"] == 125
+
+    prev = sync.run(None, dry_run=True, steps=["othergrids"])["steps"]["othergrids"]
+    assert prev["tracks"] == 1 and dat.read_bytes() == before, prev
+    out = sync.run(None, steps=["othergrids"])["steps"]["othergrids"]
+    assert out["tracks"] == 1 and len(out["not_analysed"]) == 1, out
+    g = rekordbox.grids()[p]
+    assert g["bpm"] == 124 and abs(g["grid_ms"] - 250) < 1
+    from pyrekordbox.anlz import AnlzFile
+
+    q = AnlzFile.parse_file(dat).get_tag("PQTZ")
+    assert q.get_times()[0] < 60 / 124 and q.get_times()[-1] <= 30
+    assert "skipped" in sync.run(None, dry_run=True, steps=["othergrids"])["steps"]["othergrids"]  # already the same
+    sync.undo()
+    assert dat.read_bytes() == before and rekordbox.grids()[p]["bpm"] == 125

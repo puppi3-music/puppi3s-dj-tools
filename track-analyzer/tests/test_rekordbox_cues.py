@@ -94,7 +94,7 @@ def test_copies_hot_cues_from_traktor_into_free_slots(rb, monkeypatch):
         {"ms": 2500, "type": "cue", "hotcue": 0, "bars": None, "name": "Taken"},   # slot A holds Drop in Rekordbox
         {"ms": 12500, "type": "cue", "hotcue": 2, "bars": None, "name": "Outro"},
         {"ms": 9000, "type": "cue", "hotcue": -1, "bars": None, "name": "Memory"}]}}  # not a hot cue: not copied
-    monkeypatch.setattr(cues, "grids", lambda nml=None: tk if nml else real())
+    monkeypatch.setattr(cues, "grids", lambda nml=None, ungridded=False: tk if nml else real(ungridded=ungridded))
     monkeypatch.setattr(cues.traktor, "find_collection", lambda nml=None: "collection.nml")
     with pytest.raises(SystemExit, match="in place"):  # without the option: nothing to copy
         cues.apply(dry_run=True, restore=True)

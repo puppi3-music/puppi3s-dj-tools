@@ -1344,3 +1344,96 @@ def undo(nml: str | None = None, force: bool = False) -> dict:
     if mark.exists():
         mark.unlink()
     return {"restored_from": str(latest), "collection": str(path)}
+
+
+def _location_for(path: str, vols: dict[str, str]) -> dict | None:
+    """A LOCATION for a file, with a VOLUMEID copied from a track Traktor already has on the same volume (None: a
+    volume Traktor doesn't know yet, so the track is left for Traktor to import)."""
+    if WINDOWS_DRIVE.match(path[:2]):
+        vol, rest = path[:2], path[2:].replace("\\", "/")
+    elif path.startswith("/Volumes/"):
+        vol, _, rest = path[len("/Volumes/"):].partition("/")
+        rest = "/" + rest
+    else:
+        vol, rest = "", path  # the boot volume: its name is whatever Traktor calls it
+    vid = vols.get(vol)
+    if vid is None:
+        return None
+    vol_name, vid = vid.split("\0") if "\0" in vid else (vol, vid)
+    d, _, f = rest.rpartition("/")
+    return {"DIR": "".join(f"/:{p}" for p in d.split("/") if p) + "/:", "FILE": f, "VOLUME": vol_name,
+            "VOLUMEID": vid}
+
+
+def _loc_tag(loc: dict) -> str:
+    return "<LOCATION " + " ".join(f'{k}="{esc(v)}"' for k, v in loc.items()) + ">"
+
+
+def _pkey(loc: dict) -> str:
+    return loc.get("VOLUME", "") + loc.get("DIR", "") + loc.get("FILE", "")
+
+
+def sync_tracks(nml: str | None = None, dry_run: bool = False, tracks: list[dict] | None = None,
+                relink: bool = True) -> dict:
+    """Relink tracks whose file moved and add analysed tracks Traktor doesn't list (trackfiles.plan). A relinked
+    track keeps its entry (cues, grid, plays), and its playlist entries follow it. Added tracks get a bare entry;
+    Traktor reads their tags and analyses them when it loads them."""
+    from . import trackfiles
+
+    path = find_collection(nml)
+    refuse_if_tempo_view(path)
+    text = path.read_text(encoding="utf-8")
+    c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
+    present, missing, vols = set(), [], {}
+    for m in re.finditer(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
+        loc_m = re.search(r"<LOCATION\b[^>]*>", m.group(0))
+        if not loc_m:
+            continue
+        loc = attrs(loc_m.group(0))
+        cands = location_paths(loc)
+        if any("/TraktorContent/" in c for c in cands):
+            continue
+        found = next((c for c in cands if os.path.isfile(c)), None)
+        if found:
+            present.add(trackfiles.nfc(found))
+            v = loc.get("VOLUME", "")
+            key = v if WINDOWS_DRIVE.fullmatch(v) else (v if found.startswith("/Volumes/") else "")
+            vols.setdefault(key, f"{v}\0{loc.get('VOLUMEID', '')}")
+        elif loc.get("FILE"):
+            info = re.search(r"<INFO\b[^>]*>", m.group(0))
+            kb = attrs(info.group(0)).get("FILESIZE") if info else None
+            missing.append((loc_m.group(0), loc["FILE"], int(kb) * 1024 if kb and kb.isdigit() else None))
+    p = trackfiles.plan(present, missing if relink else [], tracks)
+    stats = {"collection": str(path)}
+    new_text, no_volume = text, []
+    for old_tag, new_path in p["moves"].items():
+        loc = _location_for(new_path, vols)
+        if loc is None:
+            no_volume.append(new_path)
+            continue
+        old_key = _pkey(attrs(old_tag))
+        new_text = new_text.replace(old_tag, _loc_tag(loc), 1)
+        new_text = new_text.replace(f'KEY="{esc(old_key)}"', f'KEY="{esc(_pkey(loc))}"')  # playlists follow it
+    entries = []
+    for t in p["adds"]:
+        loc = _location_for(t["path"], vols)
+        if loc is None:
+            no_volume.append(t["path"])
+            continue
+        title = t.get("title") or os.path.splitext(os.path.basename(t["path"]))[0]
+        artist = f' ARTIST="{esc(t["artist"])}"' if t.get("artist") else ""
+        size = f'<INFO FILESIZE="{t["size"] // 1024}"></INFO>' if t.get("size") else ""
+        entries.append(f'<ENTRY TITLE="{esc(title)}"{artist}>{_loc_tag(loc)}</LOCATION>{size}</ENTRY>\n')
+    if entries:
+        at = new_text.find("</COLLECTION>")
+        new_text = new_text[:at] + "".join(entries) + new_text[at:]
+        new_text = re.sub(r'(<COLLECTION\b[^>]*\bENTRIES=")(\d+)"',
+                          lambda m: f'{m.group(1)}{int(m.group(2)) + len(entries)}"', new_text, count=1)
+    stats |= trackfiles.stats(p, lambda tag: attrs(tag).get("FILE", ""))
+    if no_volume:
+        stats["left_for_traktor"] = f"{len(no_volume)} on a drive Traktor has no tracks from yet: add them in Traktor"
+        stats["relinked"] = len(p["moves"]) - sum(1 for x in no_volume if x in p["moves"].values())
+        stats["added"] = len(entries)
+    if not p["moves"] and not p["adds"]:
+        raise SystemExit("every analysed track is in Traktor and no moved files were found")
+    return _save(path, text, new_text, stats, dry_run)

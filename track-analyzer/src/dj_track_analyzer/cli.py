@@ -118,7 +118,7 @@ def main() -> None:
     cl.add_argument("--dry-run", action="store_true", help="list what would be made, write nothing")
     sc = sub.add_parser("scan", help="analyze a whole collection (resumable), save to database + spreadsheet")
     sc.add_argument("folders", nargs="*", help="folders (or files) to scan")
-    sc.add_argument("--traktor", action="store_true", help="scan every track in Traktor's collection (can be combined with folders)")
+    sc.add_argument("--traktor", action="store_true", help="scan every track in every DJ app found (Traktor and Rekordbox; can be combined with folders)")
     sc.add_argument("--nml", default=None, help="path to Traktor's collection.nml (default: found automatically)")
     sc.add_argument("--exclude", action="append", default=[], metavar="FOLDER",
                     help="leave this folder out (repeat for several)")
@@ -348,9 +348,7 @@ def main() -> None:
     sy = sub.add_parser("sync", help="everything into your DJ app in one go: genres, colours, hype, cues, grid fixes, crates")
     sy.add_argument("--nml", default=None, help="path to collection.nml (Traktor; Rekordbox uses the Setup tab's database)")
     sy.add_argument("--dry-run", action="store_true", help="preview each step, write nothing")
-    sy.add_argument("--only", default=None, help="comma-separated steps: genres,hype,cues,grids,crates")
-    sy.add_argument("--cues-from-other-app", action="store_true",
-                    help="also copy hot cues from the other DJ app (Traktor <-> Rekordbox) into free slots")
+    sy.add_argument("--only", default=None, help="comma-separated steps: tracks,genres,hype,cues,othercues,grids,othergrids,crates,samples")
     sy.add_argument("--undo", action="store_true", help="put back the library from before the last sync")
     sy.add_argument("--force", action="store_true", help="with --undo: restore even if your DJ app changed the library since")
     sy.add_argument("--json", action="store_true", help="full result as JSON")

@@ -118,6 +118,17 @@ function resultSummary(r, depth = 0) {
     ${depth ? "" : nested.map(([k, v]) => `<div class="small" style="margin-top:8px"><b>${esc(human(k))}</b></div>${resultSummary(v, 1)}`).join("")}
     ${depth ? "" : `<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">Everything it reported</summary><div class="tree">${tree(r)}</div></details>`}`;
 }
+// The sync's preview: each step that would change something, ticked, to choose what is written; the rest listed after
+const SYNC_STEPS = { tracks: "Tracks: relink moved files, add analysed tracks it doesn't have", genres: "Genres and colours", hype: "Hype", cues: "Approved cues", othercues: "Hot cues from the other DJ app (free slots only)", grids: "Grid fixes", othergrids: "Beat grids from Traktor (replaces Rekordbox's; new, check a few tracks first)", crates: "Crates", samples: "Loops saved on this page" };
+function syncSteps(r, st) {
+  const other = st?.dj_app?.app === "rekordbox" ? "Traktor" : "Rekordbox";
+  const name = s => (SYNC_STEPS[s] || s).replace("the other DJ app", other);
+  const steps = Object.entries(r?.steps || {}), todo = steps.filter(([, v]) => v.changed), rest = steps.filter(([, v]) => !v.changed);
+  return `<div class="small muted" style="margin-top:6px">Tick what to write into ${esc(r.app || "your DJ app")}:</div>
+    ${todo.map(([s, v]) => `<div style="margin-top:6px"><label class="inline"><input type="checkbox" data-step="${esc(s)}" ${s === "othergrids" ? "" : "checked"}> <b>${esc(name(s))}</b></label>
+      <details><summary class="small muted" style="cursor:pointer">What changes</summary>${resultSummary(v, 1)}</details></div>`).join("")}
+    ${rest.length ? `<div class="small muted" style="margin-top:8px">Nothing to write for:</div><ul class="small muted">${rest.map(([s, v]) => `<li><b>${esc(name(s))}</b>: ${typeof v.skipped === "string" && v.skipped ? esc(v.skipped) : "already in place"}</li>`).join("")}</ul>` : ""}`;
+}
 function nothingToDo(r) {  // as the CLI's say_if_nothing
   if (!r) return false;
   const parts = "changed" in r ? [r] : Object.values(r).filter(v => v && typeof v === "object" && !Array.isArray(v));
@@ -161,14 +172,21 @@ async function writeDialog(action, options = {}, onDone) {
     if (j.error) return show(`<div class="err">${esc(j.error)}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Check again</button>`), again(act, opts);
     const open = j.traktor_running && TOUCHES_TRAKTOR.has(act), nothing = nothingToDo(j.result);
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
-      ${resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
+      ${act === "sync" && !nothing ? syncSteps(j.result, st) : resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
       ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${st?.dj_app?.app === "rekordbox" ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
         : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
     again(act, opts);
-    dlg.querySelector("[data-go]")?.addEventListener("click", () => write(act, opts));
+    const go = dlg.querySelector("[data-go]");
+    go?.addEventListener("click", () => {
+      if (act !== "sync") return write(act, opts);
+      const only = [...dlg.querySelectorAll("[data-step]:checked")].map(b => b.dataset.step);
+      write(act, { ...opts, only });
+    });
+    // sync: write only the ticked steps; nothing ticked, nothing to write
+    dlg.querySelectorAll("[data-step]").forEach(b => b.onchange = () => { if (go) go.disabled = !dlg.querySelector("[data-step]:checked"); });
   }
   function again(act, opts) { dlg.querySelector("[data-again]")?.addEventListener("click", () => preview(act, opts)); }
   async function write(act, opts) {
