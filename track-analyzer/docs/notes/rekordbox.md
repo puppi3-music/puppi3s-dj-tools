@@ -55,6 +55,15 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
 - Each live track had all three files: `.DAT` (PPTH, PVBR, PQTZ, PWAV, PWV2, PCOB×2), `.EXT` (PWV3, PCOB×2,
   PCO2×2, PWV5, PWV4), `.2EX` (PWV7, PWV6, PWVC). pyrekordbox 0.5.0 parsed all of them.
 
+## Stage 3: cues and grids (2026-11-03)
+- `rekordbox.grids()` gives `cues.grids()`'s shape: BPM from djmdContent (÷ 100), `grid_ms` = first beat 1 in PQTZ,
+  cues from djmdCue (memory cues hotcue -1). MP3 times get +1 frame (1,152 samples at the file's SampleRate) to land
+  on Traktor's timeline, from the median above; not checked per file.
+- `cues apply` writes plans as djmdCue rows (new rows: generated ID, UUID, ContentUUID; frame/MPEG fields 0,
+  Color -1), backup + undo as in stage 2. Whether Rekordbox 7 shows the new rows unchanged is for the user's first
+  test on a copy.
+- `grids apply` refuses with Rekordbox (PQTZ rewriting untested); `grids check` works read-only.
+
 ## Still open
 - Genre condition XML for smart playlists; whether a pyrekordbox commit with our changes opens cleanly in
   Rekordbox 7 (first write test, on a copy, done by the user).

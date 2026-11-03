@@ -293,8 +293,9 @@ _grids: dict = {"mtime": None, "data": {}}
 def cue_grids() -> dict:
     """Traktor's beat grids and your cues, read again only when collection.nml changes."""
     from . import cues
+    from . import library as dj_app
 
-    m = traktor_nml().stat().st_mtime
+    m = (dj_app.app(), dj_app.find_collection(None).stat().st_mtime)
     if _grids["mtime"] != m:
         _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
