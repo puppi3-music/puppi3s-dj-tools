@@ -64,3 +64,34 @@ def genre_field(path: str | None = None):
 
 def running_state() -> bool | None:
     return backend().running_state()
+
+
+# ---- writes (each app backs up first and refuses while it's open) -----------------------------------------------
+
+def check_closed(dry_run: bool = False, what: str = "these changes") -> None:
+    return backend().check_closed(dry_run, what)
+
+
+def sync(path: str | None = None, *args, **kw) -> dict:
+    return backend().sync(_path(path), *args, **kw)
+
+
+def set_colors(changes: dict, path: str | None = None, dry_run: bool = False) -> dict:
+    return backend().set_colors(changes, _path(path), dry_run=dry_run)
+
+
+def write_hype(hype: dict, path: str | None = None, **kw) -> dict:
+    return backend().write_hype(hype, _path(path), **kw)
+
+
+def undo(path: str | None = None, force: bool = False) -> dict:
+    return backend().undo(_path(path), force=force)
+
+
+def colors(path: str | None = None):
+    """(collection, {file path: colour 1-7}, coloured tracks) from the chosen app."""
+    if app() == "rekordbox":
+        from . import rekordbox
+        return rekordbox.colors(None)
+    from . import colors as c
+    return c.read_traktor_colors(path)
