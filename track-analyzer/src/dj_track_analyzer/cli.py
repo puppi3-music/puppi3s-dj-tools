@@ -348,7 +348,10 @@ def main() -> None:
     sy = sub.add_parser("sync", help="everything into your DJ app in one go: genres, colours, hype, cues, grid fixes, crates")
     sy.add_argument("--nml", default=None, help="path to collection.nml (Traktor; Rekordbox uses the Setup tab's database)")
     sy.add_argument("--dry-run", action="store_true", help="preview each step, write nothing")
-    sy.add_argument("--only", default=None, help="comma-separated steps: tracks,genres,hype,cues,othercues,grids,othergrids,crates,samples")
+    sy.add_argument("--only", default=None, help="comma-separated steps: tracks,genres,hype,cues,grids,crates,samples "
+                    "(with --copy: tracks,genres,colours,cues,grids,playlists)")
+    sy.add_argument("--copy", action="store_true", help="copy the other DJ app's library (Traktor <-> Rekordbox) into "
+                    "the chosen one: tracks, genres, colours, hot cues, grids, playlists; with --undo: undo the last copy")
     sy.add_argument("--undo", action="store_true", help="put back the library from before the last sync")
     sy.add_argument("--force", action="store_true", help="with --undo: restore even if your DJ app changed the library since")
     sy.add_argument("--json", action="store_true", help="full result as JSON")

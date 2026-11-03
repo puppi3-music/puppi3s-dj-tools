@@ -59,8 +59,9 @@ def test_apply_adds_moves_and_undoes(rb):
     assert rb["db"].read_bytes() == before
 
 
-def test_grid_fixing_refuses(rb):
-    with pytest.raises(SystemExit, match="Rekordbox"):
+def test_grid_fixing_needs_approvals(rb):
+    """Grid fixes go into Rekordbox now (test_rekordbox_grids.py); with nothing approved there's nothing to do."""
+    with pytest.raises(SystemExit, match="Nothing approved"):
         gridfix.apply(dry_run=True)
 
 
