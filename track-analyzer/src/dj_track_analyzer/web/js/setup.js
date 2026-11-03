@@ -109,18 +109,18 @@ async function pageSetup(main) {
   // Your own genres: learned from example folders + "everything else" (the rest of your scanned music), used only when switched on
   const GN = st.genres, GR = GN.report || {}, pc = v => v == null ? "–" : `${Math.round(v * 100)}%`;
   const genreOk = sc.tracks >= 30;
-  const gFolder = `<input type="text" id="su-gfolder" placeholder="folder: one subfolder per genre" value="${esc(SF.gfolder || GN.source || "")}">${tk.can_browse ? jb("su-gbrowse", "Browse…") : ""}`;
+  const gFolder = `<input type="text" id="su-gfolder" size="35" placeholder="folder: one subfolder per genre" value="${esc(SF.gfolder || GN.source || "")}">${tk.can_browse ? jb("su-gbrowse", "Browse…") : ""}`;
   // Where the examples come from: a folder on disk, a Traktor playlist folder (a playlist per genre) or Traktor's Genre field
-  const G_SRC = { folder: "A folder", traktor_playlists: "Traktor playlists", traktor_genres: "Traktor's Genre field" };
+  const G_SRC = { folder: "A folder", folder_tags: "Genre tags in a folder", traktor_playlists: "Traktor playlists", traktor_genres: "Traktor's Genre field" };
   const lastSrc = GN.source_kind || {};
-  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind === "folder" || tk.collection) ? lastSrc.kind : "folder";
+  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || tk.collection) ? lastSrc.kind : "folder";
   if (!SF.gpl) SF.gpl = lastSrc.kind === "traktor_playlists" ? [...(lastSrc.playlists || [])] : [];
   if (!SF.ggenres) SF.ggenres = lastSrc.kind === "traktor_genres" ? [...lastSrc.genres] : [];
   const gSource = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Learn from:</span>
     <div class="seg-toggle" id="su-gsrc">${Object.entries(G_SRC).map(([k, label]) => `<button data-gsrc="${k}" class="${SF.gsrc === k ? "on" : ""}"
-      ${k !== "folder" && !tk.collection ? `disabled title="Choose Traktor's collection first (above)"` : ""}>${label}</button>`).join("")}</div></div>
+      ${!k.startsWith("folder") && !tk.collection ? `disabled title="Choose Traktor's collection first (above)"` : ""}>${label}</button>`).join("")}</div></div>
     <div id="su-gsrcbox" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>`;
-  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, Traktor playlists (each one a genre named after it), or genres from Traktor's Genre field. 20–50 example tracks per genre, at least two genres.
+  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, a folder of tracks whose genre tags say their genre, Traktor playlists (each one a genre named after it), or genres from Traktor's Genre field. 20–50 example tracks per genre, at least two genres.
     It also learns what the rest of your scanned music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps its built-in genre.`;
   const G_MODES = { starter: "Starter", both: "Both", mine: "Mine only" };
   const gSwitchRow = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Genres used:</span>
@@ -223,8 +223,8 @@ async function pageSetup(main) {
   const gmsg = (text, bad) => { const m = $("#su-gmsg"); if (!m) return; m.hidden = !text; m.className = `small${bad ? " err" : ""}`; m.textContent = text || ""; };
   const gBox = async () => {
     const box = $("#su-gsrcbox"); if (!box) return;
-    if (SF.gsrc === "folder") {
-      box.innerHTML = gFolder;
+    if (SF.gsrc.startsWith("folder")) {
+      box.innerHTML = SF.gsrc === "folder" ? gFolder : gFolder.replace("folder: one subfolder per genre", "folder of tracks: each file's genre tag is its genre");
       bindVal("su-gfolder", "gfolder");
       on("su-gbrowse", async e => {
         const btn = e.currentTarget, label = btn.textContent;
@@ -275,7 +275,7 @@ async function pageSetup(main) {
   on("su-gtrain", () => {
     if (SF.gsrc === "traktor_playlists") return SF.gpl.length >= 2 ? go("genres_train", { playlists: SF.gpl }) : gmsg("Tick at least two playlists first.", true);
     if (SF.gsrc === "traktor_genres") return SF.ggenres.length >= 2 ? go("genres_train", { genres: SF.ggenres }) : gmsg("Tick at least two genres first.", true);
-    const f = ($("#su-gfolder")?.value || "").trim(); f ? go("genres_train", { folder: f }) : $("#su-gfolder")?.focus();
+    const f = ($("#su-gfolder")?.value || "").trim(); f ? go("genres_train", { folder: f, ...(SF.gsrc === "folder_tags" ? { by_tag: true } : {}) }) : $("#su-gfolder")?.focus();
   });
   const gSwitch = async (mode, btn) => {
     btn.disabled = true; gmsg("");
