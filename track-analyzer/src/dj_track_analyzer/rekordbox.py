@@ -542,11 +542,19 @@ def undo(db: str | None = None, force: bool = False) -> dict:
             raise SystemExit(f"{path.name} has changed since Puppi3's Track Analyzer wrote it (Rekordbox saved plays, "
                              f"cues or edits). Restoring backup {latest.name} would lose those. Run again with --force "
                              "to restore anyway.")
-    for name in (DB_NAME, *SIDE_FILES):
+    # Copy to temp names first, then swap each in with one rename, journals before master.db: a reader (the Setup
+    # tab polls) never sees a half-copied file or the new master.db with the old journal ("disk image is malformed").
+    staged = []
+    for name in (*SIDE_FILES, DB_NAME):
         if (latest / name).is_file():
-            shutil.copy2(latest / name, path.parent / name)
-        elif name != "masterPlaylists6.xml" and (path.parent / name).exists():  # a journal that wasn't there before
+            tmp = path.parent / (name + ".undo-tmp")
+            shutil.copy2(latest / name, tmp)
+            staged.append((tmp, path.parent / name))
+    for name in SIDE_FILES:  # a journal that wasn't there before goes first
+        if name != "masterPlaylists6.xml" and not (latest / name).is_file() and (path.parent / name).exists():
             (path.parent / name).unlink()
+    for tmp, dest in staged:
+        os.replace(tmp, dest)
     latest.rename(latest.with_name(latest.name + ".restored"))
     return {"restored_from": str(latest), "collection": str(path)}
 

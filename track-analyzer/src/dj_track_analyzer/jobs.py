@@ -590,7 +590,7 @@ def setup_status() -> dict:
                            "off": sum(r["state"] == "off" for r in res.values()),
                            "drift": sum(r["state"] == "drift" for r in res.values()),
                            "approved": len(gridfix.plans()) if collection.NATIVE_DB.exists() else 0}
-        except (SystemExit, OSError) as e:
+        except Exception as e:  # also a master.db read while another job writes it: skip this poll, not the tab
             log(f"Beat grid check status skipped: {e}")
     st["tags"] = {"tagged_files": tagged}
     backups = []
