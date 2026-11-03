@@ -208,7 +208,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Work down the Setup tab. Each step shows whether it's done, what it needs, and the command it runs.</p>
 <ol>
   <li><b>Analysis models:</b> <b>Download</b>, once (a few hundred MB).</li>
-  <li><b>Traktor's collection:</b> found by itself in Documents › Native Instruments › Traktor <i>version</i> (on Windows also when Documents is in OneDrive or on another drive). If it isn't, or you want another one, press <b>Browse…</b> (or <b>Change…</b>) and pick <code>collection.nml</code>, or paste its path (in Windows Explorer: Shift + right-click the file → <i>Copy as path</i>). <b>Find automatically</b> goes back to the newest Traktor version's. After a Traktor update the step offers the new version's collection. A Traktor version newer than the analyzer has been tested with gets a note there: it should still work (the collection's file format is checked too, and flagged more strongly if that changed); every write is backed up and can be undone.</li>
+  <li><b>DJ app:</b> <b>Traktor</b> or <b>Rekordbox</b>. With Rekordbox, its library (<code>master.db</code>) is found by itself, or pick it with <b>Browse…</b>; everything this guide says about Traktor then works the same in Rekordbox (quit Rekordbox before writing; its 8 colours stand in for Traktor's 7). <b>Traktor's collection:</b> found by itself in Documents › Native Instruments › Traktor <i>version</i> (on Windows also when Documents is in OneDrive or on another drive). If it isn't, or you want another one, press <b>Browse…</b> (or <b>Change…</b>) and pick <code>collection.nml</code>, or paste its path (in Windows Explorer: Shift + right-click the file → <i>Copy as path</i>). <b>Find automatically</b> goes back to the newest Traktor version's. After a Traktor update the step offers the new version's collection. A Traktor version newer than the analyzer has been tested with gets a note there: it should still work (the collection's file format is checked too, and flagged more strongly if that changed); every write is backed up and can be undone.</li>
   <li><b>Your music, scanned:</b> <b>Scan Traktor's collection</b>, or type a folder and press <b>Scan folder</b>. About 10–15 minutes per 500 tracks the first time; later scans only do new and changed files. Hype scores are worked out at the end.</li>
   <li><b>Learn from your own work</b> (optional): <b>Your colour scale → Learn your colours</b> learns your colour-coding from the tracks you've already coloured (needs 30), and <b>Your cue points → Learn your cue points</b> learns where you put cues and loops (needs 30 tracks with 3+ of your own cues). Until you train them, a starter scale and starter cue model are used. <b>Learn your genres</b> teaches it genres of your own from example folders (see <a href="#my-genres">Your own genres</a>).</li>
   <li><b>Extra tools</b> (optional): ffmpeg (loops, samples, exact MP3 timing) and Rubber Band (the tempo view). With Homebrew, the page installs them; without it, it shows the command to run.</li>
@@ -227,6 +227,16 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Open Traktor and check the new tracks. Changed your mind? Before opening Traktor, <b>Undo the last change to Traktor</b> at the bottom of the Setup tab.</li>
   <li>The colours it set are guesses, marked <b>?</b> in the Tracks tab, and the colour model doesn't learn from them until you've checked them: change the wrong ones in Traktor, and for the right ones pick <b>All tracks → Colour guessed by the app, not checked yet</b>, select them and press <b>Guessed colours are right</b>. Then <b>Update training</b>.</li>
 </ol>
+
+<h3 id="sync">Everything into my DJ app in one go</h3>
+<p>The Setup tab's <b>Sync everything into Traktor</b> (or <b>… into Rekordbox</b>) does all the writers at once.</p>
+<ol>
+  <li>Quit your DJ app. Press the button: a preview lists each step and what it would change: <b>tracks</b> (files you moved are found again by name; analysed tracks the app lacks are added), <b>genres</b> and colours, <b>hype</b>, approved <b>cues</b>, approved <b>grid</b> fixes, <b>crates</b>, and loops saved as <b>samples</b>. Steps with nothing to do are listed, not written.</li>
+  <li>Untick what you don't want, press <b>Write</b>.</li>
+  <li>Cues you approved and later deleted in the DJ app are put back. If that's not what you want, untick <b>cues</b>.</li>
+  <li>Changed your mind? <b>Undo the last sync</b> on the Setup tab puts back every step at once (it refuses if the DJ app saved its library since).</li>
+</ol>
+<p>Using both Traktor and Rekordbox? <b>Copy Rekordbox into Traktor</b> (or the other way) brings over what the other app has: tracks, genres and colours (empty ones never erase yours), hot cues into free slots, its playlists in a <b>From … (Track Analyzer)</b> folder, and samples. Into Rekordbox it can also bring Traktor's beat grids, if you tick them. It has its own undo.</p>
 
 <h3 id="recoloured">I recoloured a bunch of tracks</h3>
 <ol>
@@ -417,6 +427,8 @@ li > figure.shot { margin: 12px 0 4px; }
 <thead><tr><th>If you…</th><th>Undo in the page</th><th>From a terminal</th><th>Notes</th></tr></thead>
 <tbody>
 <tr><td>Wrote genres, colours, recolourings, cues or grid fixes into Traktor</td><td><b>Undo</b> in the dialog, or <b>Undo the last change to Traktor</b> (Setup)</td><td><code>traktor --undo</code></td><td>Restores collection.nml from the backup taken before the change; again to step further back. Traktor must be closed. Refuses if Traktor saved the file since (only the terminal's <code>--force</code> restores anyway, and loses those changes). The page's Undo after writing cues or grids also brings your approvals back.</td></tr>
+<tr><td>Ran <b>Sync everything</b> or a copy from the other DJ app</td><td><b>Undo the last sync</b> / <b>Undo the last copy</b> (Setup)</td><td><code>sync --undo</code> / <code>sync --copy --undo</code></td><td>Puts back every step at once. The DJ app must be closed; refuses if it saved its library since (<code>--force</code> restores anyway and loses those changes).</td></tr>
+<tr><td>Wrote anything into Rekordbox</td><td>as for Traktor above</td><td><code>traktor --undo</code></td><td>Restores master.db (and the analysis files a grid fix changed) from <code>data/rekordbox-backups/</code>.</td></tr>
 <tr><td>Wrote hype into Comment</td><td><b>Take it out…</b> (Setup)</td><td><code>hype --traktor --remove</code></td><td>Takes only the Hype part out of Comment; your own text stays.</td></tr>
 <tr><td>Wrote a set or crates as Traktor playlists</td><td>(terminal only)</td><td><code>set --remove "&lt;name&gt;"</code> / <code>crates --remove</code></td><td>Takes out only those playlists, so it works while a tempo view is loaded too; the folder goes when it's empty. <code>traktor --undo</code> doesn't undo these.</td></tr>
 <tr><td>Loaded a tempo view</td><td><b>Switch Traktor back…</b></td><td><code>tempo native</code> (add <code>--lexicon</code> for Lexicon)</td><td>Puts back your genres, colours, Comment and genre Smartlists; everything else Traktor saved meanwhile stays. In Lexicon: genre, colour, comment and energy where they still hold the view's value. Last resort for Lexicon: the copies in <code>lexicon-backups/</code>.</td></tr>
@@ -565,7 +577,18 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="cmd"><pre>uv run dj-track-analyzer grids show "part of the name"</pre></div>
 <div class="cmd"><pre>uv run dj-track-analyzer grids apply --dry-run</pre></div>
 <div class="cmd"><pre>uv run dj-track-analyzer grids apply</pre></div>
-<p><code>apply</code> needs Traktor closed; undo with <code>traktor --undo</code>.</p>
+<p><code>apply</code> needs Traktor closed; undo with <code>traktor --undo</code>. Works the same with Rekordbox (grid fixes rewrite its analysis file; tracks with tempo changes are listed, not moved).</p>
+
+<h3 id="cli-sync">Sync everything, and fixing one track by hand</h3>
+<div class="cmd"><pre>uv run dj-track-analyzer sync --dry-run</pre></div>
+<div class="cmd"><pre>uv run dj-track-analyzer sync</pre></div>
+<div class="cmd"><pre>uv run dj-track-analyzer sync --only tracks,cues</pre></div>
+<div class="cmd"><pre>uv run dj-track-analyzer sync --undo</pre></div>
+<p>From the other DJ app: <code>sync --copy --dry-run</code>, then <code>sync --copy</code>; undo with <code>sync --copy --undo</code>.</p>
+<p>One track's colour, key, genre, hype or BPM by hand (into Traktor too, unless <code>--no-traktor</code>); <code>edit</code> alone lists the tracks you edited, <code>--clear colour</code> (or <code>--clear genre</code>, <code>--clear hype</code>, <code>--clear bpm</code>) goes back to the analysis:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer edit "part of the name" --colour Red --hype 8 --dry-run</pre></div>
+<div class="cmd"><pre>uv run dj-track-analyzer edit "part of the name" --clear hype</pre></div>
+<p>Which genres are used after <code>train</code>: <code>train --use starter</code> (built-in only), <code>--use both</code> (yours where one fits), or <code>--use mine</code> (yours on every track).</p>
 
 <h3 id="cli-hype">Finding hype tracks</h3>
 <ul>

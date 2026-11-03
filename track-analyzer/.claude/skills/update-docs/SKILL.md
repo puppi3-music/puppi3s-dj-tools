@@ -30,7 +30,13 @@ uv run python .claude/skills/update-docs/scripts/doc_drift.py 2>/dev/null
 
 It prints the real CLI (every command, option, choice, default, help text) and the MCP tools, then:
 commands/options/choices each doc doesn't mention, options the docs mention that no longer exist,
-and broken anchors/file links. README should reach 0 missing; GUIDE may leave out rare options on
+and broken anchors/file links.
+
+**Work from this list; don't read the docs whole.** Grep the headings (`grep -n '^#' README.md`,
+`grep -n '<h2\|<h3' docs/GUIDE.html`), read only the sections the findings point to, and make targeted edits.
+For new features, `git diff main...HEAD -- '*.md'` and the matching `docs/notes/*.md` give the facts faster than the
+code. (2026-11-03: a docs pass for 6 PRs took ~57k tokens this way, against a ~250k estimate for reading whole.)
+A false "missing" from the script is a bug in the script: fix it there (step 5.4). README should reach 0 missing; GUIDE may leave out rare options on
 purpose (it has an "Useful options" table, not a full list), but every command and action must appear.
 
 ## 2. Find the drift (by reading)
