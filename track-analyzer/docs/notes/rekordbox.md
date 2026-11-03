@@ -84,7 +84,7 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   with the start time typed on the page; recordings under 12 min are treated as tracks, by design).
 
 ## Still open
-- Windows paths (`%APPDATA%\Pioneer\rekordbox`); `grids apply` (PQTZ rewriting) on Rekordbox.
+- Windows paths and `grids apply` (PQTZ rewriting): checked by the user 2026-11-03.
 
 ## Stage 1b: what reads Rekordbox now
 - Setup tab, step 2: "DJ app: Traktor / Rekordbox" (`POST /api/dj-app`, saved as `dj_app`), and for Rekordbox its
