@@ -8,6 +8,7 @@ neither pyrekordbox nor an encrypted database."""
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -29,6 +30,9 @@ CONTAINER = os.environ.get("TRACK_ANALYZER_CONTAINER") == "1"
 PLAYLIST, FOLDER, SMART = 0, 1, 4
 # djmdCue.Kind: 0 = memory cue, hot cues A-H (4 is skipped)
 HOT_CUE_KINDS = (1, 2, 3, 5, 6, 7, 8, 9)
+# Hot cue colours (djmdCue.ColorTableIndex, Rekordbox's hot-cue palette; 0 = none, which Rekordbox shows in its own
+# default colour): what a library's own hot cues use, matching Traktor's blue cue points and green loops
+CUE_COLOR_POINT, CUE_COLOR_LOOP = 1, 21
 # djmdColor IDs 1-8; 0 = none
 COLORS = {1: "Pink", 2: "Red", 3: "Orange", 4: "Yellow", 5: "Green", 6: "Aqua", 7: "Blue", 8: "Purple"}
 # Our 7-step scale (analysis.COLOR_NAMES: Red, Orange, Yellow, Green, Blue, Violet, Magenta) onto Rekordbox's
@@ -160,7 +164,8 @@ def load(db) -> dict:
             "id": str(c.ID), "path": c.FolderPath or "", "bpm": c.BPM,
             "key": c.Key.ScaleName if c.Key is not None else None,
             "genre": c.Genre.Name if c.Genre is not None else None,
-            "color": color_id(c.ColorID), "comment": c.Commnt, "rating": c.Rating,
+            "color": color_id(c.ColorID), "comment": c.Commnt, "rating": c.Rating, "size": c.FileSize,
+            "plays": int(p) if str(p := getattr(c, "DJPlayCount", None) or 0).isdigit() else 0,
         })
     playlists = [{"id": str(p.ID), "name": p.Name or "", "attribute": p.Attribute, "parent": str(p.ParentID),
                   "seq": p.Seq or 0} for p in db.get_playlist()]
@@ -227,7 +232,14 @@ def collection_tracks(db: str | None = None, rows: dict | None = None) -> tuple[
     rows = rows if rows is not None else read(db)
     live = _live(rows)
     missing = sum(1 for t in rows["tracks"] if t["id"] not in live and t["path"])
-    return path, sorted({Path(p) for p, _ in live.values()}), missing
+    return path, sorted({Path(p) for p, _ in live.values() if not in_sampler(p)}), missing
+
+
+SAMPLER = Path.home() / "Music" / "rekordbox" / "Sampler"  # its sampler's WAVs (bundled kits, our loops): not tracks
+
+
+def in_sampler(p: str) -> bool:
+    return Path(p).is_relative_to(SAMPLER)
 
 
 def track_info(db: str | None = None, rows: dict | None = None) -> dict[str, tuple[float | None, str | None]]:
@@ -330,18 +342,21 @@ def _is_loop(q) -> bool:
     return q.OutMsec is not None and q.InMsec is not None and q.OutMsec > q.InMsec
 
 
-def _grids(master) -> dict[str, tuple[object, dict]]:
+def _grids(master, ungridded: bool = False) -> dict[str, tuple[object, dict]]:
     out: dict[str, tuple[object, dict]] = {}
     by_id = {}
     for c in master.get_content():
-        if getattr(c, "rb_local_deleted", 0) or not c.FolderPath or not c.BPM or c.BPM <= 0:
+        if getattr(c, "rb_local_deleted", 0) or not c.FolderPath:
             continue
-        t0 = first_downbeat(master, c)
-        if t0 is None:
+        t0 = first_downbeat(master, c) if c.BPM and c.BPM > 0 else None
+        if t0 is None and not ungridded:
             continue
         p = norm_path(c.FolderPath)
         sh = shift_ms(p, c.SampleRate)
-        d = {"bpm": c.BPM / 100, "grid_ms": t0 * 1000 + sh, "cues": [], "all_cues": [], "marks": [], "shift_ms": sh}
+        if t0 is None:  # not analysed yet (e.g. just added by a sync): its cues still have a place in time
+            d = {"bpm": (c.BPM or 0) / 100, "grid_ms": None, "nogrid": True, "cues": [], "all_cues": [], "marks": [], "shift_ms": sh}
+        else:
+            d = {"bpm": c.BPM / 100, "grid_ms": t0 * 1000 + sh, "cues": [], "all_cues": [], "marks": [], "shift_ms": sh}
         out[p] = by_id[str(c.ID)] = (c, d)
     for q in master.get_cue():
         hit = by_id.get(str(q.ContentID))
@@ -351,20 +366,20 @@ def _grids(master) -> dict[str, tuple[object, dict]]:
         ms, loop = q.InMsec + d["shift_ms"], _is_loop(q)
         kind = "loop" if loop else "cue"
         d["cues"].append({"ms": ms, "type": kind, "hotcue": _slot(q), "name": q.Comment or None,
-                          "bars": round((q.OutMsec - q.InMsec) / (60000 / d["bpm"]) / 4, 2) if loop else None})
+                          "bars": round((q.OutMsec - q.InMsec) / (60000 / d["bpm"]) / 4, 2) if loop and d["bpm"] else None})
         d["all_cues"].append({"ms": ms, "type": kind, "hotcue": _slot(q)})
     for _, d in out.values():
         d["cues"].sort(key=lambda c: c["ms"])
     return out
 
 
-def grids(db: str | None = None) -> dict[str, dict]:
+def grids(db: str | None = None, ungridded: bool = False) -> dict[str, dict]:
     """cues.grids() for Rekordbox: {file path: {bpm, grid_ms, cues, all_cues, marks}}, times on Traktor's
     timeline. grid_ms is the first downbeat of Rekordbox's grid, bpm its track BPM (a grid with several tempos is
-    read as one). Memory cues have hotcue -1."""
+    read as one). Memory cues have hotcue -1. With ungridded, also tracks with no grid yet (grid_ms None, nogrid)."""
     master = open_database(find_collection(db))
     try:
-        return {p: d for p, (_, d) in _grids(master).items()}
+        return {p: d for p, (_, d) in _grids(master, ungridded).items()}
     finally:
         close_database(master)
 
@@ -381,7 +396,7 @@ def write_cues(paths, plan_for, db: str | None = None, dry_run: bool = False, st
 
     def change(master) -> bool:
         changed = False
-        for p, (c, d) in _grids(master).items():
+        for p, (c, d) in _grids(master, ungridded=True).items():
             if p not in want:
                 continue
             got = plan_for(p, d)
@@ -414,7 +429,7 @@ def write_cues(paths, plan_for, db: str | None = None, dry_run: bool = False, st
                     ID=str(master.generate_unused_id(models.DjmdCue)), ContentID=c.ID, ContentUUID=c.UUID,
                     UUID=str(uuid.uuid4()), InMsec=in_ms, OutMsec=in_ms + round(a["len_ms"]) if loop else -1,
                     Kind=HOT_CUE_KINDS[slot] if slot >= 0 else 0, Comment=a["name"] or "", Color=-1,
-                    ColorTableIndex=0, ActiveLoop=0, BeatLoopSize=-1, CueMicrosec=in_ms * 1000,
+                    ColorTableIndex=CUE_COLOR_LOOP if loop else CUE_COLOR_POINT if slot >= 0 else 0, ActiveLoop=0, BeatLoopSize=-1, CueMicrosec=in_ms * 1000,
                     InFrame=0, InMpegFrame=0, InMpegAbs=0, OutFrame=0, OutMpegFrame=0, OutMpegAbs=0))
                 master.flush()
             changed = changed or bool(moves or adds or renum or removes)
@@ -542,6 +557,9 @@ def undo(db: str | None = None, force: bool = False) -> dict:
             raise SystemExit(f"{path.name} has changed since Puppi3's Track Analyzer wrote it (Rekordbox saved plays, "
                              f"cues or edits). Restoring backup {latest.name} would lose those. Run again with --force "
                              "to restore anyway.")
+    anlz = latest / ANLZ_BACKUP  # beat grids written into ANLZ files (write_grids): put back with master.db
+    for name, orig in (json.loads((anlz / "files.json").read_text()).items() if (anlz / "files.json").is_file() else ()):
+        shutil.copy2(anlz / name, orig)
     for name in (DB_NAME, *SIDE_FILES):
         if (latest / name).is_file():
             shutil.copy2(latest / name, path.parent / name)
@@ -549,6 +567,176 @@ def undo(db: str | None = None, force: bool = False) -> dict:
             (path.parent / name).unlink()
     latest.rename(latest.with_name(latest.name + ".restored"))
     return {"restored_from": str(latest), "collection": str(path)}
+
+
+ANLZ_BACKUP = "anlz"  # in a master.db backup: the ANLZ files write_grids changed, and files.json {copy: original}
+
+
+def _grid_entries(t0: float, bpm: float, length_s: float) -> list[dict]:
+    """PQTZ beats for one steady tempo: beat 1 at t0 (seconds on Rekordbox's timeline), from the first beat at or
+    after the start to the end of the track."""
+    from math import ceil
+
+    beat = 60 / bpm
+    k = ceil(-t0 / beat - 1e-9)
+    out = []
+    while (t := t0 + k * beat) <= length_s:
+        out.append({"beat": k % 4 + 1, "tempo": round(bpm * 100), "time": round(t * 1000)})
+        k += 1
+    return out
+
+
+def _same_grid(rb: dict, tk: dict) -> bool:
+    """Rekordbox's grid (one tempo) is Traktor's: same BPM, and beat 1 lands within 1 ms of Traktor's (any bar)."""
+    if abs(rb["bpm"] - tk["bpm"]) > 0.005:
+        return False
+    bar = 4 * 60000 / tk["bpm"]
+    d = (rb["grid_ms"] - tk["grid_ms"]) % bar
+    return min(d, bar - d) < 1
+
+
+def write_grids(tk: dict[str, dict], db: str | None = None, dry_run: bool = False, stats: dict | None = None) -> dict:
+    """Give Rekordbox Traktor's beat grids: tk = {path: {bpm, grid_ms}} (Traktor's timeline). Only for tracks
+    Rekordbox has analysed (it has the ANLZ files): their PQTZ grid is rewritten as one steady tempo with beat 1
+    on Traktor's grid marker, djmdContent.BPM set to match, and the extended PQT2 grid (.EXT) taken out so the two
+    can't disagree (Rekordbox makes it again when it analyses or exports). The ANLZ files go into the master.db
+    backup first, so undo puts both back. A track with no ANLZ files yet is listed, not made up."""
+    stats = {} if stats is None else stats
+    stats.update(tracks=0, not_analysed=[], changes=[])
+    files: list[tuple[Path, bytes]] = []
+
+    def change(master) -> bool:
+        have = _grids(master, ungridded=True)
+        for p, t in tk.items():
+            hit = have.get(p)
+            if hit is None or not t.get("bpm") or t.get("grid_ms") is None:
+                continue
+            c, d = hit
+            if not d.get("nogrid") and _same_grid(d, t):
+                continue
+            got = _anlz_grid(master, c)
+            if got is None:
+                stats["not_analysed"].append(Path(p).name)
+                continue
+            _set_grid(got, (t["grid_ms"] - d["shift_ms"]) / 1000, t["bpm"], c.Length or 0, files)
+            c.BPM = round(t["bpm"] * 100)
+            stats["tracks"] += 1
+            stats["changes"].append(f"{Path(p).name}: {d['bpm']:g} → {t['bpm']:g} BPM" if d.get("bpm") and abs(d["bpm"] - t["bpm"]) > 0.005
+                                     else f"{Path(p).name}: beat 1 moved to Traktor's")
+        return bool(files)
+
+    out = _write(db, dry_run, change, stats, "the beat grids")
+    if out["not_analysed"]:
+        out["changes"].append(f"{len(out['not_analysed'])} track(s) not analysed in Rekordbox yet (analyse them there, "
+                              f"then sync again): " + ", ".join(out["not_analysed"][:5]))
+    if not dry_run:
+        _save_anlz(out, files)
+    return out
+
+
+def _anlz_grid(master, c):
+    """(.DAT path, parsed file, its PQTZ tag) for an analysed track, else None."""
+    from pyrekordbox.anlz import AnlzFile
+
+    try:  # pyrekordbox raises when the ANLZ folder isn't there
+        dat = Path(master.get_anlz_path(c, "DAT") or "") if c.AnalysisDataPath else None
+        a = AnlzFile.parse_file(dat) if dat and dat.is_file() else None
+        q = a.get_tag("PQTZ") if a is not None and "PQTZ" in a.keys() else None
+    except Exception:
+        return None
+    return None if q is None else (dat, a, q)
+
+
+def _set_grid(got, t0: float, bpm: float, length_s: float, files: list) -> list[dict]:
+    """Queue the .DAT with a steady grid (beat 1 at t0 s, Rekordbox's timeline) and the .EXT without its PQT2."""
+    from pyrekordbox.anlz import AnlzFile
+
+    dat, a, q = got
+    q.content.entries = _grid_entries(t0, bpm, length_s)
+    q.content.entry_count = len(q.content.entries)
+    files.append((dat, a.build()))
+    ext = dat.with_suffix(".EXT")
+    if ext.is_file():
+        e = AnlzFile.parse_file(ext)
+        if "PQT2" in e.keys():
+            e.tags = [x for x in e.tags if x.type != "PQT2"]
+            files.append((ext, e.build()))
+    return q.content.entries
+
+
+def _save_anlz(out: dict, files: list) -> None:
+    """After a committed write: copy the ANLZ files into its master.db backup (undo restores them), then write them."""
+    if out.get("backup"):
+        keep = Path(out["backup"]) / ANLZ_BACKUP
+        keep.mkdir()
+        names = {}
+        for i, (f, data) in enumerate(files):
+            names[f"{i}{f.suffix}"] = str(f)
+            shutil.copy2(f, keep / f"{i}{f.suffix}")
+        (keep / "files.json").write_text(json.dumps(names, indent=1))
+        for f, data in files:
+            f.write_bytes(data)
+
+
+def _tempos(q) -> set[int]:
+    return {int(e.tempo) for e in q.content.entries}
+
+
+def shift_grids(todo: dict[str, dict], same, db: str | None = None, dry_run: bool = False) -> dict:
+    """The grid fix for Rekordbox: todo = {path: approved plan {bpm, grid_ms, shift_ms}} (Traktor's timeline).
+    Each track whose grid is still the approved one (same(plan, bpm, grid_ms)) gets its PQTZ grid moved by the
+    shift (one steady tempo, so a grid with tempo changes is left alone and listed) and its hot cues, memory cues
+    and loops moved with it in master.db. Returns stats with done = {path: (shift, bpm, new grid_ms)}."""
+    stats = {"tracks": 0, "cues_moved": 0, "skipped": [], "tempo_changes": [], "changes": [], "done": {}}
+    files: list[tuple[Path, bytes]] = []
+
+    def change(master) -> bool:
+        have = _grids(master)
+        for p, plan in todo.items():
+            name, hit = Path(p).name, have.get(p)
+            if hit is None:
+                stats["skipped"].append(f"{name}: not in Rekordbox's collection with a beat grid")
+                continue
+            c, d = hit
+            if not same(plan, d["bpm"], d["grid_ms"]):
+                stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
+                continue
+            got = _anlz_grid(master, c)
+            if got is None:
+                stats["skipped"].append(f"{name}: no Rekordbox analysis file to write the grid into")
+                continue
+            if len(_tempos(got[2])) > 1:
+                stats["tempo_changes"].append(name)
+                stats["skipped"].append(f"{name}: its Rekordbox grid has tempo changes; fix it in Rekordbox")
+                continue
+            shift, bar = round(plan["shift_ms"]), 4 * 60000 / d["bpm"]  # PQTZ and cue times are whole ms
+            rows = list(master.get_cue(ContentID=c.ID))
+            if any(q.InMsec is not None and q.InMsec + shift < 0 for q in rows):
+                stats["skipped"].append(f"{name}: a cue would move before the start")
+                continue
+            t0 = round(d["grid_ms"] - d["shift_ms"]) + shift
+            while t0 < 0:
+                t0 += bar  # the same grid, beat 1 a bar (or more) later
+            t0 = round(t0)
+            beats = _set_grid(got, t0 / 1000, d["bpm"], c.Length or 0, files)
+            new_grid = next((e["time"] for e in beats if e["beat"] == 1), t0) + d["shift_ms"]  # as the check reads it
+            for q in rows:
+                if q.InMsec is None:
+                    continue
+                q.InMsec = round(q.InMsec + shift)
+                q.CueMicrosec = q.InMsec * 1000
+                if q.OutMsec is not None and q.OutMsec > 0:
+                    q.OutMsec = round(q.OutMsec + shift)
+            stats["tracks"] += 1
+            stats["cues_moved"] += len(rows)
+            stats["done"][p] = (shift, d["bpm"], new_grid)
+            stats["changes"].append(f"{name}: grid {shift:+.1f} ms" + (f", with {len(rows)} cues/loops" if rows else ""))
+        return bool(files)
+
+    out = _write(db, dry_run, change, stats, "the grid fixes")
+    if not dry_run:
+        _save_anlz(out, files)
+    return out
 
 
 def latest_backup(db: str | None = None) -> str | None:
@@ -742,7 +930,7 @@ def set_colors(changes: dict[str, tuple[int, int]], db: str | None = None, dry_r
             c.ColorID = str(OUR_TO_RB[want])
             stats["colours_changed"] += 1
             changed.append(p)
-            examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1]} → {analysis.COLOR_NAMES[want - 1]}")
+            examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1] if expect else '(none)'} → {analysis.COLOR_NAMES[want - 1]}")
         return changed
 
     out = _write(db, dry_run, change, stats, "the colours")
@@ -750,6 +938,35 @@ def set_colors(changes: dict[str, tuple[int, int]], db: str | None = None, dry_r
     out["changes"] = examples
     if out.get("changed") and not dry_run:
         collection.accept_guesses(changed)
+    return out
+
+
+def set_genres(changes: dict[str, tuple[str | None, str]], db: str | None = None, dry_run: bool = False) -> dict:
+    """traktor.set_genres for Rekordbox: {path: (genre it must have now or None, new genre)}."""
+    stats = {"genres_changed": 0, "skipped_changed_since": 0}
+    examples, done = [], set()
+
+    def change(master):
+        made: dict = {}
+        n = 0
+        for p, c in _content_by_path(master).items():
+            if p not in changes:
+                continue
+            expect, want = changes[p]
+            done.add(p)
+            cur = ((c.Genre.Name if c.Genre is not None else "") or "").strip() or None
+            if cur != expect:
+                stats["skipped_changed_since"] += 1
+                continue
+            c.Genre = _genre_row(master, want, made)
+            n += 1
+            examples.append(f"{Path(p).name}: {expect or '(none)'} → {want}")
+        stats["genres_changed"] = n
+        return n
+
+    out = _write(db, dry_run, change, stats, "the genres")
+    out["not_in_collection"] = len(changes) - len(done)
+    out["changes"] = examples
     return out
 
 
@@ -972,3 +1189,41 @@ def tempo_unload(tracks: dict[str, dict], db: str | None = None, dry_run: bool =
     out = _write(db, dry_run, change, stats, "switching back from the tempo view")
     out["kept"] = kept
     return out
+
+
+def sync_tracks(db: str | None = None, dry_run: bool = False, tracks: list[dict] | None = None,
+                relink: bool = True) -> dict:
+    """Relink tracks whose file moved (FolderPath; the ANLZ files' own path tag is left as it is, so nothing outside
+    master.db changes and the backup covers it all) and add analysed tracks Rekordbox doesn't list (trackfiles.plan).
+    Added tracks get the title only; Rekordbox reads the rest and analyses them when it loads them."""
+    from . import trackfiles
+
+    rows = read(db)
+    live = _live(rows)
+    present = {trackfiles.nfc(p) for p, _ in live.values()}
+    missing = [(t["id"], os.path.basename(norm_path(t["path"])), t.get("size")) for t in rows["tracks"]
+               if t["id"] not in live and t["path"]]
+    p = trackfiles.plan(present, missing if relink else [], tracks)
+    if not p["moves"] and not p["adds"]:
+        raise SystemExit("every analysed track is in Rekordbox and no moved files were found")
+    old = {t["id"]: t["path"] for t in rows["tracks"]}
+    stats = trackfiles.stats(p, lambda k: old.get(k, k))
+
+    def change(master) -> bool:
+        for cid, new in p["moves"].items():
+            # as pyrekordbox's update_content_path, without it reading ANLZ files (missing ones raise)
+            c, new = master.get_content(ID=cid), Path(new).as_posix()
+            if c.OrgFolderPath and c.OrgFolderPath == c.FolderPath:
+                c.OrgFolderPath = new
+            c.FolderPath, c.FileNameL = new, new.rsplit("/", 1)[-1]
+        gen = master.generate_unused_id  # new IDs as strings, like the loaded ones: SQLAlchemy can't sort a mix
+        master.generate_unused_id = lambda *a, **k: str(gen(*a, **k))
+        for t in p["adds"]:
+            title = t.get("title") or os.path.splitext(os.path.basename(t["path"]))[0]
+            try:
+                master.add_content(t["path"], Title=title)
+            except ValueError as err:  # a file type Rekordbox doesn't take
+                stats.setdefault("not_added", []).append(f"{t['path']}: {err}")
+        return True
+
+    return _write(db, dry_run, change, stats, "adding and relinking tracks")

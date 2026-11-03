@@ -47,6 +47,7 @@ TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", 
 def libraries() -> dict:
     """The normal library plus every tempo view in data/, and which view Traktor (and Lexicon, when you have it) has loaded."""
     from . import lexicon, tempo
+    from . import library as dj
 
     libs = [{"id": "native", "label": "Normal (each track at its own tempo)", "bpm": None}]
     for d in sorted(HOME.glob("at-*")):
@@ -59,7 +60,7 @@ def libraries() -> dict:
     st, lx = tempo.loaded(), lexicon.loaded()
     return {"libraries": libs, "loaded_view": st["bpm"] if st else None, "status": tempo.status(),
             "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
-            "home": str(HOME), "colours": COLOR_NAMES}
+            "home": str(HOME), "colours": COLOR_NAMES, "app": dj.app(), "app_name": dj.app_name()}
 
 
 @contextmanager
@@ -464,14 +465,14 @@ def write_cues(dry_run: bool) -> dict:
     with library("native"):
         before = cues.plans()
         if not before:
-            return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
+            return {"changed": False, "nothing_approved": True, "traktor_running": jobs.library.running_state() is True}
         try:
             out = cues.apply(dry_run=dry_run)
         except traktor.ConfirmClosed:  # the page asks and sends it again
             raise
         except SystemExit as e:
             raise ValueError(str(e)) from None
-    out["traktor_running"] = traktor.traktor_running()
+    out["traktor_running"] = jobs.library.running_state() is True  # the chosen DJ app (name kept for the page)
     out["approved_tracks"] = len(before)
     if not dry_run and out.get("changed"):
         WRITTEN_PLANS.write_text(json.dumps({"backup": out["backup"], "plans": before}))
@@ -1248,14 +1249,14 @@ def write_grids(dry_run: bool) -> dict:
     if jobs.busy():
         raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
     if not gridfix.plans():
-        return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
+        return {"changed": False, "nothing_approved": True, "traktor_running": jobs.library.running_state() is True}
     try:
         out = gridfix.apply(dry_run=dry_run)
     except traktor.ConfirmClosed:  # the page asks and sends it again
         raise
     except SystemExit as e:
         raise ValueError(str(e)) from None
-    out["traktor_running"] = traktor.traktor_running()
+    out["traktor_running"] = jobs.library.running_state() is True  # the chosen DJ app (name kept for the page)
     if not dry_run and out.get("changed"):
         _grids["mtime"] = None
         _wave_src.clear()
@@ -1808,6 +1809,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/app-running", respond(lambda q: {"running": jobs.library.running_state() is True})),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/dj-app", post(set_dj_app), methods=["POST"]),
         Route("/api/rekordbox/database", post(set_rekordbox_database), methods=["POST"]),
