@@ -16,7 +16,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import analysis, collection, traktor
+from . import analysis, collection, library, traktor
 from .analysis import HOME, log
 
 BREW = analysis.find_tool("brew")
@@ -156,6 +156,10 @@ ACTIONS = {
 UNDO = {"update": "update_undo", "tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
         "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native"}
 NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
+# These write to whichever DJ app is chosen on the Setup tab (Traktor or Rekordbox); the rest of TOUCHES_TRAKTOR
+# (the tempo view) is Traktor's only.
+EITHER_APP = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+              "colors_write_marked"}
 TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
                    "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
@@ -182,12 +186,22 @@ def busy() -> bool:
     return bool(_job and _job["running"] or _queue)
 
 
+def app_label(action: str, label: str) -> str:
+    """A job's name with the chosen DJ app in it ("Hype into Rekordbox's Comment")."""
+    if action in EITHER_APP and library.app() != "traktor":
+        return label.replace("Traktor", library.app_name()).replace("Smartlists", "smart playlists")
+    return label
+
+
 def start(action: str, options: dict | None = None, dry_run: bool = False) -> dict:
     """Run a job. analyze_mix takes several recordings (`files`): the first runs now, the rest one after another;
     a mix asked for while another is analysed waits its turn too."""
     if action not in ACTIONS:
         raise ValueError(f"unknown action {action!r}")
     label, build, writes = ACTIONS[action]
+    if library.app() != "traktor" and action in TOUCHES_TRAKTOR and action not in EITHER_APP:
+        raise ValueError(f"{label} works on Traktor only: choose Traktor as your DJ app on the Setup tab.")
+    label = app_label(action, label)
     options = options or {}
     many = action == "analyze_mix" and isinstance(options.get("files"), list)
     runs = [build({**options, "file": f}) for f in options["files"]] if many else [build(options)]
@@ -221,8 +235,8 @@ def _launch(action: str, label: str, args: list[str], dry_run: bool = False) -> 
     cmd = _command(args)
     env = {**os.environ, "PYTHONUNBUFFERED": "1", "HOMEBREW_NO_AUTO_UPDATE": "1",
            "PYTHONUTF8": "1"}  # Windows: the job's output and files in UTF-8, as read here (not the ANSI code page)
-    if action in TOUCHES_TRAKTOR and not dry_run and traktor.running_state() is None:
-        traktor.check_closed()  # ask the page now, not the job later
+    if action in TOUCHES_TRAKTOR and not dry_run and library.running_state() is None:
+        library.check_closed()  # ask the page now, not the job later
         env[traktor.CLOSED_ENV] = "1"
     _seq += 1
     _job = {"id": _seq, "action": action, "label": label, "command": command_line(args), "dry_run": dry_run,
@@ -344,7 +358,7 @@ def _wait(job: dict, proc: subprocess.Popen, out: list[str], readers: list[threa
     if rc and not job["error"]:
         job["error"] = "Stopped." if job["stopping"] else next(
             (ln for ln in reversed(job["lines"]) if ln.strip()), f"Ended with exit code {rc}")
-    job.update(returncode=rc, ended=time.time(), running=False, live=None, traktor_running=traktor.traktor_running())
+    job.update(returncode=rc, ended=time.time(), running=False, live=None, traktor_running=library.running_state() is True)
     log(f"Job ended ({'ok' if not rc else job['error']}): {job['command']}")
     _ended.append({k: job[k] for k in ("id", "action", "label", "command", "dry_run", "writes", "undo", "returncode",
                                        "error", "traktor_running")} | {"running": False, "elapsed": job["ended"] - job["started"]})
@@ -475,14 +489,41 @@ def _changed(path: str, size, mtime) -> bool:
     return (st.st_size, int(st.st_mtime)) != (size, mtime)
 
 
+_rb_cache: dict = {"key": None, "data": None}
+
+
+def dj_app_status() -> dict:
+    """The Setup tab's DJ app (Traktor or Rekordbox) and, for Rekordbox, its database: found, chosen, track counts."""
+    from . import library, rekordbox
+
+    out: dict = {"app": library.app(), "name": library.app_name(), "apps": library.APPS}
+    if out["app"] != "rekordbox":
+        return out
+    chosen = rekordbox.chosen_database()
+    rb: dict = {"chosen": str(chosen) if chosen else None}
+    try:
+        path = rekordbox.find_collection(None)
+        key = (str(path), path.stat().st_mtime)
+        if _rb_cache["key"] != key:
+            _, files, missing = rekordbox.collection_tracks(str(path))
+            _rb_cache.update(key=key, data={"tracks": len(files), "missing": missing})
+        rb.update(database=str(path), **_rb_cache["data"])
+    except SystemExit as e:
+        rb.update(database=None, why=str(e.code or e))
+    except (OSError, ValueError, ImportError) as e:
+        rb.update(database=None, why=f"Couldn't read Rekordbox's database: {e}")
+    out["rekordbox"] = rb
+    return out
+
+
 def setup_status() -> dict:
     """Each step from a fresh install to everything in Traktor: done or not, and what it needs."""
     import sqlite3
 
     from . import cues, tempo
 
-    st: dict = {"home": str(HOME), "busy": busy(), "brew": bool(BREW), "traktor_running": traktor.traktor_running(),
-                "actions": {k: v[0] for k, v in ACTIONS.items()}, "undo": UNDO}
+    st: dict = {"home": str(HOME), "busy": busy(), "brew": bool(BREW), "traktor_running": library.running_state() is True,
+                "actions": {k: app_label(k, v[0]) for k, v in ACTIONS.items()}, "undo": UNDO}
     st["models"] = {"ready": analysis.models_present(), "maest": analysis.maest_present(),
                     "folder": str(analysis.MODELS_DIR)}
     st["tools"] = {"ffmpeg": bool(_tool("ffmpeg")), "rubberband": bool(_tool("rubberband"))}
@@ -509,6 +550,7 @@ def setup_status() -> dict:
         tk_files = set()
     chosen = traktor.chosen_collection()
     st["traktor"]["chosen"] = str(chosen) if chosen else None  # picked on this tab; None = found automatically
+    st["dj_app"] = dj_app_status()
     scanned, hyped, errors, tagged, predicted, changed = set(), 0, 0, 0, 0, 0
     if collection.NATIVE_DB.exists():
         with sqlite3.connect(collection.NATIVE_DB) as con:
@@ -552,10 +594,15 @@ def setup_status() -> dict:
             log(f"Beat grid check status skipped: {e}")
     st["tags"] = {"tagged_files": tagged}
     backups = []
-    if st["traktor"].get("collection"):
+    if library.app() == "rekordbox":
+        from . import rekordbox
+
+        st["traktor_backup"] = rekordbox.latest_backup()
+    elif st["traktor"].get("collection"):
         backups = sorted(Path(st["traktor"]["collection"]).parent.glob(traktor.BACKUP_PREFIX + "*"))
         backups = [b for b in backups if not b.name.endswith((".restored", traktor.WRITTEN_SUFFIX))]
-    st["traktor_backup"] = backups[-1].name if backups else None
+    if library.app() != "rekordbox":
+        st["traktor_backup"] = backups[-1].name if backups else None
     loaded = tempo.loaded()
     st["tempo"] = {"views": [float(d.name[3:]) for d in sorted(HOME.glob("at-*")) if (d / "collection.db").exists()
                              and re.fullmatch(r"at-[\d.]+", d.name)],

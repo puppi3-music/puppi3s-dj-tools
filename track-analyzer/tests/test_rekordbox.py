@@ -2,6 +2,8 @@
 switch (library.py). No pyrekordbox or encrypted database needed."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from dj_track_analyzer import analysis, library, rekordbox, traktor
@@ -95,3 +97,32 @@ def test_app_switch():
             library.choose_app("serato")
     finally:
         analysis.save_app_setting(library.APP_SETTING, None)
+
+
+def test_pyrekordbox_installed():
+    from pyrekordbox import MasterDatabase  # noqa: F401  (and its SQLCipher, on every CI platform)
+    import sqlcipher3  # noqa: F401
+
+
+def test_page_switches_app_and_database(tmp_path, monkeypatch):
+    from starlette.testclient import TestClient
+
+    from dj_track_analyzer import jobs, web
+
+    client = TestClient(web.build_app([analysis.HOME / "logs"]), base_url="http://127.0.0.1:8766")
+    try:
+        assert client.post("/api/dj-app", json={"app": "serato"}).status_code != 200
+        assert client.post("/api/dj-app", json={"app": "rekordbox"}).json() == {"app": "rekordbox"}
+        (tmp_path / "master.db").write_bytes(b"")
+        r = client.post("/api/rekordbox/database", json={"path": str(tmp_path)})
+        assert r.json() == {"database": str((tmp_path / "master.db").resolve())}
+        monkeypatch.setattr(rekordbox, "collection_tracks", lambda db=None, rows=None: (Path(db), [Path("a.flac")], 2))
+        st = jobs.dj_app_status()
+        assert st["app"] == "rekordbox" and st["rekordbox"]["tracks"] == 1 and st["rekordbox"]["missing"] == 2
+        assert library._path("x/collection.nml") is None  # --nml is Traktor's: Rekordbox uses its own database
+        assert client.post("/api/rekordbox/database", json={"auto": True}).status_code == 200
+        assert rekordbox.chosen_database() is None
+    finally:
+        analysis.save_app_setting(library.APP_SETTING, None)
+        analysis.save_app_setting(rekordbox.DB_SETTING, None)
+    assert library._path("x/collection.nml") == "x/collection.nml" and jobs.dj_app_status()["app"] == "traktor"
