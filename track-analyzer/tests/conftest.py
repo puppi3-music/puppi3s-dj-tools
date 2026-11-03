@@ -204,9 +204,11 @@ def fake_traktor(tmp_path):
     t.stop()
 
 
-def make_master_db(folder: Path, files: list[Path], colours: dict[int, int] | None = None) -> Path:
+def make_master_db(folder: Path, files: list[Path], colours: dict[int, int] | None = None, bpm: int | None = None,
+                   cues: list[dict] | None = None) -> Path:
     """A made-up Rekordbox master.db (SQLCipher, Rekordbox's own key) with one djmdContent row per file, built from
-    pyrekordbox's table definitions. colours: {row index: djmdColor ID}. Columns Rekordbox fills that these tests
+    pyrekordbox's table definitions. colours: {row index: djmdColor ID}; bpm: djmdContent.BPM (× 100) for every
+    row; cues: djmdCue rows as column values (ContentID = row index + 1). Columns Rekordbox fills that these tests
     don't need are left empty, so the schema is built with them nullable."""
     import datetime
 
@@ -240,7 +242,10 @@ def make_master_db(folder: Path, files: list[Path], colours: dict[int, int] | No
         s.add(row(models.AgentRegistry, registry_id="localUpdateCount", int_1=100))
         for i, f in enumerate(files):
             s.add(row(models.DjmdContent, ID=str(i + 1), UUID=f"uuid-{i + 1}", FolderPath=str(f), Title=f.stem,
-                      Commnt="my note" if i == 0 else "", ColorID=str((colours or {}).get(i, 0)), rb_local_deleted=0))
+                      Commnt="my note" if i == 0 else "", ColorID=str((colours or {}).get(i, 0)), rb_local_deleted=0, BPM=bpm,
+                      SampleRate=44100))
+        for k, q in enumerate(cues or []):
+            s.add(row(models.DjmdCue, ID=str(900 + k), UUID=f"cue-{k}", rb_local_deleted=0, **q))
         s.commit()
     engine.dispose()
     return path

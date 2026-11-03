@@ -293,6 +293,127 @@ def cues(db: str | None = None, rows: dict | None = None) -> dict[str, list[dict
     return out
 
 
+# ---- beat grids and cues in Traktor's shape (cues.py, gridfix.py) ---------------------------------------------
+
+MP3_FRAME = 1152  # samples: for MP3s Rekordbox's timeline runs about one frame behind Traktor's (notes/rekordbox.md)
+
+
+def shift_ms(path: str, sample_rate) -> float:
+    """Milliseconds to add to a Rekordbox time to get Traktor's (the timeline cues.py measures on)."""
+    return MP3_FRAME * 1000 / (sample_rate or 44100) if path.lower().endswith(".mp3") else 0.0
+
+
+def first_downbeat(master, content) -> float | None:
+    """Seconds of the first beat 1 in the track's ANLZ grid (PQTZ in the .DAT file); None when there's none."""
+    try:
+        anlz = master.read_anlz_file(content, "DAT")
+        beats, _, times = anlz.get("PQTZ") if anlz is not None else ((), (), ())
+    except Exception:
+        return None
+    return next((float(t) for b, t in zip(beats, times) if int(b) == 1), None)
+
+
+def _slot(q) -> int:
+    return HOT_CUE_KINDS.index(q.Kind) if q.Kind in HOT_CUE_KINDS else -1
+
+
+def _is_loop(q) -> bool:
+    return q.OutMsec is not None and q.InMsec is not None and q.OutMsec > q.InMsec
+
+
+def _grids(master) -> dict[str, tuple[object, dict]]:
+    out: dict[str, tuple[object, dict]] = {}
+    by_id = {}
+    for c in master.get_content():
+        if getattr(c, "rb_local_deleted", 0) or not c.FolderPath or not c.BPM or c.BPM <= 0:
+            continue
+        t0 = first_downbeat(master, c)
+        if t0 is None:
+            continue
+        p = norm_path(c.FolderPath)
+        sh = shift_ms(p, c.SampleRate)
+        d = {"bpm": c.BPM / 100, "grid_ms": t0 * 1000 + sh, "cues": [], "all_cues": [], "marks": [], "shift_ms": sh}
+        out[p] = by_id[str(c.ID)] = (c, d)
+    for q in master.get_cue():
+        hit = by_id.get(str(q.ContentID))
+        if hit is None or q.InMsec is None:
+            continue
+        d = hit[1]
+        ms, loop = q.InMsec + d["shift_ms"], _is_loop(q)
+        kind = "loop" if loop else "cue"
+        d["cues"].append({"ms": ms, "type": kind, "hotcue": _slot(q), "name": q.Comment or None,
+                          "bars": round((q.OutMsec - q.InMsec) / (60000 / d["bpm"]) / 4, 2) if loop else None})
+        d["all_cues"].append({"ms": ms, "type": kind, "hotcue": _slot(q)})
+    for _, d in out.values():
+        d["cues"].sort(key=lambda c: c["ms"])
+    return out
+
+
+def grids(db: str | None = None) -> dict[str, dict]:
+    """cues.grids() for Rekordbox: {file path: {bpm, grid_ms, cues, all_cues, marks}}, times on Traktor's
+    timeline. grid_ms is the first downbeat of Rekordbox's grid, bpm its track BPM (a grid with several tempos is
+    read as one). Memory cues have hotcue -1."""
+    master = open_database(find_collection(db))
+    try:
+        return {p: d for p, (_, d) in _grids(master).items()}
+    finally:
+        master.close()
+
+
+def write_cues(paths, plan_for, db: str | None = None, dry_run: bool = False, stats: dict | None = None) -> dict:
+    """Apply approved cue plans as djmdCue rows. plan_for(path, grid entry) returns (moves, adds, renumbers,
+    removes) as cues.resolve gives them (Traktor time, slots 0-7), or None to leave the track alone."""
+    import uuid
+
+    from pyrekordbox.masterdb import models
+
+    stats = {} if stats is None else stats
+    want = set(paths)
+
+    def change(master) -> bool:
+        changed = False
+        for p, (c, d) in _grids(master).items():
+            if p not in want:
+                continue
+            got = plan_for(p, d)
+            if not got:
+                continue
+            moves, adds, renum, removes = got
+            sh, rows = d["shift_ms"], list(master.get_cue(ContentID=c.ID))
+
+            def find(slot, ms, kind=None):
+                return next(q for q in rows if _slot(q) == slot and abs(q.InMsec + sh - ms) < 1
+                            and (kind is None or ("loop" if _is_loop(q) else "cue") == kind))
+
+            for r in removes:
+                q = find(r["hotcue"], r["ms"], r["type"])
+                rows.remove(q)
+                master.delete(q)
+            for mv in moves:
+                q = find(mv["hotcue"], mv["from_ms"])
+                length = q.OutMsec - q.InMsec if _is_loop(q) else None
+                q.InMsec = round(mv["to_ms"] - sh)
+                q.CueMicrosec = q.InMsec * 1000
+                if length is not None:
+                    q.OutMsec = q.InMsec + length
+            for r, q in [(r, find(r["hotcue"], r["ms"])) for r in renum]:  # found all first: slots swap
+                q.Kind = HOT_CUE_KINDS[r["to"]] if r["to"] >= 0 else 0
+            for a, slot in adds:
+                in_ms = round(a["ms"] - sh)
+                loop = a["type"] == "loop" and a["len_ms"] > 0
+                master.add(models.DjmdCue.create(
+                    ID=str(master.generate_unused_id(models.DjmdCue)), ContentID=c.ID, ContentUUID=c.UUID,
+                    UUID=str(uuid.uuid4()), InMsec=in_ms, OutMsec=in_ms + round(a["len_ms"]) if loop else -1,
+                    Kind=HOT_CUE_KINDS[slot] if slot >= 0 else 0, Comment=a["name"] or "", Color=-1,
+                    ColorTableIndex=0, ActiveLoop=0, BeatLoopSize=-1, CueMicrosec=in_ms * 1000,
+                    InFrame=0, InMpegFrame=0, InMpegAbs=0, OutFrame=0, OutMpegFrame=0, OutMpegAbs=0))
+                master.flush()
+            changed = changed or bool(moves or adds or renum or removes)
+        return changed
+
+    return _write(db, dry_run, change, stats, "the cues")
+
+
 def colors(db: str | None = None, rows: dict | None = None) -> tuple[Path, dict[str, int], int]:
     """Like colors.read_traktor_colors: (database, {file path: colour 1-7 on our scale}, coloured tracks)."""
     path = find_collection(db) if rows is None else Path(db or "")
