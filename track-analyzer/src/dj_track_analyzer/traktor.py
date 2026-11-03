@@ -1176,13 +1176,13 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
         done.add(p)
         info_m = re.search(r"<INFO\b[^>]*>", entry)
         cur = attrs(info_m.group(0)).get("COLOR") if info_m else None
-        if cur != str(expect):
+        if (cur if cur not in ("", "0") else None) != (str(expect) if expect else None):  # expect None: uncoloured
             stats["skipped_changed_since"] += 1
             return entry
         entry, _old = _set_info_attr(entry, "COLOR", str(want))
         stats["colours_changed"] += 1
         changed.append(p)
-        examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1]} → {analysis.COLOR_NAMES[want - 1]}")
+        examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1] if expect else '(none)'} → {analysis.COLOR_NAMES[want - 1]}")
         return entry
 
     c0 = text.find("<COLLECTION")
@@ -1196,6 +1196,46 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
     if out.get("changed") and not dry_run:
         collection.accept_guesses(changed)  # you said yes to these: yours now, even where the app had guessed
     return out
+
+
+def set_genres(changes: dict[str, tuple[str | None, str]], nml: str | None = None, dry_run: bool = False) -> dict:
+    """INFO GENRE of specific tracks: {path: (genre it must have now, or None for none; new genre)}. A track whose
+    genre changed since (not the expected one) is left alone, as set_colors."""
+    path = find_collection(nml)
+    refuse_if_tempo_view(path)
+    check_closed(dry_run)
+    text = path.read_text(encoding="utf-8")
+    stats = {"collection": str(path), "genres_changed": 0, "skipped_changed_since": 0}
+    examples, done = [], set()
+
+    def fix_entry(m: re.Match) -> str:
+        entry = m.group(0)
+        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc_m:
+            return entry
+        p = next((c for c in location_paths(attrs(loc_m.group(0))) if c in changes), None)
+        if not p:
+            return entry
+        expect, want = changes[p]
+        done.add(p)
+        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        cur = (attrs(info_m.group(0)).get("GENRE") or "").strip() or None if info_m else None
+        if cur != expect:
+            stats["skipped_changed_since"] += 1
+            return entry
+        entry, _old = _set_info_attr(entry, "GENRE", want)
+        stats["genres_changed"] += 1
+        examples.append(f"{Path(p).name}: {expect or '(none)'} → {want}")
+        return entry
+
+    c0 = text.find("<COLLECTION")
+    c1 = text.find("</COLLECTION>", c0)
+    if c0 == -1 or c1 == -1:
+        raise SystemExit(f"{path} doesn't look like a Traktor collection (no COLLECTION section).")
+    body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
+    stats["not_in_collection"] = len(changes) - len(done)
+    stats["changes"] = examples
+    return _save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
 
 
 def camelot_value(cam: str) -> int:

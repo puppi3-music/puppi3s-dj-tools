@@ -426,8 +426,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     from . import cues, library
 
     if library.app() == "rekordbox":
-        raise SystemExit("Fixing grids isn't available for Rekordbox yet: its grid lives in the ANLZ files, and "
-                         "rewriting those isn't tested. The check is read-only and works; move the grid in Rekordbox.")
+        return _apply_rekordbox(dry_run)
 
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
@@ -483,29 +482,51 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     stats["changes"] = examples
     out = traktor._save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
     if not dry_run and out.get("changed"):
-        with cues._plan_db() as con:  # remembered for an undo first, then your cue approvals moved along
-            before = {"backup": out["backup"], "plans": {p: todo[p] for p in done},
-                      "cue_plan": [list(r) for r in con.execute(f"SELECT * FROM cue_plan WHERE path IN ({','.join('?' * len(done))})", list(done))],
-                      "cue_ignore": [list(r) for r in con.execute(f"SELECT * FROM cue_ignore WHERE path IN ({','.join('?' * len(done))})", list(done))]}
-            (analysis.HOME / WRITTEN).write_text(json.dumps(before))
-            for p, (shift, bpm, new_grid) in done.items():
-                _shift_cue_rows(con, p, shift, bpm, new_grid)
-        with _plan_db() as con:
-            con.executemany("DELETE FROM grid_plan WHERE path=?", [(p,) for p in done])
-        from . import collection
-
-        collection.log_feedback("grid_written", [(p, {"bpm": todo[p]["bpm"], "grid_ms": todo[p]["grid_ms"], "shift_ms": shift})
-                                                 for p, (shift, _bpm, _g) in done.items()])
+        _after_write(out, todo, done)
         out["undo"] = "uv run dj-track-analyzer traktor --undo"
     return out
+
+
+def _apply_rekordbox(dry_run: bool) -> dict:
+    """apply() for Rekordbox: the ANLZ grid and master.db cues moved (rekordbox.shift_grids), backup + undo."""
+    from . import rekordbox
+
+    todo = plans()
+    if not todo:
+        raise SystemExit("Nothing approved yet: approve grid fixes in the web page (uv run dj-track-analyzer web).")
+    out = rekordbox.shift_grids(todo, same, dry_run=dry_run)
+    done = out.pop("done")
+    if not dry_run and out.get("changed"):
+        _after_write(out, todo, done)
+        out["undo"] = "uv run dj-track-analyzer sync --undo"
+    return out
+
+
+def _after_write(out: dict, todo: dict, done: dict) -> None:
+    """After a grid write: remember the approvals for an undo, move your cue approvals along, drop the plans."""
+    from . import cues
+
+    with cues._plan_db() as con:  # remembered for an undo first, then your cue approvals moved along
+        before = {"backup": out["backup"], "plans": {p: todo[p] for p in done},
+                  "cue_plan": [list(r) for r in con.execute(f"SELECT * FROM cue_plan WHERE path IN ({','.join('?' * len(done))})", list(done))],
+                  "cue_ignore": [list(r) for r in con.execute(f"SELECT * FROM cue_ignore WHERE path IN ({','.join('?' * len(done))})", list(done))]}
+        (analysis.HOME / WRITTEN).write_text(json.dumps(before))
+        for p, (shift, bpm, new_grid) in done.items():
+            _shift_cue_rows(con, p, shift, bpm, new_grid)
+    with _plan_db() as con:
+        con.executemany("DELETE FROM grid_plan WHERE path=?", [(p,) for p in done])
+    from . import collection
+
+    collection.log_feedback("grid_written", [(p, {"bpm": todo[p]["bpm"], "grid_ms": todo[p]["grid_ms"], "shift_ms": shift})
+                                             for p, (shift, _bpm, _g) in done.items()])
 
 
 def undo_write(nml: str | None = None) -> dict:
     """Put back the collection from before the last write and, if that was a grid write, its approvals and your
     cue approvals as they were."""
-    from . import cues
+    from . import cues, library, rekordbox
 
-    out = traktor.undo(nml)
+    out = rekordbox.undo() if library.app() == "rekordbox" else traktor.undo(nml)
     f = analysis.HOME / WRITTEN
     try:
         saved = json.loads(f.read_text())

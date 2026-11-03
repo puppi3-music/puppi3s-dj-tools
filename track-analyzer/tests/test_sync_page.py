@@ -36,3 +36,14 @@ def test_sync_labels_name_the_chosen_app(monkeypatch):
     monkeypatch.setattr(library, "app_name", lambda: "Rekordbox")
     assert jobs.app_label("sync", jobs.ACTIONS["sync"][0]) == "Sync everything into Rekordbox"
     assert jobs.app_label("sync_undo", jobs.ACTIONS["sync_undo"][0]) == "Undo the last sync to Rekordbox"
+
+
+def test_copy_jobs(monkeypatch):
+    assert jobs.ACTIONS["copy"][1]({"only": ["genres"]}) == ["sync", "--copy", "--json", "--only", "genres"]
+    assert jobs.ACTIONS["copy_undo"][1]({"force": True}) == ["sync", "--copy", "--undo", "--force"]
+    assert jobs.UNDO["copy"] == "copy_undo" and "copy_undo" in jobs.NO_DRY_RUN
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    assert jobs.app_label("copy", jobs.ACTIONS["copy"][0]) == "Copy Traktor into Rekordbox"
+    monkeypatch.setattr(library, "app", lambda: "traktor")
+    assert jobs.app_label("copy_undo", jobs.ACTIONS["copy_undo"][0]) == "Undo the last copy into Traktor"
+    assert jobs.app_label("copy", jobs.ACTIONS["copy"][0]) == "Copy Rekordbox into Traktor"
