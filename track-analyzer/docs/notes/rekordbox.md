@@ -62,7 +62,7 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
 - `cues apply` writes plans as djmdCue rows (new rows: generated ID, UUID, ContentUUID; frame/MPEG fields 0,
   Color -1), backup + undo as in stage 2. Whether Rekordbox 7 shows the new rows unchanged is for the user's first
   test on a copy.
-- `grids apply` refuses with Rekordbox (PQTZ rewriting untested); `grids check` works read-only.
+- `grids apply` was refused at first; it now rewrites PQTZ and moves the cues (see Checked later).
 
 ## Stage 4: sets, History, tempo view
 - `set --traktor` / `set --remove` and `crates` write plain playlists into "Sets (Track Analyzer)" /
@@ -83,15 +83,19 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
 - Real History rows: `--tracklist auto` picks the right session and places the tracks (a 12+ min Audacity recording
   with the start time typed on the page; recordings under 12 min are treated as tracks, by design).
 
-## Still open
+## Checked later
 - Windows paths and `grids apply` (PQTZ rewriting): checked by the user 2026-11-03.
+
+## Still open
+- Do synced loops show in Rekordbox's sampler ("All Samples")? If not, IDEAS stage B (sampler tree).
+- MP3 +1-frame cue offset: from a median, not checked per file.
 
 ## Stage 1b: what reads Rekordbox now
 - Setup tab, step 2: "DJ app: Traktor / Rekordbox" (`POST /api/dj-app`, saved as `dj_app`), and for Rekordbox its
   master.db (`POST /api/rekordbox/database`: Browse…, pasted path, or find automatically). `jobs.dj_app_status()`.
 - Through `library`: scan's DJ-app tracks (`--traktor`), the BPM/key comparison (`load_traktor_info`), learning
   genres from playlists or the Genre field (mygenres). A `--nml` path is Traktor's: with Rekordbox it's ignored.
-- Still Traktor only (stage 2+): every write, colours, cues, grids, tempo view, set plans, the job status counts.
+- (At 1b, writes, colours, cues, grids, tempo view and set plans were still Traktor only; stages 2–4 added them all.)
 - `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macos-14.
 
 ## Real-library check (2026-11-03, copy of the user's Rekordbox 7 master.db, 455 tracks)

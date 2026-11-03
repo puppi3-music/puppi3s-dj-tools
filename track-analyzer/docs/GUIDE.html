@@ -198,8 +198,8 @@ li > figure.shot { margin: 12px 0 4px; }
   <li><b>Undo</b> puts it back, as long as Traktor hasn't saved its collection since (it does when it quits).</li>
 </ol>
 <div class="cards">
-  <div class="card no"><b>Quit Traktor before writing</b><p>Traktor rewrites its collection when it closes, which would undo the change, so the page refuses to write while Traktor is open. Previews work either way, and the dialog offers <b>Check again</b> once you've quit.</p></div>
-  <div class="card yes"><b>Fine with Traktor open</b><p>Scanning, learning your colours and cues, checking beat grids, scanning a tempo view, and browsing every tab. They only read Traktor's files.</p></div>
+  <div class="card no"><b>Quit your DJ app before writing</b><p>Traktor or Rekordbox would overwrite or clash with the change, so the page refuses to write while the DJ app you picked on the Setup tab is open. Previews work either way, and the dialog offers <b>Check again</b> once you've quit.</p></div>
+  <div class="card yes"><b>Fine with your DJ app open</b><p>Scanning, learning your colours and cues, checking beat grids, scanning a tempo view, and browsing every tab. They only read its files.</p></div>
 </div>
 <p>Long steps (a scan, training) run in the background: a progress bar and the live log show on the Setup tab and in a bar at the top of every tab, so you can keep browsing. <b>Stop</b> is safe; a scan keeps what it has done and carries on from there next time.</p>
 
@@ -290,7 +290,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ol>
 
 <h3 id="grids">Beat grids that sit on the kicks</h3>
-<p>Cue suggestions, loops and samples all trust Traktor's beat grid. To check every grid once (about 3 minutes, later only new and changed ones), press <b>Check the beat grids</b> on the Setup tab. After that the button reads <b>Update beat-grids</b>, and is greyed out while no grid is new or changed.</p>
+<p>Cue suggestions, loops and samples all trust your DJ app's beat grid. To check every grid once (about 3 minutes, later only new and changed ones), press <b>Check the beat grids</b> on the Setup tab. After that the button reads <b>Update beat-grids</b>, and is greyed out while no grid is new or changed.</p>
 <ol>
   <li>In the Tracks tab, filter on <b>Grid off the kicks or drifting</b> and open a track. Its <b>Beat grid</b> section says how far the kick lands from the grid lines.</li>
   <li>Listen: <b>▶ Click on the grid now</b> and <b>▶ Click on the moved grid</b> loop a few bars with a click on each grid line. Adjust the amount if needed, then <b>Approve</b>, or <b>The grid is right</b> to stop it being proposed.</li>
@@ -327,7 +327,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>For genres the built-in ones don't have (Hyperpop, Afro House, Big Room, …) or your own way of splitting them.</p>
 <ol>
   <li>Gather 20–50 typical example tracks per genre, at least two genres: in a folder with one subfolder (or one playlist file) per genre (Finder aliases aren't followed: use copies or playlists), as Traktor playlists (one per genre, named after it), or as the Genre field in Traktor.</li>
-  <li>Setup tab, <b>Learn your genres</b>: under <b>Learn from</b>, pick <b>A folder</b> (<b>Browse…</b> to it, or paste its path), <b>Traktor playlists</b> (tick the playlists to learn, each one a genre named after it; a track in two of them is left out) or <b>Traktor's Genre field</b> (tick the genres to learn; tracks with several genres are left out, and genres with a built-in name are marked because this app may have written them). Then <b>Learn your genres</b>. It needs 30 scanned tracks first, because it also learns what the rest of your music sounds like: a track only gets one of your genres when it clearly sounds like it, and every other track keeps its built-in genre. So you don't have to train every genre you play.</li>
+  <li>Setup tab, <b>Learn your genres</b>: under <b>Learn from</b>, pick <b>A folder</b> (<b>Browse…</b> to it, or paste its path), <b>Genre tags in a folder</b> (each file's own genre tag is its genre; subfolders are searched too), <b>Traktor playlists</b> (tick the playlists to learn, each one a genre named after it; a track in two of them is left out) or <b>Traktor's Genre field</b> (tick the genres to learn; tracks with several genres are left out, and genres with a built-in name are marked because this app may have written them). Then <b>Learn your genres</b>. It needs 30 scanned tracks first, because it also learns what the rest of your music sounds like: a track only gets one of your genres when it clearly sounds like it, and every other track keeps its built-in genre. So you don't have to train every genre you play.</li>
   <li>The step then shows how it did on your own tracks: how many examples it recognised, how many of your other tracks it would give one of your genres, and what it mixed up. Each track's panel shows <i>Your genre</i>.</li>
   <li><b>Genres used</b> picks what your tracks get: <b>Starter</b> (the built-in genres, until you pick another), <b>Both</b> (your genre where one clearly fits, the built-in genre elsewhere) or <b>Mine only</b> (the closest of your genres on every track, also tracks that sound like none of them: best when your genres cover all your music). Picking Both or Mine only first lists every track that would change; <b>Switch to …</b> then uses them: the Tracks tab, mix suggestions, sets and the LLM at once, your files and Traktor the next time you write genres (above), with a Smartlist per genre. <b>Starter</b> goes back (in a terminal: <code>train --use starter|both|mine</code>). Genres you set by hand stay either way.</li>
 </ol>
@@ -499,8 +499,8 @@ li > figure.shot { margin: 12px 0 4px; }
 </ul>
 
 <div class="cards">
-  <div class="card no"><b>Quit Traktor first</b><p><code>traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code> and <code>tempo native</code>. Traktor rewrites its collection when it closes, which would undo the changes, so the app refuses to run these while Traktor is open (their <code>--dry-run</code> works either way).</p></div>
-  <div class="card yes"><b>Fine with Traktor open</b><p><code>scan</code>, <code>analyze</code>, <code>stats</code>, <code>hype</code> (without <code>--traktor</code>), <code>colors train</code>, <code>colors explain</code> and <code>colors review</code> (without <code>--apply</code>), <code>regenre</code>, and <code>tempo scan</code>, <code>report</code>, <code>refresh</code>, <code>export</code>, <code>nml</code> and <code>status</code> only read Traktor's files.</p></div>
+  <div class="card no"><b>Quit your DJ app first</b><p><code>traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code> and <code>tempo native</code>. Traktor rewrites its collection when it closes, which would undo the changes, so the app refuses to run these while it's open (Rekordbox too, when it's the DJ app you picked) (their <code>--dry-run</code> works either way).</p></div>
+  <div class="card yes"><b>Fine with your DJ app open</b><p><code>scan</code>, <code>analyze</code>, <code>stats</code>, <code>hype</code> (without <code>--traktor</code>), <code>colors train</code>, <code>colors explain</code> and <code>colors review</code> (without <code>--apply</code>), <code>regenre</code>, and <code>tempo scan</code>, <code>report</code>, <code>refresh</code>, <code>export</code>, <code>nml</code> and <code>status</code> only read Traktor's files.</p></div>
 </div>
 
 
@@ -732,7 +732,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>tempo status</code></td><td>Which view is loaded, and which views exist</td><td>Nothing</td></tr>
 <tr><td><code>styles</code></td><td>Lists the 400 Discogs style names and checks dj_genres.json</td><td>Nothing</td></tr>
 <tr><td><code>update</code></td><td>Installs the newest release, keeping your data folder (<code>--check</code>: only what's new; <code>--dry-run</code>; <code>--undo</code>: back to the version before). See <a href="#cli-update">Updating the app</a></td><td>The app's own files (backed up)</td></tr>
-<tr><td><code>train &lt;folder&gt;</code></td><td>Optional: teach your own genre names from example folders (the Setup tab's Learn your genres); <code>--traktor-playlist PLAYLIST</code> / <code>--traktor-genre GENRE</code> (repeat) learn from Traktor; <code>--use starter|both|mine</code> = Genres used</td><td>App files only</td></tr>
+<tr><td><code>train &lt;folder&gt;</code></td><td>Optional: teach your own genre names from example folders (the Setup tab's Learn your genres); <code>--by-tag</code> groups the folder's files by their own genre tags; <code>--traktor-playlist PLAYLIST</code> / <code>--traktor-genre GENRE</code> (repeat) learn from Traktor; <code>--use starter|both|mine</code> = Genres used</td><td>App files only</td></tr>
 <tr><td><code>serve</code></td><td>Runs the MCP server for LM Studio (<code>--http</code> for Open WebUI)</td><td>Nothing</td></tr>
 <tr><td><code>web</code></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
 <tr><td><code>cues train</code> / <code>cues scan</code> / <code>cues show</code></td><td>Learns where you put cues and loops; listens to your tracks bar by bar; suggestions for one track</td><td>App database and model file</td></tr>
