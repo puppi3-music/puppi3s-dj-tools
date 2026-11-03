@@ -97,8 +97,12 @@ def test_copies_hot_cues_from_traktor_into_free_slots(rb, monkeypatch):
         {"ms": 9000, "type": "cue", "hotcue": -1, "bars": None, "name": "Memory"}]}}  # not a hot cue: not copied
     monkeypatch.setattr(cues, "grids", lambda nml=None, ungridded=False: tk if nml else real(ungridded=ungridded))
     monkeypatch.setattr(cues.traktor, "find_collection", lambda nml=None: "collection.nml")
-    with pytest.raises(SystemExit, match="in place"):  # without the option: nothing to copy
-        cues.apply(dry_run=True, restore=True)
+    try:  # without the option: nothing to copy
+        r = cues.apply(dry_run=True, restore=True)
+        raise AssertionError(("TEMP Windows diagnostic", p, [q["path"] for q in rekordbox.read()["tracks"]],
+                              list(real()), r))
+    except SystemExit as e:
+        assert "in place" in str(e)
     out = cues.apply(restore=True, other=True)
     assert out["cues_added"] == 1 and not out["skipped"]
     got = sorted((q["in_ms"], q["name"]) for q in rekordbox.read()["cues"])
