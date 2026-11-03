@@ -34,7 +34,7 @@ When a track is in your Traktor collection, Traktor's own BPM and key are stored
 
 1. [Install](#1-install-one-time)
 2. [Scan your collection](#2-scan-your-collection)
-3. [Genres in your files and in Traktor](#3-genres-in-your-files-and-in-traktor)
+3. [Genres in your files and in Traktor](#3-genres-in-your-files-and-in-traktor) · [Rekordbox](#rekordbox-instead-of-traktor) · [Sync everything](#sync-everything-into-your-dj-app)
 4. [Colours: learned from your colour-coding](#4-colours-learned-from-your-colour-coding)
 5. [Hype (1–10), sets and crates](#5-hype-110-sets-and-crates)
 6. [Your catalogue at your play tempo](#6-your-catalogue-at-your-play-tempo-tempo-view)
@@ -419,6 +419,47 @@ Each run recreates that folder, so keep customised copies of a Smartlist outside
 Before every change it saves `collection.nml.before-track-analyzer-<date-time>` next to the collection, and it checks the result is valid before saving.
 
 > **Tested with Traktor Pro 4.5:** Traktor opens and saves a collection edited this way, and the genre Smartlists show the right tracks.
+
+### Rekordbox instead of Traktor
+
+On the web page's **Setup** tab, step 2, pick **DJ app: Rekordbox** and its `master.db` (found automatically, or **Browse…**). From then on, everything this README says about Traktor works with Rekordbox too: scan (`scan --traktor` reads every DJ app it finds), genres and colours, hype in the Comment, sets and crates as playlists, cues, grid fixes, the tempo view, and recorded mixes checked against Rekordbox's History. A `--nml` path is Traktor's and is ignored with Rekordbox.
+
+- **Quit Rekordbox before writing**; previews work while it's open.
+- Before every write, `master.db` (and, for grid fixes, the tracks' analysis files) is copied to `data/rekordbox-backups/`. `traktor --undo` puts back the last one, and refuses if Rekordbox changed the library since (`--force` restores anyway and loses those changes).
+- Rekordbox has 8 fixed colours (Pink … Purple) rather than Traktor's 7; the colour scale is mapped onto them.
+- **Grid fixes** (`grids apply`) rewrite the beat grid in the track's analysis file as one steady tempo, and move its cues with it. Tracks Rekordbox hasn't analysed are listed and left alone; tracks with tempo changes in their grid are listed, not moved. Re-analysing a track in Rekordbox replaces the grid.
+- Works on Mac and Windows. Tested with Rekordbox 7.
+
+### Sync everything into your DJ app
+
+One command (or the Setup tab's **Sync everything into …** button) writes everything the analyzer has into the DJ app chosen on the Setup tab, with one preview and one undo:
+
+| Step | What it writes |
+|---|---|
+| `tracks` | Points tracks whose file moved at the new file (found by file name, and size when the app stores it; two candidates → left alone and listed), and adds analysed tracks the app doesn't have yet |
+| `genres` | Genres, predicted colours for uncoloured tracks, genre Smartlists / smart playlists |
+| `hype` | Hype in the Comment |
+| `cues` | Cues you approved on the page; approved cues you deleted in the DJ app since are put back (only added cues, never moves) |
+| `grids` | Grid fixes you approved (Traktor only in the sync for now; use `grids apply` for Rekordbox) |
+| `crates` | Warm-up, peak and closing crates as playlists |
+| `samples` | Loops saved as samples on the page (Rekordbox: copied into its Sampler folder) |
+
+```bash
+uv run dj-track-analyzer sync --dry-run            # preview every step, write nothing
+uv run dj-track-analyzer sync                      # quit Traktor / Rekordbox first
+uv run dj-track-analyzer sync --only tracks,cues   # just some steps
+uv run dj-track-analyzer sync --undo               # put back the library from before the whole sync
+```
+
+A step with nothing to do is listed with its reason and skipped. Set playlists aren't rebuilt (each has its own arc and name: `set --traktor`). `--undo` refuses if the DJ app changed the library since; `--undo --force` restores anyway and loses those changes.
+
+**Copy the other app's library** (`--copy`, or the page's **Copy … into …** button): when you have both Traktor and Rekordbox, this brings what the *other* app has into the chosen one: tracks it lacks, genres and colours (the other app's value wins where it has one; an empty value never erases), hot cues and loops into free slots (nothing of yours moves), Traktor's beat grids into Rekordbox (tick them on the page; untested in real Rekordbox), its playlists in a **From … (Track Analyzer)** folder, and its samples. Recordings are never copied. It has its own undo, separate from the sync's.
+
+```bash
+uv run dj-track-analyzer sync --copy --dry-run
+uv run dj-track-analyzer sync --copy --only tracks,cues,playlists
+uv run dj-track-analyzer sync --copy --undo
+```
 
 ### After editing `dj_genres.json`
 
@@ -856,14 +897,16 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `crates [--tempo 145] [--traktor] [--remove]` | Warm-up, peak and closing crates from colour and hype (section 5) | nothing; `--traktor`: **Traktor** (undo: `crates --remove`) |
 | `set [--arc …] [--tracks 20] [--tempo 145] …` | Plan a set along an arc of colour and hype, with keys that mix (section 5) | nothing; `--traktor`: **Traktor** (undo: `set --remove NAME`) |
 | `tempo scan\|report\|export\|nml\|refresh\|status\|load\|native` | The tempo view, 145 by default (section 6) | `load`, `native`: **Traktor** (and Lexicon) |
-| `train <folder>` | Your own genres (section 9); or `--traktor-playlist PLAYLIST` / `--traktor-genre GENRE` (repeat) from Traktor; `--use starter\|both\|mine` = **Genres used** | app files |
+| `train <folder>` | Your own genres (section 9); or `--traktor-playlist PLAYLIST` / `--traktor-genre GENRE` (repeat) from Traktor; `--use starter\|both\|mine` = **Genres used** (`--use starter`: built-in genres only; `--use both`: yours where one fits, built-in elsewhere; `--use mine`: the nearest of yours on every track) | app files |
 | `serve [--http] [--host] [--port]` | MCP server; stdio for LM Studio, HTTP for Open WebUI | nothing |
 | `web [--port 8766] [--logs DIR] [--no-open] [--export FILE.html]` | Everything in a local web page, or a snapshot file to share (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | the hold list only |
 | `cues train\|scan\|show [track] [--workers N] [--rescan]` | Cue points and a mix loop per track, learned from the cues you set yourself (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | app database and model file |
 | `cues apply [--dry-run]` | Write the cues and corrections you approved in the web page | **Traktor** (undo: `traktor --undo`) |
 | `grids check\|show\|apply [track] [--workers N] [--rescan] [--dry-run]` | Check that Traktor's beat grids sit on the kicks; `apply` moves the grids you approved in the web page, with their cues (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | `check`: app cache; `apply`: **Traktor** (undo: `traktor --undo`) |
 | `hold [--genre TEXT \| --colour TEXT] [--release]` | List, add or remove tracks whose genre / colour the writers leave alone | the hold list (app database) |
-| `edit [TRACK] [--colour C] [--key K] [--genre G] [--hype N] [--bpm N] [--clear FIELD] [--no-traktor] [--dry-run]` | Set a track's values by hand, or list the tracks edited by hand (the panel's ✎ Edit does the same) | collection.nml (colour, key, genre, Hype in Comment; backup) + app database |
+| `edit [TRACK] [--colour C] [--key K] [--genre G] [--hype N] [--bpm N] [--clear FIELD] [--no-traktor] [--dry-run]` | Set a track's values by hand, or list the tracks edited by hand; `--clear colour`, `--clear genre`, `--clear hype` or `--clear bpm` goes back to the analysis (the panel's ✎ Edit does the same) | collection.nml (colour, key, genre, Hype in Comment; backup) + app database |
+| `sync [--dry-run] [--only STEPS] [--undo [--force]]` | Everything into the DJ app chosen on the Setup tab in one go: tracks, genres, hype, cues, grids, crates, samples (see [Sync everything](#sync-everything-into-your-dj-app)) | **Traktor or Rekordbox** (undo: `sync --undo`) |
+| `sync --copy [--dry-run] [--only STEPS] [--undo]` | The other DJ app's tracks, genres, colours, hot cues, grids, playlists and samples into the chosen one | **Traktor or Rekordbox** (undo: `sync --copy --undo`) |
 
 ## Settings
 
@@ -915,5 +958,5 @@ dj-track-analyzer/
 
 - **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA): it agreed with Traktor's key on 75% of a test collection of about 470 tracks, Essentia's key-finder on 58% (it mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
 - **Surround (5.1) files** are mixed down to stereo with FFmpeg's standard downmix.
-- **Licences.** This project and Essentia are AGPL. The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results; each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine.
+- **Licences.** This project and Essentia are AGPL. The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results; each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine. Demucs (the `stems` extra) and its weights are MIT, © Meta Platforms. Every third-party project, package and licence is listed in [`THIRD-PARTY.md`](THIRD-PARTY.md).
 - **Uninstall.** Delete this folder and `data`.

@@ -305,10 +305,10 @@ _page_closed: contextvars.ContextVar[bool | None] = contextvars.ContextVar("page
 class ConfirmClosed(SystemExit):
     """A write nobody has said Traktor is closed for, where we can't see. The web page asks and sends it again."""
 
-    def __init__(self, why: str):
+    def __init__(self, why: str, app: str = "Traktor"):
         self.why = why
         where = "a terminal (docker compose run)" if CONTAINER else "a terminal"
-        super().__init__(f"{why} Quit Traktor, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
+        super().__init__(f"{why} Quit {app}, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
 
 
 @contextlib.contextmanager
@@ -1061,16 +1061,9 @@ def _save(path: Path, text: str, new_text: str, stats: dict, dry_run: bool, pref
 
 
 # Hype goes into Traktor's Comment (INFO COMMENT). It used to go into Comment 2 (INFO RATING; stars are
-# RANKING), so a "Hype NN" still found there is taken out on the next write.
-HYPE_RE = re.compile(r"\s*(?:·\s*)?Hype \d{2}\s*$")
-
-
-def with_hype(comment: str | None, hype: int | None) -> str:
-    """The comment with its 'Hype NN' part replaced (or removed when hype is None); other text is kept."""
-    rest = HYPE_RE.sub("", comment or "").strip()
-    if hype is None:
-        return rest
-    return f"{rest} · Hype {hype:02d}" if rest else f"Hype {hype:02d}"
+# RANKING), so a "Hype NN" still found there is taken out on the next write. The text itself is shared with
+# Rekordbox and Lexicon (comments.py).
+from .comments import HYPE_RE, with_hype  # noqa: E402,F401  (traktor.with_hype: older callers)
 
 
 def _set_or_drop_info(entry: str, name: str, value: str) -> str:
@@ -1183,13 +1176,13 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
         done.add(p)
         info_m = re.search(r"<INFO\b[^>]*>", entry)
         cur = attrs(info_m.group(0)).get("COLOR") if info_m else None
-        if cur != str(expect):
+        if (cur if cur not in ("", "0") else None) != (str(expect) if expect else None):  # expect None: uncoloured
             stats["skipped_changed_since"] += 1
             return entry
         entry, _old = _set_info_attr(entry, "COLOR", str(want))
         stats["colours_changed"] += 1
         changed.append(p)
-        examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1]} → {analysis.COLOR_NAMES[want - 1]}")
+        examples.append(f"{Path(p).name}: {analysis.COLOR_NAMES[expect - 1] if expect else '(none)'} → {analysis.COLOR_NAMES[want - 1]}")
         return entry
 
     c0 = text.find("<COLLECTION")
@@ -1203,6 +1196,46 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
     if out.get("changed") and not dry_run:
         collection.accept_guesses(changed)  # you said yes to these: yours now, even where the app had guessed
     return out
+
+
+def set_genres(changes: dict[str, tuple[str | None, str]], nml: str | None = None, dry_run: bool = False) -> dict:
+    """INFO GENRE of specific tracks: {path: (genre it must have now, or None for none; new genre)}. A track whose
+    genre changed since (not the expected one) is left alone, as set_colors."""
+    path = find_collection(nml)
+    refuse_if_tempo_view(path)
+    check_closed(dry_run)
+    text = path.read_text(encoding="utf-8")
+    stats = {"collection": str(path), "genres_changed": 0, "skipped_changed_since": 0}
+    examples, done = [], set()
+
+    def fix_entry(m: re.Match) -> str:
+        entry = m.group(0)
+        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        if not loc_m:
+            return entry
+        p = next((c for c in location_paths(attrs(loc_m.group(0))) if c in changes), None)
+        if not p:
+            return entry
+        expect, want = changes[p]
+        done.add(p)
+        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        cur = (attrs(info_m.group(0)).get("GENRE") or "").strip() or None if info_m else None
+        if cur != expect:
+            stats["skipped_changed_since"] += 1
+            return entry
+        entry, _old = _set_info_attr(entry, "GENRE", want)
+        stats["genres_changed"] += 1
+        examples.append(f"{Path(p).name}: {expect or '(none)'} → {want}")
+        return entry
+
+    c0 = text.find("<COLLECTION")
+    c1 = text.find("</COLLECTION>", c0)
+    if c0 == -1 or c1 == -1:
+        raise SystemExit(f"{path} doesn't look like a Traktor collection (no COLLECTION section).")
+    body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
+    stats["not_in_collection"] = len(changes) - len(done)
+    stats["changes"] = examples
+    return _save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
 
 
 def camelot_value(cam: str) -> int:
@@ -1351,3 +1384,96 @@ def undo(nml: str | None = None, force: bool = False) -> dict:
     if mark.exists():
         mark.unlink()
     return {"restored_from": str(latest), "collection": str(path)}
+
+
+def _location_for(path: str, vols: dict[str, str]) -> dict | None:
+    """A LOCATION for a file, with a VOLUMEID copied from a track Traktor already has on the same volume (None: a
+    volume Traktor doesn't know yet, so the track is left for Traktor to import)."""
+    if WINDOWS_DRIVE.match(path[:2]):
+        vol, rest = path[:2], path[2:].replace("\\", "/")
+    elif path.startswith("/Volumes/"):
+        vol, _, rest = path[len("/Volumes/"):].partition("/")
+        rest = "/" + rest
+    else:
+        vol, rest = "", path  # the boot volume: its name is whatever Traktor calls it
+    vid = vols.get(vol)
+    if vid is None:
+        return None
+    vol_name, vid = vid.split("\0") if "\0" in vid else (vol, vid)
+    d, _, f = rest.rpartition("/")
+    return {"DIR": "".join(f"/:{p}" for p in d.split("/") if p) + "/:", "FILE": f, "VOLUME": vol_name,
+            "VOLUMEID": vid}
+
+
+def _loc_tag(loc: dict) -> str:
+    return "<LOCATION " + " ".join(f'{k}="{esc(v)}"' for k, v in loc.items()) + ">"
+
+
+def _pkey(loc: dict) -> str:
+    return loc.get("VOLUME", "") + loc.get("DIR", "") + loc.get("FILE", "")
+
+
+def sync_tracks(nml: str | None = None, dry_run: bool = False, tracks: list[dict] | None = None,
+                relink: bool = True) -> dict:
+    """Relink tracks whose file moved and add analysed tracks Traktor doesn't list (trackfiles.plan). A relinked
+    track keeps its entry (cues, grid, plays), and its playlist entries follow it. Added tracks get a bare entry;
+    Traktor reads their tags and analyses them when it loads them."""
+    from . import trackfiles
+
+    path = find_collection(nml)
+    refuse_if_tempo_view(path)
+    text = path.read_text(encoding="utf-8")
+    c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
+    present, missing, vols = set(), [], {}
+    for m in re.finditer(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
+        loc_m = re.search(r"<LOCATION\b[^>]*>", m.group(0))
+        if not loc_m:
+            continue
+        loc = attrs(loc_m.group(0))
+        cands = location_paths(loc)
+        if any("/TraktorContent/" in c for c in cands):
+            continue
+        found = next((c for c in cands if os.path.isfile(c)), None)
+        if found:
+            present.add(trackfiles.nfc(found))
+            v = loc.get("VOLUME", "")
+            key = v if WINDOWS_DRIVE.fullmatch(v) else (v if found.startswith("/Volumes/") else "")
+            vols.setdefault(key, f"{v}\0{loc.get('VOLUMEID', '')}")
+        elif loc.get("FILE"):
+            info = re.search(r"<INFO\b[^>]*>", m.group(0))
+            kb = attrs(info.group(0)).get("FILESIZE") if info else None
+            missing.append((loc_m.group(0), loc["FILE"], int(kb) * 1024 if kb and kb.isdigit() else None))
+    p = trackfiles.plan(present, missing if relink else [], tracks)
+    stats = {"collection": str(path)}
+    new_text, no_volume = text, []
+    for old_tag, new_path in p["moves"].items():
+        loc = _location_for(new_path, vols)
+        if loc is None:
+            no_volume.append(new_path)
+            continue
+        old_key = _pkey(attrs(old_tag))
+        new_text = new_text.replace(old_tag, _loc_tag(loc), 1)
+        new_text = new_text.replace(f'KEY="{esc(old_key)}"', f'KEY="{esc(_pkey(loc))}"')  # playlists follow it
+    entries = []
+    for t in p["adds"]:
+        loc = _location_for(t["path"], vols)
+        if loc is None:
+            no_volume.append(t["path"])
+            continue
+        title = t.get("title") or os.path.splitext(os.path.basename(t["path"]))[0]
+        artist = f' ARTIST="{esc(t["artist"])}"' if t.get("artist") else ""
+        size = f'<INFO FILESIZE="{t["size"] // 1024}"></INFO>' if t.get("size") else ""
+        entries.append(f'<ENTRY TITLE="{esc(title)}"{artist}>{_loc_tag(loc)}</LOCATION>{size}</ENTRY>\n')
+    if entries:
+        at = new_text.find("</COLLECTION>")
+        new_text = new_text[:at] + "".join(entries) + new_text[at:]
+        new_text = re.sub(r'(<COLLECTION\b[^>]*\bENTRIES=")(\d+)"',
+                          lambda m: f'{m.group(1)}{int(m.group(2)) + len(entries)}"', new_text, count=1)
+    stats |= trackfiles.stats(p, lambda tag: attrs(tag).get("FILE", ""))
+    if no_volume:
+        stats["left_for_traktor"] = f"{len(no_volume)} on a drive Traktor has no tracks from yet: add them in Traktor"
+        stats["relinked"] = len(p["moves"]) - sum(1 for x in no_volume if x in p["moves"].values())
+        stats["added"] = len(entries)
+    if not p["moves"] and not p["adds"]:
+        raise SystemExit("every analysed track is in Traktor and no moved files were found")
+    return _save(path, text, new_text, stats, dry_run)

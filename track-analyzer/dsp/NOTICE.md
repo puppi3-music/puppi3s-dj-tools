@@ -32,3 +32,9 @@ Copyright (c) 2002-2021 Erik de Castro Lopo. <https://github.com/libsndfile/libs
 (full text at the top of `src/mid_qual_coeffs.rs`).
 
 `src/resample.rs` follows libsamplerate 0.2.2's SRC_SINC_MEDIUM_QUALITY and SRC_LINEAR converters; `src/mid_qual_coeffs.rs` is its filter table.
+
+## Rust crates
+
+The compiled module also contains code from the crates in `Cargo.lock` (pyo3, rayon and others), under MIT,
+Apache-2.0 and Unicode-3.0. Their licence texts are in `licenses/THIRD-PARTY-RUST.md`, made by `tools/gen_third_party.py`
+(run it again after changing dependencies).

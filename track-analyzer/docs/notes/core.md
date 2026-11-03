@@ -38,4 +38,5 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
 - Smartlist node: `<NODE TYPE="SMARTLIST" NAME="X"><SMARTLIST UUID="hex"><SEARCH_EXPRESSION VERSION="1" QUERY="$GENRE % &quot;X&quot;"></SEARCH_EXPRESSION></SMARTLIST></NODE>`.
   `%` contains, `!%` not contains, `&` and, `|` or. Brackets reportedly don't work.
 - LOCATION: `DIR="/:Users/:me/:Music/:" FILE="x.mp3" VOLUME="Macintosh HD"`; other drives → /Volumes/<VOLUME>.
+- Playlists point at tracks by PRIMARYKEY KEY = VOLUME+DIR+FILE: relinking a moved file (sync step `tracks`, `trackfiles.py`) rewrites those keys too; a new ENTRY bumps COLLECTION ENTRIES. VOLUMEID is copied from a track already on that volume (none → left for Traktor to import).
 - Real Traktor format uses explicit close tags and `standalone="no"`; keep edits textual.

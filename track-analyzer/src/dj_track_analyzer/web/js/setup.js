@@ -73,11 +73,27 @@ async function pageSetup(main) {
     : V.untested === "newer"
     ? `<b>Traktor ${esc(V.traktor)} isn't verified with the analyzer yet</b> (tested up to ${esc(V.tested_traktor)}). Its collection file format is the same, so it should work fine; you might still run into issues. Every write is backed up and can be undone. If something looks wrong, ${issue}.`
     : "";
+  // The DJ app the analyzer works with (one at a time). With Rekordbox, step 2 is its database (master.db) instead.
+  const dj = st.dj_app || { app: "traktor", apps: { traktor: "Traktor", rekordbox: "Rekordbox" } }, rb = dj.rekordbox || {};
+  const APP = dj.apps[dj.app] || "Traktor", OTHER = dj.app === "rekordbox" ? "Traktor" : "Rekordbox", APPLIB = dj.app === "rekordbox" ? "Rekordbox's library" : "Traktor's collection", LISTS = dj.app === "rekordbox" ? "smart playlists" : "Smartlists", LIB = dj.app === "rekordbox" ? rb.database : tk.collection;
+  const appPick = `<span class="small">DJ app: ${Object.entries(dj.apps).map(([k, n]) =>
+      `<label class="inline"><input type="radio" name="su-app" value="${k}" ${dj.app === k ? "checked" : ""} ${b}> ${esc(n)}</label>`).join(" ")}</span>`;
   const traktorStep = tk.collection
-    ? step("done", 2, "Traktor's collection", `${tk.chosen ? "Using" : "Found"} <span class="mono">${esc(tk.collection)}</span>${tk.chosen ? " (chosen here)" : ""}: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
+    ? step("done", 2, "Traktor's collection", `${appPick}<br>${tk.chosen ? "Using" : "Found"} <span class="mono">${esc(tk.collection)}</span>${tk.chosen ? " (chosen here)" : ""}: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
         ${tk.coloured} coloured by you, ${tk.cued} with 3+ of your own cue points.${untested ? `<div class="note" style="margin:6px 0 0">${untested}</div>` : ""}${newer}<div id="su-nml-msg" class="small" hidden></div>`, nmlAct)
-    : step("blocked", 2, "Traktor's collection", `${esc(tk.why)} It's the file <span class="mono">collection.nml</span> in Documents › Native Instruments › Traktor <i>version</i>.
+    : step("blocked", 2, "Traktor's collection", `${appPick}<br>${esc(tk.why)} It's the file <span class="mono">collection.nml</span> in Documents › Native Instruments › Traktor <i>version</i>.
         Without Traktor you can still scan folders below; the colour and cue steps learn from Traktor and need it.<div id="su-nml-msg" class="small" hidden></div>`, nmlAct);
+  const rbPick = `<span id="su-rb-pick" style="display:${rb.database ? "none" : "contents"}">
+      ${tk.can_browse ? jb("su-rb-browse", "Browse…", !rb.database) : ""}
+      <input type="text" id="su-rb-path" placeholder="${tk.can_browse ? "or paste its path" : "paste the path of master.db"}">${jb("su-rb-use", "Use")}</span>`;
+  const rbAct = `${rb.database ? jb("su-rb-change", "Change…") : ""}${rb.chosen ? jb("su-rb-auto", "Find automatically") : ""}${rbPick}`;
+  const libStep = dj.app === "rekordbox"
+    ? (rb.database
+      ? step("done", 2, "Rekordbox's library", `${appPick}<br>${rb.chosen ? "Using" : "Found"} <span class="mono">${esc(rb.database)}</span>${rb.chosen ? " (chosen here)" : ""}: ${plural(rb.tracks, "track")} on disk${rb.missing ? `, ${rb.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
+          Scanning, BPM/key comparison and learning genres from its playlists read it; writing to Rekordbox comes in a later version.<div id="su-nml-msg" class="small" hidden></div>`, rbAct)
+      : step("blocked", 2, "Rekordbox's library", `${appPick}<br>${esc(rb.why || "Not found.")} It's the file <span class="mono">master.db</span> in Rekordbox's folder (Library › Pioneer › rekordbox on a Mac, AppData › Roaming › Pioneer › rekordbox on Windows).
+          <div id="su-nml-msg" class="small" hidden></div>`, rbAct))
+    : traktorStep;
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
     : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
@@ -165,32 +181,38 @@ async function pageSetup(main) {
   const w = (id, title, body, extra = "", disabled) => `<div class="step"><div class="ic">→</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div>
     <div class="act">${extra}<button id="${id}" ${disabled || ""}>Preview…</button></div></div>`;
   const noScan = !sc.tracks && "disabled";
-  main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in Traktor. Each button runs the same command as in a terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
+  main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in ${APP}. Each button runs the same command as in a terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
     <div id="jobpanel"></div>
     <div id="updatecard"></div>
-    <div class="card"><h3>Get started</h3><div class="steps">${models}${traktorStep}${scanStep}${hypeStep}</div></div>
+    <div class="card"><h3>Get started</h3><div class="steps">${models}${libStep}${scanStep}${hypeStep}</div></div>
     <div class="card"><h3>Learn from your own work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}${genreStep}</div></div>
     <div class="card"><h3>Extra tools <span class="dim small">(optional)</span></h3><div class="steps">
       ${tool(8, "ffmpeg", "Plays loops and saves samples in a track's panel, keeps MP3 timing exact, and cuts mix clips.")}
       ${tool(9, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
-    <div class="card"><h3>Into your files and Traktor</h3>
-      <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. Traktor's collection is backed up before each write, and you can undo it.</div>
+    <div class="card"><h3>Into your files and ${APP}</h3>
+      <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. ${APPLIB} is backed up before each write, and you can undo it.</div>
       ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
-      ${st.traktor_running ? `<div class="err" style="margin:8px 0">Traktor is open. Previews work, but quit Traktor before writing to it: it saves its collection when it quits and would undo the changes.</div>` : ""}
+      <div id="app-open-warn" class="err" style="margin:8px 0" ${st.traktor_running ? "" : "hidden"}>${APP} is open. Previews work, but quit ${APP} before writing to it: it saves its collection when it quits and would undo the changes.</div>
       <div class="steps">
-      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in Traktor: tick "only in Traktor" in the next step instead.
+      ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in ${APP}: tick "only in ${APP}" in the next step instead.
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
-      ${w("wr-traktor", "Genres, colours and Smartlists in Traktor", `Puts the genre tags into Traktor's collection, sets the predicted colour on tracks you haven't coloured (yours are never changed),
-        and adds a "Genres (Track Analyzer)" Smartlist folder.`,
+      ${w("wr-sync", `Sync everything into ${APP}`, `New and moved tracks, genres and colours, hype, approved cues, grid fixes, crates and saved loop samples. A preview comes first: tick which steps to write. One undo for all of it. Steps with nothing to transfer are listed, not written. Approved cues deleted in ${APP} since are put back.`,
+        "", (noScan || !LIB) && "disabled")}
+      ${dj.other_found ? w("wr-copy", `Copy ${OTHER} into ${APP}`, `Everything ${OTHER} has: tracks ${APP} lacks, genres and colours (${OTHER}'s win where it has one; empty ones never erase), hot cues into free slots${dj.app === "rekordbox" ? ", Traktor's beat grids if you tick them" : ""}, its playlists in a "From ${OTHER} (Track Analyzer)" folder, and its samples. Recordings are never copied. A preview comes first: tick which steps to write. One undo for all of it, separate from the sync's.`,
+        "", !LIB && "disabled") : ""}
+      ${w("wr-traktor", `Genres, colours and ${LISTS} in ${APP}`, `Puts the genre tags into ${APPLIB}, sets the predicted colour on tracks you haven't coloured (yours are never changed),
+        and adds a "Genres (Track Analyzer)" folder of ${LISTS}.`,
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>
-         <label class="inline small" data-tip="The analyzer's genres go straight into Traktor; your files keep their own genre tags. Traktor may put a file's own genre back when it re-reads that file's tags (after another program changes the file); writing again fixes it."><input type="checkbox" id="wr-only-traktor" ${SF.onlyTraktor ? "checked" : ""}> only in Traktor (leave my files' tags as they are)</label>`, (noScan || !tk.collection) && "disabled")}
-      ${w("wr-hype", "Hype in Traktor's Comment", `Adds "Hype 07" after anything already in Comment (an old Hype in Comment 2 is moved), so you can sort and search by it in Traktor.`,
-        `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !tk.collection) && "disabled")}
-      ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in Traktor and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !tk.collection && "disabled") : ""}
-      ${cm.model ? w("wr-recolour", "Recolour clear disagreements", "Recolours the few tracks whose colour clearly disagrees with how they sound (gap 2.5+ colours, confidence 75%+; the Colours tab lists them). Tracks you keep always are skipped.", "", !tk.collection && "disabled") : ""}
-      ${st.traktor_backup ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last change to Traktor</div><div class="small muted">Last backup: <span class="mono">${esc(st.traktor_backup)}</span></div></div><div class="act"><button id="wr-undo">Undo…</button></div></div>` : ""}
+         <label class="inline small" data-tip="The analyzer's genres go straight into ${APP}; your files keep their own genre tags. ${APP} may put a file's own genre back when it re-reads that file's tags (after another program changes the file); writing again fixes it."><input type="checkbox" id="wr-only-traktor" ${SF.onlyTraktor ? "checked" : ""}> only in ${APP} (leave my files' tags as they are)</label>`, (noScan || !LIB) && "disabled")}
+      ${w("wr-hype", `Hype in ${APP}'s Comment`, `Adds "Hype 07" after anything already in Comment${dj.app === "rekordbox" ? "" : " (an old Hype in Comment 2 is moved)"}, so you can sort and search by it in ${APP}.`,
+        `<button id="wr-hype-rm">Take it out…</button>`, (!sc.hype || !LIB) && "disabled")}
+      ${cm.model || cm.starter ? w("wr-capply", "Colour new tracks", `Scans tracks that are new in ${APP} and gives the uncoloured ones their predicted colour${cm.model ? "" : " (from the starter scale)"}. Colours you set are never changed.`, "", !LIB && "disabled") : ""}
+      ${cm.model ? w("wr-recolour", "Recolour clear disagreements", "Recolours the few tracks whose colour clearly disagrees with how they sound (gap 2.5+ colours, confidence 75%+; the Colours tab lists them). Tracks you keep always are skipped.", "", !LIB && "disabled") : ""}
+      ${st.sync_undo ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last sync to ${APP}</div><div class="small muted">Puts back every step of it at once.</div></div><div class="act"><button id="wr-sync-undo">Undo sync…</button></div></div>` : ""}
+      ${st.copy_undo ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last copy from ${OTHER}</div><div class="small muted">Puts back every step of it at once.</div></div><div class="act"><button id="wr-copy-undo">Undo copy…</button></div></div>` : ""}
+      ${st.traktor_backup ? `<div class="step"><div class="ic">↶</div><div><div class="st">Undo the last change to ${APP}</div><div class="small muted">Last backup: <span class="mono">${esc(st.traktor_backup)}</span></div></div><div class="act"><button id="wr-undo">Undo…</button></div></div>` : ""}
       </div></div>
     <div class="note">Data folder: <span class="mono">${esc(st.home)}</span></div>`;
   const on = (id, fn) => { const el = $("#" + id); if (el) el.onclick = fn; };
@@ -211,6 +233,23 @@ async function pageSetup(main) {
   on("su-nml-use", e => { const p = $("#su-nml-path").value.trim(); p ? nml({ path: p }, e.currentTarget) : $("#su-nml-path").focus(); });
   $("#su-nml-path")?.addEventListener("keydown", e => { if (e.key === "Enter") $("#su-nml-use").click(); });
   on("su-nml-auto", e => nml({ auto: true }, e.currentTarget));
+  const rbDb = async (body, btn) => {
+    const msg = $("#su-nml-msg"), label = btn?.textContent;
+    msg.hidden = true;
+    if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) route(); }
+    catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+    finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
+  };
+  document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
+    try { await postJSON("/api/dj-app", { app: r.value }); await loadLibs(); route(); }
+    catch (e) { const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+  });
+  on("su-rb-change", () => { $("#su-rb-pick").style.display = "contents"; $("#su-rb-change").style.display = "none"; ($("#su-rb-browse") || $("#su-rb-path")).focus(); });
+  on("su-rb-browse", e => rbDb({ browse: true }, e.currentTarget));
+  on("su-rb-use", e => { const p = $("#su-rb-path").value.trim(); p ? rbDb({ path: p }, e.currentTarget) : $("#su-rb-path").focus(); });
+  $("#su-rb-path")?.addEventListener("keydown", e => { if (e.key === "Enter") $("#su-rb-use").click(); });
+  on("su-rb-auto", e => rbDb({ auto: true }, e.currentTarget));
   on("su-nml-newer", e => nml({ path: tk.newer }, e.currentTarget));
   on("su-setup", () => go("setup", { no_maest: SF.noMaest }));
   on("su-maest", () => go("setup", {}));
@@ -317,6 +356,10 @@ async function pageSetup(main) {
   on("wr-capply", () => writeDialog("colors_apply"));
   on("wr-recolour", () => writeDialog("colors_recolour"));
   on("wr-undo", () => writeDialog("traktor_undo"));
+  on("wr-sync", () => writeDialog("sync", {}, () => getSetup(true).then(route)));
+  on("wr-sync-undo", () => writeDialog("sync_undo", {}, () => getSetup(true).then(route)));
+  on("wr-copy", () => writeDialog("copy", {}, () => getSetup(true).then(route)));
+  on("wr-copy-undo", () => writeDialog("copy_undo", {}, () => getSetup(true).then(route)));
   updateCard();
   jobPanel();
 }
@@ -343,3 +386,13 @@ function jobPanel() {
 }
 JOB.listeners.add(jobPanel);
 
+
+// Is the DJ app open? A cheap check every 5 s while the page is visible, so the "quit it first" warning on the Setup
+// tab follows the app opening or closing. Writes still check for themselves just before they write.
+setInterval(async () => {
+  if (document.hidden || !SETUP) return;
+  let r; try { r = await api("app-running"); } catch { return; }
+  if (r.running === SETUP.traktor_running) return;
+  SETUP.traktor_running = r.running;
+  const w = document.getElementById("app-open-warn"); if (w) w.hidden = !r.running;  // just the warning, no redraw
+}, 5000);

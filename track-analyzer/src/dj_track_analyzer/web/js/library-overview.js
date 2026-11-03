@@ -14,9 +14,9 @@ function libNote() {
   $("#libwrap").style.visibility = usesLib ? "visible" : "hidden";
   loadedChips();
   const parts = [], shown = S.lib !== "native" ? +S.lib.replace("at-", "") : null;
-  if (v) parts.push(`Traktor has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
+  if (v) parts.push(`${DJ()} has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
   if (usesLib && shown) parts.push(`This page shows <b>every track at ${esc(shown)} BPM</b>: as heard stretched to that tempo with key lock.`);
-  if (!SNAP && usesLib && shown && shown !== v) parts.push(`Traktor itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
+  if (!SNAP && usesLib && shown && shown !== v) parts.push(`${DJ()} itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
 }
 function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loaded right now, on every tab
@@ -24,9 +24,9 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
   el.hidden = !!SNAP;  // a snapshot can't know what's loaded now
   if (SNAP) return;
   const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
-  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip("Traktor + Lexicon", L.loaded_view)  // saves a header row
-    : chip("Traktor", L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
-  el.dataset.tip = `Traktor: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
+  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip(`${DJ()} + Lexicon`, L.loaded_view)  // saves a header row
+    : chip(DJ(), L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
+  el.dataset.tip = `${DJ()}: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
     + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
 }
@@ -97,13 +97,13 @@ async function pageOverview(main) {
     <div class="grid two">
       <div class="card"><h3>Genres <span class="dim small">(top genre per track)</span></h3>${bars(genres)}</div>
       <div>
-        <div class="card"><h3>BPM <span class="dim small">(Traktor's where it has one, in 5-BPM bins)</span></h3>${columns(hist)}</div>
+        <div class="card"><h3>BPM <span class="dim small">(${DJ()}'s where it has one, in 5-BPM bins)</span></h3>${columns(hist)}</div>
         <div class="card"><h3>Colours <span class="dim small">(yours, else predicted)</span></h3>${bars(cols, { colourLabels: true })}</div>
         <div class="card"><h3>Most common keys <span class="dim small">(Camelot)</span></h3>${bars(keys)}</div>
       </div>
     </div>
     <div class="card"><h3>Tempo views</h3>
-      <dl class="facts"><dt>Traktor</dt><dd>${esc(st.loaded_in_traktor)}</dd><dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>
+      <dl class="facts"><dt>${DJ()}</dt><dd>${esc(st.loaded_in_traktor)}</dd><dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>
       ${Object.entries(st.views).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v.tracks} tracks <span class="dim mono">${esc(v.folder)}</span></dd>`).join("") || "<dt>Views</dt><dd class='dim'>none scanned (tempo scan --bpm 145)</dd>"}</dl>
     </div>`;
 }

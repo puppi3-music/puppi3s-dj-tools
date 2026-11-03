@@ -30,12 +30,16 @@ warnings.filterwarnings("ignore", category=FutureWarning)  # scikit-learn deprec
 
 from . import collection
 from . import analysis
-from . import traktor
+from . import library, traktor
 from .analysis import COLOR_NAMES, COLOR_MODEL, log
 
 
 def read_traktor_colors(nml: str | None = None) -> tuple[Path, dict[str, int], int]:
-    """{file path: COLOR value 1-7} for every coloured track in Traktor's collection."""
+    """{file path: COLOR value 1-7} for every coloured track in the DJ app's library (Traktor's collection, or
+    Rekordbox's master.db with its colours put on our scale)."""
+    if library.app() == "rekordbox":
+        from . import rekordbox
+        return rekordbox.colors(None)
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)  # a loaded view's colours aren't yours: they'd skew training and explain
     text = path.read_text(encoding="utf-8")
@@ -622,7 +626,7 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
         if not scale:
             raise SystemExit("--apply needs a scale model (this one treats colours as classes).")
         if ask and changes and not dry_run:
-            traktor.check_closed()  # say so before the questions, not after them
+            library.check_closed()  # say so before the questions, not after them
             names = {t["path"]: t["file"] for t in tracks}
             asked = changes
             changes, out["kept_your_colour"], forever = _ask_each(changes, names)
@@ -631,9 +635,9 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             collection.log_feedback("colour_keep", [(p, said(p)) for p in forever])
             collection.log_feedback("colour_no", [(p, said(p)) for p in asked if p not in changes and p not in forever])
         if changes or not planned:
-            out["traktor"] = traktor.set_colors(changes, nml, dry_run=dry_run)
+            out["traktor"] = library.set_colors(changes, nml, dry_run=dry_run)
             if not dry_run and out["traktor"].get("changed"):
-                out["undo"] = "uv run dj-track-analyzer traktor --undo"
+                out["undo"] = "uv run dj-track-analyzer traktor --undo   (undoes the last change in your DJ app)"
         if planned:
             names = sorted(listed[p]["file"] for p in keeps)
             if dry_run:
@@ -799,7 +803,7 @@ def _artists(credit: str | None) -> list[str]:
 
 
 def explain(nml: str | None = None, workers: int | None = None, progress=log, extract: bool = True) -> dict:
-    """Per-colour profile of the user's coloured tracks: sound, energy, Traktor usage, playlists,
+    """Per-colour profile of the user's coloured tracks: sound, energy, DJ-app usage, playlists,
     position in sets and artists. Read-only for Traktor's files. extract=False skips the deep listening
     pass for tracks without deep features (they're left out of the profile instead)."""
     import xml.etree.ElementTree as ET
@@ -821,9 +825,23 @@ def explain(nml: str | None = None, workers: int | None = None, progress=log, ex
     if extract:
         extract_deep(paths, workers, progress)
 
-    # Traktor's own data: play counts, comments, playlists, history.
-    root = ET.parse(nml_path).getroot()
+    # The DJ app's own data: play counts, comments, playlists, history. Traktor: the NML and its History
+    # folder; Rekordbox: master.db (play counts, comments, playlists, History playlists).
+    is_nml = nml_path.suffix.lower() == ".nml"
+    root = ET.parse(nml_path).getroot() if is_nml else ET.fromstring("<NML><COLLECTION/></NML>")
     nml_info = {}
+    rb_lists, rb_sets = [], []
+    if not is_nml:
+        from . import rekordbox
+        rb = rekordbox.read(str(nml_path))
+        for t in rb["tracks"]:
+            if t["path"]:
+                nml_info[rekordbox.norm_path(t["path"])] = {"PLAYCOUNT": t.get("plays") or 0,
+                                                             "COMMENT": t.get("comment") or ""}
+        rb_lists = [(pl["name"], [colors[f] for f in pl["files"] if f in colors])
+                    for pl in rekordbox.playlists(rows=rb)]
+        rb_sets = [[colors[pl["path"]] for pl in h["plays"] if pl["path"] in colors]
+                   for h in rekordbox.histories(str(nml_path))]
     for e in root.find("COLLECTION").iter("ENTRY"):
         loc, info = e.find("LOCATION"), e.find("INFO")
         if loc is None or info is None:
@@ -886,24 +904,24 @@ def explain(nml: str | None = None, workers: int | None = None, progress=log, ex
     # Playlists (your own crates), only those with 3+ coloured tracks.
     share = {c: float((y == c).mean()) for c in used}
     playlists = []
-    for node in root.iter("NODE"):
-        if node.get("TYPE") != "PLAYLIST":
-            continue
-        cs = [c for pk in node.iter("PRIMARYKEY") if (c := colour_of(_key_location(pk.get("KEY", ""))))]
+    nml_lists = [(node.get("NAME"),
+                  [c for pk in node.iter("PRIMARYKEY") if (c := colour_of(_key_location(pk.get("KEY", ""))))])
+                 for node in root.iter("NODE") if node.get("TYPE") == "PLAYLIST"]
+    for name, cs in nml_lists + rb_lists:
         if len(cs) < 3:
             continue
         cnt = Counter(cs)
         playlists.append({
-            "playlist": node.get("NAME"), "tracks": len(cs), "average": round(float(np.mean(cs)), 1),
+            "playlist": name, "tracks": len(cs), "average": round(float(np.mean(cs)), 1),
             "counts": {COLOR_NAMES[c - 1]: cnt.get(c, 0) for c in used},
             "stands_out": [COLOR_NAMES[c - 1] for c in used if cnt.get(c, 0) >= 2 and cnt[c] / len(cs) > 2 * share[c]],
         })
     playlists.sort(key=lambda d: d["average"])
 
-    # Sets: where in a session each colour gets played (Traktor's History folder).
+    # Sets: where in a session each colour gets played (Traktor's History folder or Rekordbox's History playlists).
     pos = defaultdict(list)
     sessions = 0
-    for f in sorted(nml_path.parent.glob("History/*.nml")):
+    for f in (sorted(nml_path.parent.glob("History/*.nml")) if is_nml else []):
         try:
             hroot = ET.parse(f).getroot()
         except ET.ParseError:
@@ -924,6 +942,12 @@ def explain(nml: str | None = None, workers: int | None = None, progress=log, ex
         sessions += 1
         seq.sort()
         for i, (_t, c) in enumerate(seq):
+            pos[c].append(i / (len(seq) - 1))
+    for seq in rb_sets:  # Rekordbox History playlists, already in play order
+        if len(seq) < 8:
+            continue
+        sessions += 1
+        for i, c in enumerate(seq):
             pos[c].append(i / (len(seq) - 1))
     sets = {}
     for c in used:
@@ -1006,7 +1030,7 @@ def explain_text(d: dict) -> str:
             out.append(f"  {p['playlist'][:30]:30} {p['tracks']:>3} {p['average']:>4}  {cells}")
     s = d["sets"]
     if s["by_colour"]:
-        out += ["", f"WHERE IN A SET ({s['sessions']} sessions from Traktor's History)"]
+        out += ["", f"WHERE IN A SET ({s['sessions']} sessions from the DJ app's History)"]
         out.append(f"  {'':8} {'plays':>5}  {'first third':>11} {'middle':>7} {'last third':>10}")
         for n in names:
             v = s["by_colour"].get(n)
@@ -1034,7 +1058,7 @@ def apply(nml: str | None = None, dry_run: bool = False, min_confidence: float =
     tracks that don't have one. Colours you set are never changed. Genres and Smartlists are left alone."""
     if analysis.color_model() is None:
         raise SystemExit("No colour model yet. Run: uv run dj-track-analyzer colors train")
-    traktor.check_closed(dry_run, "the colours. (Or use --dry-run to preview.)")
+    library.check_closed(dry_run, "the colours. (Or use --dry-run to preview.)")
     scan = collection.scan([], workers=workers, traktor_nml=nml, use_traktor=True)
     nml_path, colors, _n = read_traktor_colors(nml)
     con = collection.db()
@@ -1046,10 +1070,10 @@ def apply(nml: str | None = None, dry_run: bool = False, min_confidence: float =
     if uncoloured:
         extract_deep(uncoloured, workers, progress)
     refresh_predictions(con, traktor_colors=colors, progress=progress)
-    out = traktor.sync(nml, dry_run=dry_run, update_genres=False, make_smartlists=False, colors=True,
+    out = library.sync(nml, dry_run=dry_run, update_genres=False, make_smartlists=False, colors=True,
                        overwrite_colors=False, color_min_confidence=min_confidence)
     out["new_tracks_analyzed"] = (scan.get("this_run") or {}).get("analyzed", 0)
     out["uncoloured_tracks"] = len(uncoloured)
     if not dry_run and out.get("changed"):
-        out["undo"] = "uv run dj-track-analyzer traktor --undo"
+        out["undo"] = "uv run dj-track-analyzer traktor --undo   (undoes the last change in your DJ app)"
     return out

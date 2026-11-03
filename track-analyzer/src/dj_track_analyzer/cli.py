@@ -118,7 +118,7 @@ def main() -> None:
     cl.add_argument("--dry-run", action="store_true", help="list what would be made, write nothing")
     sc = sub.add_parser("scan", help="analyze a whole collection (resumable), save to database + spreadsheet")
     sc.add_argument("folders", nargs="*", help="folders (or files) to scan")
-    sc.add_argument("--traktor", action="store_true", help="scan every track in Traktor's collection (can be combined with folders)")
+    sc.add_argument("--traktor", action="store_true", help="scan every track in every DJ app found (Traktor and Rekordbox; can be combined with folders)")
     sc.add_argument("--nml", default=None, help="path to Traktor's collection.nml (default: found automatically)")
     sc.add_argument("--exclude", action="append", default=[], metavar="FOLDER",
                     help="leave this folder out (repeat for several)")
@@ -347,6 +347,16 @@ def main() -> None:
                     help="back to the analysis (colour: off the keep-always list); repeat for several")
     ed.add_argument("--no-traktor", action="store_true", help="change the analyzer only, not Traktor")
     ed.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
+    sy = sub.add_parser("sync", help="everything into your DJ app in one go: genres, colours, hype, cues, grid fixes, crates")
+    sy.add_argument("--nml", default=None, help="path to collection.nml (Traktor; Rekordbox uses the Setup tab's database)")
+    sy.add_argument("--dry-run", action="store_true", help="preview each step, write nothing")
+    sy.add_argument("--only", default=None, help="comma-separated steps: tracks,genres,hype,cues,grids,crates,samples "
+                    "(with --copy: tracks,genres,colours,cues,grids,playlists)")
+    sy.add_argument("--copy", action="store_true", help="copy the other DJ app's library (Traktor <-> Rekordbox) into "
+                    "the chosen one: tracks, genres, colours, hot cues, grids, playlists; with --undo: undo the last copy")
+    sy.add_argument("--undo", action="store_true", help="put back the library from before the last sync")
+    sy.add_argument("--force", action="store_true", help="with --undo: restore even if your DJ app changed the library since")
+    sy.add_argument("--json", action="store_true", help="full result as JSON")
     s = sub.add_parser("serve", help="run the MCP server")
     s.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
     s.add_argument("--host", default="127.0.0.1")
@@ -457,12 +467,12 @@ def main() -> None:
         print(json.dumps(out, indent=2, ensure_ascii=False))
         say_if_nothing(out, args.dry_run)
     elif args.cmd == "traktor":
-        from . import traktor
+        from . import library
 
         if args.undo:
-            out = traktor.undo(args.nml, force=args.force)
+            out = library.undo(args.nml, force=args.force)
         else:
-            out = traktor.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
+            out = library.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
                                make_smartlists=not args.no_smartlists, colors=not args.no_colors,
                                overwrite_colors=args.overwrite_colors,
                                color_min_confidence=args.color_min_confidence,
@@ -601,6 +611,10 @@ def main() -> None:
             except ValueError as e:
                 raise SystemExit(str(e))
         print(json.dumps(out, indent=2, ensure_ascii=False))
+    elif args.cmd == "sync":
+        from . import sync
+
+        sync.main(args)
     elif args.cmd == "serve" and args.http:
         log(f"Puppi3's Track Analyzer MCP on http://{args.host}:{args.port}/mcp")
         build_mcp().run(transport="streamable-http", host=args.host, port=args.port)
