@@ -64,11 +64,24 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   test on a copy.
 - `grids apply` refuses with Rekordbox (PQTZ rewriting untested); `grids check` works read-only.
 
+## Stage 4: sets, History, tempo view
+- `set --traktor` / `set --remove` and `crates` write plain playlists into "Sets (Track Analyzer)" /
+  "Crates (Track Analyzer)" (`rekordbox.write_playlists`: same name replaced, empty folder removed), backup + undo.
+- History: `rekordbox.histories()` reads djmdHistory/djmdSongHistory. Rekordbox stores only the order and each
+  row's created_at (written at load), no deck or play length: a play's length runs to the next row's time (the
+  last gets 7 min). `analyze --tracklist auto` picks the History playlist overlapping the recording most;
+  `set --arc mine` learns from these too. mixreport reads only our saved mix analyses, so it needed nothing.
+- Tempo view (`tempo load` / `native`): the same swap as Traktor's, in master.db: the view's genre, your colour
+  moved by the model's shift, and Hype in Comments; the values replaced are kept in data/tempo-loaded.json
+  (`"app": "rekordbox"`), and `native` puts back only fields still holding the view's value. No master clock or
+  genre folder to switch (the genre smart playlists follow the genres).
+- OneLibrary USB export: left out.
+
 ## Still open
 - Genre condition XML for smart playlists; whether a pyrekordbox commit with our changes opens cleanly in
   Rekordbox 7 (first write test, on a copy, done by the user).
 - Adding `djmdCue` rows (pyrekordbox doesn't list cues among the tables it can add to): IDs, UUIDs, `usn`.
-- History/recordings for tracklists; non-MP3 cue offsets; Windows paths (`%APPDATA%\Pioneer\rekordbox`).
+- Real History rows: checked only on a made-up database (this library had none); non-MP3 cue offsets; Windows paths (`%APPDATA%\Pioneer\rekordbox`).
 
 ## Stage 1b: what reads Rekordbox now
 - Setup tab, step 2: "DJ app: Traktor / Rekordbox" (`POST /api/dj-app`, saved as `dj_app`), and for Rekordbox its
@@ -77,3 +90,11 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   genres from playlists or the Genre field (mygenres). A `--nml` path is Traktor's: with Rekordbox it's ignored.
 - Still Traktor only (stage 2+): every write, colours, cues, grids, tempo view, set plans, the job status counts.
 - `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macos-14.
+
+## Real-library check (2026-11-03, copy of the user's Rekordbox 7 master.db, 455 tracks)
+- Reads: all 455 paths exist, keys all map to Camelot (8 without a key), 6239 cues on 450 tracks, 100 genre rows of
+  free-form Beatport/Lexicon text. History was empty (0 rows): plays had not been saved into master.db (mtime Sep 16).
+- pyrekordbox's `close()` leaves the engine's connection open: a commit may not be in master.db yet, so the undo
+  mark was the old sha1 and undo refused. `close_database()` disposes the engine too; use it, never `master.close()`.
+- Every write (sync, set, crates, tempo load → native) re-read correctly and undid byte-for-byte (master.db and
+  masterPlaylists6.xml), no journal files left. Tempo native leaves the view's extra genre rows (unused) in djmdGenre.
