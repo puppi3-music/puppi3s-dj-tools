@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 from conftest import make_master_db
@@ -36,7 +37,7 @@ def _playlists(db):
             out[p.Name] = (parent.Name if parent else None, [rekordbox.norm_path(s.Content.FolderPath) for s in songs])
         return out
     finally:
-        m.close()
+        rekordbox.close_database(m)
 
 
 def test_set_playlist_write_replace_remove(rb):
@@ -47,6 +48,9 @@ def test_set_playlist_write_replace_remove(rb):
     assert out["playlists"] == {"Friday": 2} and "Friday" not in _playlists(rb["db"])
     out = setplan.to_traktor(d, "Friday")
     assert out["not_in_rekordbox"] == 1 and out["backup"]
+    # the summary line's keys (as Traktor's result has them), and the undo mark is master.db as it is now on disk
+    assert (out["playlist"], out["tracks"], out["not_in_traktor"]) == (f"{setplan.FOLDER} / Friday", 2, ["x"])
+    assert (Path(out["backup"]) / rekordbox.WRITTEN).read_text() == rekordbox._sha1(rb["db"])
     pl = _playlists(rb["db"])
     assert pl["Friday"] == (setplan.FOLDER, [files[2], files[0]])
     d["tracks"] = d["tracks"][1:2]

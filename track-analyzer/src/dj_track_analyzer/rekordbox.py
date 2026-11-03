@@ -131,6 +131,15 @@ def open_database(path: Path):
     return MasterDatabase(path=str(path), db_dir=str(path.parent))
 
 
+def close_database(master) -> None:
+    """Close the session and the engine: pyrekordbox's close() leaves the engine's connection open, and until that
+    goes, a commit may not have reached master.db itself (so its sha1, the undo mark, would still be the old one)."""
+    try:
+        master.close()
+    finally:
+        master.engine.dispose()
+
+
 def color_id(v) -> int:
     """djmdContent.ColorID (text in the database) as 0-8; 0 = no colour."""
     try:
@@ -168,7 +177,7 @@ def read(db: str | None = None) -> dict:
     try:
         return load(master)
     finally:
-        master.close()
+        close_database(master)
 
 
 def norm_path(p: str) -> str:
@@ -357,7 +366,7 @@ def grids(db: str | None = None) -> dict[str, dict]:
     try:
         return {p: d for p, (_, d) in _grids(master).items()}
     finally:
-        master.close()
+        close_database(master)
 
 
 def write_cues(paths, plan_for, db: str | None = None, dry_run: bool = False, stats: dict | None = None) -> dict:
@@ -502,7 +511,7 @@ def _write(db: str | None, dry_run: bool, change, stats: dict, what: str = "thes
             master.commit()
     finally:
         master.registry.clear_buffer()
-        master.close()
+        close_database(master)
     if saved is None:
         return stats
     if not stats["changed"]:
@@ -793,7 +802,7 @@ def write_playlists(lists: dict[str, list[str] | None], folder: str = SET_FOLDER
                     dry_run: bool = False, first: bool = True, what: str = "the set playlist") -> dict:
     """{name: [file paths] in order, or None to remove} as plain playlists in `folder` (under the root); a playlist of
     the same name is replaced. The folder goes when it ends up empty."""
-    stats = {"folder": folder, "playlists": {}, "removed": [], "replaced": [], "not_in_rekordbox": 0}
+    stats = {"folder": folder, "playlists": {}, "removed": [], "replaced": [], "not_in_rekordbox": 0, "missing": []}
 
     def change(master):
         rows = _content_by_path(master)
@@ -813,6 +822,7 @@ def write_playlists(lists: dict[str, list[str] | None], folder: str = SET_FOLDER
                 c = rows.get(norm_path(p))
                 if c is None:
                     stats["not_in_rekordbox"] += 1
+                    stats["missing"].append(p)
                     continue
                 n += 1
                 master.add_to_playlist(pl, c, track_no=n)
@@ -861,7 +871,7 @@ def histories(db: str | None = None) -> list[dict]:
             out.append({"name": h.Name, "date": h.DateCreated, "plays": [p for p in plays if p["start"]]})
         return sorted(out, key=lambda h: h["plays"][0]["start"] if h["plays"] else datetime.min)
     finally:
-        master.close()
+        close_database(master)
 
 
 def _key_name(name: str | None) -> tuple[str, str] | None:
