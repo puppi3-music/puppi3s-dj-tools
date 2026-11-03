@@ -338,6 +338,7 @@ check = [
 ]
 test = [
     { name = "pytest" },
+    { name = "pytest-xdist" },
 ]
 
 [package.metadata]
@@ -364,7 +365,10 @@ check = [
     { name = "essentia-tensorflow", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", specifier = "==2.1b6.dev1177" },
     { name = "essentia-tensorflow", marker = "sys_platform == 'linux'", specifier = ">2.1b6.dev1177" },
 ]
-test = [{ name = "pytest", specifier = ">=8" }]
+test = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-xdist", specifier = ">=3" },
+]
 
 [[package]]
 name = "dora-search"
@@ -425,6 +429,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/73/85/f82a6100d8d5a0789436b5d12f0d267f473cb7c43674695fb4bdb7aae336/essentia_tensorflow-2.1b6.dev1389-cp311-cp311-macosx_14_0_x86_64.whl", hash = "sha256:4d701d7eb8de4b385087d10b04b63348516c82943cf027de3aea8d173a6e615f", size = 141387095, upload-time = "2025-07-24T21:11:48.006Z" },
     { url = "https://files.pythonhosted.org/packages/94/66/88795fd8affe129d7d1634cb1564823214c8650f43387619c472446d8e26/essentia_tensorflow-2.1b6.dev1389-cp311-cp311-macosx_15_0_arm64.whl", hash = "sha256:b429d40fadb78ee4340cf1649a67c3fb1da45e46731e15299b7f15d58979c608", size = 115255005, upload-time = "2025-07-24T21:11:57.322Z" },
     { url = "https://files.pythonhosted.org/packages/f0/5f/7283634ee1d5d195d75986adc98a2309fab2df121a4618f3826eb2073d29/essentia_tensorflow-2.1b6.dev1389-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:72d2d8d748e916df931fa561f284d9a47ad0f557351acfbdc952d4b4118c01b8", size = 291543635, upload-time = "2025-07-24T21:12:13.88Z" },
+]
+
+[[package]]
+name = "execnet"
+version = "2.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/89/780e11f9588d9e7128a3f87788354c7946a9cbb1401ad38a48c4db9a4f07/execnet-2.1.2.tar.gz", hash = "sha256:63d83bfdd9a23e35b9c6a3261412324f964c2ec8dcd8d3c6916ee9373e0befcd", size = 166622, upload-time = "2025-11-12T09:56:37.75Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ab/84/02fc1827e8cdded4aa65baef11296a9bbe595c474f0d6d758af082d849fd/execnet-2.1.2-py3-none-any.whl", hash = "sha256:67fba928dd5a544b783f6056f449e5e3931a5c378b128bc18501f7ea79e296ec", size = 40708, upload-time = "2025-11-12T09:56:36.333Z" },
 ]
 
 [[package]]
@@ -1276,6 +1289,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/79/42/bb4641652e58dedeac2ec51abc1f8cae4fee4ec63899a0999016229a0f2a/pytest-9.2.0.tar.gz", hash = "sha256:97c4f3b1f3c7414aa36465e09b8220f1d03627993bd51b1282e193753c80557b", size = 1797555, upload-time = "2026-10-27T21:30:20.728Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/51/39/1f5d8c8877a0fa327db959c19341d4be61660de1ab6b7391f9eb805bcd67/pytest-9.2.0-py3-none-any.whl", hash = "sha256:07acdcf88ec174f907dc01af70bf52d49b014bbab03faeeade31c96b18c2e588", size = 411776, upload-time = "2026-10-27T21:30:19.131Z" },
+]
+
+[[package]]
+name = "pytest-xdist"
+version = "3.8.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "execnet" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/78/b4/439b179d1ff526791eb921115fca8e44e596a13efeda518b9d845a619450/pytest_xdist-3.8.0.tar.gz", hash = "sha256:7e578125ec9bc6050861aa93f2d59f1d8d085595d6551c2c90b6f4fad8d3a9f1", size = 88069, upload-time = "2025-07-01T13:30:59.346Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/31/d4e37e9e550c2b92a9cbc2e4d0b7420a27224968580b5a447f420847c975/pytest_xdist-3.8.0-py3-none-any.whl", hash = "sha256:202ca578cfeb7370784a8c33d6d05bc6e13b4f25b5053c30a152269fd10f0b88", size = 46396, upload-time = "2025-07-01T13:30:56.632Z" },
 ]
 
 [[package]]

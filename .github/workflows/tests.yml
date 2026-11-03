@@ -30,7 +30,7 @@ jobs:
       - name: Install
         run: uv sync --frozen --group test
       - name: Tests
-        run: uv run --frozen pytest -v
+        run: uv run --frozen pytest -v -n auto --dist loadfile  # one test file per worker: a file's tests stay in order
 
       - name: Launcher opens the page (Windows)
         if: runner.os == 'Windows'
