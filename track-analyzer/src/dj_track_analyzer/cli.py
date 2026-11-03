@@ -345,6 +345,13 @@ def main() -> None:
                     help="back to the analysis (colour: off the keep-always list); repeat for several")
     ed.add_argument("--no-traktor", action="store_true", help="change the analyzer only, not Traktor")
     ed.add_argument("--dry-run", action="store_true", help="show what would change, write nothing")
+    sy = sub.add_parser("sync", help="everything into your DJ app in one go: genres, colours, hype, cues, grid fixes, crates")
+    sy.add_argument("--nml", default=None, help="path to collection.nml (Traktor; Rekordbox uses the Setup tab's database)")
+    sy.add_argument("--dry-run", action="store_true", help="preview each step, write nothing")
+    sy.add_argument("--only", default=None, help="comma-separated steps: genres,hype,cues,grids,crates")
+    sy.add_argument("--undo", action="store_true", help="put back the library from before the last sync")
+    sy.add_argument("--force", action="store_true", help="with --undo: restore even if your DJ app changed the library since")
+    sy.add_argument("--json", action="store_true", help="full result as JSON")
     s = sub.add_parser("serve", help="run the MCP server")
     s.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
     s.add_argument("--host", default="127.0.0.1")
@@ -598,6 +605,10 @@ def main() -> None:
             except ValueError as e:
                 raise SystemExit(str(e))
         print(json.dumps(out, indent=2, ensure_ascii=False))
+    elif args.cmd == "sync":
+        from . import sync
+
+        sync.main(args)
     elif args.cmd == "serve" and args.http:
         log(f"Puppi3's Track Analyzer MCP on http://{args.host}:{args.port}/mcp")
         build_mcp().run(transport="streamable-http", host=args.host, port=args.port)
