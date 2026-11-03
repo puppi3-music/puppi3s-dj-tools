@@ -2,6 +2,8 @@
 here), cues.apply writes approved plans as djmdCue rows with a backup and undo, grid fixing refuses."""
 from __future__ import annotations
 
+import os
+
 import pytest
 from conftest import make_master_db
 
@@ -35,6 +37,20 @@ def test_grids_in_traktor_shape(rb):
     d = cues.grids()[rb["path"]]
     assert d["bpm"] == 120 and d["grid_ms"] == 500
     assert [(c["ms"], c["type"], c["hotcue"], c["bars"]) for c in d["cues"]] == [(2500, "cue", 0, None), (4500, "loop", -1, 1.0)]
+
+
+def test_grids_kept_until_master_db_changes(rb, monkeypatch):
+    calls = []
+    real = rekordbox._grids
+    monkeypatch.setattr(rekordbox, "_grids", lambda m: calls.append(1) or real(m))
+    first = rekordbox.grids()
+    first[rb["path"]]["bpm"] = 0  # callers get their own copy
+    assert rekordbox.grids()[rb["path"]]["bpm"] == 120 and len(calls) <= 1
+    n = len(calls)
+    st = rb["db"].stat()
+    os.utime(rb["db"], ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+    rekordbox.grids()
+    assert len(calls) == n + 1
 
 
 def test_mp3_times_move_one_frame():

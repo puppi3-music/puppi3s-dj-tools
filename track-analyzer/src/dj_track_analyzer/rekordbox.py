@@ -7,6 +7,7 @@ The database is read once into plain rows (`load`), and everything else works on
 neither pyrekordbox nor an encrypted database."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import os
 import re
@@ -361,12 +362,31 @@ def _grids(master) -> dict[str, tuple[object, dict]]:
 def grids(db: str | None = None) -> dict[str, dict]:
     """cues.grids() for Rekordbox: {file path: {bpm, grid_ms, cues, all_cues, marks}}, times on Traktor's
     timeline. grid_ms is the first downbeat of Rekordbox's grid, bpm its track BPM (a grid with several tempos is
-    read as one). Memory cues have hotcue -1."""
-    master = open_database(find_collection(db))
+    read as one). Memory cues have hotcue -1.
+    Reading every track's ANLZ file takes seconds, so the result is kept until master.db (or its -wal) changes:
+    Rekordbox's writes and ours both change it. Callers get their own copy."""
+    path = find_collection(db)
+    key = (str(path), *_stamp(path), *_stamp(path.with_name(path.name + "-wal")))
+    if _grids_cache.get("key") != key:
+        master = open_database(path)
+        try:
+            data = {p: d for p, (_, d) in _grids(master).items()}
+        finally:
+            close_database(master)
+        _grids_cache.update(key=key, data=data)
+    return copy.deepcopy(_grids_cache["data"])
+
+
+_grids_cache: dict = {}
+
+
+def _stamp(p: Path) -> tuple[int, int]:
+    """(mtime in ns, size) of a file; (0, 0) when it's not there."""
     try:
-        return {p: d for p, (_, d) in _grids(master).items()}
-    finally:
-        close_database(master)
+        st = p.stat()
+    except OSError:
+        return (0, 0)
+    return (st.st_mtime_ns, st.st_size)
 
 
 def write_cues(paths, plan_for, db: str | None = None, dry_run: bool = False, stats: dict | None = None) -> dict:
