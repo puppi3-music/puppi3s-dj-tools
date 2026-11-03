@@ -9,6 +9,7 @@ none of yours fits keep the built-in one), "mine" the nearest (every track one o
 from __future__ import annotations
 
 from . import analysis, collection
+from pathlib import Path
 from .analysis import log
 
 
@@ -110,9 +111,15 @@ def traktor_sets(playlists: list[str] | None = None, genres: list[str] | None = 
 
 
 def train(folder: str | None = None, progress=log, playlists: list[str] | None = None,
-          genres: list[str] | None = None) -> dict:
-    """Learn your genres from a folder on disk, Traktor playlists or genres in Traktor's Genre field."""
-    if folder:
+          genres: list[str] | None = None, by_tag: bool = False) -> dict:
+    """Learn your genres from a folder on disk (by subfolder/playlist, or with `by_tag` by each file's genre tag),
+    Traktor playlists or genres in Traktor's Genre field."""
+    if folder and by_tag:
+        sets = analysis.collect_tagged_set(folder)
+        progress("Genres found in the tags: " + (", ".join(f"{g} ({len(v)})" for g, v in sets.items()) or "none"))
+        report = analysis.train(None, progress, sets=sets,
+                                source={"kind": "folder_tags", "folder": str(Path(folder).expanduser())})
+    elif folder:
         report = analysis.train(folder, progress)
     else:
         sets, source = traktor_sets(playlists, genres)

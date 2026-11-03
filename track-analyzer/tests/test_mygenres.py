@@ -237,3 +237,27 @@ def test_learn_from_traktors_genre_field(traktor_examples):
             mygenres.train(genres=["Hyperpop", "Pop"])
     finally:
         (analysis.HOME / "tempo-loaded.json").unlink()
+
+
+def test_collect_tagged_set_groups_by_each_files_genre_tag(tmp_path, monkeypatch):
+    import types
+
+    import mutagen
+
+    tags = {"a.mp3": ["Hyperpop"], "b.mp3": ["Pop / Dance"], "sub/c.flac": ["Hyperpop; Pop"], "d.mp3": None,
+            "e.mp3": ["  "], "notes.txt": ["Pop"]}
+    for name in tags:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / name).write_bytes(b"x")
+    by_name = {(tmp_path / n).resolve(): g for n, g in tags.items()}
+    monkeypatch.setattr(mutagen, "File", lambda p, easy=False: types.SimpleNamespace(
+        tags={"genre": by_name[p]} if by_name[p] else None))
+    sets = analysis.collect_tagged_set(str(tmp_path))
+    assert {g: sorted(f.name for f in v) for g, v in sets.items()} == {"Hyperpop": ["a.mp3", "c.flac"], "Pop": ["b.mp3"]}
+
+
+def test_genres_train_job_passes_by_tag(tmp_path):
+    from dj_track_analyzer import jobs
+
+    assert jobs._genres_train({"folder": str(tmp_path), "by_tag": True})[-1] == "--by-tag"
+    assert "--by-tag" not in jobs._genres_train({"folder": str(tmp_path)})
