@@ -853,8 +853,8 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     if use_traktor:
         from . import library
 
-        nml_path, tk_files, tk_missing = library.collection_tracks(traktor_nml)
-        log(f"{library.app_name()} collection {nml_path}: {len(tk_files)} tracks found on disk"
+        apps, tk_files, tk_missing = library.all_collection_tracks(traktor_nml)
+        log(f"DJ apps ({'; '.join(apps)}): {len(tk_files)} tracks found on disk"
             + (f", {tk_missing} listed but missing (moved or on a disconnected drive)" if tk_missing else ""))
         files = sorted(set(files) | set(tk_files))
     conflicts = [f for f in files if sync_conflict(f)]
@@ -868,7 +868,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
         log(f"Removed {len(old)} earlier results for Syncthing conflict copies")
     # Leave out Traktor's own mix recordings, and any folders the user excluded.
     skip_dirs = [str(Path(os.path.expanduser(d)).resolve()) for d in (exclude or [])]
-    if not include_recordings and _app() == "traktor":
+    if not include_recordings:  # Traktor's recordings/loops, whichever app is chosen: the scan reads every app
         from . import traktor
 
         skip_dirs += traktor.recording_dirs(traktor_nml)

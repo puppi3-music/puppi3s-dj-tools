@@ -24,6 +24,9 @@ def rb(library_files, monkeypatch, tmp_path):
     ])
     rekordbox.choose_database(str(db))
     library.choose_app("rekordbox")
+    with cues._plan_db() as con:  # approvals another test wrote would be restored here
+        con.execute("DELETE FROM cue_written")
+        con.execute("DELETE FROM cue_plan")
     yield {"db": db, "path": rekordbox.norm_path(str(files[0]))}
     library.choose_app("traktor")
 
@@ -42,7 +45,7 @@ def test_grids_in_traktor_shape(rb):
 def test_grids_kept_until_master_db_changes(rb, monkeypatch):
     calls = []
     real = rekordbox._grids
-    monkeypatch.setattr(rekordbox, "_grids", lambda m: calls.append(1) or real(m))
+    monkeypatch.setattr(rekordbox, "_grids", lambda m, *a: calls.append(1) or real(m, *a))
     first = rekordbox.grids()
     first[rb["path"]]["bpm"] = 0  # callers get their own copy
     assert rekordbox.grids()[rb["path"]]["bpm"] == 120 and len(calls) <= 1
@@ -75,8 +78,9 @@ def test_apply_adds_moves_and_undoes(rb):
     assert rb["db"].read_bytes() == before
 
 
-def test_grid_fixing_refuses(rb):
-    with pytest.raises(SystemExit, match="Rekordbox"):
+def test_grid_fixing_needs_approvals(rb):
+    """Grid fixes go into Rekordbox now (test_rekordbox_grids.py); with nothing approved there's nothing to do."""
+    with pytest.raises(SystemExit, match="Nothing approved"):
         gridfix.apply(dry_run=True)
 
 
@@ -88,3 +92,35 @@ def test_setup_tab_traktor_side_with_rekordbox_chosen(rb, library):
     st = jobs.setup_status()
     assert "error" not in st.get("traktor", {}), st.get("traktor")
     assert isinstance(cues.grids(str(library["nml"])), dict)
+
+
+def test_written_cues_come_back_after_deleted(rb):
+    p, d = rb["path"], cues.grids()[rb["path"]]
+    cues.set_plan(p, d["bpm"], d["grid_ms"], {"add": [{"ms": 8500, "name": "Break", "type": "cue"}]})
+    cues.apply()
+    assert not cues.plans()
+    rekordbox.undo()  # stands in for deleting the cue in Rekordbox
+    with pytest.raises(SystemExit, match="Nothing approved"):
+        cues.apply(dry_run=True)
+    out = cues.apply(restore=True)  # what a sync does
+    assert out["cues_added"] == 1 and not out["skipped"] and "(restored)" in out["changes"][0]
+    again = cues.apply(restore=True, dry_run=True)  # still there: nothing to do, nothing to report
+    assert again["cues_added"] == 0 and not again["skipped"]
+
+
+def test_copies_hot_cues_from_traktor_into_free_slots(rb, monkeypatch):
+    real, p = cues.grids, rb["path"]
+    tk = {p: {"bpm": 120, "grid_ms": 500, "cues": [
+        {"ms": 2500, "type": "cue", "hotcue": 0, "bars": None, "name": "Taken"},   # slot A holds Drop in Rekordbox
+        {"ms": 12500, "type": "cue", "hotcue": 2, "bars": None, "name": "Outro"},
+        {"ms": 9000, "type": "cue", "hotcue": -1, "bars": None, "name": "Memory"}]}}  # not a hot cue: not copied
+    monkeypatch.setattr(cues, "grids", lambda nml=None, ungridded=False: tk if nml else real(ungridded=ungridded))
+    monkeypatch.setattr(cues.traktor, "find_collection", lambda nml=None: "collection.nml")
+    with pytest.raises(SystemExit, match="in place"):  # without the option: nothing to copy
+        cues.apply(dry_run=True, restore=True)
+    out = cues.apply(restore=True, other=True)
+    assert out["cues_added"] == 1 and not out["skipped"]
+    got = sorted((q["in_ms"], q["name"]) for q in rekordbox.read()["cues"])
+    assert (12500, "Outro") in got and all(n != "Taken" for _, n in got)
+    with pytest.raises(SystemExit, match="in place"):  # already there
+        cues.apply(restore=True, other=True, dry_run=True)

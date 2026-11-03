@@ -150,17 +150,22 @@ ACTIONS = {
     "tempo_load": ("Switch Traktor to the tempo view",
                    lambda o: ["tempo", "load", "--bpm", _bpm(o), *(["--lexicon"] if o.get("lexicon") else [])], True),
     "tempo_native": ("Switch Traktor back to normal", lambda o: ["tempo", "native", *(["--lexicon"] if o.get("lexicon") else [])], True),
+    "sync": ("Sync everything into Traktor", lambda o: ["sync", "--json", *(["--only", ",".join(o["only"])] if o.get("only") else [])], True),
+    "sync_undo": ("Undo the last sync to Traktor", lambda o: ["sync", "--undo", *(["--force"] if o.get("force") is True else [])], True),
+    "copy": ("Copy the other DJ app into Traktor", lambda o: ["sync", "--copy", "--json", *(["--only", ",".join(o["only"])] if o.get("only") else [])], True),
+    "copy_undo": ("Undo the last copy into Traktor", lambda o: ["sync", "--copy", "--undo", *(["--force"] if o.get("force") is True else [])], True),
     "update": ("Update the app", lambda o: ["update"], True),
     "update_undo": ("Go back to the version before", lambda o: ["update", "--undo"], True),
 }
 UNDO = {"update": "update_undo", "tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
-        "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native"}
-NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the page asks first
+        "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native", "sync": "sync_undo",
+        "copy": "copy_undo"}
+NO_DRY_RUN = {"traktor_undo", "sync_undo", "copy_undo", "install"}  # traktor --undo has no preview; the page asks first
 # These write to whichever DJ app is chosen on the Setup tab (Traktor or Rekordbox); the rest of TOUCHES_TRAKTOR
 # (the tempo view) is Traktor's only.
-EITHER_APP = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+EITHER_APP = {"sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
               "colors_write_marked", "tempo_load", "tempo_native"}
-TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+TOUCHES_TRAKTOR = {"sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
                    "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
 _lock = threading.Lock()
@@ -188,8 +193,15 @@ def busy() -> bool:
 
 def app_label(action: str, label: str) -> str:
     """A job's name with the chosen DJ app in it ("Hype into Rekordbox's Comment")."""
+    if action in ("copy", "copy_undo"):  # the chosen app first: the other's name may be "Traktor" too
+        from .sync import other_name
+
+        return label.replace("into Traktor", "into " + library.app_name()).replace("the other DJ app", other_name())
     if action in EITHER_APP and library.app() != "traktor":
         return label.replace("Traktor", library.app_name()).replace("Smartlists", "smart playlists")
+    return label.replace("into Traktor", "into " + library.app_name()).replace("to Traktor", "to " + library.app_name()) \
+            .replace("Traktor", library.app_name()).replace("Smartlists", "smart playlists") if action not in ("copy", "copy_undo") \
+            else label.replace("into Traktor", "into " + library.app_name())
     return label
 
 
@@ -497,6 +509,13 @@ def dj_app_status() -> dict:
     from . import library, rekordbox
 
     out: dict = {"app": library.app(), "name": library.app_name(), "apps": library.APPS}
+    try:  # the other DJ app's library, for the sync's "from the other app" steps
+        from . import traktor
+
+        (traktor if out["app"] == "rekordbox" else rekordbox).find_collection(None)
+        out["other_found"] = True
+    except (SystemExit, OSError, ValueError, ImportError):
+        out["other_found"] = False
     if out["app"] != "rekordbox":
         return out
     chosen = rekordbox.chosen_database()
@@ -516,6 +535,16 @@ def dj_app_status() -> dict:
     return out
 
 
+def _sync_undoable(copy: bool = False) -> bool:
+    """A sync (or copy) of the chosen DJ app's library is there to undo (sync.py's record of its backups)."""
+    from . import sync
+
+    try:
+        return json.loads((HOME / (sync.COPY_LAST if copy else sync.LAST)).read_text()).get("app") == library.app()
+    except (OSError, ValueError):
+        return False
+
+
 def setup_status() -> dict:
     """Each step from a fresh install to everything in Traktor: done or not, and what it needs."""
     import sqlite3
@@ -523,7 +552,8 @@ def setup_status() -> dict:
     from . import cues, tempo
 
     st: dict = {"home": str(HOME), "busy": busy(), "brew": bool(BREW), "traktor_running": library.running_state() is True,
-                "actions": {k: app_label(k, v[0]) for k, v in ACTIONS.items()}, "undo": UNDO}
+                "actions": {k: app_label(k, v[0]) for k, v in ACTIONS.items()}, "undo": UNDO,
+                "sync_undo": _sync_undoable(), "copy_undo": _sync_undoable(copy=True)}
     st["models"] = {"ready": analysis.models_present(), "maest": analysis.maest_present(),
                     "folder": str(analysis.MODELS_DIR)}
     st["tools"] = {"ffmpeg": bool(_tool("ffmpeg")), "rubberband": bool(_tool("rubberband"))}
