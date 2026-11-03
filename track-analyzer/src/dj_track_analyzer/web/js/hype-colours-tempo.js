@@ -3,7 +3,7 @@ const HF = { colour: "", bpm: "", tolerance: 4, key: "", gems: false, least: fal
 async function pageHype(main) {
   main.innerHTML = `
     <div class="page-head"><div><h2>Hype</h2><div class="muted">1-10 within your collection: rave sound and energy. Uses the scores from the last scan.</div></div>
-      <div class="spacer"></div>${SNAP ? "" : `<button id="h-write" data-tip="Adds 'Hype 07' to Comment in Traktor, after your own text (shows what changes first)">Write to Traktor's Comment…</button>`}</div>
+      <div class="spacer"></div>${SNAP ? "" : `<button id="h-write" data-tip="Adds 'Hype 07' to Comment in ${DJ()}, after your own text (shows what changes first)">Write to ${DJ()}'s Comment…</button>`}</div>
     <div class="filters">
       <select id="h-colour"><option value="">Any colour</option>${COLOURS.map(c => `<option ${c === HF.colour ? "selected" : ""}>${c}</option>`).join("")}</select>
       <label class="inline">BPM <input type="number" id="h-bpm" value="${esc(HF.bpm)}" placeholder="any"> ± <input type="number" id="h-tol" value="${HF.tolerance}" style="width:56px">%</label>
@@ -35,7 +35,7 @@ async function pageHype(main) {
 
 // ---------- colours ----------
 async function pageColours(main) {
-  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `Traktor has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab, or tempo native), then write` : "";
+  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `${DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab, or tempo native), then write` : "";
   const RSEL = new Set();  // ticked review rows (paths)
   const markCell = t => t.kept || t.recoloured ? "" : t.marked
     ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
@@ -52,7 +52,7 @@ async function pageColours(main) {
           ...(SNAP ? [] : [{ h: "", r: 1, f: markCell }]),
         ], rows, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` });
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
-    <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads Traktor's collection and History)…</div>`;
+    <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads ${DJ()}'s collection and History)…</div>`;
   const [rv, ex, kp] = await Promise.allSettled([api("colours/review", { limit: 200 }), api("colours/explain"), api("colours/kept")]);
   const m = $("#c-model"); m.className = "";
   if (rv.status === "rejected") m.innerHTML = errBox(rv.reason);
@@ -72,10 +72,10 @@ async function pageColours(main) {
         <div class="note" style="margin:0 0 10px">${r.apply_threshold.tracks_meeting_it} meet the recolour threshold (gap ≥ ${r.apply_threshold.min_gap}, confidence ≥ ${pct(r.apply_threshold.min_confidence)}).
         ${r.always_kept ? `${r.always_kept} you chose to keep always.` : ""}
         ${retrain ? `${plural(retrain, "track")} you recoloured since training ${retrain === 1 ? "is" : "are"} marked <b>recoloured</b> until you retrain.` : ""}
-        ${SNAP ? "" : `<button class="mini" id="c-recolour" style="margin-left:4px" ${viewOn ? `disabled title="${viewTip}"` : ""}>Recolour them in Traktor…</button>`}
+        ${SNAP ? "" : `<button class="mini" id="c-recolour" style="margin-left:4px" ${viewOn ? `disabled title="${viewTip}"` : ""}>Recolour them in ${DJ()}…</button>`}
         ${SNAP ? "" : `<br>Or mark tracks one by one (or tick several): <b>Approve</b> recolours to what it sounds like, <b>Keep</b> keeps your colour always. Nothing changes until you press Write.`}</div>
         ${marks.length && !SNAP ? `<div class="selbar"><b>Marked: ${[nA && `${nA} to recolour`, nK && `${nK} to keep`].filter(Boolean).join(", ")}</b>
-          <button class="primary" id="c-write" ${viewOn && nA ? `disabled title="${viewTip}"` : `data-tip="Preview first; Traktor closed${nA ? "" : " isn't needed: keeping writes nothing to Traktor"}"`}>Write…</button>
+          <button class="primary" id="c-write" ${viewOn && nA ? `disabled title="${viewTip}"` : `data-tip="Preview first; ${DJ()} closed${nA ? "" : ` isn't needed: keeping writes nothing to ${DJ()}`}"`}>Write…</button>
           <button id="c-unmark">Unmark all</button><span class="small muted" id="c-markmsg"></span></div>` : ""}
         <div id="c-sel"></div>
         ${reviewTable(r.tracks.slice(0, 25))}
@@ -191,7 +191,7 @@ async function pageTempo(main, bpmArg) {
   main.innerHTML = `
     <div class="page-head"><div><h2>Tempo view: ${d.bpm} BPM</h2><div class="muted">Your catalogue as heard stretched to ${d.bpm} BPM with key lock, compared with each track at its own tempo.</div></div>
       <div class="spacer"></div>${views.length > 1 ? `<select onchange="location.hash='tempo/'+this.value">${views.map(v => `<option value="${v.bpm}" ${v.bpm === bpm ? "selected" : ""}>${v.bpm} BPM</option>`).join("")}</select>` : ""}
-      ${SNAP ? "" : S.libs.loaded_view ? `<button id="tv-native">Switch Traktor back to normal…</button>` : `<button id="tv-load" data-tip="Traktor's genres, colours and hype as heard at ${d.bpm} BPM (shows what changes first; switch back any time)">Load into Traktor…</button>`}</div>
+      ${SNAP ? "" : S.libs.loaded_view ? `<button id="tv-native">Switch ${DJ()} back to normal…</button>` : `<button id="tv-load" data-tip="${DJ()}'s genres, colours and hype as heard at ${d.bpm} BPM (shows what changes first; switch back any time)">Load into ${DJ()}…</button>`}</div>
     <div class="tiles">
       <div class="tile"><div class="v">${d.tracks}</div><div class="l">tracks compared</div></div>
       <div class="tile"><div class="v">${d.tempo_change.median_pct > 0 ? "+" : ""}${d.tempo_change.median_pct}%</div><div class="l">median tempo change (${d.tempo_change.min_pct > 0 ? "+" : ""}${d.tempo_change.min_pct}% … ${d.tempo_change.max_pct > 0 ? "+" : ""}${d.tempo_change.max_pct}%)</div></div>

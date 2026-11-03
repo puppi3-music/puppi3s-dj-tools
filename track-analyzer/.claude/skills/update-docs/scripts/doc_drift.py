@@ -94,7 +94,8 @@ def main() -> None:
                     if s.startswith("--") and s not in text:
                         miss.append(f"{cmd} {s}")
                 for c in choices or []:
-                    if not re.search(rf"{re.escape(cmd)} {re.escape(str(c))}\b", text):
+                    forms = [cmd] + [s for s in strings if s.startswith("--")]  # `tempo load` or `--use mine`
+                    if not any(re.search(rf"{re.escape(f)} {re.escape(str(c))}\b", text) for f in forms):
                         miss.append(f"{cmd} {c}")
         if d == "README.md":
             miss += [f"tool {t}" for t in tools if t not in text]
