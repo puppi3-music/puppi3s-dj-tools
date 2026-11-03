@@ -30,12 +30,16 @@ warnings.filterwarnings("ignore", category=FutureWarning)  # scikit-learn deprec
 
 from . import collection
 from . import analysis
-from . import traktor
+from . import library, traktor
 from .analysis import COLOR_NAMES, COLOR_MODEL, log
 
 
 def read_traktor_colors(nml: str | None = None) -> tuple[Path, dict[str, int], int]:
-    """{file path: COLOR value 1-7} for every coloured track in Traktor's collection."""
+    """{file path: COLOR value 1-7} for every coloured track in the DJ app's library (Traktor's collection, or
+    Rekordbox's master.db with its colours put on our scale)."""
+    if library.app() == "rekordbox":
+        from . import rekordbox
+        return rekordbox.colors(None)
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)  # a loaded view's colours aren't yours: they'd skew training and explain
     text = path.read_text(encoding="utf-8")
@@ -622,7 +626,7 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
         if not scale:
             raise SystemExit("--apply needs a scale model (this one treats colours as classes).")
         if ask and changes and not dry_run:
-            traktor.check_closed()  # say so before the questions, not after them
+            library.check_closed()  # say so before the questions, not after them
             names = {t["path"]: t["file"] for t in tracks}
             asked = changes
             changes, out["kept_your_colour"], forever = _ask_each(changes, names)
@@ -631,9 +635,9 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
             collection.log_feedback("colour_keep", [(p, said(p)) for p in forever])
             collection.log_feedback("colour_no", [(p, said(p)) for p in asked if p not in changes and p not in forever])
         if changes or not planned:
-            out["traktor"] = traktor.set_colors(changes, nml, dry_run=dry_run)
+            out["traktor"] = library.set_colors(changes, nml, dry_run=dry_run)
             if not dry_run and out["traktor"].get("changed"):
-                out["undo"] = "uv run dj-track-analyzer traktor --undo"
+                out["undo"] = "uv run dj-track-analyzer traktor --undo   (undoes the last change in your DJ app)"
         if planned:
             names = sorted(listed[p]["file"] for p in keeps)
             if dry_run:
@@ -1034,7 +1038,7 @@ def apply(nml: str | None = None, dry_run: bool = False, min_confidence: float =
     tracks that don't have one. Colours you set are never changed. Genres and Smartlists are left alone."""
     if analysis.color_model() is None:
         raise SystemExit("No colour model yet. Run: uv run dj-track-analyzer colors train")
-    traktor.check_closed(dry_run, "the colours. (Or use --dry-run to preview.)")
+    library.check_closed(dry_run, "the colours. (Or use --dry-run to preview.)")
     scan = collection.scan([], workers=workers, traktor_nml=nml, use_traktor=True)
     nml_path, colors, _n = read_traktor_colors(nml)
     con = collection.db()
@@ -1046,10 +1050,10 @@ def apply(nml: str | None = None, dry_run: bool = False, min_confidence: float =
     if uncoloured:
         extract_deep(uncoloured, workers, progress)
     refresh_predictions(con, traktor_colors=colors, progress=progress)
-    out = traktor.sync(nml, dry_run=dry_run, update_genres=False, make_smartlists=False, colors=True,
+    out = library.sync(nml, dry_run=dry_run, update_genres=False, make_smartlists=False, colors=True,
                        overwrite_colors=False, color_min_confidence=min_confidence)
     out["new_tracks_analyzed"] = (scan.get("this_run") or {}).get("analyzed", 0)
     out["uncoloured_tracks"] = len(uncoloured)
     if not dry_run and out.get("changed"):
-        out["undo"] = "uv run dj-track-analyzer traktor --undo"
+        out["undo"] = "uv run dj-track-analyzer traktor --undo   (undoes the last change in your DJ app)"
     return out

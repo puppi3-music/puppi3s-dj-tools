@@ -454,12 +454,12 @@ def main() -> None:
         print(json.dumps(out, indent=2, ensure_ascii=False))
         say_if_nothing(out, args.dry_run)
     elif args.cmd == "traktor":
-        from . import traktor
+        from . import library
 
         if args.undo:
-            out = traktor.undo(args.nml, force=args.force)
+            out = library.undo(args.nml, force=args.force)
         else:
-            out = traktor.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
+            out = library.sync(args.nml, args.dry_run, update_genres=not args.smartlists_only,
                                make_smartlists=not args.no_smartlists, colors=not args.no_colors,
                                overwrite_colors=args.overwrite_colors,
                                color_min_confidence=args.color_min_confidence,
