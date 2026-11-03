@@ -40,7 +40,7 @@ check = [
 ]
 # The tests (tests/, also run by GitHub Actions on Windows and Linux). `uv sync --inexact --group test`, then
 # `uv run pytest`.
-test = ["pytest>=8"]
+test = ["pytest>=8", "pytest-xdist>=3"]
 
 [project.scripts]
 dj-track-analyzer = "dj_track_analyzer.cli:main"
