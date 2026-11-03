@@ -240,6 +240,8 @@ def make_master_db(folder: Path, files: list[Path], colours: dict[int, int] | No
 
     with Session(engine) as s:
         s.add(row(models.AgentRegistry, registry_id="localUpdateCount", int_1=100))
+        s.add(row(models.DjmdMenuItems, ID="1", Class=1, Name="TRACK"))  # add_content needs both, as a real library has
+        s.add(row(models.DjmdDevice, ID="1", MasterDBID="1", Name="this computer"))
         for i, f in enumerate(files):
             s.add(row(models.DjmdContent, ID=str(i + 1), UUID=f"uuid-{i + 1}", FolderPath=str(f), Title=f.stem,
                       Commnt="my note" if i == 0 else "", ColorID=str((colours or {}).get(i, 0)), rb_local_deleted=0, BPM=bpm,
