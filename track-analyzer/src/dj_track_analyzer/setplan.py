@@ -475,6 +475,9 @@ def to_traktor(d: dict, name: str, nml: str | None = None, dry_run: bool = False
         from . import rekordbox
 
         out = rekordbox.write_playlists({name: [r["path"] for r in d["tracks"]]}, FOLDER, None, dry_run)
+        missing = set(out["missing"])  # the same keys as Traktor's result, for the summary line
+        out.update(playlist=f"{FOLDER} / {name}", tracks=out["playlists"].get(name, 0),
+                   not_in_traktor=[r["title"] for r in d["tracks"] if r["path"] in missing])
         out["undo"] = f'uv run dj-track-analyzer set --remove "{name}"'
         return out
     path = traktor.find_collection(nml)
@@ -585,6 +588,7 @@ def crates_to_traktor(d: dict, nml: str | None = None, dry_run: bool = False) ->
 
         out = rekordbox.write_playlists({c["crate"]: [t["path"] for t in c["tracks"]] for c in d["crates"]},
                                         CRATE_FOLDER, None, dry_run, first=False, what="the crate playlists")
+        out["not_in_traktor"] = out["not_in_rekordbox"]
         out["undo"] = "uv run dj-track-analyzer crates --remove" + (
             f" --tempo {d['library'].split()[0]}" if d["library"].endswith("view") else "")
         return out
