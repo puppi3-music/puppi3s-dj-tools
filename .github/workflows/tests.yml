@@ -27,10 +27,16 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: track-analyzer/uv.lock
+      # The runner is a throwaway VM that runs only this repo; Defender scanning every file the tests write made the
+      # Windows run ~4x slower than Linux.
+      - name: Turn off Defender's real-time scanning (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
       - name: Install
         run: uv sync --frozen --group test
       - name: Tests
-        run: uv run --frozen pytest -v
+        run: uv run --frozen pytest -v -n auto --dist loadfile  # one test file per worker: a file's tests stay in order
 
       - name: Launcher opens the page (Windows)
         if: runner.os == 'Windows'
