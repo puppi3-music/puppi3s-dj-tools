@@ -27,10 +27,10 @@ def _hype(nml, dry_run):
     return library.write_hype(hype.compute(), nml, dry_run=dry_run)
 
 
-def _cues(nml, dry_run):
+def _cues(nml, dry_run, other=False):
     from . import cues
 
-    return cues.apply(nml, dry_run=dry_run)
+    return cues.apply(nml, dry_run=dry_run, restore=True, other=other)  # also puts back approved cues deleted since
 
 
 def _grids(nml, dry_run):
@@ -50,7 +50,7 @@ def _crates(nml, dry_run):
 WRITERS = {"genres": _genres, "hype": _hype, "cues": _cues, "grids": _grids, "crates": _crates}
 
 
-def run(nml: str | None = None, dry_run: bool = False, steps: list[str] | None = None) -> dict:
+def run(nml: str | None = None, dry_run: bool = False, steps: list[str] | None = None, cues_from_other: bool = False) -> dict:
     """Preview (dry_run) or apply each step in order. Stops at the first error; what was written before it stays
     listed for the undo."""
     steps = list(steps or STEPS)
@@ -63,7 +63,7 @@ def run(nml: str | None = None, dry_run: bool = False, steps: list[str] | None =
         for s in steps:
             log(f"Sync: {s}" + (" (preview)" if dry_run else ""))
             try:
-                r = WRITERS[s](nml, dry_run)
+                r = _cues(nml, dry_run, cues_from_other) if s == "cues" else WRITERS[s](nml, dry_run)
             except SystemExit as err:
                 out["steps"][s] = {"skipped": str(err)}
                 continue
@@ -118,5 +118,6 @@ def main(args) -> None:
     if args.undo:
         print(json.dumps(undo(args.nml, force=args.force), indent=2, ensure_ascii=False))
         return
-    d = run(args.nml, dry_run=args.dry_run, steps=args.only.split(",") if args.only else None)
+    d = run(args.nml, dry_run=args.dry_run, steps=args.only.split(",") if args.only else None,
+          cues_from_other=args.cues_from_other_app)
     print(json.dumps(d, indent=2, ensure_ascii=False) if args.json else text(d))

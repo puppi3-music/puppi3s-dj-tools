@@ -349,6 +349,8 @@ def main() -> None:
     sy.add_argument("--nml", default=None, help="path to collection.nml (Traktor; Rekordbox uses the Setup tab's database)")
     sy.add_argument("--dry-run", action="store_true", help="preview each step, write nothing")
     sy.add_argument("--only", default=None, help="comma-separated steps: genres,hype,cues,grids,crates")
+    sy.add_argument("--cues-from-other-app", action="store_true",
+                    help="also copy hot cues from the other DJ app (Traktor <-> Rekordbox) into free slots")
     sy.add_argument("--undo", action="store_true", help="put back the library from before the last sync")
     sy.add_argument("--force", action="store_true", help="with --undo: restore even if your DJ app changed the library since")
     sy.add_argument("--json", action="store_true", help="full result as JSON")
