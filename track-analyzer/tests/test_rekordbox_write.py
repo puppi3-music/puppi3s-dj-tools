@@ -116,3 +116,24 @@ def test_jobs_say_the_app(monkeypatch):
     monkeypatch.setattr(library, "app", lambda: "rekordbox")
     assert jobs.app_label("hype_traktor", jobs.ACTIONS["hype_traktor"][0]) == "Hype into Rekordbox's Comment"
     assert jobs.app_label("tempo_native", jobs.ACTIONS["tempo_native"][0]) == "Switch Rekordbox back to normal"
+
+
+def test_hand_edit_goes_to_rekordbox_when_chosen(rb, monkeypatch):
+    """A colour/genre edit in a track's panel writes master.db (one backup), not Traktor's collection.nml; the key
+    stays in the analyzer."""
+    from pathlib import Path
+
+    from dj_track_analyzer import edit, library
+
+    db, p = rb["db"], str(rb["files"][1])
+    monkeypatch.setattr(library, "app", lambda: "rekordbox")
+    real = rekordbox.find_collection
+    monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: real(d or str(db)))
+    nml = Path(traktor.find_collection(None)).read_bytes()
+    out = edit.edit(p, {"colour": "Blue", "genre": "Techno", "key": "8A"})
+    assert out["traktor"]["changed"] and out["traktor"]["backup"]
+    assert out["traktor"]["changed_fields"] == ["ColorID", "Genre"] and "key" in out["traktor"]
+    assert rows(db)[p]["color"] == rekordbox.OUR_TO_RB[5] and rows(db)[p]["genre"] == "Techno"
+    assert Path(traktor.find_collection(None)).read_bytes() == nml  # Traktor untouched
+    again = edit.edit(p, {"colour": "Blue"})  # already so: no write, no backup
+    assert again["traktor"]["changed"] is False and len(rekordbox._backups(db)) == 1

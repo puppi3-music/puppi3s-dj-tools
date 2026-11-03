@@ -89,60 +89,61 @@ async function pageSetup(main) {
   const rbAct = `${rb.database ? jb("su-rb-change", "Change…") : ""}${rb.chosen ? jb("su-rb-auto", "Find automatically") : ""}${rbPick}`;
   const libStep = dj.app === "rekordbox"
     ? (rb.database
-      ? step("done", 2, "Rekordbox's library", `${appPick}<br>${rb.chosen ? "Using" : "Found"} <span class="mono">${esc(rb.database)}</span>${rb.chosen ? " (chosen here)" : ""}: ${plural(rb.tracks, "track")} on disk${rb.missing ? `, ${rb.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
-          Scanning, BPM/key comparison and learning genres from its playlists read it; writing to Rekordbox comes in a later version.<div id="su-nml-msg" class="small" hidden></div>`, rbAct)
+      ? step("done", 2, "Rekordbox's library", `${appPick}<br>${rb.chosen ? "Using" : "Found"} <span class="mono">${esc(rb.database)}</span>${rb.chosen ? " (chosen here)" : ""}: ${plural(rb.tracks, "track")} on disk${rb.missing ? `, ${rb.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.${rb.coloured != null ? ` ${rb.coloured} coloured by you, ${rb.cued} with 3+ of your own cue points.` : ""}
+          Scanning, BPM/key comparison and learning genres from its playlists read it; the Write steps below write back to it (Rekordbox closed).<div id="su-nml-msg" class="small" hidden></div>`, rbAct)
       : step("blocked", 2, "Rekordbox's library", `${appPick}<br>${esc(rb.why || "Not found.")} It's the file <span class="mono">master.db</span> in Rekordbox's folder (Library › Pioneer › rekordbox on a Mac, AppData › Roaming › Pioneer › rekordbox on Windows).
           <div id="su-nml-msg" class="small" hidden></div>`, rbAct))
     : traktorStep;
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
-    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
-      ${sc.changed_since_scan ? ` <b>${plural(sc.changed_since_scan, "file")} changed on disk since the scan</b> (another tagger, Traktor or a sync app): scan again so tags and Traktor get their current results (quick: the analysis is cached).` : ""}
+    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
+      ${sc.changed_since_scan ? ` <b>${plural(sc.changed_since_scan, "file")} changed on disk since the scan</b> (another tagger, ${APP} or a sync app): scan again so tags and ${APP} get their current results (quick: the analysis is cached).` : ""}
       Scan again after adding music: only new and changed files are analysed.`;
   const scanState = !st.models.ready ? "blocked" : sc.tracks && !sc.traktor_not_scanned && !sc.changed_since_scan ? "done" : "todo";
   const scanStep = step(scanState, 3, sc.tracks ? "Your music, scanned" : "Scan your music", scanBody + (st.models.ready ? "" : " <b>Download the models first.</b>"),
-    `${tk.collection ? jb("su-scan-tk", "Scan Traktor's collection", scanState === "todo", !st.models.ready && "disabled") : ""}
-     <input type="text" id="su-folder" placeholder="or a folder: ~/Music/Tracks" value="${esc(SF.folder)}">${jb("su-scan-dir", "Scan folder", !tk.collection && scanState === "todo", !st.models.ready && "disabled")}`);
+    `${LIB ? jb("su-scan-tk", `Scan ${APPLIB}`, scanState === "todo", !st.models.ready && "disabled") : ""}
+     <input type="text" id="su-folder" placeholder="or a folder: ~/Music/Tracks" value="${esc(SF.folder)}">${jb("su-scan-dir", "Scan folder", !LIB && scanState === "todo", !st.models.ready && "disabled")}`);
   const hypeStep = sc.hype ? step("done", 4, "Hype scores", `${plural(sc.hype, "track")} scored 1-10 within your collection. New scans keep them up to date.`)
     : sc.tracks >= 20 ? step("todo", 4, "Score hype", "Ranks every track 1-10 by rave sound and energy within your collection. Takes seconds.", jb("su-hype", "Score hype", true))
     : step("blocked", 4, "Hype scores", "Needs 20 scanned tracks.");
-  const cm = st.colours, colourOk = tk.collection && tk.coloured >= 30 && sc.tracks >= 30;
+  const LC = dj.app === "rekordbox" ? { coloured: rb.coloured ?? 0, cued: rb.cued ?? 0 } : tk;  // the chosen app's own colours and cues
+  const cm = st.colours, colourOk = LIB && LC.coloured >= 30 && sc.tracks >= 30;
   const colourStarter = cm.starter ? ` Until then a starter scale learned from another DJ's colours (Red = hard … Magenta = pretty) predicts them${cm.predicted ? ` (${plural(cm.predicted, "track")} so far)` : ""}.` : "";
   const colourNew = learnNew(cm.new, "colour"), cueNew = learnNew(st.cues.new, "track");
-  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || "Update training after recolouring tracks in Traktor."} See the Colours tab.`, jb("su-colours", "Update training", colourNew.any, colourNew.none && "disabled", "Updating wouldn't change anything: no colour is new or changed since the last training"))
+  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || `Update training after recolouring tracks in ${APP}.`} See the Colours tab.`, jb("su-colours", "Update training", colourNew.any, colourNew.none && "disabled", "Updating wouldn't change anything: no colour is new or changed since the last training"))
     : step(colourOk ? "todo" : "blocked", 5, "Learn your colours", colourOk
-        ? "Learns what your Traktor colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads Traktor's collection." + colourStarter
-        : `Optional. Needs 30+ tracks you've coloured in Traktor that are also scanned${tk.collection ? ` (you have ${tk.coloured} coloured)` : ""}.` + colourStarter,
+        ? `Learns what your ${APP} colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads ${APPLIB}.` + colourStarter
+        : `Optional. Needs 30+ tracks you've coloured in ${APP} that are also scanned${LIB ? ` (you have ${LC.coloured} coloured)` : ""}.` + colourStarter,
       colourOk ? jb("su-colours", "Learn your colours", true) : "");
-  const cueOk = tk.collection && tk.cued >= 30;
+  const cueOk = LIB && LC.cued >= 30;
   const cueStarter = st.cues.starter ? " Until then a starter model learned from another DJ's cues suggests them: listen to your tracks first, then see each track's panel (Tracks tab)." : "";
-  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to Traktor. Listen to the other tracks to get suggestions for those too. ${cueNew.text}`,
+  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to ${APP}. Listen to the other tracks to get suggestions for those too. ${cueNew.text}`,
         `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Update training", cueNew.any, cueNew.none && "disabled", "Updating wouldn't change anything: no cues are new or changed since the last training")}`)
     : step(cueOk ? "todo" : "blocked", 6, "Learn your cue points", cueOk
-        ? "Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads Traktor's collection." + cueStarter
-        : `Optional. Needs 30+ tracks with 3+ of your own cue points in Traktor${tk.collection ? ` (you have ${tk.cued})` : ""}.` + cueStarter,
-      `${st.cues.starter && tk.collection ? jb("su-cues-scan", "Listen to your tracks") : ""}${cueOk ? jb("su-cues", "Learn your cue points", true) : ""}`);
+        ? `Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads ${APPLIB}.` + cueStarter
+        : `Optional. Needs 30+ tracks with 3+ of your own cue points in ${APP}${LIB ? ` (you have ${LC.cued})` : ""}.` + cueStarter,
+      `${st.cues.starter && LIB ? jb("su-cues-scan", "Listen to your tracks") : ""}${cueOk ? jb("su-cues", "Learn your cue points", true) : ""}`);
   // Your own genres: learned from example folders + "everything else" (the rest of your scanned music), used only when switched on
   const GN = st.genres, GR = GN.report || {}, pc = v => v == null ? "–" : `${Math.round(v * 100)}%`;
   const genreOk = sc.tracks >= 30;
   const gFolder = `<input type="text" id="su-gfolder" size="35" placeholder="folder: one subfolder per genre" value="${esc(SF.gfolder || GN.source || "")}">${tk.can_browse ? jb("su-gbrowse", "Browse…") : ""}`;
   // Where the examples come from: a folder on disk, a Traktor playlist folder (a playlist per genre) or Traktor's Genre field
-  const G_SRC = { folder: "A folder", folder_tags: "Genre tags in a folder", traktor_playlists: "Traktor playlists", traktor_genres: "Traktor's Genre field" };
+  const G_SRC = { folder: "A folder", folder_tags: "Genre tags in a folder", traktor_playlists: `${APP} playlists`, traktor_genres: `${APP}'s Genre field` };
   const lastSrc = GN.source_kind || {};
   if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || tk.collection) ? lastSrc.kind : "folder";
   if (!SF.gpl) SF.gpl = lastSrc.kind === "traktor_playlists" ? [...(lastSrc.playlists || [])] : [];
   if (!SF.ggenres) SF.ggenres = lastSrc.kind === "traktor_genres" ? [...lastSrc.genres] : [];
   const gSource = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Learn from:</span>
     <div class="seg-toggle" id="su-gsrc">${Object.entries(G_SRC).map(([k, label]) => `<button data-gsrc="${k}" class="${SF.gsrc === k ? "on" : ""}"
-      ${!k.startsWith("folder") && !tk.collection ? `disabled title="Choose Traktor's collection first (above)"` : ""}>${label}</button>`).join("")}</div></div>
+      ${!k.startsWith("folder") && !LIB ? `disabled title="Choose ${APPLIB} first (above)"` : ""}>${label}</button>`).join("")}</div></div>
     <div id="su-gsrcbox" style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"></div>`;
-  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, a folder of tracks whose genre tags say their genre, Traktor playlists (each one a genre named after it), or genres from Traktor's Genre field. 20–50 example tracks per genre, at least two genres.
+  const gHow = `Pick the examples: a folder with one subfolder (or one playlist) per genre, a folder of tracks whose genre tags say their genre, ${APP} playlists (each one a genre named after it), or genres from ${APP}'s Genre field. 20–50 example tracks per genre, at least two genres.
     It also learns what the rest of your scanned music sounds like, so a track only gets one of your genres when it clearly sounds like it; every other track keeps its built-in genre.`;
   const G_MODES = { starter: "Starter", both: "Both", mine: "Mine only" };
   const gSwitchRow = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Genres used:</span>
     <div class="seg-toggle" id="su-gmode">${Object.entries(G_MODES).map(([m, label]) => `<button data-gmode="${m}" class="${GN.mode === m ? "on" : ""}"
       ${m !== "starter" && GN.not_ready ? `disabled title="${esc(GN.not_ready)}"` : ""}>${label}</button>`).join("")}</div></div>`;
-  const gWhere = "the Tracks tab, mix suggestions, sets and the LLM show them; your files and Traktor get them the next time you write genres (below)";
+  const gWhere = `the Tracks tab, mix suggestions, sets and the LLM show them; your files and ${APP} get them the next time you write genres (below)`;
   const gUse = !GN.trained ? ""
     : `${gSwitchRow}<div class="small" style="margin-top:6px">${GN.not_ready ? `<b>Your genres can't be used yet.</b> ${esc(GN.not_ready)}`
       : GN.mode === "both" ? `<b>Both:</b> your genre on the ${plural(GN.tracks_with_yours, "track")} that clearly sound like one; every other track keeps its built-in genre. ${gWhere[0].toUpperCase() + gWhere.slice(1)}.`
@@ -167,14 +168,14 @@ async function pageSetup(main) {
   const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 10, "Tempo view",
     `Optional: your catalogue as heard stretched to the tempo you play at, with key lock: which genres, colours and hype change.
      About an hour the first time for 470 tracks, resumable; later only new tracks. ${T.views.length ? `Scanned: ${T.views.map(v => `${v} BPM`).join(", ")}.` : ""}
-     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>Traktor has the ${T.loaded} BPM view loaded.</b>` : ""}`,
+     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>${APP} has the ${T.loaded} BPM view loaded.</b>` : ""}`,
     `<label class="inline small">BPM <input type="number" id="su-bpm" value="${esc(bpm)}" min="60" max="250"></label>
      ${jb("su-tempo", haveView ? "Scan new tracks" : "Scan tempo view", !haveView && st.tools.rubberband && sc.tracks, (!st.tools.rubberband || !sc.tracks) && "disabled")}
-     ${T.loaded ? `<button id="su-native">Switch Traktor back…</button>` : T.views.length ? `<button id="su-load">Load into Traktor…</button>` : ""}
+     ${T.loaded ? `<button id="su-native">Switch ${APP} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
      ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon || T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
   const G = st.grids || {};
   const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
-    `Optional: checks that Traktor's grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
+    `Optional: checks that ${APP}'s grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
      ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
     jb("su-grids", G.checked ? "Update beat-grids" : "Check the beat grids", !G.checked && !!sc.tracks,
       (!sc.tracks || (G.checked && G.checked >= (G.tracks || 0))) && "disabled", !sc.tracks ? "" : "Checking again wouldn't change anything: every grid is checked already, none is new or changed"));
@@ -224,7 +225,7 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) route(); }
+    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
@@ -237,13 +238,14 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) route(); }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
   document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
     try { await postJSON("/api/dj-app", { app: r.value }); await loadLibs(); route(); }
-    catch (e) { const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+    catch (e) { const was = document.querySelector(`input[name="su-app"][value="${dj.app}"]`); if (was) was.checked = true;  // didn't change
+      const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
   });
   on("su-rb-change", () => { $("#su-rb-pick").style.display = "contents"; $("#su-rb-change").style.display = "none"; ($("#su-rb-browse") || $("#su-rb-path")).focus(); });
   on("su-rb-browse", e => rbDb({ browse: true }, e.currentTarget));
@@ -275,12 +277,12 @@ async function pageSetup(main) {
       return;
     }
     if (!G_TRAKTOR) {
-      box.innerHTML = `<span class="small muted">Reading Traktor's collection…</span>`;
+      box.innerHTML = `<span class="small muted">Reading ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"}…</span>`;
       try { G_TRAKTOR = await api("genres/traktor"); } catch (err) { box.innerHTML = ""; gmsg(err.message, true); return; }
       if (!document.contains(box)) return;
     }
     const T = G_TRAKTOR, few = n => n < T.min_each ? ` <span class="dim">· under ${T.min_each}</span>` : "";
-    const again = `<button id="su-greread" class="mini" title="Read Traktor's collection again (after changing it in Traktor and saving)">↻</button>`;
+    const again = `<button id="su-greread" class="mini" title="Read ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"} again (after changing it in ${DJ()} and saving)">↻</button>`;
     // a tick list (playlists or genres): rows {key, label, tracks, note}, the ticked keys kept in SF[keyOf]
     const ticks = (rows, keyOf, intro) => {
       const ticked = new Set(SF[keyOf]);
@@ -292,13 +294,13 @@ async function pageSetup(main) {
       });
     };
     if (SF.gsrc === "traktor_playlists") {
-      if (!T.playlists.length) box.innerHTML = `<div class="small">No playlists with tracks in Traktor's collection yet. ${again}</div>`;
+      if (!T.playlists.length) box.innerHTML = `<div class="small">No playlists with tracks in ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"} yet. ${again}</div>`;
       else ticks(T.playlists.map(p => ({ key: p.path, label: p.path, tracks: p.tracks })), "gpl",
         "Tick at least two playlists: each one is a genre, named after the playlist (like <b>Hyperpop</b>). A track in two of them is left out.");
     } else if (T.tempo_view_loaded) {
-      box.innerHTML = `<div class="small"><b>A tempo view is loaded in Traktor</b>, so its Genre field holds the view's genres. Switch Traktor back to normal on the Tempo tab first.</div>`;
+      box.innerHTML = `<div class="small"><b>A tempo view is loaded in ${DJ()}</b>, so its Genre field holds the view's genres. Switch ${DJ()} back to normal on the Tempo tab first.</div>`;
     } else if (!T.genres.length) {
-      box.innerHTML = `<div class="small">No genres in Traktor's Genre field yet. ${again}</div>`;
+      box.innerHTML = `<div class="small">No genres in ${DJ()}'s Genre field yet. ${again}</div>`;
     } else {
       ticks(T.genres.map(g => ({ key: g.genre, label: g.genre, tracks: g.tracks, note: g.built_in ? "built-in name" : "" })), "ggenres",
         `Tick at least two genres. Tracks with several genres in the field${T.multi ? ` (${T.multi})` : ""} are left out. Genres with a built-in name may have been written by this app, not by you.`);

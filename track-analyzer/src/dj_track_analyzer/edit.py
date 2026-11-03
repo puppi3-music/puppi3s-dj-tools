@@ -122,7 +122,10 @@ def edit(path: str, changes: dict | None = None, clear: list[str] | tuple = (), 
             undo["changes"][f] = by_hand[f]
         else:
             undo["clear"].append(f)
-    if "genre" in changes and "genre" not in by_hand and to_traktor and _traktor_file():
+    from . import library
+
+    rb = library.app() == "rekordbox"  # the edit goes to the chosen DJ app (the "traktor" keys below name either)
+    if "genre" in changes and "genre" not in by_hand and to_traktor and not rb and _traktor_file():
         undo["traktor_genre"] = (traktor.read_track(path) or {}).get("genre") or ""
 
     # what Traktor gets: the hand values, and for a cleared genre / hype what the analyzer goes back to
@@ -148,6 +151,16 @@ def edit(path: str, changes: dict | None = None, clear: list[str] | tuple = (), 
         out["traktor"] = "not written (--no-traktor)"
     elif not tk:
         out["traktor"] = "nothing for Traktor (BPM stays in the analyzer: Traktor's BPM goes with its beat grid)"
+    elif rb:
+        if not {"colour", "genre", "hype"} & tk.keys():
+            out["traktor"] = "nothing for Rekordbox (the key stays in the analyzer)"
+        else:
+            from . import rekordbox
+
+            out["traktor"] = rekordbox.set_track(path, colour=tk.get("colour"), genre=tk.get("genre"),
+                                                 hype=tk.get("hype"), dry_run=dry_run)
+            if "camelot" in tk:
+                out["traktor"]["key"] = "not written to Rekordbox: kept in the analyzer"
     elif not _traktor_file():
         out["traktor"] = "no Traktor collection found: saved in the analyzer only"
     else:

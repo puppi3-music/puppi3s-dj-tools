@@ -59,7 +59,8 @@ function rerenderSetup() { if (S.page === "setup") pageSetup($("#main")).catch(e
 function progressBar(j, width) {
   const p = j.progress;
   return p && p.total ? `<div class="progress" style="${width ? `width:${width}` : ""}"><div style="width:${Math.round(p.done / p.total * 100)}%"></div></div>`
-    : `<div class="progress indet" style="${width ? `width:${width}` : ""}"><div></div></div>`;
+    // the bar is redrawn on every poll: start the sweep where the clock says it is, so it doesn't restart
+    : `<div class="progress indet" style="${width ? `width:${width}` : ""}"><div style="animation-delay:-${Math.round(performance.now() % 1400)}ms"></div></div>`;
 }
 const progressText = j => {
   const p = j.progress;
@@ -97,7 +98,7 @@ const HIDE = new Set(["dry_run", "app", "undone", "changed", "collection", "exam
   "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps"]);
 const LABELS = { would_write: "files that would get a new tag", written: "files tagged", would_restore: "files that would get their old tags back",
   restored: "files given their old tags back", skipped_changed_since_scan: "skipped: changed on disk since the scan (scan again first)",
-  unchanged: "already right", missing: "files no longer there", traktor_tracks: "tracks in Traktor", matched_scanned_tracks: "of them scanned",
+  unchanged: "already right", missing: "files no longer there", get traktor_tracks() { return `tracks in ${DJ()}`; }, matched_scanned_tracks: "of them scanned",
   new_files: "new files", changed_files: "files changed", removed_files: "files removed", commits: "new commits",
   files_put_back: "files put back", files_removed: "files taken out" };
 const human = k => LABELS[k] || k.replace(/_/g, " ");
@@ -201,14 +202,14 @@ async function writeDialog(action, options = {}, onDone) {
       show(`<div class="err">${esc(j.error.replace(/ Run again with --force to restore anyway\./, ""))}</div>${j.command ? cmdNote(j) : ""}`,
         `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
       dlg.querySelector("[data-force]")?.addEventListener("click", () => {
-        if (confirm("Put the backup back anyway?\n\nEverything Traktor saved since the analyzer's change is lost: plays, cue points, new tracks, your own edits.")) write(act, { ...opts, force: true });
+        if (confirm(`Put the backup back anyway?\n\nEverything ${DJ()} saved since the analyzer's change is lost: plays, cue points, new tracks, your own edits.`)) write(act, { ...opts, force: true });
       });
       return again(act, opts);
     }
     const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
     if (r.restart) return restartApp((html, buttons) => show(html, buttons), r);
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
-      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" || undo in ONE_UNDO ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
+      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" || undo in ONE_UNDO ? (DJ() === "Rekordbox" ? "<br>Undo works until Rekordbox changes master.db again." : "<br>Undo works until Traktor saves its collection again (it does when it quits).") : ""}</div>` : ""}
       ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
       undo ? `<button data-undo>${esc(label(undo))}…</button>` : "");
     dlg.querySelector("[data-undo]")?.addEventListener("click", () => preview(undo, opts));
