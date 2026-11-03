@@ -788,14 +788,21 @@ def save_row(con: sqlite3.Connection, row: dict) -> None:
     con.commit()
 
 
+def _app() -> str:
+    from . import library
+
+    return library.app()
+
+
 def load_traktor_info(nml: str | None = None) -> dict[str, tuple[float | None, str | None]]:
-    """{path: (BPM folded into our range, Camelot)} from Traktor, or {} without a Traktor collection."""
-    from . import traktor
+    """{path: (BPM folded into our range, Camelot)} from the DJ app (Traktor or Rekordbox, chosen on the Setup tab),
+    or {} without its library."""
+    from . import library
 
     try:
-        info = traktor.track_info(nml)
+        info = library.track_info(nml)
     except (SystemExit, OSError) as err:
-        log(f"(Traktor's BPM/key not used: {err})")
+        log(f"({library.app_name()}'s BPM/key not used: {err})")
         return {}
     out = {str(nfc(p)): (analysis.round_bpm(analysis.fold_bpm(b)) if b else None, c) for p, (b, c) in info.items()}
     for p, f in manual().items():  # a BPM set by hand wins over Traktor's (whose grid is never written)
@@ -844,10 +851,10 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
     _drop_decomposed_duplicates(con)
     files = find_audio(roots) if roots else []
     if use_traktor:
-        from . import traktor
+        from . import library
 
-        nml_path, tk_files, tk_missing = traktor.collection_tracks(traktor_nml)
-        log(f"Traktor collection {nml_path}: {len(tk_files)} tracks found on disk"
+        nml_path, tk_files, tk_missing = library.collection_tracks(traktor_nml)
+        log(f"{library.app_name()} collection {nml_path}: {len(tk_files)} tracks found on disk"
             + (f", {tk_missing} listed but missing (moved or on a disconnected drive)" if tk_missing else ""))
         files = sorted(set(files) | set(tk_files))
     conflicts = [f for f in files if sync_conflict(f)]
@@ -861,7 +868,7 @@ def scan(roots: list[str], workers: int | None = None, rescan: bool = False,
         log(f"Removed {len(old)} earlier results for Syncthing conflict copies")
     # Leave out Traktor's own mix recordings, and any folders the user excluded.
     skip_dirs = [str(Path(os.path.expanduser(d)).resolve()) for d in (exclude or [])]
-    if not include_recordings:
+    if not include_recordings and _app() == "traktor":
         from . import traktor
 
         skip_dirs += traktor.recording_dirs(traktor_nml)

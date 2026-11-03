@@ -202,3 +202,50 @@ def fake_traktor(tmp_path):
     t = FakeTraktor(tmp_path)
     yield t
     t.stop()
+
+
+def make_master_db(folder: Path, files: list[Path], colours: dict[int, int] | None = None, bpm: int | None = None,
+                   cues: list[dict] | None = None) -> Path:
+    """A made-up Rekordbox master.db (SQLCipher, Rekordbox's own key) with one djmdContent row per file, built from
+    pyrekordbox's table definitions. colours: {row index: djmdColor ID}; bpm: djmdContent.BPM (× 100) for every
+    row; cues: djmdCue rows as column values (ContentID = row index + 1). Columns Rekordbox fills that these tests
+    don't need are left empty, so the schema is built with them nullable."""
+    import datetime
+
+    import sqlalchemy as sa
+    import sqlcipher3
+    from pyrekordbox.masterdb import models
+    from pyrekordbox.masterdb.database import BLOB
+    from pyrekordbox.utils import deobfuscate
+    from sqlalchemy.orm import Session
+
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / "master.db"
+    engine = sa.create_engine(f"sqlite+pysqlcipher://:{deobfuscate(BLOB)}@/{path}?", module=sqlcipher3)
+    md = sa.MetaData()
+    for t in models.Base.metadata.tables.values():
+        t.to_metadata(md)
+    for t in md.tables.values():
+        for c in t.columns:
+            c.nullable = not c.primary_key
+    md.create_all(engine)
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    def row(model, **kw):
+        for col in model.__table__.columns:
+            if col.key not in kw and (col.key.endswith("_at") or "date" in col.key):
+                kw[col.key] = now
+        kw.setdefault("rb_local_usn", 0) if hasattr(model, "rb_local_usn") else None
+        return model(**kw)
+
+    with Session(engine) as s:
+        s.add(row(models.AgentRegistry, registry_id="localUpdateCount", int_1=100))
+        for i, f in enumerate(files):
+            s.add(row(models.DjmdContent, ID=str(i + 1), UUID=f"uuid-{i + 1}", FolderPath=str(f), Title=f.stem,
+                      Commnt="my note" if i == 0 else "", ColorID=str((colours or {}).get(i, 0)), rb_local_deleted=0, BPM=bpm,
+                      SampleRate=44100))
+        for k, q in enumerate(cues or []):
+            s.add(row(models.DjmdCue, ID=str(900 + k), UUID=f"cue-{k}", rb_local_deleted=0, **q))
+        s.commit()
+    engine.dispose()
+    return path

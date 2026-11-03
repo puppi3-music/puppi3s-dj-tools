@@ -566,6 +566,22 @@ def prepare(recording: str, history: str, start_text: str | None) -> tuple[list[
         raise NoHistory(f"Can't tell when {rec.name} started: its name isn't a Traktor recording name "
                         "(Recording_YYYY-MM-DD_HHhMMmSSs). Add --start HH:MM:SS (or 'YYYY-MM-DD HH:MM:SS'): "
                         "the time of day the recording began.", "start")
+    from . import library
+
+    if history == "auto" and library.app() == "rekordbox":
+        from . import rekordbox
+
+        length = analysis._audio_length(rec) or 6 * 3600
+        best = max(((_overlap(h["plays"], start, length), h) for h in rekordbox.histories()),
+                   key=lambda x: x[0], default=(0, None))
+        if not best[0]:
+            raise NoHistory(f"No Rekordbox History playlist covers a recording starting {start:%Y-%m-%d %H:%M:%S}. "
+                            "Rekordbox writes one per session as you play: check the History folder in Rekordbox.",
+                            "history", start)
+        plays = best[1]["plays"]
+        analysis.log(f"Tracklist: Rekordbox History '{best[1]['name']}' ({len(plays)} plays; Rekordbox keeps no "
+                     f"play lengths, so each runs to the next track's load), recording taken to start {start:%H:%M:%S})")
+        return plays, Path(f"rekordbox-history/{best[1]['name']}"), start
     if history == "auto":
         found = find_history(start, analysis._audio_length(rec) or 6 * 3600)
         if not found:

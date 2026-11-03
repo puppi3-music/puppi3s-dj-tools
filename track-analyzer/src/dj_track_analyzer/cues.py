@@ -52,6 +52,12 @@ def grids(nml: str | None = None) -> dict[str, dict]:
     """{file path: {bpm, grid_ms, cues: [{ms, type, bars, hotcue, name}]}} for every track Traktor has a beat
     grid for. Cues are your own (cue points and loops); marks your fade-in, fade-out and load markers (for the
     page only); the AutoGrid marker is grid_ms."""
+    from . import library
+
+    if library.app() == "rekordbox" and nml is None:  # a path given is Traktor's collection.nml (the Setup
+        from . import rekordbox                          # tab's Traktor side reads it with Rekordbox chosen)
+
+        return rekordbox.grids(None)
     text = traktor.find_collection(nml).read_text(encoding="utf-8")
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     out = {}
@@ -1375,10 +1381,63 @@ def _drop_tag(entry: str, hit: re.Match) -> str:
     return entry[:a] + entry[b:]
 
 
+def _apply_rekordbox(db: str | None, dry_run: bool) -> dict:
+    from . import rekordbox
+
+    todo = plans()
+    if not todo:
+        raise SystemExit("Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
+    stats = {"tracks": 0, "cues_added": 0, "cues_moved": 0, "cues_renumbered": 0, "cues_deleted": 0, "skipped": []}
+    examples, done = [], set()
+    g = rekordbox.grids(db)
+    unticked = [] if dry_run else _unticked({p: todo[p] for p in todo if p in g}, g)
+
+    def plan_for(p: str, d: dict):
+        name = Path(p).name
+        if not same_grid(todo[p]["grid"], d["bpm"], d["grid_ms"]):
+            stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
+            return None
+        done.add(p)
+        moves, adds, renum, skipped, removes = resolve(d["all_cues"], todo[p]["plan"], d["bpm"])
+        stats["skipped"] += [f"{name}: {why}" for why in skipped]
+        for r in removes:
+            what = f"cue {r['hotcue'] + 1}" if r["hotcue"] >= 0 else r["type"]
+            examples.append(f"{name}: − {what}{' ' + r['name'] if r.get('name') else ''} at {_clock(r['ms'] / 1000)} deleted")
+        for mv in moves:
+            examples.append(f"{name}: cue {mv['hotcue'] + 1} {_clock(mv['from_ms'] / 1000)} → {_clock(mv['to_ms'] / 1000)}")
+        for r in renum:
+            examples.append(f"{name}: cue {r['hotcue'] + 1} → slot {r['to'] + 1}")
+        for a_, slot in adds:
+            examples.append(f"{name}: + {a_['name']} at {_clock(a_['ms'] / 1000)} in slot {slot + 1}")
+        stats["cues_deleted"] += len(removes)
+        stats["cues_moved"] += len(moves)
+        stats["cues_renumbered"] += len(renum)
+        stats["cues_added"] += len(adds)
+        stats["tracks"] += bool(removes or moves or renum or adds)
+        return moves, adds, renum, removes
+
+    out = rekordbox.write_cues(list(todo), plan_for, db, dry_run, stats)
+    out["not_in_collection"] = len(todo) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
+    out["changes"] = examples
+    if not dry_run and out.get("changed"):
+        with _plan_db() as con:
+            con.executemany("DELETE FROM cue_plan WHERE path=?", [(p,) for p in done])
+        from . import collection
+
+        collection.log_feedback("cue_unticked", unticked)
+        out["undo"] = "Undo on the Setup tab (restores master.db from its backup)"
+    return out
+
+
 def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     """Write the approved cues into collection.nml: new ones into free hot-cue slots (cue points in slots 1-7 in
     time order, the loop in slot 8 when free), corrections by moving your cue, deleted ones taken out. A track whose beat grid changed
-    since you approved, or whose cue was moved since, is left alone. Backup + `traktor --undo`."""
+    since you approved, or whose cue was moved since, is left alone. Backup + `traktor --undo`. With Rekordbox
+    chosen: the same plan as djmdCue rows in master.db."""
+    from . import library
+
+    if library.app() == "rekordbox":
+        return _apply_rekordbox(nml, dry_run)
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
     traktor.check_closed(dry_run)

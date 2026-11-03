@@ -423,7 +423,11 @@ def _shift_cue_rows(con, path: str, shift: float, new_bpm: float, new_grid_ms: f
 def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     """Move each approved track's grid marker, cues, loops and markers by its shift (Traktor closed). A track whose
     grid changed since you approved is left alone. Backup + `traktor --undo`."""
-    from . import cues
+    from . import cues, library
+
+    if library.app() == "rekordbox":
+        raise SystemExit("Fixing grids isn't available for Rekordbox yet: its grid lives in the ANLZ files, and "
+                         "rewriting those isn't tested. The check is read-only and works; move the grid in Rekordbox.")
 
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
