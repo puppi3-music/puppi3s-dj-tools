@@ -159,7 +159,7 @@ NO_DRY_RUN = {"traktor_undo", "install"}  # traktor --undo has no preview; the p
 # These write to whichever DJ app is chosen on the Setup tab (Traktor or Rekordbox); the rest of TOUCHES_TRAKTOR
 # (the tempo view) is Traktor's only.
 EITHER_APP = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
-              "colors_write_marked"}
+              "colors_write_marked", "tempo_load", "tempo_native"}
 TOUCHES_TRAKTOR = {"traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
                    "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 

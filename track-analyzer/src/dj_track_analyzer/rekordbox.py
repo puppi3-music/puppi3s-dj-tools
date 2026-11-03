@@ -773,3 +773,192 @@ def write_hype(hype: dict[str, int], db: str | None = None, dry_run: bool = Fals
     out = _write(db, dry_run, change, stats, "the hype")
     out["examples"] = examples
     return out
+
+
+# ----------------------------------------------------------------------------
+# Set and crate playlists, History, tempo view
+# ----------------------------------------------------------------------------
+
+SET_FOLDER = "Sets (Track Analyzer)"
+
+
+def _root_folder(master, name: str, make: bool):
+    found = [p for p in master.get_playlist() if p.Name == name and p.Attribute == FOLDER and str(p.ParentID) == "root"]
+    if found or not make:
+        return found[0] if found else None
+    return master.create_playlist_folder(name)
+
+
+def write_playlists(lists: dict[str, list[str] | None], folder: str = SET_FOLDER, db: str | None = None,
+                    dry_run: bool = False, first: bool = True, what: str = "the set playlist") -> dict:
+    """{name: [file paths] in order, or None to remove} as plain playlists in `folder` (under the root); a playlist of
+    the same name is replaced. The folder goes when it ends up empty."""
+    stats = {"folder": folder, "playlists": {}, "removed": [], "replaced": [], "not_in_rekordbox": 0}
+
+    def change(master):
+        rows = _content_by_path(master)
+        parent = _root_folder(master, folder, make=any(v is not None for v in lists.values()))
+        if parent is None:
+            return False
+        kids = {p.Name: p for p in master.get_playlist(ParentID=parent.ID)}
+        for name, paths in lists.items():
+            if name in kids:
+                master.delete_playlist(kids.pop(name))
+                stats["removed" if paths is None else "replaced"].append(name)
+            if paths is None:
+                continue
+            pl = master.create_playlist(name, parent=parent, seq=1 if first else None)
+            n = 0
+            for p in paths:
+                c = rows.get(norm_path(p))
+                if c is None:
+                    stats["not_in_rekordbox"] += 1
+                    continue
+                n += 1
+                master.add_to_playlist(pl, c, track_no=n)
+            stats["playlists"][name] = n
+        if not kids and not stats["playlists"]:
+            master.delete_playlist(parent)
+        return bool(stats["playlists"] or stats["removed"])
+
+    return _write(db, dry_run, change, stats, what)
+
+
+def histories(db: str | None = None) -> list[dict]:
+    """Rekordbox's History playlists (djmdHistory / djmdSongHistory), oldest first: {name, plays}, each play like
+    tracklist.read_history's. Rekordbox keeps no start time or deck per play, only the order and when the row was
+    written (at load), so 'start' is that time and 'seconds' runs to the next play's start."""
+    from datetime import datetime
+
+    master = open_database(find_collection(db))
+    try:
+        out = []
+        for h in master.get_history():
+            if h.Attribute == FOLDER:
+                continue
+            songs = sorted((s for s in master.get_history_songs(HistoryID=h.ID) if s.Content is not None),
+                           key=lambda s: s.TrackNo or 0)
+            plays = []
+            for s in songs:
+                c, start = s.Content, s.created_at
+                if isinstance(start, str):
+                    try:
+                        start = datetime.fromisoformat(start[:19])
+                    except ValueError:
+                        start = None
+                if start is not None and start.tzinfo is not None:
+                    start = start.astimezone().replace(tzinfo=None)
+                plays.append({"artist": c.Artist.Name if c.Artist is not None else None, "title": c.Title,
+                              "path": norm_path(c.FolderPath) if c.FolderPath else None,
+                              "bpm": c.BPM / 100 if c.BPM else None,
+                              "key": _key_name(c.Key.ScaleName if c.Key is not None else None),
+                              "start": start, "seconds": 0.0, "deck": "?", "public": True})
+            for a, b in zip(plays, plays[1:]):
+                if a["start"] and b["start"]:
+                    a["seconds"] = max(0.0, (b["start"] - a["start"]).total_seconds())
+            if plays and plays[-1]["start"]:
+                plays[-1]["seconds"] = 420.0  # the last play: no next one to end it; a typical track's length
+            out.append({"name": h.Name, "date": h.DateCreated, "plays": [p for p in plays if p["start"]]})
+        return sorted(out, key=lambda h: h["plays"][0]["start"] if h["plays"] else datetime.min)
+    finally:
+        master.close()
+
+
+def _key_name(name: str | None) -> tuple[str, str] | None:
+    """Rekordbox's key name → tracklist's (tonic, 'major'/'minor')."""
+    from .tracklist import PITCH_NAMES
+
+    cam = key_camelot(name)
+    if not cam:
+        return None
+    n, minor = int(cam[:-1]), cam[-1] == "A"
+    pc = next(k for k, v in (CAMELOT_MINOR if minor else CAMELOT_MAJOR).items() if v == n)
+    return PITCH_NAMES[pc], "minor" if minor else "major"
+
+
+def tempo_load(view: dict[str, dict], db: str | None = None, dry_run: bool = False) -> tuple[dict, dict]:
+    """tempo.load for Rekordbox. view: {path: {genre, colour (our 1-7, or None to keep), hype}}, colour built from
+    the track's colour now (colour_of(ours) callable allowed). Returns (stats, remembered {path: {field: [yours,
+    view]}}) with fields Genre (name), ColorID, Commnt, so tempo_unload can put back exactly what was there."""
+    from . import analysis
+
+    stats = {"tracks_in_view": 0, "genres_set": 0, "colours_moved": 0, "hype_set": 0}
+    remembered, examples = {}, []
+
+    def change(master):
+        made: dict = {}
+        for p, c in _content_by_path(master).items():
+            v = view.get(p)
+            if v is None:
+                continue
+            stats["tracks_in_view"] += 1
+            cur = {"Genre": c.Genre.Name if c.Genre is not None else None, "ColorID": str(c.ColorID or "0"),
+                   "Commnt": c.Commnt or ""}
+            want = {}
+            if v.get("genre"):
+                want["Genre"] = v["genre"]
+            col = v.get("colour")
+            if callable(col):
+                col = col(RB_TO_OUR.get(color_id(c.ColorID)))
+            if col:
+                want["ColorID"] = str(OUR_TO_RB[col])
+            if v.get("hype") is not None:
+                want["Commnt"] = with_hype(cur["Commnt"], v["hype"])
+            changed = {f: [cur[f], w] for f, w in want.items() if w != cur[f]}
+            if not changed:
+                continue
+            _set_fields(master, c, {f: w for f, (_, w) in changed.items()}, made)
+            remembered[p] = changed
+            stats["genres_set"] += "Genre" in changed
+            stats["colours_moved"] += "ColorID" in changed
+            stats["hype_set"] += "Commnt" in changed
+            if len(examples) < 12 and ("Genre" in changed or "ColorID" in changed):
+                def show(f, x):
+                    if f == "ColorID":
+                        o = RB_TO_OUR.get(color_id(x))
+                        return analysis.COLOR_NAMES[o - 1] if o else "no colour"
+                    return x or "(empty)"
+                examples.append(f"{Path(p).name}: " + "; ".join(f"{show(f, a)} → {show(f, b)}"
+                                                               for f, (a, b) in changed.items() if f != "Commnt"))
+        return bool(remembered)
+
+    out = _write(db, dry_run, change, stats, "the tempo view")
+    out["examples"] = examples
+    return out, remembered
+
+
+def _set_fields(master, c, fields: dict, made: dict) -> None:
+    for f, w in fields.items():
+        if f == "Genre":
+            c.Genre = _genre_row(master, w, made) if w else None
+        else:
+            setattr(c, f, w)
+
+
+def tempo_unload(tracks: dict[str, dict], db: str | None = None, dry_run: bool = False) -> dict:
+    """Put back what tempo_load remembered; a field changed in Rekordbox while the view was loaded is kept."""
+    stats = {"restored": 0, "kept_your_changes": 0}
+    kept = []
+
+    def change(master):
+        made: dict = {}
+        for p, c in _content_by_path(master).items():
+            if p not in tracks:
+                continue
+            cur = {"Genre": c.Genre.Name if c.Genre is not None else None, "ColorID": str(c.ColorID or "0"),
+                   "Commnt": c.Commnt or ""}
+            back = {}
+            for f, (yours, view) in tracks[p].items():
+                if cur.get(f) == view:
+                    back[f] = yours
+                    stats["restored"] += 1
+                elif cur.get(f) != yours:
+                    stats["kept_your_changes"] += 1
+                    if len(kept) < 30:
+                        kept.append(f"{Path(p).name}: {f} {cur.get(f) or '(empty)'} (view had {view or '(empty)'})")
+            _set_fields(master, c, back, made)
+        return stats["restored"]
+
+    out = _write(db, dry_run, change, stats, "switching back from the tempo view")
+    out["kept"] = kept
+    return out
