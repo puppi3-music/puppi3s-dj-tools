@@ -116,3 +116,13 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   `edit()` returns `undo` {changes, clear, traktor_genre}: the page's Undo sends it back (colour may be set and
   cleared at once: set + release the keep-always hold). Refused while a job runs (web) and, for Traktor fields,
   while a tempo view is loaded. Feedback kind `manual`.
+
+## Written approvals are kept (cue_written)
+After a write, an approval moves from `cue_plan` to `cue_written` (it used to be deleted). `cues.apply(restore=True)`,
+used by `sync`, also re-adds the new cues of written approvals that are missing in the DJ app (deleted there by hand);
+only adds are replayed, never moves/deletes/renumbers, and it stays quiet about cues still there or regridded tracks.
+First use backfills `cue_written` from `cues-last-written.json` (approvals written before the table existed).
+`sync --cues-from-other-app` (page: checkbox under "Sync everything") also copies the other DJ app's hot cues
+(cue points and loops in slots 1-8; Traktor <-> Rekordbox, tracks in both) into slots still free in the chosen
+one, at the same time; a cue already at that spot is skipped, nothing of yours moves (`cues.other_app_plans`).
+The app keeps no copy of cues itself: they're read live from the DJ apps.

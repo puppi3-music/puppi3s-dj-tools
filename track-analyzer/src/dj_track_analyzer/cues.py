@@ -1154,6 +1154,7 @@ def _plan_db():
 
     con = sqlite3.connect(collection.NATIVE_DB)
     con.execute("CREATE TABLE IF NOT EXISTS cue_plan (path TEXT PRIMARY KEY, grid TEXT, plan TEXT, at TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS cue_written (path TEXT PRIMARY KEY, grid TEXT, plan TEXT, at TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS cue_ignore (path TEXT, hotcue INTEGER, from_ms REAL, to_ms REAL, at TEXT)")
     return con
 
@@ -1225,6 +1226,70 @@ def plans() -> dict[str, dict]:
     """{path: {grid, plan: {add: [...], move: [...], remove: [...]}, at}}: what you approved and `cues apply` will write."""
     with _plan_db() as con:
         return {r[0]: {"grid": r[1], "plan": json.loads(r[2]), "at": r[3]} for r in con.execute("SELECT * FROM cue_plan")}
+
+
+def other_app_plans() -> dict[str, dict]:
+    """The hot cues (cue points and loops, slots 1-8) of the DJ app not chosen, as plans to copy into the chosen one
+    (marked "restore"): only into a slot that's free there, at the same time, so nothing of yours moves. Tracks in
+    both apps only."""
+    from . import library
+
+    try:
+        if library.app() == "rekordbox":
+            src, dst = grids(str(traktor.find_collection(None))), grids()
+        else:
+            from . import rekordbox
+
+            src, dst = rekordbox.grids(None), grids()
+    except (SystemExit, OSError, ValueError) as err:
+        raise SystemExit(f"Couldn't read the other app's cues: {err}") from None
+    out = {}
+    for p, d in dst.items():
+        s = src.get(p)
+        if not s or not d.get("bpm"):
+            continue
+        held = {c["hotcue"] for c in d["all_cues"] if c["hotcue"] >= 0}
+        add = [{"ms": c["ms"], "name": c.get("name") or "", "type": c["type"], "hand": True, "slot": c["hotcue"],
+                "len_ms": (c.get("bars") or 0) * 4 * 60000 / s["bpm"], "source": "Traktor" if library.app() == "rekordbox" else "Rekordbox"}
+               for c in s["cues"] if c["type"] in ("cue", "loop") and 0 <= c["hotcue"] <= 7 and c["hotcue"] not in held]
+        if add:
+            out[p] = {"grid": _grid_key(d["bpm"], d["grid_ms"]), "plan": {"add": add}, "restore": True,
+                      "source": "Traktor" if library.app() == "rekordbox" else "Rekordbox"}
+    return out
+
+
+def todo_plans(restore: bool = False, other: bool = False) -> dict[str, dict]:
+    """plans(); with restore, also the new cues of approvals already written (marked "restore"), so a sync puts back
+    approved cues you deleted in the DJ app. Safe to repeat: resolve() skips a cue that's still there."""
+    todo = plans()
+    if restore:
+        with _plan_db() as con:
+            last = analysis.HOME / "cues-last-written.json"  # once: approvals written before cue_written existed
+            if not con.execute("SELECT 1 FROM cue_written LIMIT 1").fetchone() and last.exists():
+                try:
+                    old = json.loads(last.read_text())["plans"]
+                    con.executemany("INSERT OR IGNORE INTO cue_written VALUES (?,?,?,?)",
+                                    [(p, t["grid"], json.dumps(t["plan"]), t["at"]) for p, t in old.items()])
+                except (OSError, ValueError, KeyError, TypeError) as err:
+                    log(f"Old written cue approvals not read: {err}")
+            for p, grid, plan, at in con.execute("SELECT * FROM cue_written"):
+                add = json.loads(plan).get("add", [])
+                if p not in todo and add:
+                    todo[p] = {"grid": grid, "plan": {"add": add}, "at": at, "restore": True}
+    if other:
+        for p, t in other_app_plans().items():
+            if p not in todo:
+                todo[p] = t
+            elif todo[p].get("restore"):  # approved cues first; the other app's fill slots still free
+                todo[p]["plan"]["add"] = todo[p]["plan"]["add"] + t["plan"]["add"]
+    return todo
+
+
+def _mark_written(con, done) -> None:
+    """Approvals just written: kept in cue_written (for a sync to restore), out of the pending cue_plan."""
+    for p in done:
+        con.execute("INSERT OR REPLACE INTO cue_written SELECT * FROM cue_plan WHERE path=?", (p,))
+        con.execute("DELETE FROM cue_plan WHERE path=?", (p,))
 
 
 def clean_plan(plan: dict | None) -> dict:
@@ -1381,25 +1446,29 @@ def _drop_tag(entry: str, hit: re.Match) -> str:
     return entry[:a] + entry[b:]
 
 
-def _apply_rekordbox(db: str | None, dry_run: bool) -> dict:
+def _apply_rekordbox(db: str | None, dry_run: bool, restore: bool = False, other: bool = False) -> dict:
     from . import rekordbox
 
-    todo = plans()
+    todo = todo_plans(restore, other)
     if not todo:
-        raise SystemExit("Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
+        raise SystemExit("Nothing to write: every approved cue is in place." if restore or other else
+                         "Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
     stats = {"tracks": 0, "cues_added": 0, "cues_moved": 0, "cues_renumbered": 0, "cues_deleted": 0, "skipped": []}
     examples, done = [], set()
     g = rekordbox.grids(db)
-    unticked = [] if dry_run else _unticked({p: todo[p] for p in todo if p in g}, g)
+    unticked = [] if dry_run else _unticked({p: todo[p] for p in todo if p in g and not todo[p].get("restore")}, g)
 
     def plan_for(p: str, d: dict):
         name = Path(p).name
+        quiet = todo[p].get("restore")  # restoring: a cue still there or a regridded track isn't news
         if not same_grid(todo[p]["grid"], d["bpm"], d["grid_ms"]):
-            stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
+            if not quiet:
+                stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
             return None
-        done.add(p)
+        if not quiet:
+            done.add(p)
         moves, adds, renum, skipped, removes = resolve(d["all_cues"], todo[p]["plan"], d["bpm"])
-        stats["skipped"] += [f"{name}: {why}" for why in skipped]
+        stats["skipped"] += [] if quiet else [f"{name}: {why}" for why in skipped]
         for r in removes:
             what = f"cue {r['hotcue'] + 1}" if r["hotcue"] >= 0 else r["type"]
             examples.append(f"{name}: − {what}{' ' + r['name'] if r.get('name') else ''} at {_clock(r['ms'] / 1000)} deleted")
@@ -1408,7 +1477,8 @@ def _apply_rekordbox(db: str | None, dry_run: bool) -> dict:
         for r in renum:
             examples.append(f"{name}: cue {r['hotcue'] + 1} → slot {r['to'] + 1}")
         for a_, slot in adds:
-            examples.append(f"{name}: + {a_['name']} at {_clock(a_['ms'] / 1000)} in slot {slot + 1}")
+            examples.append(f"{name}: + {a_['name']} at {_clock(a_['ms'] / 1000)} in slot {slot + 1}"
+                            + (f" (from {a_['source']})" if a_.get("source") else " (restored)" if quiet else ""))
         stats["cues_deleted"] += len(removes)
         stats["cues_moved"] += len(moves)
         stats["cues_renumbered"] += len(renum)
@@ -1417,11 +1487,11 @@ def _apply_rekordbox(db: str | None, dry_run: bool) -> dict:
         return moves, adds, renum, removes
 
     out = rekordbox.write_cues(list(todo), plan_for, db, dry_run, stats)
-    out["not_in_collection"] = len(todo) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
+    out["not_in_collection"] = sum(not t.get("restore") for t in todo.values()) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
     out["changes"] = examples
     if not dry_run and out.get("changed"):
         with _plan_db() as con:
-            con.executemany("DELETE FROM cue_plan WHERE path=?", [(p,) for p in done])
+            _mark_written(con, done)
         from . import collection
 
         collection.log_feedback("cue_unticked", unticked)
@@ -1429,7 +1499,7 @@ def _apply_rekordbox(db: str | None, dry_run: bool) -> dict:
     return out
 
 
-def apply(nml: str | None = None, dry_run: bool = False) -> dict:
+def apply(nml: str | None = None, dry_run: bool = False, restore: bool = False, other: bool = False) -> dict:
     """Write the approved cues into collection.nml: new ones into free hot-cue slots (cue points in slots 1-7 in
     time order, the loop in slot 8 when free), corrections by moving your cue, deleted ones taken out. A track whose beat grid changed
     since you approved, or whose cue was moved since, is left alone. Backup + `traktor --undo`. With Rekordbox
@@ -1437,13 +1507,14 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     from . import library
 
     if library.app() == "rekordbox":
-        return _apply_rekordbox(nml, dry_run)
+        return _apply_rekordbox(nml, dry_run, restore, other)
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
     traktor.check_closed(dry_run)
-    todo = plans()
+    todo = todo_plans(restore, other)
     if not todo:
-        raise SystemExit("Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
+        raise SystemExit("Nothing to write: every approved cue is in place." if restore or other else
+                         "Nothing approved yet: approve cues in the web page (uv run dj-track-analyzer web).")
     text = path.read_text(encoding="utf-8")
     stats = {"collection": str(path), "tracks": 0, "cues_added": 0, "cues_moved": 0, "cues_renumbered": 0, "cues_deleted": 0,
              "skipped": []}
@@ -1460,15 +1531,18 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
         cue_tags = list(re.finditer(r"<CUE_V2\b[^>]*>", entry))
         grid = [traktor.attrs(c.group(0)) for c in cue_tags if traktor.attrs(c.group(0)).get("TYPE") == "4"]
         bpm = float(traktor.attrs(tm.group(0)).get("BPM") or 0) if tm else 0
+        quiet = todo[p].get("restore")  # restoring: a cue still there or a regridded track isn't news
         if not grid or not bpm or not same_grid(plan["grid"], bpm, float(grid[0]["START"])):
-            stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
+            if not quiet:
+                stats["skipped"].append(f"{name}: beat grid changed since you approved; approve again")
             return entry
-        done.add(p)
+        if not quiet:
+            done.add(p)
         old = entry
         every = [{"ms": float(t["START"]), "type": CUE_TYPES.get(t.get("TYPE"), t.get("TYPE")), "hotcue": int(t.get("HOTCUE", -1))}
                  for t in (traktor.attrs(c.group(0)) for c in cue_tags) if t.get("TYPE") != "4"]
         moves, adds, renum, skipped, removes = resolve(every, plan["plan"], bpm)
-        stats["skipped"] += [f"{name}: {why}" for why in skipped]
+        stats["skipped"] += [] if quiet else [f"{name}: {why}" for why in skipped]
         code = {v: k for k, v in CUE_TYPES.items()}
         for r in removes:  # first: a renumbered cue may take the slot it frees
             hit = next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)
@@ -1497,7 +1571,8 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
         for a_, slot in adds:
             new += _cue_tag(a_["name"], a_["type"], a_["ms"], a_["len_ms"], slot)
             stats["cues_added"] += 1
-            examples.append(f"{name}: + {a_['name']} at {_clock(a_['ms'] / 1000)} in slot {slot + 1}")
+            examples.append(f"{name}: + {a_['name']} at {_clock(a_['ms'] / 1000)} in slot {slot + 1}"
+                            + (f" (from {a_['source']})" if a_.get("source") else " (restored)" if quiet else ""))
         if new:
             k = entry.rfind("</ENTRY>")
             entry = entry[:k] + new + entry[k:]
@@ -1514,7 +1589,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     if c0 == -1 or c1 == -1:
         raise SystemExit(f"{path} doesn't look like a Traktor collection (no COLLECTION section).")
     body = re.sub(r"<ENTRY\b.*?</ENTRY>", fix_entry, text[c0:c1], flags=re.S)
-    stats["not_in_collection"] = len(todo) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
+    stats["not_in_collection"] = sum(not t.get("restore") for t in todo.values()) - len(done) - sum("beat grid changed" in s for s in stats["skipped"])
     stats["changes"] = examples
     unticked = []
     if not dry_run and done:  # what you left unticked, from the cues as they are before this write
@@ -1525,7 +1600,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     out = traktor._save(path, text, text[:c0] + body + text[c1:], stats, dry_run)
     if not dry_run and out.get("changed"):
         with _plan_db() as con:  # written: these approvals are done
-            con.executemany("DELETE FROM cue_plan WHERE path=?", [(p,) for p in done])
+            _mark_written(con, done)
         from . import collection
 
         collection.log_feedback("cue_unticked", unticked)

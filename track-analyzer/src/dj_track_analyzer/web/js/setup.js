@@ -14,7 +14,7 @@ async function refreshSetupNote() {
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
 let G_TRAKTOR = null;  // the Setup tab's Traktor choices for learning genres (/api/genres/traktor), read once per visit
-const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, cuesOther: false, colours: true, onlyTraktor: false, lexicon: false };
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -198,7 +198,8 @@ async function pageSetup(main) {
         ${st.tags.tagged_files ? `${plural(st.tags.tagged_files, "file")} changed so far; their original tags are saved.` : ""}`,
         `<label class="inline small"><input type="checkbox" id="wr-multi" ${SF.multi ? "checked" : ""}> close runner-up genres too ("Acid Trance; Hard Trance")</label>
          ${st.tags.tagged_files ? `<button id="wr-untag">Put original tags back…</button>` : ""}`, noScan)}
-      ${w("wr-sync", `Everything into ${APP} in one go`, `Genres and colours, hype, approved cues, grid fixes and crates, one after another: one preview, one write, one undo for all of it. Steps with nothing ready yet are skipped.`, "", (noScan || !LIB) && "disabled")}
+      ${w("wr-sync", `Everything into ${APP} in one go`, `Genres and colours, hype, approved cues, grid fixes and crates, one after another: one preview, one write, one undo for all of it. Steps with nothing ready yet are skipped. Approved cues deleted in ${APP} since are put back.`,
+        `<label class="inline small"><input type="checkbox" id="wr-sync-other" ${SF.cuesOther ? "checked" : ""}> also copy hot cues from ${dj.app === "rekordbox" ? "Traktor" : "Rekordbox"} (into free slots only)</label>`, (noScan || !LIB) && "disabled")}
       ${w("wr-traktor", `Genres, colours and ${LISTS} in ${APP}`, `Puts the genre tags into ${APPLIB}, sets the predicted colour on tracks you haven't coloured (yours are never changed),
         and adds a "Genres (Track Analyzer)" folder of ${LISTS}.`,
         `<label class="inline small"><input type="checkbox" id="wr-colours" ${SF.colours ? "checked" : ""}> colours too</label>
@@ -214,7 +215,7 @@ async function pageSetup(main) {
   const on = (id, fn) => { const el = $("#" + id); if (el) el.onclick = fn; };
   const go = (action, opts) => startJob(action, opts).catch(e => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(e.message)}</div>`; });
   const bindVal = (id, key, prop = "value") => { const el = $("#" + id); if (el) el.addEventListener("input", () => { SF[key] = el[prop]; }); };
-  bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked");
+  bindVal("su-folder", "folder"); bindVal("su-bpm", "bpm"); bindVal("su-nomaest", "noMaest", "checked"); bindVal("wr-multi", "multi", "checked"); bindVal("wr-sync-other", "cuesOther", "checked");
   bindVal("wr-colours", "colours", "checked"); bindVal("wr-only-traktor", "onlyTraktor", "checked"); bindVal("su-lexicon", "lexicon", "checked");
   const nml = async (body, btn) => {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
@@ -352,7 +353,7 @@ async function pageSetup(main) {
   on("wr-capply", () => writeDialog("colors_apply"));
   on("wr-recolour", () => writeDialog("colors_recolour"));
   on("wr-undo", () => writeDialog("traktor_undo"));
-  on("wr-sync", () => writeDialog("sync", {}, () => getSetup(true).then(route)));
+  on("wr-sync", () => writeDialog("sync", { cues_from_other: SF.cuesOther }, () => getSetup(true).then(route)));
   on("wr-sync-undo", () => writeDialog("sync_undo", {}, () => getSetup(true).then(route)));
   updateCard();
   jobPanel();
