@@ -131,6 +131,7 @@ def _saved_samples(folder):
         with wave.open(str(f), "wb") as w:
             w.setnchannels(1), w.setsampwidth(2), w.setframerate(44100), w.writeframes(b"\0\0" * 441)
     con = web._saved_db()
+    con.execute("DELETE FROM saved_sample")  # rows left by another test would be added too
     con.executemany("INSERT OR REPLACE INTO saved_sample (file, src_name, start, len) VALUES (?,?,?,?)",
                     [(str(f), "x.flac", 1.0, 2.0) for f in files + [folder / "Gone.wav"]])
     con.commit()
@@ -174,8 +175,7 @@ def test_samples_rekordbox(scanned, monkeypatch, tmp_path):
     monkeypatch.setattr(library, "app", lambda: "rekordbox")
     _saved_samples(tmp_path / "Samples")
     prev = sync.run(None, dry_run=True, steps=["samples"])["steps"]["samples"]
-    assert prev["added"] == 2 and not (tmp_path / "Sampler").exists(), (  # TEMP Windows diagnostic
-        prev, [t["path"] for t in rekordbox.read(db)["tracks"]], [str(f) for f in scanned["files"]])
+    assert prev["added"] == 2 and not (tmp_path / "Sampler").exists()
     out = sync.run(None, steps=["samples"])["steps"]["samples"]
     copies = sorted((tmp_path / "Sampler" / sync.RB_SAMPLES).iterdir())
     assert out["added"] == 2 and [c.name for c in copies] == ["A - Loop 1.wav", "B - Loop 2.wav"]

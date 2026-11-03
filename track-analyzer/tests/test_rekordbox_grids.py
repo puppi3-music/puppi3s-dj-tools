@@ -104,8 +104,7 @@ def test_grid_fix_skips_a_grid_changed_since_approval(rb):
     p1 = rb["paths"][0]
     gridfix.set_plan(p1, 120, 310, 20)  # approved on a grid that isn't Rekordbox's now
     out = gridfix.apply(dry_run=True)
-    dbg = (p1, list(gridfix.plans()), list(rekordbox.grids()), out)  # TEMP Windows diagnostic
-    assert out["tracks"] == 0 and any("changed since you approved" in s for s in out["skipped"]), dbg
+    assert out["tracks"] == 0 and any("changed since you approved" in s for s in out["skipped"])
 
 
 def test_grid_fix_page_side_for_rekordbox(rb, monkeypatch):
