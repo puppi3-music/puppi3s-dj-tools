@@ -37,24 +37,29 @@ def backend() -> ModuleType:
     return traktor
 
 
+def _path(path):
+    """A path from --nml is Traktor's collection: Rekordbox uses the database chosen on the Setup tab instead."""
+    return path if app() == DEFAULT else None
+
+
 def find_collection(path: str | None = None):
-    return backend().find_collection(path)
+    return backend().find_collection(_path(path))
 
 
 def collection_tracks(path: str | None = None):
-    return backend().collection_tracks(path)
+    return backend().collection_tracks(_path(path))
 
 
 def track_info(path: str | None = None):
-    return backend().track_info(path)
+    return backend().track_info(_path(path))
 
 
 def playlists(path: str | None = None):
-    return backend().playlists(path)
+    return backend().playlists(_path(path))
 
 
 def genre_field(path: str | None = None):
-    return backend().genre_field(path)
+    return backend().genre_field(_path(path))
 
 
 def running_state() -> bool | None:

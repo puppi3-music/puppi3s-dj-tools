@@ -942,7 +942,7 @@ def pick_file(folder: bool = False, start: Path | None = None, title: str = PICK
     """Open the system's file (or folder) dialog on this computer; the chosen path, or None when cancelled."""
     import subprocess
 
-    cmd = _pick_command(start if folder else _pick_start(), folder, title)
+    cmd = _pick_command(start if folder or start else _pick_start(), folder, title)
     if cmd is None:
         raise ValueError(f"No {'folder' if folder else 'file'} dialog here: paste the path of {what} instead.")
     argv, env = cmd
@@ -1010,6 +1010,38 @@ def set_collection(b: dict) -> dict:
     now = traktor.choose_collection(path)
     _guesses["key"] = _grids["mtime"] = _fixes["key"] = None  # read the (other) collection again
     return {"collection": str(now) if now else None}
+
+
+def set_dj_app(b: dict) -> dict:
+    """The Setup tab's DJ app: {app: "traktor" | "rekordbox"}. Not while a job runs."""
+    from . import library
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before changing the DJ app.")
+    now = library.choose_app(str(b.get("app") or ""))
+    _guesses["key"] = _grids["mtime"] = _fixes["key"] = None
+    return {"app": now}
+
+
+def set_rekordbox_database(b: dict) -> dict:
+    """The Setup tab's choice of Rekordbox's master.db, as set_collection does for Traktor."""
+    from . import rekordbox
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before changing Rekordbox's database.")
+    if b.get("auto"):
+        path = None
+    elif b.get("browse"):
+        start = next((d for d in rekordbox.default_dirs() if d.is_dir()), Path.home())
+        path = pick_file(start=start, title="Choose Rekordbox's database (master.db)", what="master.db")
+        if path is None:
+            return {"cancelled": True}
+    else:
+        path = str(b.get("path") or "")
+        if not path.strip():
+            raise ValueError("Give the path of Rekordbox's master.db (or the rekordbox folder holding it).")
+    now = rekordbox.choose_database(path)
+    return {"database": str(now) if now else None}
 
 
 def reveal_sample(file: str | None = None, folder: str | None = None) -> dict:
@@ -1776,6 +1808,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
+        Route("/api/dj-app", post(set_dj_app), methods=["POST"]),
+        Route("/api/rekordbox/database", post(set_rekordbox_database), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
         Route("/api/genres/traktor", respond(lambda q: genres_from_traktor())),
         Route("/api/genres/preview", respond(lambda q: my_genres_preview(q.get("mode", "both")))),
