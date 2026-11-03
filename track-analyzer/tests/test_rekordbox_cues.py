@@ -62,3 +62,13 @@ def test_apply_adds_moves_and_undoes(rb):
 def test_grid_fixing_refuses(rb):
     with pytest.raises(SystemExit, match="Rekordbox"):
         gridfix.apply(dry_run=True)
+
+
+def test_setup_tab_traktor_side_with_rekordbox_chosen(rb, library):
+    """The Setup tab counts Traktor's grids and labels from collection.nml even with Rekordbox chosen: a path
+    given is Traktor's, never opened as master.db ("file is not a database")."""
+    from dj_track_analyzer import jobs
+
+    st = jobs.setup_status()
+    assert "error" not in st.get("traktor", {}), st.get("traktor")
+    assert isinstance(cues.grids(str(library["nml"])), dict)

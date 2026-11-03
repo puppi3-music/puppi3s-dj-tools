@@ -54,10 +54,10 @@ def grids(nml: str | None = None) -> dict[str, dict]:
     page only); the AutoGrid marker is grid_ms."""
     from . import library
 
-    if library.app() == "rekordbox":
-        from . import rekordbox
+    if library.app() == "rekordbox" and nml is None:  # a path given is Traktor's collection.nml (the Setup
+        from . import rekordbox                          # tab's Traktor side reads it with Rekordbox chosen)
 
-        return rekordbox.grids(nml)
+        return rekordbox.grids(None)
     text = traktor.find_collection(nml).read_text(encoding="utf-8")
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     out = {}

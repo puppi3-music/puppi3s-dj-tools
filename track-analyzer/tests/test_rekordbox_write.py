@@ -115,5 +115,4 @@ def test_jobs_say_the_app(monkeypatch):
 
     monkeypatch.setattr(library, "app", lambda: "rekordbox")
     assert jobs.app_label("hype_traktor", jobs.ACTIONS["hype_traktor"][0]) == "Hype into Rekordbox's Comment"
-    with pytest.raises(ValueError, match="Traktor only"):
-        jobs.start("tempo_native")
+    assert jobs.app_label("tempo_native", jobs.ACTIONS["tempo_native"][0]) == "Switch Rekordbox back to normal"

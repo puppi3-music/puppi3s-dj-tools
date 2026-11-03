@@ -186,15 +186,24 @@ def learned_arc(tracks: list[dict], nml: str | None = None, bins: int = 5) -> tu
     """Mean colour and hype of what you played in each fifth of your sessions (8+ tracks)."""
     from .tracklist import read_history
 
-    hist = traktor.find_collection(nml).parent / "History"
     by_path = {t["path"]: t for t in tracks}
     col, hy = defaultdict(list), defaultdict(list)
     sessions = 0
-    for f in sorted(hist.glob("*.nml")):
-        try:
-            plays = [p for p in read_history(f) if p["public"]]
-        except (ET.ParseError, OSError):
-            continue
+    if _rekordbox():
+        from . import rekordbox
+
+        hist = "Rekordbox's History"
+        found = [h["plays"] for h in rekordbox.histories()]
+    else:
+        hist = traktor.find_collection(nml).parent / "History"
+        found = []
+        for f in sorted(hist.glob("*.nml")):
+            try:
+                found.append(read_history(f))
+            except (ET.ParseError, OSError):
+                continue
+    for plays in found:
+        plays = [p for p in plays if p["public"]]
         seq = []
         for p in plays:
             t = by_path.get(str(collection.nfc(p["path"])))
@@ -455,7 +464,22 @@ def _with_playlist(text: str, name: str, node: str | None, folder: str = FOLDER,
     return (traktor.insert_root_node(text, node_text) if kids else text), at is not None
 
 
+def _rekordbox() -> bool:
+    from . import library
+
+    return library.app() == "rekordbox"
+
+
 def to_traktor(d: dict, name: str, nml: str | None = None, dry_run: bool = False) -> dict:
+    if _rekordbox():
+        from . import rekordbox
+
+        out = rekordbox.write_playlists({name: [r["path"] for r in d["tracks"]]}, FOLDER, None, dry_run)
+        missing = set(out["missing"])  # the same keys as Traktor's result, for the summary line
+        out.update(playlist=f"{FOLDER} / {name}", tracks=out["playlists"].get(name, 0),
+                   not_in_traktor=[r["title"] for r in d["tracks"] if r["path"] in missing])
+        out["undo"] = f'uv run dj-track-analyzer set --remove "{name}"'
+        return out
     path = traktor.find_collection(nml)
     traktor.check_closed(dry_run, "the set playlist")
     text_ = path.read_text(encoding="utf-8")
@@ -470,6 +494,13 @@ def to_traktor(d: dict, name: str, nml: str | None = None, dry_run: bool = False
 
 
 def remove(name: str, nml: str | None = None, dry_run: bool = False) -> dict:
+    if _rekordbox():
+        from . import rekordbox
+
+        out = rekordbox.write_playlists({name: None}, FOLDER, None, dry_run, what="removing the playlist")
+        if not out["removed"]:
+            raise SystemExit(f"No playlist '{name}' in Rekordbox's '{FOLDER}' folder")
+        return out
     path = traktor.find_collection(nml)
     traktor.check_closed(dry_run, "removing the playlist")
     text_ = path.read_text(encoding="utf-8")
@@ -552,6 +583,15 @@ def crates_text(d: dict, limit: int = 15) -> str:
 
 def crates_to_traktor(d: dict, nml: str | None = None, dry_run: bool = False) -> dict:
     """Each crate as a playlist in the crates folder; a playlist of the same name is replaced in place."""
+    if _rekordbox():
+        from . import rekordbox
+
+        out = rekordbox.write_playlists({c["crate"]: [t["path"] for t in c["tracks"]] for c in d["crates"]},
+                                        CRATE_FOLDER, None, dry_run, first=False, what="the crate playlists")
+        out["not_in_traktor"] = out["not_in_rekordbox"]
+        out["undo"] = "uv run dj-track-analyzer crates --remove" + (
+            f" --tempo {d['library'].split()[0]}" if d["library"].endswith("view") else "")
+        return out
     path = traktor.find_collection(nml)
     traktor.check_closed(dry_run, "the crate playlists")
     text_ = path.read_text(encoding="utf-8")
@@ -572,6 +612,14 @@ def crates_to_traktor(d: dict, nml: str | None = None, dry_run: bool = False) ->
 
 def remove_crates(tempo_bpm: float | None = None, nml: str | None = None, dry_run: bool = False) -> dict:
     """Take this library's crate playlists out again (the folder goes when it's empty)."""
+    if _rekordbox():
+        from . import rekordbox
+
+        out = rekordbox.write_playlists({crate_name(n, tempo_bpm): None for n in CRATES}, CRATE_FOLDER, None, dry_run,
+                                        what="removing the crates")
+        if not out["removed"]:
+            raise SystemExit(f"No crate playlists for this library in Rekordbox's '{CRATE_FOLDER}' folder")
+        return out
     path = traktor.find_collection(nml)
     traktor.check_closed(dry_run, "removing the crates")
     text_ = path.read_text(encoding="utf-8")
