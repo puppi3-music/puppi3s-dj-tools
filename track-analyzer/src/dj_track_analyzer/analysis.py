@@ -11,6 +11,7 @@ Runs entirely on your machine (the DSP in Rust, track_analyzer_dsp; the models o
 from __future__ import annotations
 
 import os
+import re
 
 # Keep TensorFlow quiet; must be set before TensorFlow loads.
 os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "3")
@@ -1926,6 +1927,29 @@ def collect_training_set(folder: str) -> dict[str, list[Path]]:
     return sets
 
 
+def collect_tagged_set(folder: str) -> dict[str, list[Path]]:
+    """Every audio file under `folder` (subfolders too), grouped by the genre in its own tag (ID3 TCON, MP4 ©gen,
+    Vorbis GENRE). Only the first genre counts when a tag holds several ("A / B", "A; B"). Untagged files are skipped."""
+    import mutagen
+
+    root = Path(os.path.expanduser(folder)).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(f"{root} is not a folder")
+    sets: dict[str, list[Path]] = {}
+    for f in sorted(root.rglob("*")):
+        if f.suffix.lower() not in AUDIO_EXTS or f.name.startswith(("._", ".")):
+            continue
+        try:
+            t = mutagen.File(f, easy=True)
+            g = (t.tags.get("genre") or [None])[0] if t and t.tags else None
+        except Exception:
+            g = None
+        g = re.split(r"\s*[/;]\s*", str(g).strip())[0].strip() if g else ""
+        if g:
+            sets.setdefault(g, []).append(f)
+    return sets
+
+
 def train(folder: str | None = None, progress=log, sets: dict[str, list] | None = None,
           source: dict | None = None) -> dict:
     """Learn your genres from `folder` (one subfolder or playlist per genre) or from `sets` ({genre: files}, e.g. a
@@ -1943,7 +1967,7 @@ def train(folder: str | None = None, progress=log, sets: dict[str, list] | None 
     else:
         sets = {g: [Path(f) for f in files] for g, files in sets.items() if files}
         source = source or {"kind": "sets"}
-        where = "in what you picked"
+        where = f"in the genre tags inside {source['folder']}" if source.get("kind") == "folder_tags" else "in what you picked"
     if len(sets) < 2:
         raise ValueError(
             "Need at least 2 genres. Make one subfolder per genre (or one .m3u8 playlist per genre) "
@@ -2006,7 +2030,7 @@ def train(folder: str | None = None, progress=log, sets: dict[str, list] | None 
     clf.fit(Xa, ya)
     HOME.mkdir(parents=True, exist_ok=True)
     joblib.dump({"model": clf, "counts": counts, "trained_at": time.strftime("%Y-%m-%d %H:%M"),
-                 "source": source.get("folder") if source.get("kind") == "folder" else None,
+                 "source": source.get("folder") if source.get("kind") in ("folder", "folder_tags") else None,
                  "source_kind": source, "report": report, "examples": used}, GENRE_MODEL)
     report["saved_to"] = str(GENRE_MODEL)
     if failed:
