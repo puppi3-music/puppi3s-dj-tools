@@ -90,3 +90,11 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   genres from playlists or the Genre field (mygenres). A `--nml` path is Traktor's: with Rekordbox it's ignored.
 - Still Traktor only (stage 2+): every write, colours, cues, grids, tempo view, set plans, the job status counts.
 - `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macos-14.
+
+## Real-library check (2026-11-03, copy of the user's Rekordbox 7 master.db, 455 tracks)
+- Reads: all 455 paths exist, keys all map to Camelot (8 without a key), 6239 cues on 450 tracks, 100 genre rows of
+  free-form Beatport/Lexicon text. History was empty (0 rows): plays had not been saved into master.db (mtime Sep 16).
+- pyrekordbox's `close()` leaves the engine's connection open: a commit may not be in master.db yet, so the undo
+  mark was the old sha1 and undo refused. `close_database()` disposes the engine too; use it, never `master.close()`.
+- Every write (sync, set, crates, tempo load → native) re-read correctly and undid byte-for-byte (master.db and
+  masterPlaylists6.xml), no journal files left. Tempo native leaves the view's extra genre rows (unused) in djmdGenre.
