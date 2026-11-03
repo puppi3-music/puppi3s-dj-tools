@@ -150,8 +150,7 @@ ACTIONS = {
     "tempo_load": ("Switch Traktor to the tempo view",
                    lambda o: ["tempo", "load", "--bpm", _bpm(o), *(["--lexicon"] if o.get("lexicon") else [])], True),
     "tempo_native": ("Switch Traktor back to normal", lambda o: ["tempo", "native", *(["--lexicon"] if o.get("lexicon") else [])], True),
-    "sync": ("Sync everything into Traktor", lambda o: ["sync", "--json", *(["--only", ",".join(o["only"])] if o.get("only") else []),
-                                                  *(["--cues-from-other-app"] if o.get("cues_from_other") is True else [])], True),
+    "sync": ("Sync everything into Traktor", lambda o: ["sync", "--json", *(["--only", ",".join(o["only"])] if o.get("only") else [])], True),
     "sync_undo": ("Undo the last sync to Traktor", lambda o: ["sync", "--undo", *(["--force"] if o.get("force") is True else [])], True),
     "update": ("Update the app", lambda o: ["update"], True),
     "update_undo": ("Go back to the version before", lambda o: ["update", "--undo"], True),
@@ -500,6 +499,13 @@ def dj_app_status() -> dict:
     from . import library, rekordbox
 
     out: dict = {"app": library.app(), "name": library.app_name(), "apps": library.APPS}
+    try:  # the other DJ app's library, for the sync's "from the other app" steps
+        from . import traktor
+
+        (traktor if out["app"] == "rekordbox" else rekordbox).find_collection(None)
+        out["other_found"] = True
+    except (SystemExit, OSError, ValueError, ImportError):
+        out["other_found"] = False
     if out["app"] != "rekordbox":
         return out
     chosen = rekordbox.chosen_database()

@@ -1808,6 +1808,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/app-running", respond(lambda q: {"running": jobs.library.running_state() is True})),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
         Route("/api/dj-app", post(set_dj_app), methods=["POST"]),
         Route("/api/rekordbox/database", post(set_rekordbox_database), methods=["POST"]),

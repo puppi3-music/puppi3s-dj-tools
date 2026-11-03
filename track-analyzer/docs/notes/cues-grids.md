@@ -122,7 +122,19 @@ After a write, an approval moves from `cue_plan` to `cue_written` (it used to be
 used by `sync`, also re-adds the new cues of written approvals that are missing in the DJ app (deleted there by hand);
 only adds are replayed, never moves/deletes/renumbers, and it stays quiet about cues still there or regridded tracks.
 First use backfills `cue_written` from `cues-last-written.json` (approvals written before the table existed).
-`sync --cues-from-other-app` (page: checkbox under "Sync everything") also copies the other DJ app's hot cues
+the sync step `othercues` (page: ticked in the "Sync everything" preview) copies the other DJ app's hot cues
 (cue points and loops in slots 1-8; Traktor <-> Rekordbox, tracks in both) into slots still free in the chosen
 one, at the same time; a cue already at that spot is skipped, nothing of yours moves (`cues.other_app_plans`).
 The app keeps no copy of cues itself: they're read live from the DJ apps.
+
+## Traktor's grid into Rekordbox (sync step `othergrids`)
+
+Rekordbox keeps the beat grid in the track's ANLZ `.DAT` (PQTZ: beat number, tempo × 100, time in ms per beat), not
+in master.db (only `djmdContent.BPM`). `rekordbox.write_grids` rewrites PQTZ as one steady tempo with beat 1 on
+Traktor's AutoGrid marker (minus the MP3 `shift_ms`), sets BPM, and drops PQT2 (the extended CDJ-3000 grid in `.EXT`,
+partly undocumented) so the two can't disagree; Rekordbox makes PQT2 again on analysis/export. pyrekordbox 0.5
+rebuilds all 469 real `.DAT`/`.EXT` files byte for byte, so only the grid changes. Only analysed tracks: one with no
+ANLZ files is listed, never made up. The ANLZ originals go into the master.db backup (`anlz/`), so every undo puts
+them back. Cue copy (`othercues`) doesn't need a grid: tracks with none take plans keyed `nogrid`.
+First real run (2026-11-03): 446 tracks in both, 235 differ, mostly Rekordbox's 0.01-BPM rounding (≈30 ms drift
+over 6 min). Unticked on the page until checked in Rekordbox itself; re-analysing a track there replaces the grid.
