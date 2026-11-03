@@ -93,7 +93,7 @@ function jobBar() {
 }
 
 // What a writer reported, readably: the counts, notes, a few examples, and everything else folded away.
-const HIDE = new Set(["dry_run", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
+const HIDE = new Set(["dry_run", "app", "undone", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
   "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps"]);
 const LABELS = { would_write: "files that would get a new tag", written: "files tagged", would_restore: "files that would get their old tags back",
   restored: "files given their old tags back", skipped_changed_since_scan: "skipped: changed on disk since the scan (scan again first)",
@@ -111,12 +111,24 @@ function resultSummary(r, depth = 0) {
   const ex = r.examples || r.changes || [];
   return `${nums.length ? `<ul style="max-height:none">${nums.map(([k, v]) => `<li>${esc(human(k))}: <b>${v}</b></li>`).join("")}</ul>` : ""}
     ${r.warning ? `<div class="warnbox">${esc(r.warning)}</div>` : ""}
-    ${[r.note, r.clock && `Clock: ${r.clock}`, r.now_loaded && `Now loaded: ${r.now_loaded}`, r.smartlist_folder && `Smartlist folder: ${r.smartlist_folder}`]
+    ${[r.skipped && `Skipped: ${r.skipped}`, r.undone && `Put back: ${r.undone.join(", ")}`, r.note, r.clock && `Clock: ${r.clock}`, r.now_loaded && `Now loaded: ${r.now_loaded}`, r.smartlist_folder && `Smartlist folder: ${r.smartlist_folder}`]
       .filter(Boolean).map(t => `<div class="small">${esc(t)}</div>`).join("")}
     ${Array.isArray(r.smartlists) && r.smartlists.length ? `<div class="small muted">${r.smartlists.length} Smartlists: ${esc(r.smartlists.join(", "))}</div>` : ""}
     ${ex.length ? `<div class="small" style="margin-top:6px"><b>For example</b></div><ul>${ex.slice(0, 15).map(x => `<li>${esc(exampleText(x))}</li>`).join("")}</ul>` : ""}
     ${depth ? "" : nested.map(([k, v]) => `<div class="small" style="margin-top:8px"><b>${esc(human(k))}</b></div>${resultSummary(v, 1)}`).join("")}
     ${depth ? "" : `<details style="margin-top:8px"><summary class="small muted" style="cursor:pointer">Everything it reported</summary><div class="tree">${tree(r)}</div></details>`}`;
+}
+// The sync's preview: each step that would change something, ticked, to choose what is written; the rest listed after
+const SYNC_STEPS = { tracks: "Tracks: relink moved files, add analysed tracks it doesn't have", genres: "Genres and colours", hype: "Hype", cues: "Approved cues", grids: "Grid fixes", crates: "Crates", samples: "Loops saved on this page" };
+const COPY_STEPS = { tracks: "Tracks the other DJ app has and this one doesn't", genres: "Genres (the other DJ app's, where it has one)", colours: "Colours (the other DJ app's, where it has one)", cues: "Hot cues from the other DJ app (free slots only)", grids: "Beat grids from Traktor (replaces Rekordbox's; new, check a few tracks first)", playlists: "Playlists, in a \"From the other DJ app\" folder", samples: "Samples from the other DJ app (its sampler or loops folder)" };
+function syncSteps(r, st, copy) {
+  const other = st?.dj_app?.app === "rekordbox" ? "Traktor" : "Rekordbox";
+  const name = s => ((copy ? COPY_STEPS : SYNC_STEPS)[s] || s).replaceAll("the other DJ app", other);
+  const steps = Object.entries(r?.steps || {}), todo = steps.filter(([, v]) => v.changed), rest = steps.filter(([, v]) => !v.changed);
+  return `<div class="small muted" style="margin-top:6px">Tick what to write into ${esc(r.app || "your DJ app")}:</div>
+    ${todo.map(([s, v]) => `<div style="margin-top:6px"><label class="inline"><input type="checkbox" data-step="${esc(s)}" ${copy && s === "grids" ? "" : "checked"}> <b>${esc(name(s))}</b></label>
+      <details><summary class="small muted" style="cursor:pointer">What changes</summary>${resultSummary(v, 1)}</details></div>`).join("")}
+    ${rest.length ? `<div class="small muted" style="margin-top:8px">Nothing to write for:</div><ul class="small muted">${rest.map(([s, v]) => `<li><b>${esc(name(s))}</b>: ${typeof v.skipped === "string" && v.skipped ? esc(v.skipped) : "already in place"}</li>`).join("")}</ul>` : ""}`;
 }
 function nothingToDo(r) {  // as the CLI's say_if_nothing
   if (!r) return false;
@@ -125,10 +137,12 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
   const counts = ["written", "would_write", "restored", "would_restore", "top_genre_changed"].filter(k => k in r).map(k => r[k]);
   return (flags.length && !flags.some(Boolean)) || (!flags.length && counts.length && !counts.some(Boolean));
 }
-const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
-const NO_PREVIEW = new Set(["traktor_undo"]);
+const TOUCHES_TRAKTOR = new Set(["sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
+const NO_PREVIEW = new Set(["traktor_undo", "sync_undo", "copy_undo"]);
+const MULTI = new Set(["sync", "copy"]);  // several steps: the preview ticks which to write
+const ONE_UNDO = { sync_undo: "last sync (all of its steps at once)", copy_undo: "last copy from the other DJ app (all of its steps at once)" };
 const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
-const OPEN_WARN = `<div class="warnbox"><b>Traktor is open.</b> Quit it first: it saves its collection when it quits and would undo these changes. Then press Check again.</div>`;
+const OPEN_WARN = `<div class="warnbox"><b>Your DJ app is open.</b> Quit it first: it saves its library when it quits and would undo these changes. Then press Check again.</div>`;
 
 // Preview → write → undo for one of the CLI's writers, in a dialog.
 async function writeDialog(action, options = {}, onDone) {
@@ -149,8 +163,9 @@ async function writeDialog(action, options = {}, onDone) {
   async function preview(act, opts) {
     title = label(act);
     if (NO_PREVIEW.has(act)) {
-      show(`<div>Puts collection.nml back to how it was before the analyzer's last change${st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
-        It refuses if Traktor saved the collection since then, so nothing of yours is lost. Traktor must be closed.</div>`,
+      const rb = st?.dj_app?.app === "rekordbox", app = rb ? "Rekordbox" : "Traktor";
+      show(`<div>Puts ${rb ? "master.db" : "collection.nml"} back to how it was before the analyzer's ${ONE_UNDO[act] || "last change"}${!ONE_UNDO[act] && st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
+        It refuses if ${app} saved ${rb ? "its library" : "the collection"} since then, so nothing of yours is lost. ${app} must be closed.</div>`,
         `<button class="primary" data-go>Undo it</button>`);
       dlg.querySelector("[data-go]").onclick = () => write(act, opts);
       return;
@@ -160,21 +175,28 @@ async function writeDialog(action, options = {}, onDone) {
     if (j.error) return show(`<div class="err">${esc(j.error)}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Check again</button>`), again(act, opts);
     const open = j.traktor_running && TOUCHES_TRAKTOR.has(act), nothing = nothingToDo(j.result);
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
-      ${resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
+      ${MULTI.has(act) && !nothing ? syncSteps(j.result, st, act === "copy") : resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
-      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? "A backup of Traktor's collection is made first, and you can undo it here afterwards."
+      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${st?.dj_app?.app === "rekordbox" ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
         : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
     again(act, opts);
-    dlg.querySelector("[data-go]")?.addEventListener("click", () => write(act, opts));
+    const go = dlg.querySelector("[data-go]");
+    go?.addEventListener("click", () => {
+      if (!MULTI.has(act)) return write(act, opts);
+      const only = [...dlg.querySelectorAll("[data-step]:checked")].map(b => b.dataset.step);
+      write(act, { ...opts, only });
+    });
+    // sync: write only the ticked steps; nothing ticked, nothing to write
+    dlg.querySelectorAll("[data-step]").forEach(b => b.onchange = () => { if (go) go.disabled = !dlg.querySelector("[data-step]:checked"); });
   }
   function again(act, opts) { dlg.querySelector("[data-again]")?.addEventListener("click", () => preview(act, opts)); }
   async function write(act, opts) {
     busy("Writing…");
     const j = await run(act, opts, false);
     // An undo refused because Traktor saved the collection since: offer to restore anyway, losing what it saved
-    const forceable = act === "traktor_undo" && !opts.force && /--force/.test(j.error || "");
+    const forceable = (act === "traktor_undo" || act in ONE_UNDO) && !opts.force && /--force/.test(j.error || "");
     if (j.error) {
       show(`<div class="err">${esc(j.error.replace(/ Run again with --force to restore anyway\./, ""))}</div>${j.command ? cmdNote(j) : ""}`,
         `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
@@ -186,7 +208,7 @@ async function writeDialog(action, options = {}, onDone) {
     const r = j.result || {}, undo = act === "colors_write_marked" && !r.undo ? null : j.undo;
     if (r.restart) return restartApp((html, buttons) => show(html, buttons), r);
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
-      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
+      ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" || undo in ONE_UNDO ? "<br>Undo works until Traktor saves its collection again (it does when it quits)." : ""}</div>` : ""}
       ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
       undo ? `<button data-undo>${esc(label(undo))}…</button>` : "");
     dlg.querySelector("[data-undo]")?.addEventListener("click", () => preview(undo, opts));

@@ -47,6 +47,7 @@ TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", 
 def libraries() -> dict:
     """The normal library plus every tempo view in data/, and which view Traktor (and Lexicon, when you have it) has loaded."""
     from . import lexicon, tempo
+    from . import library as dj
 
     libs = [{"id": "native", "label": "Normal (each track at its own tempo)", "bpm": None}]
     for d in sorted(HOME.glob("at-*")):
@@ -59,7 +60,7 @@ def libraries() -> dict:
     st, lx = tempo.loaded(), lexicon.loaded()
     return {"libraries": libs, "loaded_view": st["bpm"] if st else None, "status": tempo.status(),
             "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
-            "home": str(HOME), "colours": COLOR_NAMES}
+            "home": str(HOME), "colours": COLOR_NAMES, "app": dj.app(), "app_name": dj.app_name()}
 
 
 @contextmanager
@@ -293,8 +294,9 @@ _grids: dict = {"mtime": None, "data": {}}
 def cue_grids() -> dict:
     """Traktor's beat grids and your cues, read again only when collection.nml changes."""
     from . import cues
+    from . import library as dj_app
 
-    m = traktor_nml().stat().st_mtime
+    m = (dj_app.app(), dj_app.find_collection(None).stat().st_mtime)
     if _grids["mtime"] != m:
         _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
@@ -463,14 +465,14 @@ def write_cues(dry_run: bool) -> dict:
     with library("native"):
         before = cues.plans()
         if not before:
-            return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
+            return {"changed": False, "nothing_approved": True, "traktor_running": jobs.library.running_state() is True}
         try:
             out = cues.apply(dry_run=dry_run)
         except traktor.ConfirmClosed:  # the page asks and sends it again
             raise
         except SystemExit as e:
             raise ValueError(str(e)) from None
-    out["traktor_running"] = traktor.traktor_running()
+    out["traktor_running"] = jobs.library.running_state() is True  # the chosen DJ app (name kept for the page)
     out["approved_tracks"] = len(before)
     if not dry_run and out.get("changed"):
         WRITTEN_PLANS.write_text(json.dumps({"backup": out["backup"], "plans": before}))
@@ -942,7 +944,7 @@ def pick_file(folder: bool = False, start: Path | None = None, title: str = PICK
     """Open the system's file (or folder) dialog on this computer; the chosen path, or None when cancelled."""
     import subprocess
 
-    cmd = _pick_command(start if folder else _pick_start(), folder, title)
+    cmd = _pick_command(start if folder or start else _pick_start(), folder, title)
     if cmd is None:
         raise ValueError(f"No {'folder' if folder else 'file'} dialog here: paste the path of {what} instead.")
     argv, env = cmd
@@ -1010,6 +1012,38 @@ def set_collection(b: dict) -> dict:
     now = traktor.choose_collection(path)
     _guesses["key"] = _grids["mtime"] = _fixes["key"] = None  # read the (other) collection again
     return {"collection": str(now) if now else None}
+
+
+def set_dj_app(b: dict) -> dict:
+    """The Setup tab's DJ app: {app: "traktor" | "rekordbox"}. Not while a job runs."""
+    from . import library
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before changing the DJ app.")
+    now = library.choose_app(str(b.get("app") or ""))
+    _guesses["key"] = _grids["mtime"] = _fixes["key"] = None
+    return {"app": now}
+
+
+def set_rekordbox_database(b: dict) -> dict:
+    """The Setup tab's choice of Rekordbox's master.db, as set_collection does for Traktor."""
+    from . import rekordbox
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before changing Rekordbox's database.")
+    if b.get("auto"):
+        path = None
+    elif b.get("browse"):
+        start = next((d for d in rekordbox.default_dirs() if d.is_dir()), Path.home())
+        path = pick_file(start=start, title="Choose Rekordbox's database (master.db)", what="master.db")
+        if path is None:
+            return {"cancelled": True}
+    else:
+        path = str(b.get("path") or "")
+        if not path.strip():
+            raise ValueError("Give the path of Rekordbox's master.db (or the rekordbox folder holding it).")
+    now = rekordbox.choose_database(path)
+    return {"database": str(now) if now else None}
 
 
 def reveal_sample(file: str | None = None, folder: str | None = None) -> dict:
@@ -1215,14 +1249,14 @@ def write_grids(dry_run: bool) -> dict:
     if jobs.busy():
         raise ValueError(f"Busy with: {jobs.state()['job']['label']}. Wait for it to finish first.")
     if not gridfix.plans():
-        return {"changed": False, "nothing_approved": True, "traktor_running": traktor.traktor_running()}
+        return {"changed": False, "nothing_approved": True, "traktor_running": jobs.library.running_state() is True}
     try:
         out = gridfix.apply(dry_run=dry_run)
     except traktor.ConfirmClosed:  # the page asks and sends it again
         raise
     except SystemExit as e:
         raise ValueError(str(e)) from None
-    out["traktor_running"] = traktor.traktor_running()
+    out["traktor_running"] = jobs.library.running_state() is True  # the chosen DJ app (name kept for the page)
     if not dry_run and out.get("changed"):
         _grids["mtime"] = None
         _wave_src.clear()
@@ -1775,7 +1809,10 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/grid/write", post(lambda b: write_grids(bool(b.get("dry_run", True)))), methods=["POST"]),
         Route("/api/grid/undo", post(lambda b: undo_grids()), methods=["POST"]),
         Route("/api/setup", respond(lambda q: setup_status())),
+        Route("/api/app-running", respond(lambda q: {"running": jobs.library.running_state() is True})),
         Route("/api/traktor/collection", post(set_collection), methods=["POST"]),
+        Route("/api/dj-app", post(set_dj_app), methods=["POST"]),
+        Route("/api/rekordbox/database", post(set_rekordbox_database), methods=["POST"]),
         Route("/api/to-learn", respond(lambda q: to_learn())),
         Route("/api/genres/traktor", respond(lambda q: genres_from_traktor())),
         Route("/api/genres/preview", respond(lambda q: my_genres_preview(q.get("mode", "both")))),

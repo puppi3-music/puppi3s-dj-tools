@@ -655,7 +655,47 @@ def write_nml(bpm: float = DEFAULT_BPM, nml: str | None = None, out: str | None 
     return stats
 
 
+def _rekordbox() -> bool:
+    from . import library
+
+    return library.app() == "rekordbox"
+
+
+def load_rekordbox(bpm: float = DEFAULT_BPM, dry_run: bool = False) -> dict:
+    """The view's genres, colours (yours moved by the model's shift) and hype into Rekordbox's master.db, the values
+    they replace remembered in data/tempo-loaded.json. Rekordbox has no master-clock setting to switch, and its
+    genre smart playlists follow the genres, so nothing else changes."""
+    from . import rekordbox
+
+    st = loaded()
+    if st:
+        raise SystemExit(f"The {st['bpm']:g} BPM view is already loaded ({st['collection']}). "
+                         "Switch back first: uv run dj-track-analyzer tempo native")
+    con = view_db(bpm)
+    rows = con.execute("SELECT * FROM tracks WHERE type='track' AND (error IS NULL OR error LIKE 'tags:%')").fetchall()
+    if not rows:
+        raise SystemExit(f"No {bpm:g} BPM analysis yet. Run: uv run dj-track-analyzer tempo scan --bpm {bpm:g}")
+    genre_held, colour_held = collection.held("genre"), collection.held("colour")
+    view = {}
+    for r in rows:
+        moved = None if r["path"] in colour_held else (
+            lambda yours, r=r: shifted_colour(yours, r["color_position"], r["native_color_position"]))
+        view[r["path"]] = {"genre": collection.multi_genre(dict(r)) if r["genre"] and r["path"] not in genre_held
+                           else None, "colour": moved, "hype": r["hype"]}
+    log(f"Rekordbox: putting the {bpm:g} BPM view's genres, colours and hype into master.db…")
+    stats, remembered = rekordbox.tempo_load(view, dry_run=dry_run)
+    stats["bpm"] = bpm
+    if not dry_run and stats.get("changed"):
+        STATE.write_text(json.dumps({"bpm": bpm, "app": "rekordbox", "collection": stats["collection"],
+                                     "loaded_at": time.strftime("%Y-%m-%d %H:%M"), "tracks": remembered},
+                                    ensure_ascii=False), encoding="utf-8")
+        stats["now_loaded"] = f"{bpm:g} BPM view. Back to normal: uv run dj-track-analyzer tempo native"
+    return stats
+
+
 def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False, force: bool = False) -> dict:
+    if _rekordbox():
+        return load_rekordbox(bpm, dry_run)
     path = traktor.find_collection(nml)
     traktor.check_closed(dry_run)
     tag_warning = None
@@ -693,7 +733,16 @@ def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False
 def unload(nml: str | None = None, dry_run: bool = False) -> dict:
     st = loaded()
     if not st:
-        raise SystemExit("No tempo view is loaded; Traktor already has your normal values.")
+        raise SystemExit("No tempo view is loaded; your DJ app already has your normal values.")
+    if st.get("app") == "rekordbox":
+        from . import rekordbox
+
+        stats = rekordbox.tempo_unload(st["tracks"], dry_run=dry_run)
+        stats["bpm"] = st["bpm"]
+        if not dry_run:
+            STATE.unlink()
+            stats["now_loaded"] = "your normal genres, colours and hype"
+        return stats
     path = traktor.find_collection(nml or st["collection"])
     traktor.check_closed(dry_run)
     bpm, tracks = st["bpm"], st["tracks"]

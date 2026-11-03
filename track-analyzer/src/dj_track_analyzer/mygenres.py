@@ -65,14 +65,14 @@ def _tempo_view_loaded() -> bool:
 def traktor_choices(nml: str | None = None) -> dict:
     """What the Setup tab offers to learn from in Traktor: its playlists (each ticked one = a genre) and the genres
     in Traktor's Genre field, with track counts. `built_in`: one of this app's genre names (maybe written by it)."""
-    from . import traktor
+    from . import library
 
     built = {g.casefold() for g in analysis.dj_rules()}
-    field = traktor.genre_field(nml)
+    field = library.genre_field(nml)
     return {
-        "playlists": [{"path": p["path"], "name": p["name"], "tracks": len(p["files"])} for p in traktor.playlists(nml)],
+        "playlists": [{"path": p["path"], "name": p["name"], "tracks": len(p["files"])} for p in library.playlists(nml)],
         "genres": [{"genre": g, "tracks": len(v), "built_in": g.casefold() in built} for g, v in field["genres"].items()],
-        "multi": field["multi"], "tempo_view_loaded": _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
+        "multi": field["multi"], "tempo_view_loaded": library.app() == "traktor" and _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
     }
 
 
@@ -81,13 +81,13 @@ def traktor_sets(playlists: list[str] | None = None, genres: list[str] | None = 
     """The examples from Traktor: the ticked `playlists` (paths as traktor.playlists gives them; each is a genre
     named after the playlist, two with the same name are one genre), or the tracks whose Genre field is one of
     `genres`. Also the source, to learn again from it later. A track in two different genres is left out."""
-    from . import traktor
+    from . import library
 
     if playlists:
-        have = {p["path"]: p for p in traktor.playlists(nml)}
+        have = {p["path"]: p for p in library.playlists(nml)}
         missing = [p for p in playlists if p not in have]
         if missing:
-            raise SystemExit(f"Traktor has no playlist {', '.join(missing)} (with tracks) any more.")
+            raise SystemExit(f"{library.app_name()} has no playlist {', '.join(missing)} (with tracks) any more.")
         sets: dict[str, list[str]] = {}
         for p in playlists:
             sets.setdefault(have[p]["name"], []).extend(have[p]["files"])
@@ -99,15 +99,15 @@ def traktor_sets(playlists: list[str] | None = None, genres: list[str] | None = 
         sets = {g: [f for f in files if seen[f] == 1] for g, files in sets.items()}
         return sets, {"kind": "traktor_playlists", "playlists": list(playlists)}
     if genres:
-        if _tempo_view_loaded():
+        if library.app() == "traktor" and _tempo_view_loaded():
             raise SystemExit("A tempo view is loaded in Traktor, so its Genre field holds the view's genres. "
                              "Switch Traktor back to normal on the Tempo tab first.")
-        field = traktor.genre_field(nml)["genres"]
+        field = library.genre_field(nml)["genres"]
         missing = [g for g in genres if g not in field]
         if missing:
-            raise SystemExit(f"No tracks with the genre {', '.join(missing)} in Traktor's collection.")
+            raise SystemExit(f"No tracks with the genre {', '.join(missing)} in {library.app_name()}'s collection.")
         return {g: field[g] for g in genres}, {"kind": "traktor_genres", "genres": list(genres)}
-    raise ValueError("Tick some Traktor playlists or genres")
+    raise ValueError("Tick some playlists or genres")
 
 
 def train(folder: str | None = None, progress=log, playlists: list[str] | None = None,
