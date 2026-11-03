@@ -308,6 +308,8 @@ def main() -> None:
     st.add_argument("--native", action="store_true", help="use the normal library even while a tempo view is loaded")
     t = sub.add_parser("train", help="train your own genres from a folder (the Setup tab's Learn your genres)")
     t.add_argument("folder", nargs="?", help="one subfolder or .m3u8 playlist per genre, 20-50 example tracks each")
+    t.add_argument("--by-tag", action="store_true", help="the folder's files are grouped by the genre in their own "
+                   "tags (ID3 etc.) instead of by subfolder; subfolders are searched too")
     t.add_argument("--traktor-playlist", action="append", metavar="PLAYLIST", help="learn from Traktor playlists "
                    "instead: each is a genre named after it (repeat for each, at least 2; in folders as \"DJ / Hyperpop\")")
     t.add_argument("--traktor-genre", action="append", metavar="GENRE", help="learn from Traktor's Genre field "
@@ -428,7 +430,8 @@ def main() -> None:
         if not sources and not args.use:
             raise SystemExit("Give the folder with your example tracks (or --traktor-playlist / --traktor-genre), "
                              "or --use starter|both|mine.")
-        out = mygenres.train(args.folder, playlists=args.traktor_playlist, genres=args.traktor_genre) if sources else {}
+        out = mygenres.train(args.folder, playlists=args.traktor_playlist, genres=args.traktor_genre,
+                              by_tag=args.by_tag) if sources else {}
         if args.use:
             out["use"] = mygenres.set_mode(args.use)
         print(json.dumps(out, indent=2, ensure_ascii=False))
