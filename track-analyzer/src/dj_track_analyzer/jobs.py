@@ -475,6 +475,33 @@ def _changed(path: str, size, mtime) -> bool:
     return (st.st_size, int(st.st_mtime)) != (size, mtime)
 
 
+_rb_cache: dict = {"key": None, "data": None}
+
+
+def dj_app_status() -> dict:
+    """The Setup tab's DJ app (Traktor or Rekordbox) and, for Rekordbox, its database: found, chosen, track counts."""
+    from . import library, rekordbox
+
+    out: dict = {"app": library.app(), "name": library.app_name(), "apps": library.APPS}
+    if out["app"] != "rekordbox":
+        return out
+    chosen = rekordbox.chosen_database()
+    rb: dict = {"chosen": str(chosen) if chosen else None}
+    try:
+        path = rekordbox.find_collection(None)
+        key = (str(path), path.stat().st_mtime)
+        if _rb_cache["key"] != key:
+            _, files, missing = rekordbox.collection_tracks(str(path))
+            _rb_cache.update(key=key, data={"tracks": len(files), "missing": missing})
+        rb.update(database=str(path), **_rb_cache["data"])
+    except SystemExit as e:
+        rb.update(database=None, why=str(e.code or e))
+    except (OSError, ValueError, ImportError) as e:
+        rb.update(database=None, why=f"Couldn't read Rekordbox's database: {e}")
+    out["rekordbox"] = rb
+    return out
+
+
 def setup_status() -> dict:
     """Each step from a fresh install to everything in Traktor: done or not, and what it needs."""
     import sqlite3
@@ -509,6 +536,7 @@ def setup_status() -> dict:
         tk_files = set()
     chosen = traktor.chosen_collection()
     st["traktor"]["chosen"] = str(chosen) if chosen else None  # picked on this tab; None = found automatically
+    st["dj_app"] = dj_app_status()
     scanned, hyped, errors, tagged, predicted, changed = set(), 0, 0, 0, 0, 0
     if collection.NATIVE_DB.exists():
         with sqlite3.connect(collection.NATIVE_DB) as con:

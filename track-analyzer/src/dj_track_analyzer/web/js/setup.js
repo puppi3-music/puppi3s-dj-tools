@@ -73,11 +73,26 @@ async function pageSetup(main) {
     : V.untested === "newer"
     ? `<b>Traktor ${esc(V.traktor)} isn't verified with the analyzer yet</b> (tested up to ${esc(V.tested_traktor)}). Its collection file format is the same, so it should work fine; you might still run into issues. Every write is backed up and can be undone. If something looks wrong, ${issue}.`
     : "";
+  // The DJ app the analyzer works with (one at a time). With Rekordbox, step 2 is its database (master.db) instead.
+  const dj = st.dj_app || { app: "traktor", apps: { traktor: "Traktor", rekordbox: "Rekordbox" } }, rb = dj.rekordbox || {};
+  const appPick = `<span class="small">DJ app: ${Object.entries(dj.apps).map(([k, n]) =>
+      `<label class="inline"><input type="radio" name="su-app" value="${k}" ${dj.app === k ? "checked" : ""} ${b}> ${esc(n)}</label>`).join(" ")}</span>`;
   const traktorStep = tk.collection
-    ? step("done", 2, "Traktor's collection", `${tk.chosen ? "Using" : "Found"} <span class="mono">${esc(tk.collection)}</span>${tk.chosen ? " (chosen here)" : ""}: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
+    ? step("done", 2, "Traktor's collection", `${appPick}<br>${tk.chosen ? "Using" : "Found"} <span class="mono">${esc(tk.collection)}</span>${tk.chosen ? " (chosen here)" : ""}: ${plural(sc.traktor_tracks, "track")} on disk${tk.missing ? `, ${tk.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
         ${tk.coloured} coloured by you, ${tk.cued} with 3+ of your own cue points.${untested ? `<div class="note" style="margin:6px 0 0">${untested}</div>` : ""}${newer}<div id="su-nml-msg" class="small" hidden></div>`, nmlAct)
-    : step("blocked", 2, "Traktor's collection", `${esc(tk.why)} It's the file <span class="mono">collection.nml</span> in Documents › Native Instruments › Traktor <i>version</i>.
+    : step("blocked", 2, "Traktor's collection", `${appPick}<br>${esc(tk.why)} It's the file <span class="mono">collection.nml</span> in Documents › Native Instruments › Traktor <i>version</i>.
         Without Traktor you can still scan folders below; the colour and cue steps learn from Traktor and need it.<div id="su-nml-msg" class="small" hidden></div>`, nmlAct);
+  const rbPick = `<span id="su-rb-pick" style="display:${rb.database ? "none" : "contents"}">
+      ${tk.can_browse ? jb("su-rb-browse", "Browse…", !rb.database) : ""}
+      <input type="text" id="su-rb-path" placeholder="${tk.can_browse ? "or paste its path" : "paste the path of master.db"}">${jb("su-rb-use", "Use")}</span>`;
+  const rbAct = `${rb.database ? jb("su-rb-change", "Change…") : ""}${rb.chosen ? jb("su-rb-auto", "Find automatically") : ""}${rbPick}`;
+  const libStep = dj.app === "rekordbox"
+    ? (rb.database
+      ? step("done", 2, "Rekordbox's library", `${appPick}<br>${rb.chosen ? "Using" : "Found"} <span class="mono">${esc(rb.database)}</span>${rb.chosen ? " (chosen here)" : ""}: ${plural(rb.tracks, "track")} on disk${rb.missing ? `, ${rb.missing} listed but missing (moved, or on a drive that isn't connected)` : ""}.
+          Scanning, BPM/key comparison and learning genres from its playlists read it; writing to Rekordbox comes in a later version.<div id="su-nml-msg" class="small" hidden></div>`, rbAct)
+      : step("blocked", 2, "Rekordbox's library", `${appPick}<br>${esc(rb.why || "Not found.")} It's the file <span class="mono">master.db</span> in Rekordbox's folder (Library › Pioneer › rekordbox on a Mac, AppData › Roaming › Pioneer › rekordbox on Windows).
+          <div id="su-nml-msg" class="small" hidden></div>`, rbAct))
+    : traktorStep;
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
     : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
@@ -168,7 +183,7 @@ async function pageSetup(main) {
   main.innerHTML = `<div class="page-head"><div><h2>Setup</h2><div class="muted">From a fresh install to everything in Traktor. Each button runs the same command as in a terminal (shown as it runs), in the background: you can use the other tabs meanwhile.</div></div></div>
     <div id="jobpanel"></div>
     <div id="updatecard"></div>
-    <div class="card"><h3>Get started</h3><div class="steps">${models}${traktorStep}${scanStep}${hypeStep}</div></div>
+    <div class="card"><h3>Get started</h3><div class="steps">${models}${libStep}${scanStep}${hypeStep}</div></div>
     <div class="card"><h3>Learn from your own work <span class="dim small">(optional)</span></h3><div class="steps">${colourStep}${cueStep}${genreStep}</div></div>
     <div class="card"><h3>Extra tools <span class="dim small">(optional)</span></h3><div class="steps">
       ${tool(8, "ffmpeg", "Plays loops and saves samples in a track's panel, keeps MP3 timing exact, and cuts mix clips.")}
@@ -211,6 +226,23 @@ async function pageSetup(main) {
   on("su-nml-use", e => { const p = $("#su-nml-path").value.trim(); p ? nml({ path: p }, e.currentTarget) : $("#su-nml-path").focus(); });
   $("#su-nml-path")?.addEventListener("keydown", e => { if (e.key === "Enter") $("#su-nml-use").click(); });
   on("su-nml-auto", e => nml({ auto: true }, e.currentTarget));
+  const rbDb = async (body, btn) => {
+    const msg = $("#su-nml-msg"), label = btn?.textContent;
+    msg.hidden = true;
+    if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) route(); }
+    catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+    finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
+  };
+  document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
+    try { await postJSON("/api/dj-app", { app: r.value }); route(); }
+    catch (e) { const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+  });
+  on("su-rb-change", () => { $("#su-rb-pick").style.display = "contents"; $("#su-rb-change").style.display = "none"; ($("#su-rb-browse") || $("#su-rb-path")).focus(); });
+  on("su-rb-browse", e => rbDb({ browse: true }, e.currentTarget));
+  on("su-rb-use", e => { const p = $("#su-rb-path").value.trim(); p ? rbDb({ path: p }, e.currentTarget) : $("#su-rb-path").focus(); });
+  $("#su-rb-path")?.addEventListener("keydown", e => { if (e.key === "Enter") $("#su-rb-use").click(); });
+  on("su-rb-auto", e => rbDb({ auto: true }, e.currentTarget));
   on("su-nml-newer", e => nml({ path: tk.newer }, e.currentTarget));
   on("su-setup", () => go("setup", { no_maest: SF.noMaest }));
   on("su-maest", () => go("setup", {}));

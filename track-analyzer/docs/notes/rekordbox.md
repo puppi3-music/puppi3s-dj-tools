@@ -60,3 +60,11 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   Rekordbox 7 (first write test, on a copy, done by the user).
 - Adding `djmdCue` rows (pyrekordbox doesn't list cues among the tables it can add to): IDs, UUIDs, `usn`.
 - History/recordings for tracklists; non-MP3 cue offsets; Windows paths (`%APPDATA%\Pioneer\rekordbox`).
+
+## Stage 1b: what reads Rekordbox now
+- Setup tab, step 2: "DJ app: Traktor / Rekordbox" (`POST /api/dj-app`, saved as `dj_app`), and for Rekordbox its
+  master.db (`POST /api/rekordbox/database`: Browse…, pasted path, or find automatically). `jobs.dj_app_status()`.
+- Through `library`: scan's DJ-app tracks (`--traktor`), the BPM/key comparison (`load_traktor_info`), learning
+  genres from playlists or the Genre field (mygenres). A `--nml` path is Traktor's: with Rekordbox it's ignored.
+- Still Traktor only (stage 2+): every write, colours, cues, grids, tempo view, set plans, the job status counts.
+- `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macos-14.
