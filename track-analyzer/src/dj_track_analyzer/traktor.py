@@ -305,10 +305,10 @@ _page_closed: contextvars.ContextVar[bool | None] = contextvars.ContextVar("page
 class ConfirmClosed(SystemExit):
     """A write nobody has said Traktor is closed for, where we can't see. The web page asks and sends it again."""
 
-    def __init__(self, why: str):
+    def __init__(self, why: str, app: str = "Traktor"):
         self.why = why
         where = "a terminal (docker compose run)" if CONTAINER else "a terminal"
-        super().__init__(f"{why} Quit Traktor, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
+        super().__init__(f"{why} Quit {app}, then answer y when asked in {where}, or set {CLOSED_ENV}=1.")
 
 
 @contextlib.contextmanager
@@ -1061,16 +1061,9 @@ def _save(path: Path, text: str, new_text: str, stats: dict, dry_run: bool, pref
 
 
 # Hype goes into Traktor's Comment (INFO COMMENT). It used to go into Comment 2 (INFO RATING; stars are
-# RANKING), so a "Hype NN" still found there is taken out on the next write.
-HYPE_RE = re.compile(r"\s*(?:·\s*)?Hype \d{2}\s*$")
-
-
-def with_hype(comment: str | None, hype: int | None) -> str:
-    """The comment with its 'Hype NN' part replaced (or removed when hype is None); other text is kept."""
-    rest = HYPE_RE.sub("", comment or "").strip()
-    if hype is None:
-        return rest
-    return f"{rest} · Hype {hype:02d}" if rest else f"Hype {hype:02d}"
+# RANKING), so a "Hype NN" still found there is taken out on the next write. The text itself is shared with
+# Rekordbox and Lexicon (comments.py).
+from .comments import HYPE_RE, with_hype  # noqa: E402,F401  (traktor.with_hype: older callers)
 
 
 def _set_or_drop_info(entry: str, name: str, value: str) -> str:

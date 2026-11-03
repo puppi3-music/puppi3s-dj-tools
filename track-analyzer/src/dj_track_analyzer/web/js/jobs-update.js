@@ -128,7 +128,7 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
 const TOUCHES_TRAKTOR = new Set(["traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
 const NO_PREVIEW = new Set(["traktor_undo"]);
 const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
-const OPEN_WARN = `<div class="warnbox"><b>Traktor is open.</b> Quit it first: it saves its collection when it quits and would undo these changes. Then press Check again.</div>`;
+const OPEN_WARN = `<div class="warnbox"><b>Your DJ app is open.</b> Quit it first: it saves its library when it quits and would undo these changes. Then press Check again.</div>`;
 
 // Preview → write → undo for one of the CLI's writers, in a dialog.
 async function writeDialog(action, options = {}, onDone) {
@@ -149,8 +149,9 @@ async function writeDialog(action, options = {}, onDone) {
   async function preview(act, opts) {
     title = label(act);
     if (NO_PREVIEW.has(act)) {
-      show(`<div>Puts collection.nml back to how it was before the analyzer's last change${st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
-        It refuses if Traktor saved the collection since then, so nothing of yours is lost. Traktor must be closed.</div>`,
+      const rb = st?.dj_app?.app === "rekordbox", app = rb ? "Rekordbox" : "Traktor";
+      show(`<div>Puts ${rb ? "master.db" : "collection.nml"} back to how it was before the analyzer's last change${st?.traktor_backup ? ` (backup <span class="mono">${esc(st.traktor_backup)}</span>)` : ""}.
+        It refuses if ${app} saved ${rb ? "its library" : "the collection"} since then, so nothing of yours is lost. ${app} must be closed.</div>`,
         `<button class="primary" data-go>Undo it</button>`);
       dlg.querySelector("[data-go]").onclick = () => write(act, opts);
       return;
@@ -162,7 +163,7 @@ async function writeDialog(action, options = {}, onDone) {
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
       ${resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
-      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? "A backup of Traktor's collection is made first, and you can undo it here afterwards."
+      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${st?.dj_app?.app === "rekordbox" ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
         : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
