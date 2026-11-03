@@ -1219,6 +1219,39 @@ def tempo_unload(tracks: dict[str, dict], db: str | None = None, dry_run: bool =
     return out
 
 
+def set_track(path: str, colour: int | None = None, genre: str | None = None, hype: int | None = None,
+              db: str | None = None, dry_run: bool = False) -> dict:
+    """traktor.set_track for Rekordbox: one track's colour (our 1-7 scale), genre, and the Hype in Comment only where
+    Comment already carries one. None = leave as it is. One write: one backup, one undo. The key isn't written
+    (Rekordbox keeps keys in its own table; the analyzer holds the hand key)."""
+    from . import tempo
+
+    if (tempo.loaded() or {}).get("app") == "rekordbox":
+        raise SystemExit("A tempo view is loaded in Rekordbox: switch it back to normal on the Tempo tab first.")
+    stats: dict = {"changed_fields": []}
+
+    def change(master):
+        c = _content_by_path(master).get(norm_path(path))
+        if c is None:  # not an error: the edit still lands in the analyzer (and the backup is dropped)
+            stats["not_in_collection"] = True
+            return False
+        cur = {"Genre": c.Genre.Name if c.Genre is not None else None, "ColorID": str(c.ColorID or "0"),
+               "Commnt": c.Commnt or ""}
+        want = {}
+        if colour:
+            want["ColorID"] = str(OUR_TO_RB[colour])
+        if genre is not None:
+            want["Genre"] = genre or None
+        if hype is not None and HYPE_RE.search(cur["Commnt"]):
+            want["Commnt"] = with_hype(cur["Commnt"], hype)
+        changed = {f: w for f, w in want.items() if w != cur[f]}
+        _set_fields(master, c, changed, {})
+        stats["changed_fields"] = sorted(changed)
+        return bool(changed)
+
+    return _write(db, dry_run, change, stats, "this edit")
+
+
 def sync_tracks(db: str | None = None, dry_run: bool = False, tracks: list[dict] | None = None,
                 relink: bool = True) -> dict:
     """Relink tracks whose file moved (FolderPath; the ANLZ files' own path tag is left as it is, so nothing outside

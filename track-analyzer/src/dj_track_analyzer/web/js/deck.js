@@ -97,11 +97,11 @@ async function deckLoop(a, b) {
   // The <audio> element can only jump back once per screen refresh, which leaves a gap. Web Audio loops on the
   // exact sample: the server cuts just the loop out of the file (~0.15 s), and it plays over and over.
   DECK.audio.pause(); deckStopLoop();
-  DECK.loop = [a, b]; DECK.asked = (DECK.asked || 0) + 1; DECK.waiting = true; deckUi();
+  DECK.loop = [a, b]; const ask = DECK.asked = (DECK.asked || 0) + 1; DECK.waiting = true; deckUi();
   const smooth = smoothLoops(), want = DECK.path, bpm = deckBpm(), key = `${want}|${a}|${b}|${smooth}|${bpm}`;
   try {
     const k = await deckRatio(bpm);  // stretched loops are cut from the stretched track, so it's made first
-    if (DECK.path !== want || !DECK.loop || DECK.loop[0] !== a) return;
+    if (DECK.path !== want || DECK.asked !== ask) return;
     if (!DECK.ctx) { DECK.ctx = new AudioContext(); DECK.gain = DECK.ctx.createGain(); DECK.gain.gain.value = deckVolume(); DECK.gain.connect(DECK.ctx.destination); }
     if (DECK.ctx.state === "suspended") await DECK.ctx.resume();
     let buf = LOOP_CLIPS.get(key), whole = false;
@@ -122,14 +122,14 @@ async function deckLoop(a, b) {
         buf = DECK.buf; whole = true;
       }
     }
-    if (DECK.path !== want || !DECK.loop || DECK.loop[0] !== a) return;  // another jump or track meanwhile
+    if (DECK.path !== want || DECK.asked !== ask) return;  // another jump or track meanwhile
     const src = DECK.ctx.createBufferSource();
     src.buffer = buf; src.loop = true;
     if (whole) { src.loopStart = a * k; src.loopEnd = b * k; src.connect(DECK.gain); src.start(0, a * k); }
     else { src.connect(DECK.gain); src.start(0, 0); }  // the clip is exactly the loop
     DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b, k, bpm }; DECK.waiting = false;
     deckTick();
-  } catch (err) { if (DECK.path !== want) return;  // another track meanwhile: its deck isn't this loop's
+  } catch (err) { if (DECK.path !== want || DECK.asked !== ask) return;  // another track meanwhile: its deck isn't this loop's
     DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
 }
 function deckSeek(t, play = true, loop = null) {
@@ -214,7 +214,8 @@ function deckUi() {
   show(pho, true); pho.style.transform = `translateX(${t / w.dur * W}px)`;
 }
 document.addEventListener("keydown", e => {
-  if (!DECK.path || !$("#drawer").classList.contains("open") || e.target.closest("input, textarea, select") || overlayOpen()) return;
+  if (!DECK.path || !$("#drawer").classList.contains("open") || DECK.path !== $("#drawer").dataset.path || e.target.closest("input, textarea, select") || overlayOpen()) return;
+  if (e.metaKey || e.ctrlKey || e.altKey) return;  // leave the browser's own shortcuts alone (⌘1 switches tab, alt+← goes back)
   const c = DECK.c, t = deckTime();
   if (e.code === "Space") { e.preventDefault(); deckToggle(); }
   else if (/^Digit[1-8]$/.test(e.code)) {
@@ -223,7 +224,7 @@ document.addEventListener("keydown", e => {
     const y = a ? { ms: a.ms, type: a.type, bars: a.type === "loop" && a.len_ms ? a.len_ms / 1000 / c.bar_seconds : 0 }
       : myCues(c).find(y => y.status !== "deleted" && (pendSlot(y, p) ?? y.hotcue) === n);
     if (y) { e.preventDefault(); deckSeek(y.ms / 1000, true, y.type === "loop" && y.bars ? [y.ms / 1000, y.ms / 1000 + y.bars * c.bar_seconds] : null); }
-  } else if (e.code === "KeyC" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+  } else if (e.code === "KeyC") {
     const b = $("#dk-cue"); if (b) { e.preventDefault(); b.click(); }
   } else if (e.code === "ArrowLeft" || e.code === "ArrowRight") {
     e.preventDefault();
@@ -484,13 +485,14 @@ function drawWave(c, box) {
     return all.map(y => ({ y, d: Math.abs(X(y.ms / 1000) - x) })).filter(o => o.d <= 5).sort((a, b) => a.d - b.d)[0]?.y || null;
   };
   cv.onmousedown = e => {
+    if (e.button !== 0) return;  // right or middle click: no drag, no jump
     const hit = cueAt(e.offsetX, e.offsetY);
     if (hit) { drag = { cue: hit, x: e.clientX, ms: hit.ms, moved: false }; return; }
     if (e.offsetY >= OV0) { const t = e.offsetX / W * dur, h = (st.v1 - st.v0) / 2; setView(t - h, t + h); drag = { ov: true }; return; }
     drag = { x: e.clientX, v0: st.v0, v1: st.v1, moved: false };
   };
   cv.onmouseup = e => {  // a click (not a drag) on the waveform jumps there, like Traktor
-    if (drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting, null);  // a click moves the playhead; it only keeps playing if it already was
+    if (e.button === 0 && drag && !drag.ov && !drag.moved && !SNAP) deckSeek(timeAt(e.offsetX), deckPlaying() || !!DECK.waiting, null);  // a click moves the playhead; it only keeps playing if it already was
   };
   WAVE_UP?.abort(); WAVE_UP = new AbortController();  // drawWave runs on every redraw: drop the last one's listener
   window.addEventListener("mouseup", () => {
