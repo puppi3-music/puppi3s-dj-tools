@@ -73,7 +73,7 @@ def _genres_train(o: dict) -> list[str]:
         raise ValueError("Choose the folder with your example tracks (one subfolder or playlist per genre)")
     if not Path(folder).expanduser().is_dir():
         raise ValueError(f"Not a folder: {folder}")
-    return ["train", str(Path(folder).expanduser())]
+    return ["train", str(Path(folder).expanduser()), *(["--by-tag"] if o.get("by_tag") is True else [])]
 
 
 MIX_DIR = Path(__file__).resolve().parents[2] / "logs"  # where analyze_mix saves (the web page's first --logs folder)
@@ -474,7 +474,16 @@ def _new_labels(nml: Path) -> tuple:
     from . import colors, cues
 
     mt = lambda p: p.stat().st_mtime if p.exists() else None  # noqa: E731
-    key = (str(nml), mt(nml), mt(analysis.COLOR_MODEL), mt(cues.MODEL), mt(collection.NATIVE_DB))
+    lib: tuple = (library.app(),)
+    if lib[0] == "rekordbox":  # the labels come from master.db, whose writes may only touch its -wal file
+        from . import rekordbox
+
+        try:
+            db = rekordbox.find_collection(None)
+            lib += (str(db), mt(db), mt(Path(str(db) + "-wal")))
+        except SystemExit:
+            pass
+    key = (str(nml), mt(nml), *lib, mt(analysis.COLOR_MODEL), mt(cues.MODEL), mt(collection.NATIVE_DB))
     if _new_cache["key"] != key:
         _nml, tk_colours, _n = colors.read_traktor_colors(str(nml))
         _new_cache.update(key=key, data=(colors.new_labels(tk_colours), cues.new_labels(cues.grids(str(nml)))))
@@ -620,7 +629,7 @@ def setup_status() -> dict:
                            "off": sum(r["state"] == "off" for r in res.values()),
                            "drift": sum(r["state"] == "drift" for r in res.values()),
                            "approved": len(gridfix.plans()) if collection.NATIVE_DB.exists() else 0}
-        except (SystemExit, OSError) as e:
+        except Exception as e:  # also a master.db read while another job writes it: skip this poll, not the tab
             log(f"Beat grid check status skipped: {e}")
     st["tags"] = {"tagged_files": tagged}
     backups = []
