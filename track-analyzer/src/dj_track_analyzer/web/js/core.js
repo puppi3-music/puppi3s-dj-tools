@@ -1,4 +1,5 @@
 const COLOURS = ["Red", "Orange", "Yellow", "Green", "Blue", "Violet", "Magenta"];
+const DJ = () => S.libs?.app_name || "Traktor";  // the DJ app chosen on the Setup tab
 const S = { lib: "native", libs: null, tracks: {}, trackSort: { key: "track", dir: 1 }, page: "overview" };
 try { S.lib = localStorage.getItem("ta-lib") || "native"; } catch (e) {}
 try { const t = localStorage.getItem("ta-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -12,7 +13,7 @@ const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
 const nearRange = c => { const i = COLOURS.indexOf(c); return i < 0 ? c : `${COLOURS[Math.max(0, i - 1)]}–${COLOURS[Math.min(COLOURS.length - 1, i + 1)]}`; };
 const mmss = s => s == null ? "–" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 const sw = (c, predicted) => c ? `<span class="sw sw-${esc(c)}${predicted ? " pred" : ""}"></span>` : "";
-const colour = (c, predicted) => c ? `<span class="colour" data-tip="${predicted ? "Predicted by the colour model (not set by you)" : "Your colour in Traktor"}">${sw(c, predicted)}${esc(c)}${predicted ? "?" : ""}</span>` : `<span class="dim">–</span>`;
+const colour = (c, predicted) => c ? `<span class="colour" data-tip="${predicted ? "Predicted by the colour model (not set by you)" : `Your colour in ${DJ()}`}">${sw(c, predicted)}${esc(c)}${predicted ? "?" : ""}</span>` : `<span class="dim">–</span>`;
 const trackName = t => `<div class="trk"><div class="t">${esc(t.title || t.filename || t.file || "")}</div>${t.artist ? `<div class="a">${esc(t.artist)}</div>` : ""}</div>`;
 function hypeBadge(h) {
   if (h == null) return `<span class="dim">–</span>`;
@@ -25,9 +26,9 @@ const parseScores = s => (s || "").split(";").map(x => x.trim()).filter(Boolean)
 
 const SNAP = window.SNAPSHOT || null;
 const LOCK = `<svg width="11" height="12" viewBox="0 0 11 12" aria-hidden="true"><rect x="1" y="5" width="9" height="7" rx="1.5" fill="currentColor"/><path d="M3 5V3.5a2.5 2.5 0 0 1 5 0V5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
-const lock = what => `<span class="lock" data-tip="${what} held: kept as it is when writing to files, Traktor or Lexicon">${LOCK}</span>`;
-const GUESS_TIP = "The app guessed this colour into Traktor and nobody has checked it yet, so the colour model doesn't learn from it. Change it in Traktor, or mark it right here, and it counts as yours.";
-const guessMark = () => `<span class="guess" data-tip="${GUESS_TIP}">?</span>`;
+const lock = what => `<span class="lock" data-tip="${what} held: kept as it is when writing to files, ${DJ()} or Lexicon">${LOCK}</span>`;
+const GUESS_TIP = () => `The app guessed this colour into ${DJ()} and nobody has checked it yet, so the colour model doesn't learn from it. Change it in ${DJ()}, or mark it right here, and it counts as yours.`;
+const guessMark = () => `<span class="guess" data-tip="${GUESS_TIP()}">?</span>`;
 if (SNAP) {
   $("#mode").textContent = `· snapshot of ${SNAP.made}`;
   $("#export").remove();

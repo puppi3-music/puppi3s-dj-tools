@@ -1,11 +1,12 @@
 # Puppi3's Track Analyzer: context for Claude
 
 Local music-analysis tool for DJs: BPM, key/Camelot, subgenre, mood, a learned Traktor colour scale and a hype
-score, synced into Traktor Pro 4 (optionally Lexicon), plus an MCP server for local LLMs (LM Studio, Open WebUI).
+score, synced into Traktor Pro 4 or Rekordbox 7 (optionally Lexicon), plus an MCP server for local LLMs (LM Studio, Open WebUI).
 macOS and Linux x86_64 (Linux has no Traktor: those steps say so; also as a Docker image), Python 3.11 via `uv`. Data dir: `data/` (`TRACK_ANALYZER_HOME`).
 
 Docs: README.md (install + full reference), docs/GUIDE.html (task-first guide, self-contained, opened in a browser),
-docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs). Keep them in sync when commands, options or numbers change: the
+docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs), docs/RELEASING.md
+(version bump PR, `AFTER` steps, tag `v<version>`). Keep them in sync when commands, options or numbers change: the
 `/update-docs` skill does this (`.claude/skills/update-docs/scripts/doc_drift.py` lists CLI options the docs miss).
 Public docs stay impersonal: numbers come from "a test collection of about 470 tracks", no personal track names.
 
@@ -42,6 +43,8 @@ Saved run output goes in `logs/` (gitignored). Skill scripts import `from dj_tra
 | `clips.py`, `mixreport.py`, `tracklist.py` | highlight clips; Mixes tab report; mix tracklists | docs/notes/tempo-lexicon-mixes.md |
 | `web.py`, `web/` | `web` command, Starlette on 127.0.0.1:8766; page = `index.html` + `style.css` + `js/*.js` | docs/notes/web.md |
 | `jobs.py`, `update.py` | Setup tab status/jobs; `update` + update card | docs/notes/web.md |
+| `library.py`, `rekordbox.py` | DJ-app switch (`library.app()`, backend per app); Rekordbox master.db + ANLZ read/write, backups, undo | docs/notes/rekordbox.md |
+| `sync.py`, `trackfiles.py` | `sync` (all writers, one undo; `--copy` from the other app); moved/missing tracks for the tracks step | docs/notes/cues-grids.md, rekordbox.md |
 | `cues.py`, `gridfix.py` | `cues train/scan/show`; `grids check/show/apply` | docs/notes/cues-grids.md |
 | `keycnn.py`, `mygenres.py`, `dj_genres.json` | MusicalKeyCNN key; your own genres; Discogs → DJ genre rules | docs/notes/keys-genres.md |
 

@@ -36,7 +36,7 @@ function renderGrid(g) {
   const ms = v => `${v > 0 ? "+" : ""}${(+v).toFixed(Math.abs(v) < 10 ? 1 : 0)} ms`;
   const n = (g.sections || []).filter(x => x != null).length;
   if (g.state === "unclear") return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
-  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: Traktor's BPM looks slightly off. Moving the grid can't fix that; check the BPM in Traktor.</div>`;
+  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
   if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
@@ -45,14 +45,14 @@ function renderGrid(g) {
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;
   return `<div class="small"><span class="chip warn">${g.approved != null ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
-      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} Traktor's grid lines, the same in ${n} stretches across the track.
+      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.
       ${g.lead_in ? `That's the size of an MP3's lead-in (51.2 ms), what you get from a grid set on a stem file made without it, so the fix is set to exactly that.` : ""}</div>
     ${stemNote}
     <div class="filters small" style="margin-top:6px;align-items:center">
-      <button type="button" class="mini" id="gr-now" data-tip="A few bars where the kick plays, looped, with a click on each of Traktor's grid lines as they are now">▶ Click on the grid now</button>
+      <button type="button" class="mini" id="gr-now" data-tip="A few bars where the kick plays, looped, with a click on each of ${DJ()}'s grid lines as they are now">▶ Click on the grid now</button>
       <button type="button" class="mini" id="gr-moved" data-tip="The same bars with the click on the moved grid lines: it should land on the kick">▶ Click on the moved grid</button>
       <label class="inline">move it <input type="number" id="gr-shift" step="0.1" value="${esc(val)}" style="width:72px"> ms ${g.offset_ms > 0 ? "later" : "(negative: earlier)"}</label>
-      ${g.approved != null ? `<span class="chip good">✓ approved: ${ms(g.approved)}, not in Traktor yet</span><button type="button" id="gr-write" class="primary">Write grid fixes to Traktor…</button><button type="button" id="gr-unapprove">Take back</button>`
+      ${g.approved != null ? `<span class="chip good">✓ approved: ${ms(g.approved)}, not in ${DJ()} yet</span><button type="button" id="gr-write" class="primary">Write grid fixes to ${DJ()}…</button><button type="button" id="gr-unapprove">Take back</button>`
         : `<button type="button" id="gr-approve" class="primary" data-tip="Your cues, loops and markers on this track move by the same amount, so they stay on the beat">Approve</button><button type="button" id="gr-ignore" data-tip="Leave this grid as it is: it won't be proposed again unless the grid changes">The grid is right</button>`}
       <span id="gr-msg" class="muted"></span></div>`;
 }
@@ -89,7 +89,7 @@ function gridWaveHTML(g) {
       <span class="inline">show ${[1, 2, 4, 8].map(k => `<button type="button" class="mini ${k === GRID_VIEW.beats ? "on" : ""}" data-gwbeats="${k}">${k === 4 ? "1 bar" : k === 8 ? "2 bars" : `${k} beat${k > 1 ? "s" : ""}`}</button>`).join("")}</span>
       <span id="gw-pos" class="muted mono"></span></div>
     <div class="gridwave"><canvas id="gw-canvas" aria-label="Close-up of the waveform with the beat grid lines on it"></canvas></div>
-    <div class="small muted" style="margin-top:4px">White lines: Traktor's grid now (thicker on the bar). <span style="color:#ffd23f">Yellow dashed: the grid moved</span> by the amount above. The kick's attack (red, low) should start on the line.</div>`;
+    <div class="small muted" style="margin-top:4px">White lines: ${DJ()}'s grid now (thicker on the bar). <span style="color:#ffd23f">Yellow dashed: the grid moved</span> by the amount above. The kick's attack (red, low) should start on the line.</div>`;
 }
 function gridWave(path, g, box, shift) {
   const cv = box.querySelector("#gw-canvas"); if (!cv) return;
@@ -143,12 +143,12 @@ function gridWave(path, g, box, shift) {
   box.querySelector("#gr-shift")?.addEventListener("input", draw);
   new ResizeObserver(() => fetchWave()).observe(cv);
 }
-// Write every approved grid fix into Traktor's collection.nml (= `grids apply`): a preview first, then the write, then Undo.
+// Write every approved grid fix into the chosen DJ app (= `grids apply`): a preview first, then the write, then Undo.
 async function writeGrids(onDone) {
   const dlg = document.createElement("dialog"); dlg.className = "write"; document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   const show = (html, buttons) => {
-    dlg.innerHTML = `<h3>Write grid fixes to Traktor</h3>${html}<div class="filters" style="margin-top:12px">${buttons}<button data-close>Close</button><span class="small muted" id="wr-msg"></span></div>`;
+    dlg.innerHTML = `<h3>Write grid fixes to ${DJ()}</h3>${html}<div class="filters" style="margin-top:12px">${buttons}<button data-close>Close</button><span class="small muted" id="wr-msg"></span></div>`;
     dlg.querySelector("[data-close]").onclick = () => dlg.close();
   };
   const fail = e => { const m = dlg.querySelector("#wr-msg"); if (m) m.textContent = e.message; else show(errBox(e), ""); };
@@ -156,19 +156,20 @@ async function writeGrids(onDone) {
   show(`<div class="muted">Checking what would change…</div>`, ""); dlg.showModal();
   let d; try { d = await postJSON("/api/grid/write", { dry_run: true }); } catch (e) { return show(errBox(e), ""); }
   if (d.nothing_approved) return show(`<div>Nothing approved yet.</div>`, "");
-  const running = d.traktor_running ? `<div class="warnbox"><b>Quit Traktor first.</b> It rewrites its collection when it closes, which would undo this.</div>` : "";
+  const running = d.traktor_running ? `<div class="warnbox"><b>Quit ${DJ()} first.</b> It would overwrite or clash with this.</div>` : "";
   show(`${running}<div>${d.tracks} track${d.tracks === 1 ? "" : "s"}: grid moved${d.cues_moved ? `, with ${d.cues_moved} cues, loops and markers` : ""}.</div>${list(d.changes || [])}
+    ${(d.tempo_changes || []).length ? `<div class="warnbox"><b>${d.tempo_changes.length} track${d.tempo_changes.length === 1 ? "" : "s"} with tempo changes in ${DJ()}'s grid left alone</b> (the fix writes one steady tempo): ${esc(d.tempo_changes.join(", "))}</div>` : ""}
     ${(d.skipped || []).length ? `<div class="small"><b>Left alone:</b>${list(d.skipped)}</div>` : ""}
-    <div class="note small">A backup of the collection is made first; Undo puts it back.</div>`,
-    d.changed ? `<button class="primary" data-write ${d.traktor_running ? "disabled" : ""}>Write to Traktor</button>` : "");
+    <div class="note small">A backup of the collection${DJ() === "Rekordbox" ? " (master.db and the grid files)" : ""} is made first; Undo puts it back.</div>`,
+    d.changed ? `<button class="primary" data-write ${d.traktor_running ? "disabled" : ""}>Write to ${DJ()}</button>` : "");
   dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
     e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
-    let r; try { r = await postJSON("/api/grid/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = "Write to Traktor"; return fail(err); }
+    let r; try { r = await postJSON("/api/grid/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = `Write to ${DJ()}`; return fail(err); }
     show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.tracks} grid${r.tracks === 1 ? "" : "s"} moved${r.cues_moved ? `, with ${r.cues_moved} cues, loops and markers` : ""}.</div>
-      <div class="note">Your approved cues on these tracks moved with them. Backup: <span class="mono">${esc(r.backup || "")}</span><br>Undo works until Traktor saves the collection again (it does when it quits).</div>`, `<button data-undo>Undo</button>`);
+      <div class="note">Your approved cues on these tracks moved with them. Backup: <span class="mono">${esc(r.backup || "")}</span><br>${DJ() === "Rekordbox" ? "Undo works until Rekordbox changes master.db again." : "Undo works until Traktor saves the collection again (it does when it quits)."}</div>`, `<button data-undo>Undo</button>`);
     dlg.querySelector("[data-undo]").onclick = async ev => {
       ev.currentTarget.disabled = true;
-      try { const u = await postJSON("/api/grid/undo", {}); show(`<div><b>Undone.</b> collection.nml is back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} grid fix${u.approvals_restored > 1 ? "es are" : " is"} approved again` : ""}.</div>`, ""); onDone?.(); }
+      try { const u = await postJSON("/api/grid/undo", {}); show(`<div><b>Undone.</b> ${DJ() === "Rekordbox" ? "master.db and the grid files are" : "collection.nml is"} back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} grid fix${u.approvals_restored > 1 ? "es are" : " is"} approved again` : ""}.</div>`, ""); onDone?.(); }
       catch (err) { ev.currentTarget.disabled = false; fail(err); }
     };
     onDone?.();
@@ -214,7 +215,7 @@ async function openTrack(path) {
       ${t.instruments ? `<div class="sub">Instruments <span class="dim">(compare tracks, not absolute)</span></div>${bars(parseScores(t.instruments), { max: 1 })}` : ""}`,
       hint(moods.length ? moods.reduce((a, b) => b.value > a.value ? b : a).label : "")) : ""}
     ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}
-      ${t.colour_guess ? `<div class="note">${guessMark()} ${GUESS_TIP}${SNAP ? "" : ` <button id="dr-accept">It's right</button>`}</div>` : ""}`,
+      ${t.colour_guess ? `<div class="note">${guessMark()} ${GUESS_TIP()}${SNAP ? "" : ` <button id="dr-accept">It's right</button>`}</div>` : ""}`,
       hint(colourOf(t) + (t.colour_guess ? " · guessed" : ""))) : ""}
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
@@ -595,19 +596,19 @@ async function writeToTraktor(onDone) {
       ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in Traktor):</div>${list(d.skipped)}` : ""}
       ${running}
       <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
-      d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to Traktor</button>`) : "");
+      d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to ${DJ()}</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
       e.currentTarget.disabled = true; e.currentTarget.textContent = "Writing…";
-      let r; try { r = await postJSON("/api/cues/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = "Write to Traktor"; return fail(err); }
+      let r; try { r = await postJSON("/api/cues/write", { dry_run: false }); } catch (err) { e.currentTarget.disabled = false; e.currentTarget.textContent = `Write to ${DJ()}`; return fail(err); }
       S.tracks = {};
       show(`<div style="color:var(--good)"><b>✓ Written:</b> ${r.cues_added} new cue${r.cues_added === 1 ? "" : "s"}, ${r.cues_moved} correction${r.cues_moved === 1 ? "" : "s"}${r.cues_renumbered ? `, ${r.cues_renumbered} renumbered` : ""}${r.cues_deleted ? `, ${r.cues_deleted} deleted` : ""} on ${r.tracks} track${r.tracks === 1 ? "" : "s"}.</div>
-        <div class="note">Open Traktor: the cues are there. Backup: <span class="mono">${esc(r.backup || "")}</span><br>Undo works until Traktor saves the collection again (it does when it quits).</div>`,
+        <div class="note">Open ${DJ()}: the cues are there. Backup: <span class="mono">${esc(r.backup || "")}</span><br>${DJ() === "Rekordbox" ? "Undo works until Rekordbox changes master.db again." : "Undo works until Traktor saves the collection again (it does when it quits)."}</div>`,
         `<button data-undo>Undo</button>`);
       dlg.querySelector("[data-undo]").onclick = async ev => {
         ev.currentTarget.disabled = true;
         try { const u = await postJSON("/api/cues/undo", {}); S.tracks = {};
-          show(`<div><b>Undone.</b> collection.nml is back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} approval${u.approvals_restored > 1 ? "s are" : " is"} back` : ""}.</div>`, "");
+          show(`<div><b>Undone.</b> ${DJ() === "Rekordbox" ? "master.db is" : "collection.nml is"} back to how it was${u.approvals_restored ? `, and your ${u.approvals_restored} approval${u.approvals_restored > 1 ? "s are" : " is"} back` : ""}.</div>`, "");
           onDone?.(); }
         catch (err) { ev.currentTarget.disabled = false; fail(err); }
       };

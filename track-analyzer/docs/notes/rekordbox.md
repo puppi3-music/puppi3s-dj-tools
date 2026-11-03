@@ -77,11 +77,14 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
   genre folder to switch (the genre smart playlists follow the genres).
 - OneLibrary USB export: left out.
 
+## Checked in real Rekordbox 7
+- Our writes (sync, cues apply, set/crates) open cleanly in Rekordbox 7; genre smart playlists show the right tracks.
+- Added `djmdCue` rows load; a FLAC's cues land on the beat (no offset for non-MP3 files).
+- Real History rows: `--tracklist auto` picks the right session and places the tracks (a 12+ min Audacity recording
+  with the start time typed on the page; recordings under 12 min are treated as tracks, by design).
+
 ## Still open
-- Genre condition XML for smart playlists; whether a pyrekordbox commit with our changes opens cleanly in
-  Rekordbox 7 (first write test, on a copy, done by the user).
-- Adding `djmdCue` rows (pyrekordbox doesn't list cues among the tables it can add to): IDs, UUIDs, `usn`.
-- Real History rows: checked only on a made-up database (this library had none); non-MP3 cue offsets; Windows paths (`%APPDATA%\Pioneer\rekordbox`).
+- Windows paths and `grids apply` (PQTZ rewriting): checked by the user 2026-11-03.
 
 ## Stage 1b: what reads Rekordbox now
 - Setup tab, step 2: "DJ app: Traktor / Rekordbox" (`POST /api/dj-app`, saved as `dj_app`), and for Rekordbox its
