@@ -3,6 +3,12 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.2.2 (2026-11-04)
+
+**Fixed**
+- Beat-grid check on Windows: tracks longer than about 49 seconds no longer fail (a number overflowed with older
+  numpy).
+
 ## 1.2.1 (2026-11-03)
 
 **Fixed**
