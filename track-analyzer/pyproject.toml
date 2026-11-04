@@ -1,6 +1,6 @@
 [project]
 name = "dj-track-analyzer"
-version = "1.2.1"
+version = "1.2.2"
 description = "Local music analysis for DJs: BPM, key/Camelot, genre, mood and Traktor colour, Traktor/Lexicon sync and an MCP server"
 requires-python = ">=3.11,<3.12"  # PyAV 18 has no 3.10 wheels, TensorFlow 2.15 none for 3.12
 license = "AGPL-3.0-only"
