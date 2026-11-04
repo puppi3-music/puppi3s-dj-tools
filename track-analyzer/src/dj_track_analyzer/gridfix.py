@@ -44,7 +44,7 @@ def _envelope(x: np.ndarray, sr: int) -> np.ndarray:
 
     e = sosfiltfilt(butter(4, [100, 400], "bandpass", fs=sr, output="sos"), x) ** 2
     e += 4 * sosfiltfilt(butter(4, [2000, 8000], "bandpass", fs=sr, output="sos"), x) ** 2
-    edges = np.round(np.arange(int(len(e) * 1000 / sr)) * sr / 1000).astype(np.int64)  # 44.1 samples per ms: exact
+    edges = np.round(np.arange(int(len(e) * 1000 / sr), dtype=np.int64) * sr / 1000).astype(np.int64)  # int64 before the multiply: Windows numpy<2 defaults to int32, which overflowed past ~49 s
     return np.add.reduceat(e, edges) if len(edges) else np.zeros(0)
 
 
