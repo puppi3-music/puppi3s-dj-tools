@@ -144,7 +144,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <main>
 <h1>How to use Puppi3's Track Analyzer</h1>
-<p class="lede">Everything happens in a web page on your own computer: scanning, colours, hype, cue points, beat grids and writing it all into Traktor, each with a preview first and an Undo after. Prefer a terminal? Every button has a command, in <a href="#cli">Command line</a>. Download it from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a>; <a href="#start">Open the web page</a> gets you going, and the details of installing are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md">README.md</a>.</p>
+<p class="lede">Everything happens in a web page on your own computer: scanning, colours, hype, cue points, beat grids and writing it all into Traktor or Rekordbox, each with a preview first and an Undo after. Prefer a terminal? Every button has a command, in <a href="#cli">Command line</a>. Download it from the <a href="https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest">latest release</a>; <a href="#start">Open the web page</a> gets you going, and the details of installing are in <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md">README.md</a>.</p>
 
 <div class="scale" aria-label="Colour scale from Red to Magenta">
   <div style="background:var(--red)">Red<small>1</small></div><div style="background:var(--orange)">Orange<small>2</small></div><div style="background:var(--yellow)">Yellow<small>3</small></div><div style="background:var(--green)">Green<small>4</small></div><div style="background:var(--blue)">Blue<small>5</small></div><div style="background:var(--violet)">Violet<small>6</small></div><div style="background:var(--magenta)">Magenta<small>7</small></div>
@@ -203,7 +203,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ol>
 <div class="cards">
   <div class="card no"><b>Quit your DJ app before writing</b><p>Traktor or Rekordbox would overwrite or clash with the change, so the page refuses to write while the DJ app you picked on the Setup tab is open. Previews work either way, and the dialog offers <b>Check again</b> once you've quit.</p></div>
-  <div class="card yes"><b>Fine with your DJ app open</b><p>Scanning, learning your colours and cues, checking beat grids, scanning a tempo view, and browsing every tab. They only read its files.</p></div>
+  <div class="card yes"><b>Fine with your DJ app open</b><p>Scanning, learning your colours, cues and genres, checking beat grids, analysing a mix, scanning a tempo view, approving cues and grid fixes, and browsing every tab. They only read its files.</p></div>
 </div>
 <p>Long steps (a scan, training) run in the background: a progress bar and the live log show on the Setup tab and in a bar at the top of every tab, so you can keep browsing. <b>Stop</b> is safe; a scan keeps what it has done and carries on from there next time.</p>
 
@@ -215,7 +215,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li><b>DJ app:</b> <b>Traktor</b> or <b>Rekordbox</b>. With Rekordbox, its library (<code>master.db</code>) is found by itself, or pick it with <b>Browse…</b>; everything this guide says about Traktor then works the same in Rekordbox (quit Rekordbox before writing; its 8 colours stand in for Traktor's 7). <b>Traktor's collection:</b> found by itself in Documents › Native Instruments › Traktor <i>version</i> (on Windows also when Documents is in OneDrive or on another drive). If it isn't, or you want another one, press <b>Browse…</b> (or <b>Change…</b>) and pick <code>collection.nml</code>, or paste its path (in Windows Explorer: Shift + right-click the file → <i>Copy as path</i>). <b>Find automatically</b> goes back to the newest Traktor version's. After a Traktor update the step offers the new version's collection. A Traktor version newer than the analyzer has been tested with gets a note there: it should still work (the collection's file format is checked too, and flagged more strongly if that changed); every write is backed up and can be undone.</li>
   <li><b>Your music, scanned:</b> <b>Scan Traktor's collection</b>, or type a folder and press <b>Scan folder</b>. About 10–15 minutes per 500 tracks the first time; later scans only do new and changed files. Hype scores are worked out at the end.</li>
   <li><b>Learn from your own work</b> (optional): <b>Your colour scale → Learn your colours</b> learns your colour-coding from the tracks you've already coloured (needs 30), and <b>Your cue points → Learn your cue points</b> learns where you put cues and loops (needs 30 tracks with 3+ of your own cues). Until you train them, a starter scale and starter cue model are used. <b>Learn your genres</b> teaches it genres of your own from example folders (see <a href="#my-genres">Your own genres</a>).</li>
-  <li><b>Extra tools</b> (optional): ffmpeg (loops, samples, exact MP3 timing) and Rubber Band (the tempo view). With Homebrew, the page installs them; without it, it shows the command to run.</li>
+  <li><b>Extra tools</b> (optional): ffmpeg (loops, samples, exact MP3 timing) and Rubber Band (the tempo view). The page installs them (on a Mac with Homebrew, on Windows with winget or its own download); otherwise it shows the command to run.</li>
   <li><b>Into your files and Traktor:</b> the writers, each with <b>Preview…</b> first. See <a href="#new-tracks">I bought new tracks</a> and <a href="#genres">Genres</a>.</li>
 </ol>
 
@@ -481,18 +481,18 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="table-wrap"><table>
 <thead><tr><th>You see</th><th>What to do</th></tr></thead>
 <tbody>
-<tr><td>"Traktor is running. Quit Traktor first"</td><td>Quit Traktor fully (⌘Q), then press <b>Check again</b> in the dialog (or run the command again)</td></tr>
+<tr><td>"Traktor is running. Quit Traktor first"</td><td>Quit Traktor fully (⌘Q on a Mac), then press <b>Check again</b> in the dialog (or run the command again)</td></tr>
 <tr><td>"No colour model yet"</td><td>Setup tab: <b>Your colour scale → Learn your colours</b> (<code>colors train</code>)</td></tr>
 <tr><td>"…from before confidence was measured properly. Retrain it"</td><td>Setup tab: <b>Your colour scale → Update training</b> (<code>colors train</code>)</td></tr>
 <tr><td>"The 145 BPM view is loaded in this Traktor collection" (or another tempo)</td><td>Switch back first: <b>Switch Traktor back…</b> (<code>tempo native</code>), Traktor closed, then try again</td></tr>
-<tr><td>"Rubber Band isn't installed"</td><td>Setup tab, Extra tools: install <b>rubberband</b>, or <code>brew install rubberband</code> (Linux: <code>sudo apt install rubberband-cli</code>, version 3.0 or newer)</td></tr>
+<tr><td>"Rubber Band isn't installed"</td><td>Setup tab, Extra tools: install <b>rubberband</b>, or <code>brew install rubberband</code> (Windows: <code>uv run dj-track-analyzer install rubberband</code>; Linux: <code>sudo apt install rubberband-cli</code>, version 3.0 or newer)</td></tr>
 <tr><td>"Can't reach Lexicon's Local API"</td><td>Open Lexicon and turn on Settings → Integrations → Local API, then run the command again</td></tr>
-<tr><td>"Traktor is set to write tags to your files"</td><td>In Traktor: Preferences → File Management, turn off writing tags to files, quit Traktor, then <code>tempo load</code> again</td></tr>
+<tr><td>"Traktor is set to write tags to your files"</td><td>In Traktor: Preferences → File Management, turn off writing tags to files, quit Traktor, then <b>Load into Traktor…</b> again (<code>tempo load</code>)</td></tr>
 <tr><td>Tracks drop out of the @145 genre Smartlists after loading them into a deck</td><td>Traktor read the file's own tags back in. A view loaded with an older version of the app doesn't prevent this: <code>tempo native</code>, then <code>tempo load</code> again (Traktor closed)</td></tr>
 <tr><td>"No 145 BPM analysis yet" (or another tempo)</td><td>Scan that tempo first: Setup tab, Tempo view step (<code>tempo scan --bpm …</code>)</td></tr>
 <tr><td>"Style models missing"</td><td>Setup tab: <b>Analysis models → Download</b> (<code>setup</code>). No command downloads models by itself, so <code>setup</code> has to come first</td></tr>
 <tr><td>"MAEST isn't downloaded" at the start of a scan, or <code>genre_basis</code> says "EffNet" without MAEST</td><td>Genres are using the EffNet model only. Run <code>setup</code> (without <code>--no-maest</code>) and scan again with <code>--rescan</code>. If it still says this after <code>setup</code>, the reason is in <code>genre_basis.maest</code>: include that output when you report it</td></tr>
-<tr><td>An error about more than 2 channels</td><td>It's a surround (5.1) file. With ffmpeg installed (<code>brew install ffmpeg</code>, Linux: <code>sudo apt install ffmpeg</code>) it's mixed down to stereo automatically; scan again</td></tr>
+<tr><td>An error about more than 2 channels</td><td>It's a surround (5.1) file. With ffmpeg installed (Setup tab, Extra tools; or <code>brew install ffmpeg</code>, Linux: <code>sudo apt install ffmpeg</code>) it's mixed down to stereo automatically; scan again</td></tr>
 <tr><td>"listed but missing" during a scan</td><td>Traktor knows tracks whose files moved or are on a disconnected drive. Reconnect the drive, or relocate them in Traktor</td></tr>
 <tr><td>A run seems slow</td><td>The first run after <code>setup</code> or an update analyses every track once (10–15 min, a <code>--rescan</code> about 30). <b>Stop</b> (or Ctrl-C) is safe; it resumes where it stopped</td></tr>
 <tr><td>Smartlists look wrong in Traktor</td><td>Quit Traktor, <b>Undo the last change to Traktor</b> (<code>traktor --undo</code>), then report what you saw</td></tr>
@@ -504,7 +504,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now: planning a set, cutting clips from a mix's video, and working out genres again or re-analysing everything outside an update (after an update, its card has a <b>Run</b> button for them).</p>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
-    <div class="cmd"><pre>cd ~/puppi3s-dj-tools/track-analyzer</pre></div> (or wherever you put it)</li>
+    <div class="cmd"><pre>cd ~/Downloads/puppi3s-track-analyzer-1.2.2</pre></div> (the folder you unzipped, wherever you put it; in a clone, its <code>track-analyzer</code> folder). On Windows, use PowerShell or Command Prompt.</li>
   <li><b>Every command starts with <code>uv run dj-track-analyzer</code></b>, for example <code>uv run dj-track-analyzer stats</code>. The copy buttons on this page copy the whole command.</li>
   <li><b>Try <code>--dry-run</code> first</b> on anything that changes files. It shows what would happen and changes nothing.</li>
   <li><b>To keep a copy of the output</b>, add <code>2>&amp;1 | tee logs/something.txt</code> to the end of a command. Handy when asking for help.</li>
@@ -512,7 +512,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <div class="cards">
   <div class="card no"><b>Quit your DJ app first</b><p><code>traktor</code>, <code>sync</code>, <code>cues apply</code>, <code>grids apply</code>, <code>edit</code>, <code>set --traktor</code>, <code>crates --traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code> and <code>tempo native</code>. Traktor rewrites its collection when it closes, which would undo the changes, so the app refuses to run these while it's open (Rekordbox too, when it's the DJ app you picked) (their <code>--dry-run</code> works either way).</p></div>
-  <div class="card yes"><b>Fine with your DJ app open</b><p><code>scan</code>, <code>analyze</code>, <code>stats</code>, <code>hype</code> (without <code>--traktor</code>), <code>colors train</code>, <code>colors explain</code> and <code>colors review</code> (without <code>--apply</code>), <code>regenre</code>, and <code>tempo scan</code>, <code>report</code>, <code>refresh</code>, <code>export</code>, <code>nml</code> and <code>status</code> only read Traktor's files.</p></div>
+  <div class="card yes"><b>Fine with your DJ app open</b><p><code>scan</code>, <code>analyze</code>, <code>stats</code>, <code>hype</code> (without <code>--traktor</code>), <code>colors train</code>, <code>colors explain</code> and <code>colors review</code> (without <code>--apply</code>), <code>regenre</code>, <code>train</code>, <code>mixes</code>, <code>cues train</code> / <code>scan</code> / <code>show</code>, <code>grids check</code> / <code>show</code>, and <code>tempo scan</code>, <code>report</code>, <code>refresh</code>, <code>export</code>, <code>nml</code> and <code>status</code> only read Traktor's files.</p></div>
 </div>
 
 
@@ -571,7 +571,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>The web page itself: <div class="cmd"><pre>uv run dj-track-analyzer web</pre></div> (<code>--export set.html</code> saves a snapshot instead).</li>
   <li>What each colour means (see <a href="#res-explain">reading <code>colors explain</code></a>): <div class="cmd"><pre>uv run dj-track-analyzer colors explain</pre></div></li>
   <li>Tracks per genre, keys, BPM spread, tracks per colour: <div class="cmd"><pre>uv run dj-track-analyzer stats</pre></div></li>
-  <li>The spreadsheet: <div class="cmd"><pre>open data/collection.csv</pre></div> On Linux: <code>xdg-open data/collection.csv</code>.</li>
+  <li>The spreadsheet: <div class="cmd"><pre>open data/collection.csv</pre></div> On Windows: <code>start data\collection.csv</code>; on Linux: <code>xdg-open data/collection.csv</code>.</li>
 </ul>
 
 <h3 id="cli-hold">Holding a genre or colour</h3>
@@ -659,7 +659,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p><b>Any tempo works.</b> The default is 145. Add <code>--bpm 140</code> (or any tempo) to <code>scan</code>, <code>report</code>, <code>export</code>, <code>nml</code>, <code>refresh</code> and <code>load</code>; each tempo is its own view in <code>data/at-&lt;bpm&gt;/</code>. Only one can be loaded at a time, and <code>native</code> switches back whichever one is. The steps below use the default.</p>
 <ol>
   <li>Once: install Rubber Band, the time-stretcher.
-    <div class="cmd"><pre>brew install rubberband</pre></div>On Linux: <code>sudo apt install rubberband-cli</code> (version 3.0 or newer).</li>
+    <div class="cmd"><pre>brew install rubberband</pre></div>On Windows: <code>uv run dj-track-analyzer install rubberband</code>. On Linux: <code>sudo apt install rubberband-cli</code> (version 3.0 or newer).</li>
   <li>Make sure new tracks are scanned normally first, then analyse at your tempo. About an hour the first time; resumable, and later runs only do new or changed tracks.
     <div class="cmd"><pre>uv run dj-track-analyzer scan --traktor</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer tempo scan 2>&amp;1 | tee logs/tempo-scan.txt</pre></div></li>
@@ -688,7 +688,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <h3 id="cli-one-track">One track, and recorded mixes</h3>
 <div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/track.mp3"</pre></div>
-<p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Linux, drag the file into the terminal window. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
+<p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Windows: Shift + right-click the file → <i>Copy as path</i>. On Linux, drag the file into the terminal window. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
 <p id="cli-mix"><b>Checking a recorded mix against what you played:</b> add <code>--tracklist</code> to a Traktor recording. It finds that session's history file, places each track in the recording, and shows per track the key Traktor has against the key heard, the tempo you played it at, whether key lock was on, and names the mix by how it sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view, so scan the tracks first. With <code>tempo scan</code> at about the tempo you played, it also lists what your mixing pushed up or down. For a recording Traktor didn't name, add <code>--start 22:00:00</code> (when it began). When there's no history to check against, as with another DJ app's recording, the mix is still analysed, without the per-track check, and the page and summary say why.</p>
 <p><b>Posting it as a video:</b> add <code>--chapters --offset 0:14</code> (how far into the finished video the first track starts: check it in the video itself) for YouTube chapters to paste into the description, and <code>--highlights</code> for two suggested 40-second clips, in video times (<code>--highlights 5</code> for five, ranked). Then <code>clips &lt;analysis&gt;.json --video final.mp4</code> makes 720p previews of them to watch, ranked by the audio and by how much moves on screen, and <code>--pick 1 4</code> makes the ones you choose at full quality next to the video.</p>
 
@@ -701,7 +701,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Install new dependencies (<code>--inexact</code> keeps extras you installed, such as stems), then download any new models:
     <div class="cmd"><pre>uv sync --inexact</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer setup</pre></div></li>
-  <li>Run <code>colors explain</code> or <code>colors train</code>. The first run fills in new data for every track (about 10–15 minutes); later runs take seconds.</li>
+  <li>If the release notes say so, retrain your colours: <code>colors train</code> (about a minute).</li>
   <li>If the genre list changed, redo the genres from the saved analysis (seconds), then tag and sync as in <a href="#cli-genres">Genres</a>:
     <div class="cmd"><pre>uv run dj-track-analyzer regenre</pre></div></li>
   <li>If the update notes say so, re-analyse everything (about half an hour per 500 tracks on an M1 Pro):
