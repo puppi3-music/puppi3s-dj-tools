@@ -468,7 +468,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>models/</code></td><td>The downloaded AI models</td></tr>
 <tr><td><code>at-145/</code></td><td>The 145 BPM view (one folder per tempo, e.g. <code>at-140/</code>): its own <code>cache.db</code>, <code>collection.db</code>, <code>collection.csv</code> and <code>collection.nml</code></td></tr>
 <tr><td><code>tempo-loaded.json</code></td><td>Only while a tempo view is loaded in Traktor: your own values, so <code>tempo native</code> can put them back. Don't delete it</td></tr>
-<tr><td><code>lexicon-backups/</code></td><td>A copy of Lexicon's library taken before every <code>tempo load --lexicon</code> / <code>native --lexicon</code> (newest 10). Last resort: quit Lexicon, copy one over <code>~/Library/Application Support/lexicon/main.db</code>, delete <code>main.db-wal</code> and <code>main.db-shm</code></td></tr>
+<tr><td><code>lexicon-backups/</code></td><td>A copy of Lexicon's library taken before every <code>tempo load --lexicon</code> / <code>native --lexicon</code> (newest 10). Last resort: quit Lexicon, copy one over <code>~/Library/Application Support/lexicon/main.db</code> (Windows: <code>%APPDATA%\lexicon\main.db</code>), delete <code>main.db-wal</code> and <code>main.db-shm</code></td></tr>
 <tr><td><code>tempo-loaded-lexicon.json</code></td><td>Only while a tempo view is loaded in Lexicon: your Lexicon values, for <code>tempo native --lexicon</code>. Don't delete it</td></tr>
 <tr><td><code>rekordbox-backups/</code></td><td>Copies of Rekordbox's library (and the analysis files a grid fix changed) taken before every write, for Undo</td></tr>
 </tbody></table></div>
@@ -771,7 +771,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--csv &lt;file&gt;</code></td><td><code>scan</code></td><td>Write the spreadsheet somewhere else</td></tr>
 <tr><td><code>--write-tags genre</code></td><td><code>scan</code></td><td>Tag the files right after scanning (same fields as <code>--fields</code>)</td></tr>
 <tr><td><code>--workers 3</code></td><td><code>scan</code>, <code>colors train</code> / <code>explain</code> / <code>apply</code>, <code>tempo scan</code></td><td>Fewer or more parallel workers (default: half your CPU cores, at most 5)</td></tr>
-<tr><td><code>--pick 1 4</code> / <code>--video</code></td><td><code>clips</code></td><td>Cut the chosen clip suggestions (numbers, or ranges like <code>20:30-21:10</code>) from the finished video at full quality; without <code>--pick</code>, 720p previews of all of them in <code>/tmp/clip-previews/</code></td></tr>
+<tr><td><code>--pick 1 4</code> / <code>--video</code></td><td><code>clips</code></td><td>Cut the chosen clip suggestions (numbers, or ranges like <code>20:30-21:10</code>) from the finished video at full quality; without <code>--pick</code>, 720p previews of all of them in <code>/tmp/clip-previews/</code> (on Windows, the temp folder's <code>clip-previews</code>)</td></tr>
 <tr><td><code>--height 1440</code> / <code>--bitrate 16M</code> / <code>--out</code> / <code>--previews</code></td><td><code>clips</code></td><td>Size and bitrate of the picked clips, and where clips and previews go</td></tr>
 <tr><td><code>--segments 60</code></td><td><code>analyze</code></td><td>Timeline step in seconds</td></tr>
 <tr><td><code>--tracklist [history.nml]</code></td><td><code>analyze</code></td><td>Check a recorded mix against Traktor's history of that session (found automatically if no file given)</td></tr>
