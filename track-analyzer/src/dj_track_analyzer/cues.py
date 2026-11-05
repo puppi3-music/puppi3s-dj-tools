@@ -431,7 +431,7 @@ def kick_on(kick: np.ndarray, body: np.ndarray, low: np.ndarray) -> np.ndarray:
     rel = low - np.percentile(low, 90)
     with_sub = ((kick > max(np.percentile(kick, 80), 2.0) * 0.5) | (body > KICK_BODY_DB)) & (rel > -KICK_SUB_DB)
     bare = (kick > KICK_BARE_DB) & (body > KICK_BARE_DB) & (rel > -KICK_BARE_SUB_DB)
-    bare &= np.convolve(bare, [1, 1, 1], "same") >= 2  # with a neighbour: a lone hit isn't a beat
+    bare &= np.convolve(np.pad(bare, 1), [1, 1, 1], "valid") >= 2  # with a neighbour (padded: "same" breaks under 3 bars): a lone hit isn't a beat
     return with_sub | bare
 
 
