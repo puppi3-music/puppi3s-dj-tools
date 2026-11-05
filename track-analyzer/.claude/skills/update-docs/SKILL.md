@@ -57,6 +57,27 @@ The script can't see these; check them against the code:
 - **Status lines**: "not yet tested", "planned", "next steps" that CLAUDE.md says are now done (or vice versa).
 - **Workflow order**: e.g. after editing `dj_genres.json` → `regenre`; after a view fix → `tempo refresh`, reload.
 
+### Checking a doc is right: the pass checklist
+
+A "check the guide" request is passes, not one read: run every item below each pass, and repeat passes until
+one finds nothing new. Never stop at a count (3 finds is not "done"). Tell the user how many passes ran and that the last one was clean.
+One or two items per fresh session is cheaper than all of them in one long session (2026-11-05: 7 items in one
+pass cost 60k tokens as the context grew 55k → 95k).
+
+1. **Commands**: `uv run python .claude/skills/update-docs/scripts/guide_commands.py` parses every command in
+   GUIDE.html with the real parser. Rejections from placeholders (`X`, `a|b`, pipes) are expected.
+2. **Options and links**: `doc_drift.py` (step 1).
+3. **Button, tab, filter and step names**: `python3 .claude/skills/update-docs/scripts/guide_labels.py` lists bold
+   names not found in the page (`${…}` counts as a wildcard). Prose labels are noise; names the page builds from
+   a variable alone (`Scan ${APPLIB}`) need a manual grep.
+4. **The Setup tab's steps**: every `step(…, n, "Title"` in `web/js/setup.js` appears in the guide's Setup list.
+5. **Numbers and defaults**: the guide's minimums, thresholds, defaults and counts against the code (`MIN_`, `default=`).
+6. **Each platform**: grep `brew`, `⌘`, `Finder`, `~/`, `Terminal`, `.command`, paths. Every Mac-only step is marked
+   "on a Mac" and has a Windows and a Linux form. Linux has no Traktor or Rekordbox.
+7. **Each DJ app**: Traktor-only wording against `library.app()` / `rekordbox` branches in the code (e.g. `sync.py`
+   steps that refuse with Rekordbox).
+8. **Same fix everywhere**: when a pass fixes one row or line, grep for the same pattern elsewhere before moving on.
+
 Make a short list of findings before editing. If a finding needs a decision (behaviour vs docs, or
 dropping a section), ask the user first; they prefer to decide.
 
