@@ -254,7 +254,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>On the Colours tab, <b>Tracks that disagree with their colour</b> lists your colour (<b>Yours</b>) next to what the track <b>Sounds like</b>, how many colours apart they are (<b>Gap</b>) and how sure the model is (<b>Confidence</b>). These are judged by a model that never saw that track's colour.</li>
   <li>Listen to the tracks at the top in Traktor, and recolour the ones you agree are off.</li>
   <li>Or let the app recolour only the clearest cases, marked <b>over threshold</b> (a gap of 2.5 colours or more, and tracks placed there really had that colour or a neighbour 75% of the time or more): quit Traktor, then <b>Recolour them in Traktor…</b> (also on the Setup tab as <b>Recolour clear disagreements</b>).</li>
-  <li>To pick suggestions yourself, over the threshold or not, mark rows <b>Approve</b> (recolour to what it sounds like) or <b>Keep</b> (keep your colour always), or tick several and mark them together. Nothing changes until <b>Write…</b>: a preview, then <b>Write it</b> (Traktor closed when anything is recoloured). Undo is <b>Undo the last change to Traktor</b>. Recoloured tracks leave the list, and <b>Retrain now</b> learns from them and refreshes your tempo views. With a tempo view loaded, switch back first.</li>
+  <li>To pick suggestions yourself, over the threshold or not, mark rows <b>Approve</b> (recolour to what it sounds like) or <b>Keep</b> (keep your colour always), or tick several and mark them together. Nothing changes until <b>Write…</b>: a preview, then <b>Write it</b> (Traktor closed when anything is recoloured). Undo is <b>Undo the last change to Traktor</b>. Recoloured tracks leave the list, and <b>Retrain colours</b> learns from them and refreshes your tempo views. With a tempo view loaded, switch back first.</li>
   <li>A track you want left as it is, whatever the model says: hold its colour (<a href="#hold">below</a>). It's then marked <b>kept</b> and never recoloured.</li>
   <li>Then <b>Update training</b>, as in <a href="#recoloured">I recoloured a bunch of tracks</a>.</li>
 </ol>
@@ -311,7 +311,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ul>
 
 <h3 id="sets">Planning a set, and warm-up / peak / closing crates</h3>
-<p>These run from a terminal for now (no button on the page yet): see <a href="#cli-sets">Planning a set and making crates</a>.</p>
+<p>Planning a set runs from a terminal for now (no button on the page yet): see <a href="#cli-sets">Planning a set and making crates</a>. The crates are also written by <a href="#sync">Sync everything</a> (its <b>crates</b> step).</p>
 <ul>
   <li><b>A set:</b> pick an arc (warm-up, peak, journey, closing, or your own like <code>Magenta/3,Red/9</code>) and how many tracks. Every slot in the set gets a target colour (hard ↔ pretty) and hype (chill ↔ peak); the planner picks the order that stays closest to them with keys that mix from track to track.</li>
   <li><b>Crates:</b> <b>Warm-up</b> (Green…Magenta, hype 1–5), <b>Peak</b> (Red…Yellow, hype 8+) and <b>Closing</b> (Blue…Magenta, hype 6+), made from your colours and hype.</li>
@@ -352,7 +352,14 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="note"><p><b>Keep in mind:</b> the genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so stretched to 145 a rolling house track sounds to them like the trance and psytrance they <i>did</i> hear at that tempo. Read the view as how the models hear the sped-up track, not as facts. Psytrance, the worst case, is held back: in the view, psy only counts as much as the track already had at its own tempo. Rubber Band also isn't Traktor's own stretcher, so it sounds close but not identical. While a view is loaded in Traktor, the other Traktor writers and colour training refuse to run; switch back first.</p></div>
 
 <h3 id="mixes">My recorded mixes</h3>
-<p>The Mixes tab shows a recorded set's genre and mood, a timeline of the set (each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness; click one of the mix's genres, styles or moods to light up the stretches and tracks where it is), a check of the tracklist against Traktor's history (key heard vs Traktor's, the tempo each track was played at, key lock), and clip ideas. Press <b>Analyse a mix…</b>, tick one or more of Traktor's recordings (<i>tick all not analysed yet</i> picks the new ones), or drop any other mix file on it, and they run in the background one after another; the bar at the top says how many are still to go, and <b>Stop all</b> stops the one running and the rest; if one of them fails, the bar says so. A recording whose name doesn't carry its start time (Traktor's do) can't be matched to Traktor's history: give it under <b>Started at</b> when you analyse that one mix. Each result is saved in <code>logs/</code> (replacing an earlier analysis of that recording) and opens on the tab. The same from a terminal: <a href="#cli-mix">recorded mixes</a>. A result saved somewhere else can be dropped onto the tab. When the same recording is saved more than once, the older saves say <b>older copy</b> (the overview only counts the newest); open one and press <b>Delete…</b> to move its file to <code>logs/deleted/</code>, from where you can move it back.</p>
+<p>The Mixes tab shows a recorded set's genre and mood, a timeline of the set (each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness; click one of the mix's genres, styles or moods to light up the stretches and tracks where it is), a check of the tracklist against Traktor's history (key heard vs Traktor's, the tempo each track was played at, key lock), and clip ideas.</p>
+<ol>
+  <li>Press <b>Analyse a mix…</b> and tick one or more of Traktor's recordings (<i>tick all not analysed yet</i> picks the new ones), or drop any other mix file on it. A recording whose name doesn't carry its start time (Traktor's do) can't be matched to Traktor's history: give it under <b>Started at</b> when you analyse that one mix.</li>
+  <li>They run in the background one after another; the bar at the top says how many are still to go, and whether one failed. <b>Stop all</b> stops the one running and the rest.</li>
+  <li>Each result is saved in <code>logs/</code> (replacing an earlier analysis of that recording) and opens on the tab. A result saved somewhere else can be dropped onto the tab.</li>
+  <li>When the same recording is saved more than once, the older saves say <b>older copy</b> (the overview only counts the newest); open one and press <b>Delete…</b> to move its file to <code>logs/deleted/</code>, from where you can move it back.</li>
+</ol>
+<p>The same from a terminal: <a href="#cli-mix">recorded mixes</a>.</p>
 <p>With two or more mixes analysed, the <b>All N mixes</b> button above the list adds them up. First your sets start to end: each set stretched to the same length, so 50% is the middle of every set, with the mean hype (or loudness) per 5% as bars in the colour you played there most. A thin mark on each bar runs from your lowest set to your highest there: short means your sets agree, long means read the bar loosely. Click a set under the chart to draw its own line over the bars. Then tracks whose key in your sets is our key but not Traktor's (worth checking in Traktor), each track's mood as you played it against the track alone and in the tempo view, the mood of your sets by fifth, and how often the key changes between tracks were the same key, one step, two steps or a clash. The same in a terminal: <code>uv run dj-track-analyzer mixes</code>. Mixes analysed before November 2026 count in fully once analysed again.</p>
 
 <h3 id="llm">Asking a local LLM about my music</h3>
@@ -442,7 +449,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <ul>
   <li>change a colour you set yourself (unless you pass <code>--overwrite-colors</code> in a terminal)</li>
   <li>touch cue points or beatgrids you didn't approve a change to, play counts, your own playlists or your Comment field in Traktor</li>
-  <li>write to Traktor while it's running</li>
+  <li>write to your DJ app while it's running</li>
   <li>save a Traktor collection that wouldn't be valid XML</li>
 </ul>
 
@@ -463,6 +470,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>tempo-loaded.json</code></td><td>Only while a tempo view is loaded in Traktor: your own values, so <code>tempo native</code> can put them back. Don't delete it</td></tr>
 <tr><td><code>lexicon-backups/</code></td><td>A copy of Lexicon's library taken before every <code>tempo load --lexicon</code> / <code>native --lexicon</code> (newest 10). Last resort: quit Lexicon, copy one over <code>~/Library/Application Support/lexicon/main.db</code>, delete <code>main.db-wal</code> and <code>main.db-shm</code></td></tr>
 <tr><td><code>tempo-loaded-lexicon.json</code></td><td>Only while a tempo view is loaded in Lexicon: your Lexicon values, for <code>tempo native --lexicon</code>. Don't delete it</td></tr>
+<tr><td><code>rekordbox-backups/</code></td><td>Copies of Rekordbox's library (and the analysis files a grid fix changed) taken before every write, for Undo</td></tr>
 </tbody></table></div>
 <p>Traktor backups sit next to <code>collection.nml</code> in <code>~/Documents/Native Instruments/Traktor &lt;version&gt;/</code>, named <code>collection.nml.before-track-analyzer-&lt;date-time&gt;</code> (for set and crate playlists: <code>collection.nml.before-set-&lt;date-time&gt;</code>).</p>
 <p>A track is only re-analysed if the file's audio changes, or it moves or gets renamed. Tagging, by this app or another tagger, doesn't count.</p>
@@ -483,7 +491,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td>Tracks drop out of the @145 genre Smartlists after loading them into a deck</td><td>Traktor read the file's own tags back in. A view loaded with an older version of the app doesn't prevent this: <code>tempo native</code>, then <code>tempo load</code> again (Traktor closed)</td></tr>
 <tr><td>"No 145 BPM analysis yet" (or another tempo)</td><td>Scan that tempo first: Setup tab, Tempo view step (<code>tempo scan --bpm …</code>)</td></tr>
 <tr><td>"Style models missing"</td><td>Setup tab: <b>Analysis models → Download</b> (<code>setup</code>). No command downloads models by itself, so <code>setup</code> has to come first</td></tr>
-<tr><td>"MAEST isn't downloaded" at the start of a scan, or <code>genre_basis</code> says "EffNet" without MAEST</td><td>Genres are using the EffNet model only. Run <code>setup</code> (without <code>--no-maest</code>) and scan again with <code>--rescan</code>. If it still says this after <code>setup</code>, the reason is in <code>genre_basis.maest</code>: paste the output to Claude</td></tr>
+<tr><td>"MAEST isn't downloaded" at the start of a scan, or <code>genre_basis</code> says "EffNet" without MAEST</td><td>Genres are using the EffNet model only. Run <code>setup</code> (without <code>--no-maest</code>) and scan again with <code>--rescan</code>. If it still says this after <code>setup</code>, the reason is in <code>genre_basis.maest</code>: include that output when you report it</td></tr>
 <tr><td>An error about more than 2 channels</td><td>It's a surround (5.1) file. With ffmpeg installed (<code>brew install ffmpeg</code>, Linux: <code>sudo apt install ffmpeg</code>) it's mixed down to stereo automatically; scan again</td></tr>
 <tr><td>"listed but missing" during a scan</td><td>Traktor knows tracks whose files moved or are on a disconnected drive. Reconnect the drive, or relocate them in Traktor</td></tr>
 <tr><td>A run seems slow</td><td>The first run after <code>setup</code> or an update analyses every track once (10–15 min, a <code>--rescan</code> about 30). <b>Stop</b> (or Ctrl-C) is safe; it resumes where it stopped</td></tr>
@@ -493,7 +501,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <!-- ───────────────────────────── -->
 <h2 id="cli">Command line</h2>
-<p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now: analysing a recorded mix, cutting clips from its video, working out genres again after editing the rules, a full re-analysis, and your own genres from example folders.</p>
+<p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now: planning a set, cutting clips from a mix's video, and working out genres again or re-analysing everything outside an update (after an update, its card has a <b>Run</b> button for them).</p>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
     <div class="cmd"><pre>cd ~/puppi3s-dj-tools/track-analyzer</pre></div> (or wherever you put it)</li>
@@ -503,7 +511,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ul>
 
 <div class="cards">
-  <div class="card no"><b>Quit your DJ app first</b><p><code>traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code> and <code>tempo native</code>. Traktor rewrites its collection when it closes, which would undo the changes, so the app refuses to run these while it's open (Rekordbox too, when it's the DJ app you picked) (their <code>--dry-run</code> works either way).</p></div>
+  <div class="card no"><b>Quit your DJ app first</b><p><code>traktor</code>, <code>sync</code>, <code>cues apply</code>, <code>grids apply</code>, <code>edit</code>, <code>set --traktor</code>, <code>crates --traktor</code>, <code>colors apply</code>, <code>colors review --apply</code>, <code>hype --traktor</code>, <code>tempo load</code> and <code>tempo native</code>. Traktor rewrites its collection when it closes, which would undo the changes, so the app refuses to run these while it's open (Rekordbox too, when it's the DJ app you picked) (their <code>--dry-run</code> works either way).</p></div>
   <div class="card yes"><b>Fine with your DJ app open</b><p><code>scan</code>, <code>analyze</code>, <code>stats</code>, <code>hype</code> (without <code>--traktor</code>), <code>colors train</code>, <code>colors explain</code> and <code>colors review</code> (without <code>--apply</code>), <code>regenre</code>, and <code>tempo scan</code>, <code>report</code>, <code>refresh</code>, <code>export</code>, <code>nml</code> and <code>status</code> only read Traktor's files.</p></div>
 </div>
 
@@ -743,6 +751,11 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>cues apply</code></td><td>Writes the cues and corrections you approved in the web page into free hot-cue slots</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
 <tr><td><code>grids check</code> / <code>grids show</code> / <code>grids apply</code></td><td>Checks that Traktor's beat grids sit on the kicks; one track's reading and its stem file; moves the grids you approved in the web page, with their cues</td><td class="changes">apply: Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
 <tr><td><code>hold</code></td><td>Lists the tracks whose genre or colour the writers leave alone; <code>--genre</code> / <code>--colour "name"</code> adds, with <code>--release</code> removes</td><td>The hold list only</td></tr>
+<tr><td><code>sync</code></td><td>Everything into your DJ app in one go: tracks, genres and colours, hype, approved cues and grid fixes, crates, samples (<code>--only</code> picks steps; <code>--copy</code> brings over what the other DJ app has)</td><td class="changes">Your DJ app<br><small>undo: <code>sync --undo</code></small></td></tr>
+<tr><td><code>edit</code></td><td>One track's colour, key, genre, hype or BPM by hand (<code>--clear</code> goes back to the analysis)</td><td class="changes">App database and your DJ app (not with <code>--no-traktor</code>)</td></tr>
+<tr><td><code>mixes</code></td><td>What your analysed recorded mixes add up to: keys, moods, the shape of your sets</td><td>Nothing</td></tr>
+<tr><td><code>clips</code></td><td>Previews of a mix's clip suggestions from the finished video, or the picked clips at full quality</td><td>New video files only</td></tr>
+<tr><td><code>install rubberband</code></td><td>Installs Rubber Band for the tempo view where Homebrew isn't used (Windows)</td><td>Installs that tool</td></tr>
 </tbody></table></div>
 
 <h3 id="options">Useful options</h3>
