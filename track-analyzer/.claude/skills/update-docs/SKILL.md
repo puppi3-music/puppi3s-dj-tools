@@ -57,6 +57,49 @@ The script can't see these; check them against the code:
 - **Status lines**: "not yet tested", "planned", "next steps" that CLAUDE.md says are now done (or vice versa).
 - **Workflow order**: e.g. after editing `dj_genres.json` → `regenre`; after a view fix → `tempo refresh`, reload.
 
+### Checking a doc is right: the pass checklist
+
+A "check the guide" request is passes, not one read: run every item below each pass, and repeat passes until
+one finds nothing new. Never stop at a count (3 finds is not "done"). Tell the user how many passes ran and that the last one was clean.
+One or two items per fresh session is cheaper than all of them in one long session (2026-11-05: 7 items in one
+pass cost 60k tokens as the context grew 55k → 95k).
+
+1. **Commands**: `uv run python .claude/skills/update-docs/scripts/guide_commands.py` parses every command in
+   GUIDE.html with the real parser. Rejections from placeholders (`X`, `a|b`, pipes) are expected.
+2. **Options and links**: `doc_drift.py` (step 1).
+3. **Button, tab, filter and step names**: `python3 .claude/skills/update-docs/scripts/guide_labels.py` lists bold
+   names not found in the page (`${…}` counts as a wildcard). Prose labels are noise; names the page builds from
+   a variable alone (`Scan ${APPLIB}`) need a manual grep.
+4. **The Setup tab's steps**: every `step(…, n, "Title"` in `web/js/setup.js` appears in the guide's Setup list.
+5. **Numbers and defaults**: the guide's minimums, thresholds, defaults and counts against the code (`MIN_`, `default=`).
+6. **Each platform**: grep `brew`, `⌘`, `Finder`, `~/`, `Terminal`, `.command`, paths. Every Mac-only step is marked
+   "on a Mac" and has a Windows and a Linux form. Linux has no Traktor or Rekordbox.
+7. **Each DJ app**: Traktor-only wording against `library.app()` / `rekordbox` branches in the code (e.g. `sync.py`
+   steps that refuse with Rekordbox).
+8. **Same fix everywhere**: when a pass fixes one row or line, grep for the same pattern elsewhere before moving on.
+9. **Safety claims** (step 2): every write in the guide says to quit the DJ app, what gets backed up, and how to
+   undo it; the guide's undo table has a row for every writer in `sync.py` `STEPS`/`COPY_STEPS` and `web.py`'s write endpoints.
+10. **Page ↔ terminal**: the guide's "terminal only" list matches reality (no button for it in `web/js`), and its
+    "fine with your DJ app open" lists match what `traktor_running()` callers refuse.
+11. **README ↔ GUIDE agree**: the same number, default, requirement or step says the same in both (grep the number).
+12. **Stale versions and dates**: example versions (`puppi3s-track-analyzer-<version>`) match `pyproject.toml`;
+    "since version …", "before November 2026", "new in …" still make sense; one-off update steps are gone.
+13. **Pictures**: labels and buttons in the guide's images and diagrams still match the page.
+14. **Public**: no personal names, paths or history (step 4, last paragraph).
+
+**Easy to follow** (read as someone who has never seen the app):
+15. **Every task starts from where the reader is**: which tab or card, what it needs first (scanned tracks, the DJ app
+    closed, a tool), numbered steps with one action each, what they'll see, how to undo.
+16. **Names are exact and findable**: every button, menu and filter in bold, spelt as the page shows it, with the tab
+    it's on the first time; nothing refers to a control that has moved or been renamed.
+17. **One word for one thing**: the same term throughout (tempo view, not also "the @145 view"; colour in prose,
+    `colors` only in commands); every term is defined on first use or linked to where it is.
+18. **Short and scannable**: no paragraph over ~5 lines, sentences over ~30 words split, three or more parallel
+    items become a list, the most common path before the exceptions.
+19. **Signposted**: every mention of another section links to it; the sidebar lists every section; each section
+    opens with one line saying what it's for.
+20. **Renders well**: light, dark and phone width, no console errors (step 4).
+
 Make a short list of findings before editing. If a finding needs a decision (behaviour vs docs, or
 dropping a section), ask the user first; they prefer to decide.
 
