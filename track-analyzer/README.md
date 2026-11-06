@@ -205,12 +205,7 @@ Needs ffmpeg (`brew install ffmpeg`; Linux: `sudo apt install ffmpeg`). Existing
 `clips describe <analysis>.json CLIP.mp4 …` (or a folder of clips). Each clip is found in the recording by its
 sound, so it works however the editor trimmed the audio. Each one gets a line like the clip suggestions:
 - its video time, the track playing, LUFS, rise and energy;
-- its own genre, top moods and BPM, from the clip's own sound;
-- suggested thumbnails (with `--save` or `--video`), three for each place the clip goes, in its shape and cropped
-  to where the detail is: the Ghost post and its Bluesky / Threads card (1200×630, `<clip>-thumb.jpg`) and the
-  Instagram / TikTok cover (1080×1920, `<clip>-cover.jpg`). `--video final.mp4` adds three YouTube thumbnails
-  (1280×720, `<video>-thumb-youtube.jpg`) from the mix's biggest moments. Pick them on the page (**Use this**);
-  they're kept in `stills/<analysis>/` beside the analysis.
+- its own genre, top moods and BPM, from the clip's own sound.
 
 Video times need the offset: `--offset 0:14`, or it's worked out from the analysis' clip suggestions when
 they have video times. A clip whose sound isn't clearly in the recording says so (another mix, or a phone's
@@ -901,7 +896,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `analyze <mix> --highlights [N] [--clip-length 40] [--clip-mood 0] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best) and `energy` (how party / aggressive it sounds, 0-1); `--clip-mood 3` also favours energetic clips, worth up to 3 LU of loudness (default 0: loudness only; untested against clips you liked). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
 | `mixes [--logs DIR] [--json]` | What your saved mix analyses add up to: your sets start to end (hype and loudness per 5% of each set, stretched to the same length, and their mean), keys Traktor may have wrong (heard in your mixes = our key, not Traktor's), mood as played vs each track alone and in the tempo view, your sets' mood by fifth, and key changes between tracks. Also the Mixes tab's **All N mixes** button | nothing |
 | `clips <analysis.json> --video <final.mp4> [--pick 1 4] [--height 1440] [--bitrate 16M] [--out DIR] [--previews DIR] [--force]` | 720p previews of the clip suggestions in `/tmp/clip-previews/`; with `--pick`, the chosen clips (numbers or ranges like `20:30-21:10`) at full quality next to the video. Needs ffmpeg | new video files |
-| `clips describe <analysis.json> CLIP… [--offset 0:14] [--at 2=41:20] [--recording FILE] [--video FINAL.mp4] [--save] [--json]` | Clips someone else cut from the finished video (or a folder of them): each found in the recording by its sound, with its video time, the track playing, LUFS, rise, energy, and its own genre, moods and BPM. `--at` places a clip whose sound isn't found. `--save` or `--video`: suggested thumbnails per clip (Ghost post / card, Instagram / TikTok cover); `--video`: YouTube ones too. Needs ffmpeg | nothing (`--save`: the analysis' JSON; thumbnails: `stills/<analysis>/` beside it) |
+| `clips describe <analysis.json> CLIP… [--offset 0:14] [--at 2=41:20] [--recording FILE] [--save] [--json]` | Clips someone else cut from the finished video (or a folder of them): each found in the recording by its sound, with its video time, the track playing, LUFS, rise, energy, and its own genre, moods and BPM. `--at` places a clip whose sound isn't found. Needs ffmpeg | nothing (`--save`: the analysis' JSON) |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |
 | `analyze <mix> --tracklist [history.nml] [--start HH:MM:SS]` | A recorded mix checked against Traktor's history file: each track's key heard vs Traktor's, the tempo it was played at, key lock, and the mix's genre with the psy-at-speed habit held back (see [Checking a recorded mix](#checking-a-recorded-mix)) | nothing |
 | `scan` | Analyse a collection (section 2) | app database, CSV |
