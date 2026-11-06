@@ -45,6 +45,7 @@ async function pageMixes(main, id) {
     if (f && head && !SNAP && me === S.routeId && !shownDrop) {
       head.insertAdjacentHTML("beforeend", `<div class="spacer"></div>${f.recording ? `<button id="mx-again" data-tip="Analyse ${esc(f.recording)} again with today's models and options: ${f.name === f.recording.replace(/\.[^.]+$/, "") + ".json" ? "the new result replaces this one" : "the new result is saved as well, and this one shows as an older copy"}">Reanalyse…</button>` : ""}<button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
       $("#mx-again")?.addEventListener("click", () => mixDialog(null, id, { separated: Object.values(d?.standalone?.measured_with || {}).includes("separated") }));
+      wireClips(f);
       $("#mx-del").onclick = async () => {
         if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}${/\\/.test(f.folder) ? "\\" : "/"}deleted. The recording itself isn't touched.`)) return;
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
@@ -696,6 +697,7 @@ function renderMix(d) {
       <div class="note">Make previews: <span class="mono">clips &lt;this.json&gt; --video &lt;final.mp4&gt;</span></div></div>` : ""}
     ${standalonePanel(d)}
     ${fullPost(d)}
+    ${SNAP && !d.described_clips ? "" : clipsCard(d)}
     ${d.chapters?.length ? `<div class="card"><h3>YouTube chapters</h3>${copyBox(`<textarea readonly>${esc(d.chapters.join("\n"))}</textarea>`)}</div>` : ""}
     <details class="card"><summary class="muted">Raw JSON</summary><div class="tree" style="margin-top:8px">${tree(d)}</div></details>`;
 }
@@ -721,3 +723,45 @@ document.addEventListener("click", e => {
   card.classList.toggle("folded") ? folded.add(name) : folded.delete(name);
   try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (e) { /* not remembered */ }
 });
+
+// "Your editor's clips": clips someone else cut from the finished video, placed in the mix by their sound
+// (`clips describe`), each with the track playing, LUFS, rise, energy and its own genre and moods, for the posts.
+function clipsCard(d) {
+  const dc = d.described_clips, cl = dc?.clips || [];
+  const moods = c => Object.entries(c.moods || {}).slice(0, 3).map(([k, v]) => `${esc(k)} ${pct(v)}`).join(", ");
+  const time = c => c.start ? `<span class="nowrap">${esc(c.video || `${c.start}–${c.end}`)}</span>${c.placed === "by hand" ? ` <span class="dim small">by hand</span>` : ""}`
+    : `<span class="err small nowrap" data-tip="${esc(`Best match ${fmt(c.match?.score, 2)}, elsewhere ${fmt(c.match?.next, 2)}: not clearly this mix's sound`)}">not found</span>`
+      + (SNAP ? "" : ` <input class="cd-at" style="display:block;margin-top:4px" data-n="${c.n}" placeholder="M:SS" size="6" aria-label="Clip ${c.n}'s start in the video">`);
+  return `<div class="card" id="cd-card"><h3 style="display:flex;align-items:center;gap:8px">Your editor's clips${cl.length ? ` <button style="margin-left:auto" id="cd-copy" data-tip="The clips' lines as text, for the posting chat">Copy for posts</button>` : ""}</h3>
+    ${cl.length ? `${table([{ h: "Clip", r: 1, f: c => c.n }, { h: "File", f: c => `<span class="small nowrap">${esc(c.file)}</span>` },
+      { h: dc.offset != null ? "Video time" : "Mix time", f: time }, { h: "LUFS", r: 1, f: c => fmt(c.lufs, 1) },
+      { h: "Rise", r: 1, f: c => c.rise_lu != null ? `<span class="nowrap">${fmt(c.rise_lu, 1)} LU</span>` : "–" }, { h: "Energy", r: 1, f: c => c.energy != null ? pct(c.energy) : "–" },
+      { h: "Track", f: c => esc(c.track || "") }, { h: "Genre", f: c => esc((c.genre || []).join(" / ")) }, { h: "Moods", f: c => `<span class="small">${moods(c)}</span>` }], cl)}
+      <textarea readonly hidden id="cd-lines">${esc((dc.lines || []).join("\n"))}</textarea>
+      ${dc.offset == null ? `<div class="note">Mix times: give the video offset below for video times.</div>` : ""}
+      ${cl.some(c => !c.start) && !SNAP ? `<div class="note">Not found: the clip's sound isn't clearly in this recording (another mix, or changed a lot). Type where it starts in the video (in the mix if there's no video offset) and press Place.</div>` : ""}` : ""}
+    ${SNAP ? "" : `<div class="note">The clips the editor made from the video: each is found in the mix by its sound and described from its own sound. Give the folder they're in, or the files (full paths, one per line).</div>
+    <textarea id="cd-files" rows="2" placeholder="/path/to/clips" style="width:100%;height:auto;min-height:0">${esc(localStorage.getItem("cd-files") || "")}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><label class="inline">Video offset <input id="cd-offset" placeholder="M:SS" size="6" value="${esc(dc?.offset != null ? mmss(dc.offset) : "")}"></label>
+      <span class="dim small">where the first track starts in the video; blank: from the clip suggestions' video times</span><div class="spacer"></div>
+      ${cl.some(c => !c.start) ? `<button id="cd-place">Place</button>` : ""}<button class="primary" id="cd-go">${cl.length ? "Describe again" : "Describe clips"}</button></div>
+    <div id="cd-msg" class="small"></div>`}</div>`;
+}
+function wireClips(f) {
+  const copy = $("#cd-copy");
+  if (copy) copy.onclick = () => { navigator.clipboard.writeText($("#cd-lines").value); copy.textContent = "Copied"; };
+  const go = async withAt => {
+    const clips = $("#cd-files").value.trim(), msg = $("#cd-msg");
+    try { localStorage.setItem("cd-files", clips); } catch (e) {}
+    const at = {};
+    if (withAt) document.querySelectorAll(".cd-at").forEach(i => { if (i.value.trim()) at[i.dataset.n] = i.value.trim(); });
+    msg.innerHTML = "";
+    try {
+      const j = await startJob("clips_describe", { analysis: `${f.folder}/${f.name}`, clips, offset: $("#cd-offset").value.trim(), at });
+      if (j?.error) throw new Error(j.error);
+      msg.textContent = "Describing… (about 15 seconds a clip; the bar at the top shows it, and this card fills in when it's done)";
+    } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  };
+  const b = $("#cd-go"); if (b) b.onclick = () => go(false);
+  const p = $("#cd-place"); if (p) p.onclick = () => go(true);
+}
