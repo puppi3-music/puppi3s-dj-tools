@@ -3,6 +3,13 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**Added**
+- `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
+  found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
+  own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.
+
 ## 1.2.2 (2026-11-04)
 
 **Fixed**

@@ -201,6 +201,19 @@ full quality next to the video, named by suggestion number (`<video>-clip-1.mp4`
 `--height`, `--bitrate 16M`, `--out`). The JSON must come from `analyze` with `--highlights` and `--offset`.
 Needs ffmpeg (`brew install ffmpeg`; Linux: `sudo apt install ffmpeg`). Existing clips are never overwritten without `--force`; `--dry-run` lists them.
 
+**Clips someone else made:** when an editor cuts the clips, give them back to the analyzer for the posts:
+`clips describe <analysis>.json CLIP.mp4 …` (or a folder of clips). Each clip is found in the recording by its
+sound, so it works however the editor trimmed the audio. Each one gets a line like the clip suggestions:
+- its video time, the track playing, LUFS, rise and energy;
+- its own genre, top moods and BPM, from the clip's own sound.
+
+Video times need the offset: `--offset 0:14`, or it's worked out from the analysis' clip suggestions when
+they have video times. A clip whose sound isn't clearly in the recording says so (another mix, or a phone's
+room sound); place it by hand with `--at 2=41:20` (clip 2 starts 41:20 into the video; repeat `--at` for
+several). `--recording` names the recording if it has moved; `--save` keeps the result in the analysis' JSON;
+`--json` prints JSON. About 15 seconds a clip. On the page: the mix's **Your editor's clips** card, with
+**Copy for posts**.
+
 On a test mix of 22 house and melodic techno tracks, all sped up 12-20% with stems layered, 12 keys matched
 Traktor's and 1 was one step away. Without the tracklist the mix was called Psytrance (0.59); with it, Trance,
 Tech Trance and Psytrance at 0.13-0.16 each: a trance blend, with psy only where the tracks already leaned that way.
@@ -883,6 +896,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `analyze <mix> --highlights [N] [--clip-length 40] [--clip-mood 0] [--offset 0:14]` | Suggest the N (default 2) best stretches of a mix for short clips: loud, starting where the music rises out of something quieter. Listed in time order, each with its rank (#1 best) and `energy` (how party / aggressive it sounds, 0-1); `--clip-mood 3` also favours energetic clips, worth up to 3 LU of loudness (default 0: loudness only; untested against clips you liked). With `--offset` (how far into the finished video the first track starts, read off the video), times are given in the video | nothing |
 | `mixes [--logs DIR] [--json]` | What your saved mix analyses add up to: your sets start to end (hype and loudness per 5% of each set, stretched to the same length, and their mean), keys Traktor may have wrong (heard in your mixes = our key, not Traktor's), mood as played vs each track alone and in the tempo view, your sets' mood by fifth, and key changes between tracks. Also the Mixes tab's **All N mixes** button | nothing |
 | `clips <analysis.json> --video <final.mp4> [--pick 1 4] [--height 1440] [--bitrate 16M] [--out DIR] [--previews DIR] [--force]` | 720p previews of the clip suggestions in `/tmp/clip-previews/`; with `--pick`, the chosen clips (numbers or ranges like `20:30-21:10`) at full quality next to the video. Needs ffmpeg | new video files |
+| `clips describe <analysis.json> CLIP… [--offset 0:14] [--at 2=41:20] [--recording FILE] [--save] [--json]` | Clips someone else cut from the finished video (or a folder of them): each found in the recording by its sound, with its video time, the track playing, LUFS, rise, energy, and its own genre, moods and BPM. `--at` places a clip whose sound isn't found. Needs ffmpeg | nothing (`--save`: the analysis' JSON) |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |
 | `analyze <mix> --tracklist [history.nml] [--start HH:MM:SS]` | A recorded mix checked against Traktor's history file: each track's key heard vs Traktor's, the tempo it was played at, key lock, and the mix's genre with the psy-at-speed habit held back (see [Checking a recorded mix](#checking-a-recorded-mix)) | nothing |
 | `scan` | Analyse a collection (section 2) | app database, CSV |
@@ -944,6 +958,7 @@ dj-track-analyzer/
 │   ├── tempo.py            tempo view
 │   ├── lexicon.py          Lexicon Local API
 │   ├── clips.py            clip previews and clips cut from a mix's video
+│   ├── clipdesc.py         clips describe: an editor's clips placed in the mix by sound, described for posts
 │   ├── web.py, web/        the `web` command's page
 │   ├── cues.py             cue points and mix loops learned from your own cues
 │   └── dj_genres.json      Discogs styles → DJ genre rules
