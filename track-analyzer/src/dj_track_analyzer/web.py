@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -1520,6 +1521,31 @@ def delete_saved(dirs: list[Path], ident: str) -> dict:
     return {"moved_to": str(to)}
 
 
+def _still(dirs: list[Path], ident: str, name: str) -> tuple[Path, dict]:
+    """A suggested thumbnail of a saved mix analysis (clips describe): its file in stills/<analysis>/ and its entry
+    (with "dest", where "Use this" copies it), checked against the analysis' own list."""
+    f = _saved_path(dirs, ident)
+    dc = (_json_in(f) or {}).get("described_clips") or {}
+    entries = [x for c in dc.get("clips", []) for media in (c.get("stills") or {}).values() for x in media] \
+        + dc.get("youtube_stills", [])
+    entry = next((x for x in entries if x.get("file") == name), None)
+    p = f.parent / "stills" / f.stem / name
+    if not entry or Path(name).name != name or not p.is_file():
+        raise ValueError("unknown still")
+    return p, entry
+
+
+def use_still(dirs: list[Path], ident: str, name: str) -> dict:
+    """Copy a suggested thumbnail to its place beside the clip (<clip>-thumb.jpg) or video (<video>-thumb-youtube.jpg)."""
+    p, entry = _still(dirs, ident, name)
+    dest = Path(entry["dest"])
+    if dest.suffix.lower() != ".jpg" or not dest.parent.is_dir():
+        raise ValueError(f"Can't save the thumbnail at {dest}: its folder is gone")
+    shutil.copyfile(p, dest)
+    log(f"Thumbnail saved: {dest}")
+    return {"saved": str(dest)}
+
+
 def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
@@ -1696,6 +1722,13 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
             return failed(e)
         return FileResponse(p)  # supports Range requests, so jumping around doesn't load the whole file
 
+    async def still(request: Request):
+        try:
+            p, _ = await run_in_threadpool(_still, log_dirs, request.query_params.get("id", ""), request.query_params.get("name", ""))
+        except Exception as e:
+            return failed(e)
+        return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
     async def loop_endpoint(request: Request):
         from starlette.responses import Response
 
@@ -1784,6 +1817,8 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
         Route("/api/saved-file/delete", post(lambda b: delete_saved(log_dirs, str(b["id"]))), methods=["POST"]),
+        Route("/api/still", still),
+        Route("/api/still/use", post(lambda b: use_still(log_dirs, str(b["id"]), str(b["name"]))), methods=["POST"]),
         Route("/api/mixes-report", respond(lambda q: mixreport.report(log_dirs))),
         Route("/api/recordings", respond(lambda q: recordings(log_dirs))),
         Route("/api/recordings/find", post(lambda b: {"path": find_recording(str(b["name"]), int(b["size"]))}), methods=["POST"]),

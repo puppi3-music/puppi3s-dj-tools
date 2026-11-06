@@ -9,6 +9,10 @@ module's builds, which installs download by themselves.
 - `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
   found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
   own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.
+- **Suggested thumbnails** on that card, three per place each is posted, in its shape and cropped to the action:
+  the Ghost post and its Bluesky / Threads card (`<clip>-thumb.jpg`), the Instagram / TikTok cover
+  (`<clip>-cover.jpg`), and YouTube from the mix's biggest moments when the final video is given (`--video`,
+  `<video>-thumb-youtube.jpg`). **Use this** saves the one you pick.
 
 ## 1.2.2 (2026-11-04)
 

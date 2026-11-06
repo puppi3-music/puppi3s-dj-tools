@@ -145,3 +145,80 @@ def test_page_job_arguments(tmp_path):
                 {"analysis": str(a), "clips": str(tmp_path), "offset": "soon"}, {"analysis": "mix.json", "clips": str(tmp_path)}):
         with pytest.raises(ValueError):
             jobs._clips_describe(bad)
+
+
+def test_frame_scores_prefer_sharp_lit_still_frames():
+    rng = np.random.default_rng(3)
+    side = 32
+    sharp = rng.integers(40, 220, (side, side)).astype(np.uint8)  # detailed and lit
+    blurred = np.full((side, side), 128, np.uint8)
+    blurred[:, : side // 2] = 90  # one soft edge: lit, a little contrast, no detail
+    black = np.full((side, side), 5, np.uint8)
+    img = np.stack([sharp, sharp, blurred, blurred, black, sharp])
+    score = clipdesc.frame_scores(img)
+    assert np.isneginf(score[4])  # black: never a thumbnail
+    assert score[0] > score[2]  # detail beats flat
+    assert score[0] > score[5]  # frame 5 comes straight after a cut (from black): motion
+
+
+def test_best_frames_keep_apart_and_skip_bad():
+    times = np.arange(10, dtype=float)
+    score = np.array([1, 9, 8.5, 1, 1, 7, 1, -np.inf, 1, 1], float)
+    assert clipdesc.best_frames(times, score, 3, apart=3.0) == [1.0, 5.0, 8.0]
+    assert clipdesc.best_frames(times, np.full(10, -np.inf), 3) == []
+
+
+def test_crop_follows_the_detail():
+    side = 64
+    img = np.full((1, side, side * 2, 3), 120, np.uint8)  # a wide frame, flat...
+    img[0, :, 100:120] = np.random.default_rng(4).integers(0, 255, (side, 20, 3))  # ...with the action on the right
+    (x, y, w, h), = clipdesc.crop_boxes(img, 9 / 16)
+    assert (y, h) == (0, side) and w == 36 and x <= 100 and x + w >= 120  # a tall window around it
+
+
+def test_at_least_two_stills_even_from_a_dull_clip():
+    rng = np.random.default_rng(5)
+    img = rng.integers(20, 30, (8, 36, 64, 3)).astype(np.uint8)  # dim and flat: strict scoring rejects every frame
+    times = np.arange(8) / clipdesc.STILL_FPS
+    assert np.isneginf(clipdesc.frame_scores(img)).all()
+    got = clipdesc.pick_frames(times, img, 16 / 9, 3, 1.0)
+    assert len(got) >= clipdesc.MIN_STILLS
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+def test_stills_from_a_clip_and_the_video(tmp_path):
+    clip = tmp_path / "2026-11-06-clip-1.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25:duration=6",
+                    "-pix_fmt", "yuv420p", str(clip)], check=True)
+    folder = tmp_path / "stills"
+    folder.mkdir()
+    got = clipdesc.clip_stills(clip, folder, 1)
+    assert set(got) == set(clipdesc.CLIP_MEDIA)
+    for media, stills in got.items():
+        assert len(stills) == clipdesc.STILLS
+        assert all(0.5 <= x["t"] <= 5.5 for x in stills)  # not the fade-prone ends
+        assert all(clipdesc.video_size(folder / x["file"]) == clipdesc.MEDIA[media][1] for x in stills)
+        assert stills[0]["dest"] == str(tmp_path / ("2026-11-06-clip-1" + clipdesc.MEDIA[media][2]))
+    result = {"highlights": [{"rank": 1, "video": "0:01-0:04"}]}
+    yt = clipdesc.youtube_stills(clip, result, folder)  # one from the top moment, the rest spread through
+    assert len(yt) >= clipdesc.MIN_STILLS and 1 <= yt[0]["t"] <= 4
+    assert clipdesc.video_size(folder / yt[0]["file"]) == (1280, 720)
+    assert yt[0]["dest"] == str(tmp_path / "2026-11-06-clip-1-thumb-youtube.jpg")
+
+
+def test_page_still_routes(tmp_path):
+    from dj_track_analyzer import web
+
+    a = tmp_path / "mix.json"
+    folder = tmp_path / "stills" / "mix"
+    folder.mkdir(parents=True)
+    (folder / "clip-1-1.jpg").write_bytes(b"jpg")
+    (folder / "other.jpg").write_bytes(b"x")
+    dest = tmp_path / "clip-1-thumb.jpg"
+    a.write_text(json.dumps({"type": "dj_mix", "described_clips": {"clips": [
+        {"n": 1, "stills": {"post": [{"t": 1.0, "file": "clip-1-1.jpg", "dest": str(dest)}]}}]}}))
+    assert web.use_still([tmp_path], "0/mix.json", "clip-1-1.jpg") == {"saved": str(dest)}
+    assert dest.read_bytes() == b"jpg"
+    for name in ("other.jpg", "../mix.json", "missing.jpg"):  # only the stills the analysis lists
+        with pytest.raises(ValueError):
+            web._still([tmp_path], "0/mix.json", name)

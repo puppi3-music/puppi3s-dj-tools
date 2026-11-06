@@ -118,7 +118,11 @@ def _clips_describe(o: dict) -> list[str]:
             raise ValueError(f"Clip {n}'s time as M:SS, not {t!r}")
         if t and str(n).isdigit():
             at += ["--at", f"{int(n)}={t}"]
-    return ["clips", "describe", str(a), *items, "--save", *(["--offset", offset] if offset else []), *at]
+    video = str(o.get("video") or "").strip().strip('"')
+    if video and not (Path(video).expanduser().is_absolute() and Path(video).expanduser().is_file()):
+        raise ValueError(f"No video at {video} (give the full path)")
+    return ["clips", "describe", str(a), *items, "--save", *(["--offset", offset] if offset else []),
+            *(["--video", video] if video else []), *at]
 
 
 def _tool_install(o: dict) -> list[str]:

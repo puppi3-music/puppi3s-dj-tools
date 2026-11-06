@@ -132,7 +132,10 @@ def main() -> None:
     cd.add_argument("--at", action="append", default=None, metavar="CLIP=TIME",
                     help="place a clip by hand where its sound isn't found (repeat for several): clip number = its start in the video, "
                          "e.g. 2=41:20 (a mix time if there's no offset)")
-    cd.add_argument("--save", action="store_true", help="also keep the result in the analysis' JSON (shown on the page)")
+    cd.add_argument("--video", default=None, help="the finished video: also suggest YouTube thumbnails from it "
+                    "(the best frames in the top clip suggestions)")
+    cd.add_argument("--save", action="store_true", help="also keep the result in the analysis' JSON (shown on the page), "
+                    "with suggested thumbnails for each clip")
     cd.add_argument("--json", action="store_true", help="print JSON instead of the readable lines")
     sc = sub.add_parser("scan", help="analyze a whole collection (resumable), save to database + spreadsheet")
     sc.add_argument("folders", nargs="*", help="folders (or files) to scan")

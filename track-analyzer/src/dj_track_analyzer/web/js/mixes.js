@@ -432,29 +432,56 @@ function clipsCard(d) {
       { h: dc.offset != null ? "Video time" : "Mix time", f: time }, { h: "LUFS", r: 1, f: c => fmt(c.lufs, 1) },
       { h: "Rise", r: 1, f: c => c.rise_lu != null ? `<span class="nowrap">${fmt(c.rise_lu, 1)} LU</span>` : "–" }, { h: "Energy", r: 1, f: c => c.energy != null ? pct(c.energy) : "–" },
       { h: "Track", f: c => esc(c.track || "") }, { h: "Genre", f: c => esc((c.genre || []).join(" / ")) }, { h: "Moods", f: c => `<span class="small">${moods(c)}</span>` }], cl)}
+      ${SNAP ? "" : stillsRows(dc)}
       <textarea readonly hidden id="cd-lines">${esc((dc.lines || []).join("\n"))}</textarea>
       ${dc.offset == null ? `<div class="note">Mix times: give the video offset below for video times.</div>` : ""}
       ${cl.some(c => !c.start) && !SNAP ? `<div class="note">Not found: the clip's sound isn't clearly in this recording (another mix, or changed a lot). Type where it starts in the video (in the mix if there's no video offset) and press Place.</div>` : ""}` : ""}
     ${SNAP ? "" : `<div class="note">The clips the editor made from the video: each is found in the mix by its sound and described from its own sound. Give the folder they're in, or the files (full paths, one per line).</div>
     <textarea id="cd-files" rows="2" placeholder="/path/to/clips" style="width:100%;height:auto;min-height:0">${esc(localStorage.getItem("cd-files") || "")}</textarea>
+    <label class="inline" style="display:flex;gap:8px;align-items:center;margin-top:6px">Final video <input id="cd-video" style="flex:1;min-width:0" placeholder="/path/to/final.mp4 (optional: thumbnails for YouTube too)" value="${esc(dc?.video || localStorage.getItem("cd-video") || "")}"></label>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:6px"><label class="inline">Video offset <input id="cd-offset" placeholder="M:SS" size="6" value="${esc(dc?.offset != null ? mmss(dc.offset) : "")}"></label>
       <span class="dim small">where the first track starts in the video; blank: from the clip suggestions' video times</span><div class="spacer"></div>
       ${cl.some(c => !c.start) ? `<button id="cd-place">Place</button>` : ""}<button class="primary" id="cd-go">${cl.length ? "Describe again" : "Describe clips"}</button></div>
     <div id="cd-msg" class="small"></div>`}</div>`;
 }
+// Suggested thumbnails (clips describe --save): each clip's best frames and, with the final video, YouTube's (the best
+// frame in each top clip suggestion). "Use this" copies one beside its clip or video; the <img> sources are set by wireClips.
+function stillsRows(dc) {
+  const name = m => dc.media?.[m] || m;
+  const row = (label, list, at) => list?.length ? `<div class="cd-stills"><div class="small" style="margin:10px 0 4px"><b>${esc(label)}</b> <span class="dim">saves as ${esc(list[0].dest.split(/[\\/]/).pop())}</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">${list.map(x => `<figure style="margin:0;max-width:100%">
+      <img data-still="${esc(x.file)}" alt="${esc(`${label}, ${at(x)}`)}" style="display:block;height:150px;width:auto;max-width:100%;object-fit:contain;border-radius:6px;background:var(--surface-2)">
+      <figcaption style="display:flex;gap:6px;align-items:center;margin-top:4px" class="small"><span class="dim">${esc(at(x))}</span><div class="spacer"></div><button class="cd-use" data-still="${esc(x.file)}">Use this</button></figcaption></figure>`).join("")}</div></div>` : "";
+  const clips = (dc.clips || []).map(c => Object.entries(c.stills || {}).map(([m, list]) => row(`Clip ${c.n}: ${name(m)}`, list, x => `${mmss(x.t)} into the clip`)).join("")
+    + (c.stills_error ? `<div class="note err small">Clip ${c.n}: no thumbnails (${esc(c.stills_error)})</div>` : "")).join("");
+  const yt = row(name("youtube"), dc.youtube_stills, x => `${mmss(x.t)} in the video`);
+  return clips || yt ? `<h4 style="margin:14px 0 0">Suggested thumbnails</h4><div class="note">For each place it's posted, in its shape: sharp, colourful, well-lit frames, not mid-cut, cropped to where the detail is. YouTube's come from the mix's biggest moments (give the final video above). Pick one per row.</div>${clips}${yt}` : "";
+}
 function wireClips(f) {
+  document.querySelectorAll("#cd-card img[data-still]").forEach(i => {
+    i.src = `/api/still?id=${encodeURIComponent(f.id)}&name=${encodeURIComponent(i.dataset.still)}`;
+  });
+  document.querySelectorAll("#cd-card .cd-use").forEach(b => b.onclick = async () => {
+    const was = b.textContent;
+    try {
+      const j = await postJSON("/api/still/use", { id: f.id, name: b.dataset.still });
+      b.closest(".cd-stills").querySelectorAll(".cd-use").forEach(o => { o.textContent = "Use this"; o.classList.remove("primary"); });
+      b.textContent = "Saved"; b.classList.add("primary"); b.dataset.tip = j.saved;
+    } catch (e) { b.textContent = was; $("#cd-msg").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+  });
   const copy = $("#cd-copy");
   if (copy) copy.onclick = () => { navigator.clipboard.writeText($("#cd-lines").value); copy.textContent = "Copied"; };
   const go = async withAt => {
     const clips = $("#cd-files").value.trim(), msg = $("#cd-msg");
-    try { localStorage.setItem("cd-files", clips); } catch (e) {}
+    const video = $("#cd-video").value.trim();
+    try { localStorage.setItem("cd-files", clips); localStorage.setItem("cd-video", video); } catch (e) {}
     const at = {};
     if (withAt) document.querySelectorAll(".cd-at").forEach(i => { if (i.value.trim()) at[i.dataset.n] = i.value.trim(); });
     msg.innerHTML = "";
     try {
-      const j = await startJob("clips_describe", { analysis: `${f.folder}/${f.name}`, clips, offset: $("#cd-offset").value.trim(), at });
+      const j = await startJob("clips_describe", { analysis: `${f.folder}/${f.name}`, clips, video, offset: $("#cd-offset").value.trim(), at });
       if (j?.error) throw new Error(j.error);
-      msg.textContent = "Describing… (about 15 seconds a clip; the bar at the top shows it, and this card fills in when it's done)";
+      msg.textContent = "Describing… (about 15 seconds a clip, a little more with the final video; the bar at the top shows it, and this card fills in when it's done)";
     } catch (e) { msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
   };
   const b = $("#cd-go"); if (b) b.onclick = () => go(false);
