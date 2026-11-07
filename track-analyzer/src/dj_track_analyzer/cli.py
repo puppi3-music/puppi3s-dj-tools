@@ -103,7 +103,8 @@ def main() -> None:
                    help="save the JSON in this file instead of printing it (replaced once the analysis is done)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
-    cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")
+    cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips; "
+                        "`clips describe` for clips someone else made")
     cl.add_argument("analysis", help="the JSON from analyze --highlights N --offset M:SS")
     cl.add_argument("--video", required=True, help="the finished video the offset was read off")
     cl.add_argument("--pick", nargs="+", metavar="N", default=None,
@@ -116,6 +117,23 @@ def main() -> None:
     cl.add_argument("--bitrate", default="16M", help="--pick clips' video bitrate (default 16M)")
     cl.add_argument("--force", action="store_true", help="replace --pick clips that are already there")
     cl.add_argument("--dry-run", action="store_true", help="list what would be made, write nothing")
+    cd = sub.add_parser("clips-describe", prog="dj-track-analyzer clips describe",  # typed as `clips describe`
+                        help=argparse.SUPPRESS,
+                        description="Clips someone else cut from the finished video: where each sits in the mix "
+                                    "(found by its sound), the track playing, LUFS, rise, energy, and its own genre "
+                                    "and moods, for the posts that go with them.")
+    cd.add_argument("analysis", help="the mix's JSON from analyze (with --tracklist for the track names)")
+    cd.add_argument("files", nargs="+", metavar="CLIP", help="the clip files (videos), or a folder of them")
+    cd.add_argument("--recording", default=None, help="the recording the analysis was made from "
+                    "(default: the file named in the JSON)")
+    cd.add_argument("--offset", default=None, metavar="SECONDS",
+                    help="how far into the finished video the first track starts, for video times "
+                         "(default: worked out from the JSON's clip suggestions, if it has video times)")
+    cd.add_argument("--at", action="append", default=None, metavar="CLIP=TIME",
+                    help="place a clip by hand where its sound isn't found (repeat for several): clip number = its start in the video, "
+                         "e.g. 2=41:20 (a mix time if there's no offset)")
+    cd.add_argument("--save", action="store_true", help="also keep the result in the analysis' JSON (shown on the page)")
+    cd.add_argument("--json", action="store_true", help="print JSON instead of the readable lines")
     sc = sub.add_parser("scan", help="analyze a whole collection (resumable), save to database + spreadsheet")
     sc.add_argument("folders", nargs="*", help="folders (or files) to scan")
     sc.add_argument("--traktor", action="store_true", help="scan every track in every DJ app found (Traktor and Rekordbox; can be combined with folders)")
@@ -361,7 +379,10 @@ def main() -> None:
     s.add_argument("--http", action="store_true", help="streamable HTTP instead of stdio")
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8765)
-    args = ap.parse_args()
+    argv = sys.argv[1:]
+    if argv[:2] == ["clips", "describe"]:
+        argv = ["clips-describe", *argv[2:]]
+    args = ap.parse_args(argv)
     if sys.platform == "win32" and args.cmd not in ("web", "serve", None):
         lower_priority()
     if args.cmd in VIEW_CMDS | NATIVE_CMDS:
@@ -431,6 +452,10 @@ def main() -> None:
         from . import clips
 
         clips.main(args)
+    elif args.cmd == "clips-describe":
+        from . import clipdesc
+
+        clipdesc.main(args)
     elif args.cmd == "train":
         from . import mygenres
 

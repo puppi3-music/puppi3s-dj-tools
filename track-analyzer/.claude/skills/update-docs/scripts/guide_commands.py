@@ -21,6 +21,7 @@ for s in snips:
     line=re.sub(r'<[^>]*>','X',line).replace('…','X').split(' #')[0]
     try: toks=shlex.split(line)
     except ValueError: continue
+    if toks[:2]==['clips','describe']: toks=['clips-describe',*toks[2:]]  # as cli.main() routes it
     e=io.StringIO()
     try:
       with contextlib.redirect_stderr(e): ap.parse_args(toks)

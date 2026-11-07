@@ -97,6 +97,30 @@ def _analyze_mix(o: dict) -> list[str]:
             *(["--highlights"] if o.get("highlights", True) else []), "--json-only", "--out", str(out)]
 
 
+def _clips_describe(o: dict) -> list[str]:
+    """The Mixes tab's "Your editor's clips": `clips describe` on the shown mix, saved into its JSON."""
+    a = Path(str(o.get("analysis") or "").strip()).expanduser()
+    if not a.is_absolute() or a.suffix.lower() != ".json" or not a.is_file():
+        raise ValueError(f"No saved analysis at {o.get('analysis')}")
+    items = [x.strip().strip('"') for x in re.split(r"[\r\n]+", str(o.get("clips") or "")) if x.strip()]
+    if not items:
+        raise ValueError("Give the folder with the clips, or the clip files (full paths, one per line)")
+    for x in items:
+        if not Path(x).expanduser().is_absolute() or not Path(x).expanduser().exists():
+            raise ValueError(f"Not found: {x} (give the full path)")
+    offset = str(o.get("offset") or "").strip()
+    if offset and not re.fullmatch(r"\d+(:\d{1,2}){0,2}(\.\d+)?", offset):
+        raise ValueError(f"Video offset as M:SS, not {offset!r}")
+    at = []
+    for n, t in (o.get("at") or {}).items():
+        t = str(t).strip()
+        if t and not re.fullmatch(r"\d+(:\d{1,2}){0,2}(\.\d+)?", t):
+            raise ValueError(f"Clip {n}'s time as M:SS, not {t!r}")
+        if t and str(n).isdigit():
+            at += ["--at", f"{int(n)}={t}"]
+    return ["clips", "describe", str(a), *items, "--save", *(["--offset", offset] if offset else []), *at]
+
+
 def _tool_install(o: dict) -> list[str]:
     if o.get("tool") not in ("ffmpeg", "rubberband"):
         raise ValueError("unknown tool")
@@ -134,6 +158,7 @@ ACTIONS = {
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),
     "regenre": ("Genres again from the saved scores", lambda o: ["regenre"], False),
     "analyze_mix": ("Analyse a mix", _analyze_mix, False),
+    "clips_describe": ("Describe your editor's clips", _clips_describe, False),
     "install": ("Install a tool", _tool_install, False),
     "tag": ("Write genres into your files' tags", lambda o: ["tag", *(["--multi"] if o.get("multi", True) else [])], True),
     "untag": ("Put your files' original tags back", lambda o: ["untag"], True),
