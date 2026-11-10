@@ -176,12 +176,14 @@ async function writeGrids(onDone) {
     onDone?.();
   });
 }
+let openSeq = 0;  // each openTrack call; a slower earlier call or its cue reply doesn't land over a newer one
 async function openTrack(path) {
+  const seq = ++openSeq;
   prepFor(path);
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
   if ($("#drawer").dataset.path !== path) gridStop();  // the grid click loop belongs to the track it was started on
   const all = await getTracks(), t = all.find(x => x.path === path);
-  if (!t) return;
+  if (!t || seq !== openSeq) return;
   markOpen(path); hashTrack(path);
   const d = $("#drawer"), body = $("#drawer-body");
   const moods = ["aggressive", "happy", "party", "relaxed", "sad"].filter(m => t["mood_" + m] != null).map(m => ({ label: m, value: t["mood_" + m] }));
@@ -197,14 +199,14 @@ async function openTrack(path) {
       <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? ` (${pct(t.color_confidence)})` : ""}${t.color_confidence_near != null ? ` · ${pct(t.color_confidence_near)} sure it's ${esc(nearRange(t.color))}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
       <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">1-10 within your collection</span></dd>
-      <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
+      <dt>Loudness</dt><dd>${t.lufs != null ? `${fmt(t.lufs, 1)} LUFS${t.loudness_range != null ? ` · range ${fmt(t.loudness_range, 1)} LU` : ""}` : "–"}</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
       ${t.error ? `<dt>Note</dt><dd class="small">${esc(t.error)}</dd>` : ""}
     </dl>${editBar(t)}
     ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
     ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
-      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
+      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" min="0" max="50" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
     ${genreScores.length || t.styles || yourG || t.tag_genre ? fold("genre", "Genre and style", `
       ${genreScores.length ? `<div class="sub">Genres</div>${bars(genreScores, { max: Math.max(...genreScores.map(g => g.value || 0), 0.01) })}` : ""}
       ${t.styles ? `<div class="sub">Discogs styles</div>${bars(parseScores(t.styles))}` : ""}
@@ -238,28 +240,29 @@ async function openTrack(path) {
   const acc = body.querySelector("#dr-accept");
   if (acc) acc.onclick = async () => {
     try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
-    catch (e) { acc.textContent = e.message; }
+    catch (e) { acc.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
   };
   $("#dr-edit")?.addEventListener("click", () => { S.editing = editing(t) ? null : t.path; if (S.editing) S.editMsg = null; reopen(t.path); });
   bindEdit(t);
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
-    catch (e) { b.textContent = e.message; }
+    catch (e) { b.nextElementSibling?.remove(); b.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
   });
   const keepScroll = d.classList.contains("open") && d.dataset.path === t.path;
   d.dataset.path = t.path;
   d.classList.add("open"); d.setAttribute("aria-hidden", "false"); if (!keepScroll) d.scrollTop = 0;
   if (t.type !== "track") return;
   if (!SNAP) loadGrid(t);
-  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
-    .catch(e => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
+  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && seq === openSeq) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
+    .catch(e => { const b = $("#cuebox"); if (b && seq === openSeq) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
   let sgSeq = 0;
   const load = async () => {
     const box = $("#sugg"), k = ++sgSeq;
     const fresh = () => k === sgSeq && box.isConnected && d.dataset.path === t.path;  // a slower earlier reply, or another track's, doesn't land here
     try {
-      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: $("#sg-tol").value || 4 });
+      const tol = Math.min(Math.max(+$("#sg-tol").value || 4, 0), 50); $("#sg-tol").value = tol;
+      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: tol });
       if (!fresh()) return;
       box.className = "";
       box.innerHTML = `<div class="dim small" style="margin-bottom:6px">${esc(r.rule)} · ${r.matches} matches</div>` + table([
@@ -308,8 +311,13 @@ function bindEdit(t) {
   const box = $("#drawer-body");
   if (!canEdit(t) || !box.querySelector("#ed-bar")) return;
   const now = editNow(t), save = box.querySelector("#ed-save"), msg = box.querySelector("#ed-msg");
-  const changes = () => Object.fromEntries([...box.querySelectorAll("[data-ed]")].map(e => [e.dataset.ed, e.value.trim()]).filter(([f, x]) => x && x !== now[f]));
-  box.querySelectorAll("[data-ed]").forEach(e => e.addEventListener("input", () => { save.disabled = !Object.keys(changes()).length; }));
+  const same = (f, x) => f === "bpm" ? x !== "" && now[f] !== "" && +x === +now[f] : x === now[f];
+  const fields = () => [...box.querySelectorAll("[data-ed]")].map(e => [e.dataset.ed, e.value.trim()]).filter(([f, x]) => !same(f, x));
+  const changes = () => Object.fromEntries(fields().filter(([, x]) => x));
+  const clears = () => fields().filter(([f, x]) => !x && f === "genre" && (t.by_hand || {}).genre != null).map(([f]) => f);  // an emptied hand-set genre goes back to the analysis
+  const badBpm = () => { const b = changes().bpm; return b != null && !(+b >= 40 && +b <= 300); };
+  const check = () => { save.disabled = !(Object.keys(changes()).length || clears().length) || badBpm(); msg.textContent = badBpm() ? "BPM must be 40–300" : ""; };
+  box.querySelectorAll("[data-ed]").forEach(e => e.addEventListener("input", check));
   const send = async (body, done) => {
     if (save) save.disabled = true;
     msg.textContent = "Saving…";
@@ -322,9 +330,9 @@ function bindEdit(t) {
       await reopen(t.path);
       if (S.page === "tracks") { S.reloadTracks?.(); S.refreshRetrain?.(); }
       if (S.page === "colours") S.reloadColours?.().catch(() => {});
-    } catch (e) { msg.textContent = e.message; if (save) save.disabled = !Object.keys(changes()).length; }
+    } catch (e) { msg.textContent = e.message; if (save) check(); }
   };
-  if (save) save.onclick = () => send({ changes: changes(), clear: [] }, "Saved");
+  if (save) save.onclick = () => send({ changes: changes(), clear: clears() }, "Saved");
   box.querySelector("#ed-cancel")?.addEventListener("click", () => { S.editing = null; reopen(t.path); });
   box.querySelectorAll("[data-clear]").forEach(b => b.onclick = () => send({ changes: {}, clear: [b.dataset.clear] }, `${b.dataset.clear === "bpm" ? "BPM" : b.dataset.clear[0].toUpperCase() + b.dataset.clear.slice(1)} back to the analysis`));
   box.querySelector("#ed-undo")?.addEventListener("click", () => send({ ...S.editMsg.undo, undo: true }, "Undone"));
