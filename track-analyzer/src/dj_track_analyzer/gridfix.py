@@ -26,7 +26,7 @@ import numpy as np
 from . import analysis, traktor
 from .analysis import log
 
-VERSION = "grid-3"  # 2: kick runs bridge one-bar gaps (a fill every 8 bars left no stretch: the fallback hit a breakdown); 3: raw readings cached, classify() on reading
+VERSION = "grid-4"  # 4: search kept inside half a beat (over 200 BPM it read outside it), whole reading without no-kick stretches, fallback stretches inside the track; 2: kick runs bridge one-bar gaps (a fill every 8 bars left no stretch: the fallback hit a breakdown); 3: raw readings cached, classify() on reading
 PROPOSE_MS = 10.0  # a grid this far off the kicks gets a proposed fix (on-grid tracks measure within ±3 ms)
 AGREE_MS = 12.0  # two thirds of the stretches within this of their median, or no verdict
 OUTLIER_MS = 25.0  # a stretch this far from the whole track's reading had no clear kick there: left out
@@ -64,7 +64,7 @@ def _attack(env: np.ndarray, lines_ms: np.ndarray, beat_ms: float) -> float | No
     if n < SECTION_BEATS // 2:
         return None
     sm = np.convolve(folded, np.ones(5) / 5, "same")
-    lo, hi = half + SEARCH_MS[0], half + SEARCH_MS[1]
+    lo, hi = max(1, half + SEARCH_MS[0]), min(2 * half, half + SEARCH_MS[1])  # within half a beat (over 200 BPM it's less than 150 ms)
     pk = int(np.argmax(sm[lo:hi])) + lo  # the kick's peak near the line
     floor = np.percentile(sm, 10)
     th = floor + ATTACK_SHARE * (sm[pk] - floor)
@@ -99,7 +99,22 @@ def _sections(p: Path, bpm: float, grid_ms: float, dur_s: float) -> list[float]:
         if len(runs) >= 3:
             pick = [runs[int(round(q))] for q in np.linspace(0, len(runs) - 1, min(MAX_SECTIONS, len(runs)))]
             return [float(starts[k]) * 1000 for k in sorted(set(pick))]
-    return [grid_ms + round((dur_s * 1000 * f - grid_ms) / beat) * beat for f in np.linspace(0.2, 0.8, MAX_SECTIONS)]
+    fixed = _fixed_sections(bpm, grid_ms, dur_s)
+    if hit is not None and len(hit[0]) >= 16:  # too few 8-bar kick blocks: the fixed places, but those mostly with kick
+        st = np.asarray(starts, float) * 1000
+        at = [int(np.searchsorted(st, t - 1)) for t in fixed]  # the bar each stretch starts on
+        kick = [t for t, i in zip(fixed, at) if i + 8 <= len(on) and on[i:i + 8].sum() >= 6]
+        if len(kick) >= 3:
+            return kick
+    return fixed
+
+
+def _fixed_sections(bpm: float, grid_ms: float, dur_s: float) -> list[float]:
+    """MAX_SECTIONS grid lines between 20% and 80% of the track, each with its whole stretch inside the track."""
+    beat = 60000 / bpm
+    last = grid_ms + np.floor((dur_s * 1000 - SECTION_BEATS * beat - grid_ms) / beat) * beat  # the last line a stretch fits after
+    out = [min(grid_ms + round((dur_s * 1000 * f - grid_ms) / beat) * beat, last) for f in np.linspace(0.2, 0.8, MAX_SECTIONS)]
+    return sorted({float(max(t, grid_ms)) for t in out})
 
 
 def measure(p: Path, bpm: float, grid_ms: float) -> dict:
@@ -116,8 +131,25 @@ def measure(p: Path, bpm: float, grid_ms: float) -> dict:
     beat = 60000 / bpm
     starts = _sections(p, bpm, grid_ms, len(x) / cues.SR)
     lines = [t0 + np.arange(SECTION_BEATS) * beat for t0 in starts]
-    return {"sections": [_attack(env, ln, beat) for ln in lines], "section_starts_ms": [round(t, 3) for t in starts],
-            "whole_ms": _attack(env, np.concatenate(lines), beat) if lines else None, "beat_ms": beat}
+    secs = [_attack(env, ln, beat) for ln in lines]
+    whole = _whole(env, lines, secs, beat)
+    return {"sections": secs, "section_starts_ms": [round(t, 3) for t in starts], "whole_ms": whole, "beat_ms": beat}
+
+
+def _whole(env: np.ndarray, lines: list, secs: list, beat: float) -> float | None:
+    """All the stretches with a reading folded together; again without those far from it (no clear kick there), so
+    they don't pull the reading the outlier test then judges by."""
+    use = [ln for ln, x in zip(lines, secs) if x is not None]
+    if not use:
+        return None
+    w = _attack(env, np.concatenate(use), beat)
+    if w is None:
+        return None
+    keep = [ln for ln, x in zip(lines, secs) if x is not None and abs(x - w) <= OUTLIER_MS]
+    if len(keep) < len(use) and keep:
+        w2 = _attack(env, np.concatenate(keep), beat)
+        w = w2 if w2 is not None else w
+    return w
 
 
 def classify(r: dict) -> dict:
@@ -130,22 +162,38 @@ def classify(r: dict) -> dict:
     whole, secs, starts = r.get("whole_ms"), r.get("sections") or [], r.get("section_starts_ms") or []
     if whole is None:
         return out
-    ok = [(t, x) for t, x in zip(starts, secs) if x is not None and abs(x - whole) <= OUTLIER_MS]
+    read = [(t, x) for t, x in zip(starts, secs) if x is not None]
+    ok = [(t, x) for t, x in read if abs(x - whole) <= OUTLIER_MS]
+    # the drift test on every stretch read as well as on those near the whole reading: a big drift puts the first and
+    # last stretches more than OUTLIER_MS from the middle, which would leave too few to see it
+    for pts in (read, ok):
+        if len(pts) >= 3 and len(pts) * 2 > len(secs):
+            change = _drift(pts)
+            if change is not None:
+                out["state"], out["drift_ms"] = "drift", round(change, 1)  # steadily later or earlier: the BPM is off
+                return out
     if len(ok) < 3 or len(ok) * 2 <= len(secs):
         return out
-    t, x = np.array(ok).T
+    x = np.array([v for _t, v in ok])
     med = float(np.median(x))
-    fit = np.polyfit(t, x, 1)
-    change = fit[0] * (t[-1] - t[0]) if t[-1] > t[0] else 0.0
-    r2 = 1 - np.var(x - np.polyval(fit, t)) / max(np.var(x), 1e-9)
-    if abs(change) >= DRIFT_MS and r2 >= 0.7:
-        out["state"], out["drift_ms"] = "drift", round(float(change), 1)  # steadily later or earlier: the BPM is off
-    elif np.mean(np.abs(x - med) <= AGREE_MS) >= 2 / 3:
+    if np.mean(np.abs(x - med) <= AGREE_MS) >= 2 / 3:
         out["offset_ms"] = round(float(whole), 1)
         out["state"] = "off" if abs(whole) >= PROPOSE_MS else "on"
         good = [tt for tt, xx in ok if abs(xx - med) <= AGREE_MS]
+        out["agreeing"] = len(good)
         out["preview_ms"] = round(float(good[len(good) // 2]), 3)
     return out
+
+
+def _drift(pts: list) -> float | None:
+    """How much the offset changes from the first stretch to the last along a steady line fit, if it's a drift."""
+    t, x = np.array(pts, float).T
+    if t[-1] <= t[0]:
+        return None
+    fit = np.polyfit(t, x, 1)
+    change = float(fit[0] * (t[-1] - t[0]))
+    r2 = 1 - np.var(x - np.polyval(fit, t)) / max(np.var(x), 1e-9)
+    return change if abs(change) >= DRIFT_MS and r2 >= 0.7 else None
 
 
 # ----------------------------------------------------------------------------
@@ -177,7 +225,7 @@ def cached(p: Path, bpm: float, grid_ms: float, check_length: bool = True) -> di
         return None
     if check_length:
         length = analysis._audio_length(p)
-        if length is not None and abs(length - row[0]) > 0.25:
+        if length is not None and row[0] > 0 and abs(length - row[0]) > 0.25:  # 0: the length couldn't be read then
             return None  # different audio now
     return classify(json.loads(row[1]))
 
@@ -217,8 +265,20 @@ def check(nml: str | None = None, workers: int | None = None, rescan: bool = Fal
     from . import cues
 
     tracks = cues._one_path_each(cues.grids(nml))
-    todo = [(p, d["bpm"], d["grid_ms"], rescan) for p, d in tracks
-            if rescan or cached(Path(p), d["bpm"], d["grid_ms"]) is None]
+    con = _cache()  # one read of the stored lengths, not a connection and a classify() per track
+    try:
+        have = dict(con.execute("SELECT k, duration FROM gridcheck").fetchall()) if not rescan else {}
+    finally:
+        con.close()
+
+    def fresh(p, d) -> bool:
+        dur = have.get(_key(p, d["bpm"], d["grid_ms"]))
+        if dur is None:
+            return False
+        length = analysis._audio_length(Path(p))
+        return length is None or dur <= 0 or abs(length - dur) <= 0.25
+
+    todo = [(p, d["bpm"], d["grid_ms"], rescan) for p, d in tracks if rescan or not fresh(p, d)]
     errors = []
     if todo:
         workers = max(1, min(workers or max(1, min(6, (os.cpu_count() or 4) // 2)), len(todo)))

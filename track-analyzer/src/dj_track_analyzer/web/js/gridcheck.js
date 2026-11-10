@@ -34,18 +34,20 @@ async function gridClick(path, g, shift, btn) {
 }
 function renderGrid(g) {
   const ms = v => `${v > 0 ? "+" : ""}${(+v).toFixed(Math.abs(v) < 10 ? 1 : 0)} ms`;
-  const n = (g.sections || []).filter(x => x != null).length;
-  if (g.state === "unclear") return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
-  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
-  if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
+  const n = g.agreeing ?? (g.sections || []).filter(x => x != null).length;  // the stretches that agreed with the reading
+  const appr = g.approved != null;  // an approved fix stays visible (and can be taken back) whatever the check reads now
+  if (g.state === "unclear" && !appr) return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
+  if (g.state === "drift" && !appr) return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
+  if (g.state === "on" && !appr) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
     ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
     : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;
-  return `<div class="small"><span class="chip warn">${g.approved != null ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
-      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.
+  return `<div class="small"><span class="chip warn">${appr ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
+      ${g.offset_ms == null ? `The check now reads ${g.state === "drift" ? `a BPM drift (${ms(g.drift_ms)} from start to end)` : "no steady kick"} on this grid, so it can't confirm the approved move: check it by ear below, or take it back.`
+        : `The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.`}
       ${g.lead_in ? `That's the size of an MP3's lead-in (51.2 ms), what you get from a grid set on a stem file made without it, so the fix is set to exactly that.` : ""}</div>
     ${stemNote}
     <div class="filters small" style="margin-top:6px;align-items:center">
@@ -141,7 +143,8 @@ function gridWave(path, g, box, shift) {
     GRID_VIEW.beats = +b.dataset.gwbeats; box.querySelectorAll("[data-gwbeats]").forEach(o => o.classList.toggle("on", o === b)); fetchWave();
   }));
   box.querySelector("#gr-shift")?.addEventListener("input", draw);
-  new ResizeObserver(() => fetchWave()).observe(cv);
+  box._gwObs?.disconnect();  // the section is redrawn after approve / take back / write: drop the old canvas's watcher
+  box._gwObs = new ResizeObserver(() => fetchWave()); box._gwObs.observe(cv);
 }
 // Write every approved grid fix into the chosen DJ app (= `grids apply`): a preview first, then the write, then Undo.
 async function writeGrids(onDone) {
