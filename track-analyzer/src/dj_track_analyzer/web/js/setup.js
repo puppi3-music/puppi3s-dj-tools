@@ -14,7 +14,7 @@ async function refreshSetupNote() {
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
 let G_TRAKTOR = null;  // the Setup tab's Traktor choices for learning genres (/api/genres/traktor), read once per visit
-const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: null };  // lexicon: null until ticked/unticked here (then the tick follows Lexicon having the view)
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -130,7 +130,7 @@ async function pageSetup(main) {
   // Where the examples come from: a folder on disk, a Traktor playlist folder (a playlist per genre) or Traktor's Genre field
   const G_SRC = { folder: "A folder", folder_tags: "Genre tags in a folder", traktor_playlists: `${APP} playlists`, traktor_genres: `${APP}'s Genre field` };
   const lastSrc = GN.source_kind || {};
-  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || tk.collection) ? lastSrc.kind : "folder";
+  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || LIB) ? lastSrc.kind : "folder";
   if (!SF.gpl) SF.gpl = lastSrc.kind === "traktor_playlists" ? [...(lastSrc.playlists || [])] : [];
   if (!SF.ggenres) SF.ggenres = lastSrc.kind === "traktor_genres" ? [...lastSrc.genres] : [];
   const gSource = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Learn from:</span>
@@ -172,9 +172,9 @@ async function pageSetup(main) {
     `<label class="inline small">BPM <input type="number" id="su-bpm" value="${esc(bpm)}" min="60" max="250"></label>
      ${jb("su-tempo", haveView ? "Scan new tracks" : "Scan tempo view", !haveView && st.tools.rubberband && sc.tracks, (!st.tools.rubberband || !sc.tracks) && "disabled")}
      ${T.loaded ? `<button id="su-native">Switch ${APP} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
-     ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon || T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
+     ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon ?? T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
   const G = st.grids || {};
-  const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
+  const gridStep = !LIB ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
     `Optional: checks that ${APP}'s grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
      ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
     jb("su-grids", G.checked ? "Update beat-grids" : "Check the beat grids", !G.checked && !!sc.tracks,
@@ -192,7 +192,7 @@ async function pageSetup(main) {
       ${tool(9, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
     <div class="card"><h3>Into your files and ${APP}</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. ${APPLIB} is backed up before each write, and you can undo it.</div>
-      ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
+      ${untested && dj.app !== "rekordbox" ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
       <div id="app-open-warn" class="err" style="margin:8px 0" ${st.traktor_running ? "" : "hidden"}>${APP} is open. Previews work, but quit ${APP} before writing to it: it saves its collection when it quits and would undo the changes.</div>
       <div class="steps">
       ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in ${APP}: tick "only in ${APP}" in the next step instead.
@@ -225,7 +225,7 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { G_TRAKTOR = null; await loadLibs().catch(() => {}); route(); } }
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
@@ -238,12 +238,12 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { G_TRAKTOR = null; await loadLibs().catch(() => {}); route(); } }
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
   document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
-    try { await postJSON("/api/dj-app", { app: r.value }); await loadLibs(); route(); }
+    try { await postJSON("/api/dj-app", { app: r.value }); G_TRAKTOR = null; SF.gsrc = ""; await loadLibs(); route(); }
     catch (e) { const was = document.querySelector(`input[name="su-app"][value="${dj.app}"]`); if (was) was.checked = true;  // didn't change
       const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
   });
@@ -298,7 +298,7 @@ async function pageSetup(main) {
       else ticks(T.playlists.map(p => ({ key: p.path, label: p.path, tracks: p.tracks })), "gpl",
         "Tick at least two playlists: each one is a genre, named after the playlist (like <b>Hyperpop</b>). A track in two of them is left out.");
     } else if (T.tempo_view_loaded) {
-      box.innerHTML = `<div class="small"><b>A tempo view is loaded in ${DJ()}</b>, so its Genre field holds the view's genres. Switch ${DJ()} back to normal on the Tempo tab first.</div>`;
+      box.innerHTML = `<div class="small"><b>A tempo view is loaded in ${DJ()}</b>, so its Genre field holds the view's genres. Switch it back to normal first: <b>Switch ${DJ()} back…</b> under Tempo view, below.</div>`;
     } else if (!T.genres.length) {
       box.innerHTML = `<div class="small">No genres in ${DJ()}'s Genre field yet. ${again}</div>`;
     } else {
@@ -346,6 +346,11 @@ async function pageSetup(main) {
   on("su-grids", () => go("grids_check"));
   on("su-install-ffmpeg", () => go("install", { tool: "ffmpeg" }));
   on("su-install-rubberband", () => go("install", { tool: "rubberband" }));
+  $("#su-bpm")?.addEventListener("input", e => {  // the button follows the BPM typed: a new view or new tracks for a scanned one
+    const btn = $("#su-tempo"), have = T.views.includes(+e.target.value);
+    if (!btn || btn.disabled) return;
+    btn.textContent = have ? "Scan new tracks" : "Scan tempo view"; btn.classList.toggle("primary", !have);
+  });
   on("su-tempo", () => go("tempo_scan", { bpm: +($("#su-bpm").value || 145) }));
   const lex = () => !!$("#su-lexicon")?.checked;
   on("su-load", () => writeDialog("tempo_load", { bpm: +($("#su-bpm").value || 145), lexicon: lex() }));

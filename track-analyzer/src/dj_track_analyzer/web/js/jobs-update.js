@@ -47,7 +47,7 @@ async function startJob(action, options = {}, dry_run = false) {
 }
 const jobRunning = () => !!JOB.job?.running;
 async function jobEnded(j) {
-  S.tracks = {}; SETUP = null; LOGS = null;
+  S.tracks = {}; SETUP = null; LOGS = null; G_TRAKTOR = null;  // a sync or write changes the playlists and genres to learn from
   if (!j.dry_run) JOB.flash = j;
   try { await loadLibs(); } catch (e) {}
   await refreshSetupNote();
