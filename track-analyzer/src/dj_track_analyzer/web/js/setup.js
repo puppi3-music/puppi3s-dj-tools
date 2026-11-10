@@ -99,7 +99,8 @@ async function pageSetup(main) {
     : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
       ${sc.changed_since_scan ? ` <b>${plural(sc.changed_since_scan, "file")} changed on disk since the scan</b> (another tagger, ${APP} or a sync app): scan again so tags and ${APP} get their current results (quick: the analysis is cached).` : ""}
       Scan again after adding music: only new and changed files are analysed.`;
-  const scanState = !st.models.ready ? "blocked" : sc.tracks && !sc.traktor_not_scanned && !sc.changed_since_scan ? "done" : "todo";
+  const notScanned = dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned : 0;  // counted from Traktor's collection only
+  const scanState = !st.models.ready ? "blocked" : sc.tracks && !notScanned && !sc.changed_since_scan ? "done" : "todo";
   const scanStep = step(scanState, 3, sc.tracks ? "Your music, scanned" : "Scan your music", scanBody + (st.models.ready ? "" : " <b>Download the models first.</b>"),
     `${LIB ? jb("su-scan-tk", `Scan ${APPLIB}`, scanState === "todo", !st.models.ready && "disabled") : ""}
      <input type="text" id="su-folder" placeholder="or a folder: ~/Music/Tracks" value="${esc(SF.folder)}">${jb("su-scan-dir", "Scan folder", !LIB && scanState === "todo", !st.models.ready && "disabled")}`);
@@ -243,9 +244,10 @@ async function pageSetup(main) {
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
   document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
-    try { await postJSON("/api/dj-app", { app: r.value }); G_TRAKTOR = null; SF.gsrc = ""; await loadLibs(); route(); }
+    try { await postJSON("/api/dj-app", { app: r.value }); }
     catch (e) { const was = document.querySelector(`input[name="su-app"][value="${dj.app}"]`); if (was) was.checked = true;  // didn't change
-      const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+      const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; return; }
+    G_TRAKTOR = null; SF.gsrc = ""; await loadLibs().catch(() => {}); route();  // switched: redraw even if the library list didn't reload
   });
   on("su-rb-change", () => { $("#su-rb-pick").style.display = "contents"; $("#su-rb-change").style.display = "none"; ($("#su-rb-browse") || $("#su-rb-path")).focus(); });
   on("su-rb-browse", e => rbDb({ browse: true }, e.currentTarget));
@@ -258,7 +260,7 @@ async function pageSetup(main) {
   on("su-scan-tk", () => go("scan", { traktor: true }));
   on("su-scan-dir", () => SF.folder.trim() ? go("scan", { folders: [SF.folder.trim()] }) : $("#su-folder").focus());
   on("su-hype", () => go("hype"));
-  on("su-colours", () => go("colors_train"));
+  on("su-colours", () => go("colors_train", RETRAIN.colours.opts));  // also refreshes the tempo views' colours
   on("su-cues", () => go("cues_train"));
   on("su-cues-scan", () => go("cues_scan"));
   const gmsg = (text, bad) => { const m = $("#su-gmsg"); if (!m) return; m.hidden = !text; m.className = `small${bad ? " err" : ""}`; m.textContent = text || ""; };
@@ -276,10 +278,11 @@ async function pageSetup(main) {
       });
       return;
     }
+    const src = SF.gsrc;
     if (!G_TRAKTOR) {
       box.innerHTML = `<span class="small muted">Reading ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"}…</span>`;
       try { G_TRAKTOR = await api("genres/traktor"); } catch (err) { box.innerHTML = ""; gmsg(err.message, true); return; }
-      if (!document.contains(box)) return;
+      if (!document.contains(box) || SF.gsrc !== src) return;  // another source was picked meanwhile
     }
     const T = G_TRAKTOR, few = n => n < T.min_each ? ` <span class="dim">· under ${T.min_each}</span>` : "";
     const again = `<button id="su-greread" class="mini" title="Read ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"} again (after changing it in ${DJ()} and saving)">↻</button>`;
@@ -324,13 +327,16 @@ async function pageSetup(main) {
     catch (err) { btn.disabled = false; gmsg(err.message, true); }
   };
   // Starter switches straight back; Both / Mine only show what would change first, then switch on a click
+  let gAsked = null;  // the mode clicked last: an older preview answer doesn't draw
   document.querySelectorAll("#su-gmode button[data-gmode]").forEach(b => b.onclick = async () => {
     const mode = b.dataset.gmode, box = $("#su-gprev");
+    gAsked = mode;
     if (mode === GN.mode) { box.innerHTML = ""; return; }
     if (mode === "starter") return gSwitch("starter", b);
     b.disabled = true; gmsg(""); box.innerHTML = `<div class="small muted">Loading…</div>`;
     try {
       const p = await api(`genres/preview?mode=${mode}`);
+      if (gAsked !== mode || !document.contains(box)) return;
       const by = Object.entries(p.by_genre).map(([g, n]) => `${esc(g)} ${n}`).join(", ");
       const rest = mode === "both" ? "Every other track keeps its built-in genre"
         : "<b>Every track gets one of your genres</b>, also tracks that sound like none of them (best when your genres cover all your music)";
@@ -340,7 +346,7 @@ async function pageSetup(main) {
           </tbody></table></div>${p.changes > p.tracks.length ? `<div class="small muted">The first ${p.tracks.length} shown.</div>` : ""}` : ""}
         <div style="margin-top:8px"><button id="su-guse" class="primary" ${jobRunning() ? "disabled" : ""}>Switch to ${G_MODES[mode]}</button></div>`;
       $("#su-guse").onclick = ev => gSwitch(mode, ev.currentTarget);
-    } catch (err) { box.innerHTML = ""; gmsg(err.message, true); }
+    } catch (err) { if (gAsked === mode) { box.innerHTML = ""; gmsg(err.message, true); } }
     finally { if (document.contains(b)) b.disabled = false; }
   });
   on("su-grids", () => go("grids_check"));
@@ -371,6 +377,7 @@ async function pageSetup(main) {
   jobPanel();
 }
 // The running (or last) job on the Setup page: progress, live log, result.
+let STOP_ERR = null;  // why the last Stop failed: {id, text}, kept across the panel's redraws
 function jobPanel() {
   const box = $("#jobpanel"), j = JOB.job;
   if (!box || S.page !== "setup") return;
@@ -382,13 +389,15 @@ function jobPanel() {
     : `<div style="color:var(--good)"><b>✓ Finished</b> in ${mmss(j.elapsed)}.${j.result?.this_run ? ` Analysed ${plural(j.result.this_run.analyzed, "track")}${j.result.this_run.errors ? `, ${j.result.this_run.errors} errors` : ""}.` : ""}</div>
       ${j.result ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">Everything it reported</summary><div class="tree">${tree(j.result)}</div></details>` : ""}`;
   box.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="filters" style="margin-bottom:8px"><h3 style="margin:0">${esc(j.label)}${j.dry_run ? " (preview)" : ""}</h3><div class="spacer"></div>
-      ${j.running ? `<button id="jp-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>` : `<button id="jp-x">Hide</button>`}</div>
+      ${j.running ? `<button id="jp-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>${STOP_ERR?.id === j.id ? ` <span class="small err">${esc(STOP_ERR.text)}</span>` : ""}` : `<button id="jp-x">Hide</button>`}</div>
     <div class="mono small dim" style="margin-bottom:8px">${esc(j.command)}</div>${status}
     ${j.running ? `<div class="note">Stopping is safe: it keeps what's done and carries on next time. Closing this page doesn't stop it; stopping the web server does.</div>` : ""}
     <pre class="log">${esc(JOB.lines.slice(-400).join("\n")) || "…"}</pre></div>`;
   const p2 = box.querySelector("pre.log");
   p2.scrollTop = atEnd ? p2.scrollHeight : top;
-  $("#jp-stop")?.addEventListener("click", () => postJSON("/api/jobs/stop", {}).then(jobPoll));
+  $("#jp-stop")?.addEventListener("click", e => { const btn = e.currentTarget; btn.disabled = true;
+    STOP_ERR = null;
+    postJSON("/api/jobs/stop", {}).then(jobPoll, err => { STOP_ERR = { id: j.id, text: err.message }; jobPanel(); }); });
   $("#jp-x")?.addEventListener("click", () => { JOB.hidden = j.id; JOB.flash = null; jobPanel(); jobBar(); });
 }
 JOB.listeners.add(jobPanel);
