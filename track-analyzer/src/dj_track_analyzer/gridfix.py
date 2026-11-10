@@ -426,7 +426,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     from . import cues, library
 
     if library.app() == "rekordbox":
-        return _apply_rekordbox(dry_run)
+        return _apply_rekordbox(dry_run, nml)
 
     path = traktor.find_collection(nml)
     traktor.refuse_if_tempo_view(path)
@@ -469,7 +469,7 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
         stats["tracks"] += 1
         stats["cues_moved"] += moved
         examples.append(f"{name}: grid {shift:+.1f} ms" + (f", with {moved} cue{'s' if moved != 1 else ''}/loop{'s' if moved != 1 else ''}/marker{'s' if moved != 1 else ''}" if moved else ""))
-        new_grid = next(t for c, t in new if traktor.attrs(c.group(0)).get("TYPE") == "4")
+        new_grid = next(float(f"{t:.6f}") for c, t in new if traktor.attrs(c.group(0)).get("TYPE") == "4")  # as written
         done[p] = (shift, bpm, new_grid)
         stamp = next((s for s in map(traktor.file_stamp, traktor.location_paths(traktor.attrs(loc.group(0)))) if s), None)
         return traktor.set_entry_stamp(entry, stamp) if stamp else entry
@@ -487,14 +487,14 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
     return out
 
 
-def _apply_rekordbox(dry_run: bool) -> dict:
+def _apply_rekordbox(dry_run: bool, db: str | None = None) -> dict:
     """apply() for Rekordbox: the ANLZ grid and master.db cues moved (rekordbox.shift_grids), backup + undo."""
     from . import rekordbox
 
     todo = plans()
     if not todo:
         raise SystemExit("Nothing approved yet: approve grid fixes in the web page (uv run dj-track-analyzer web).")
-    out = rekordbox.shift_grids(todo, same, dry_run=dry_run)
+    out = rekordbox.shift_grids(todo, same, db, dry_run=dry_run)
     done = out.pop("done")
     if not dry_run and out.get("changed"):
         _after_write(out, todo, done)

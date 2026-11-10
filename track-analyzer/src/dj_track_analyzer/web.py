@@ -445,7 +445,7 @@ def rescan_track(path: str) -> dict:
     _grids["mtime"] = None  # re-read collection.nml
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     with library("native"):
         cues.forget_track(path)
         cues.bars(Path(path), d["bpm"], d["grid_ms"])
@@ -545,7 +545,7 @@ def slot_preview(path: str, plan: dict) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     _moves, adds, renum, skipped, _removes = cues.resolve(d["all_cues"], cues.clean_plan(plan), d["bpm"])
     return {"new": [{"ms": a["ms"], "slot": s} for a, s in adds],
             "moved_up": [{"was": r["hotcue"], "to": r["to"]} for r in renum], "skipped": skipped}
@@ -1181,7 +1181,7 @@ def approve_cues(path: str, plan: dict | None) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     out = cues.set_plan(path, d["bpm"], d["grid_ms"], plan)
     out["corrections"] = recount(path)
     return out
@@ -1198,7 +1198,7 @@ def grid_info(path: str) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     p = Path(path)
     r = gridfix.check_one(p, d["bpm"], d["grid_ms"])
     pl, ign = gridfix.plans().get(path), gridfix.ignored().get(path)
@@ -1223,7 +1223,7 @@ def approve_grid(path: str, shift_ms) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     gridfix.set_plan(path, d["bpm"], d["grid_ms"], None if shift_ms is None else float(shift_ms))
     if shift_ms is not None:
         gridfix.set_ignore(path, d["bpm"], d["grid_ms"], False)
@@ -1235,7 +1235,7 @@ def ignore_grid(path: str, on: bool) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     reading = gridfix.check_one(Path(path), d["bpm"], d["grid_ms"]) if on else None  # cached: the panel showed it
     gridfix.set_ignore(path, d["bpm"], d["grid_ms"], on, reading)
     if on:

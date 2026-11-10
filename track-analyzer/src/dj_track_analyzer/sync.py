@@ -1,7 +1,7 @@
 """Sync: everything the app has for your DJ app in one go, for the app chosen on the Setup tab (App → DJ app only).
 
 Steps, each through its own writer: tracks themselves (relink moved files, add analysed tracks the app lacks: trackfiles), genres + predicted colours + genre smart playlists (library.sync), hype in the
-Comment (library.write_hype), approved cues (cues.apply), approved grid fixes (gridfix.apply, Traktor only) and the
+Comment (library.write_hype), approved cues (cues.apply), approved grid fixes (gridfix.apply) and the
 warm-up/peak/closing crates (setplan.crates_to_traktor) and the loops saved as samples (_samples). Set playlists aren't rebuilt: each needs its own arc and
 name (`set --traktor`). A step with nothing to do is skipped with its reason. Every write makes its own backup;
 they're listed in data/sync-last.json so one undo puts back the library from before the whole sync.
@@ -47,8 +47,6 @@ def _cues(nml, dry_run):
 def _grids(nml, dry_run):
     from . import gridfix
 
-    if library.app() != "traktor":
-        raise SystemExit("Fixing grids is Traktor only.")
     return gridfix.apply(nml, dry_run=dry_run)
 
 
