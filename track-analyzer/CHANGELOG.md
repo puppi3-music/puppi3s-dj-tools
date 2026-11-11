@@ -13,6 +13,11 @@ module's builds, which installs download by themselves.
   closest one. On by default in **Analyse a mix…**; **Separate tracks without a stem file** (off, slow) measures
   the other tracks by stem too.
 
+**Fixed**
+- Mixes: a set's tracklist check finds Traktor's history when Traktor was closed on a later day (after midnight,
+  or days later). Traktor names the file by when it closed, and only the set's own day and the day before were
+  looked at, so such a set showed "No tracklist check". Analyse it again to get the full result.
+
 ## 1.2.4 (2026-11-11)
 
 **Changed**
