@@ -3,6 +3,29 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.2.3 (2026-11-11)
+
+**Fixed**
+- With Rekordbox chosen, the whole page now reads Rekordbox's master.db: Hype's stars, plays and colours, the
+  Overview's colours, the Tracks tab's colour guesses and cue corrections, and the Setup tab's scan count. These
+  were read from Traktor's collection, so they were empty without Traktor and out of date with it. Changes
+  Rekordbox hasn't saved into master.db yet are picked up too.
+- Beat grids: Sync writes approved grid fixes into Rekordbox too. The grid check reads tracks over 200 BPM right,
+  no longer hides a big BPM drift as unclear, and leaves out stretches with no kick. An approved fix stays visible
+  and can be taken back.
+- In Rekordbox mode, Save sample and Open folder on the Grid check tab use Rekordbox's sampler folder.
+- Copying from the other DJ app with nothing ticked no longer writes every step: Write it stays off until you tick
+  one.
+- A tab no longer draws over the one you clicked next when its data comes back late (Setup, Overview, Tracks,
+  Colours, Tempo, Files, Mixes, the track panel).
+- Mixes on Windows: a finished analysis opens its mix, and folder and file names show right.
+- The deck no longer sticks on "Starting…" when you switch tracks quickly, and Space after Play toggles once.
+- The track panel: a genre can be emptied, the BPM is checked, and Escape only closes an open panel.
+- Times show as 1:00, not 0:60. Tooltips stay on screen in narrow windows.
+- Messages and dialogs point to buttons on the page instead of terminal commands, and name the DJ app you chose.
+  On Windows they name the .bat launcher.
+- Library warnings go to logs/warnings.log instead of filling the terminal.
+
 ## 1.2.2 (2026-11-04)
 
 **Fixed**

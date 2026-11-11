@@ -142,7 +142,6 @@ const TOUCHES_TRAKTOR = new Set(["sync", "sync_undo", "copy", "copy_undo", "trak
 const NO_PREVIEW = new Set(["traktor_undo", "sync_undo", "copy_undo"]);
 const MULTI = new Set(["sync", "copy"]);  // several steps: the preview ticks which to write
 const ONE_UNDO = { sync_undo: "last sync (all of its steps at once)", copy_undo: "last copy from the other DJ app (all of its steps at once)" };
-const cmdNote = j => `<div class="note">Same as <span class="mono">${esc(j.command)}</span> in a terminal.</div>`;
 const OPEN_WARN = `<div class="warnbox"><b>Your DJ app is open.</b> Quit it first: it saves its library when it quits and would undo these changes. Then press Check again.</div>`;
 
 // Preview → write → undo for one of the CLI's writers, in a dialog.
@@ -173,14 +172,14 @@ async function writeDialog(action, options = {}, onDone) {
     }
     busy("Checking what would change…");
     const j = await run(act, opts, true);
-    if (j.error) return show(`<div class="err">${esc(forPage(j.error))}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Check again</button>`), again(act, opts);
+    if (j.error) return show(`<div class="err">${esc(forPage(j.error))}</div>`, `<button data-again>Check again</button>`), again(act, opts);
     const open = j.traktor_running && TOUCHES_TRAKTOR.has(act), nothing = nothingToDo(j.result);
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
       ${MULTI.has(act) && !nothing ? syncSteps(j.result, st, act === "copy") : resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
       ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${(act === "tempo_native" && st?.tempo?.loaded_app ? st.tempo.loaded_app === "Rekordbox" : st?.dj_app?.app === "rekordbox") ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
-        : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
+        : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
     again(act, opts);
     const go = dlg.querySelector("[data-go]");
@@ -201,7 +200,7 @@ async function writeDialog(action, options = {}, onDone) {
     // An undo refused because Traktor saved the collection since: offer to restore anyway, losing what it saved
     const forceable = (act === "traktor_undo" || act in ONE_UNDO) && !opts.force && /--force/.test(j.error || "");
     if (j.error) {
-      show(`<div class="err">${esc(forPage(j.error))}</div>${j.command ? cmdNote(j) : ""}`,
+      show(`<div class="err">${esc(forPage(j.error))}</div>`,
         `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
       dlg.querySelector("[data-force]")?.addEventListener("click", () => {
         if (confirm(`Put the backup back anyway?\n\nEverything ${DJ()} saved since the analyzer's change is lost: plays, cue points, new tracks, your own edits.`)) write(act, { ...opts, force: true });
@@ -212,7 +211,7 @@ async function writeDialog(action, options = {}, onDone) {
     if (r.restart) return restartApp((html, buttons) => show(html, buttons), r);
     show(`<div style="color:var(--good)"><b>✓ Done.</b></div>${resultSummary(r)}
       ${r.backup ? `<div class="note">Backup: <span class="mono">${esc(r.backup)}</span>${undo === "traktor_undo" || undo in ONE_UNDO ? (DJ() === "Rekordbox" ? "<br>Undo works until Rekordbox changes master.db again." : "<br>Undo works until Traktor saves its collection again (it does when it quits).") : ""}</div>` : ""}
-      ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}${cmdNote(j)}`,
+      ${r.restored_from ? `<div class="note">Restored from <span class="mono">${esc(r.restored_from)}</span>.</div>` : ""}`,
       undo ? `<button data-undo>${esc(label(undo))}…</button>` : "");
     dlg.querySelector("[data-undo]")?.addEventListener("click", () => preview(undo, opts));
     onDone?.(j);
