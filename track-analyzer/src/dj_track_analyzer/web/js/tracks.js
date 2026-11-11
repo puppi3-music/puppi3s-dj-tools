@@ -167,9 +167,10 @@ function markOpen(path) {
 // a dialog or menu open over the panel takes the keys (Escape closes just that)
 const overlayOpen = () => !!document.querySelector("dialog[open], .usemenu");
 addEventListener("keydown", e => {
-  if (e.key !== "Escape" || overlayOpen()) return;
+  if (e.key !== "Escape" || overlayOpen() || !$("#drawer").classList.contains("open")) return;
   const f = e.target.closest?.("input, textarea, select, [contenteditable]");
   if (f && f.closest("#drawer")) { f.blur(); return; }  // typing in the panel: Escape leaves the field, the edit stays
+  if (f) return;  // Escape in a field outside the panel (the search box) is that field's
   closeDrawer();
 });
 addEventListener("pointerdown", e => {  // a click outside the panel closes it; a track row opens that track instead
