@@ -3,7 +3,7 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
-## Unreleased
+## 1.2.4 (2026-11-11)
 
 **Changed**
 - Getting ready for the project's new name on GitHub (puppi3s-track-analyzer): the update check asks the old name
