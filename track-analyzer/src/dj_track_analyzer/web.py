@@ -850,13 +850,17 @@ def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm:
     return out.stdout
 
 
-LOOPS_FOLDER = "Track Analyzer loops"  # made inside Traktor's sample folder on the first save there
+LOOPS_FOLDER = "Track Analyzer loops"  # made inside the DJ app's sample folder on the first save there
 
 
 def sample_root() -> Path:
-    """Traktor's sample folder (Preferences → File Management; Browser.Dir.Loops in Traktor Settings.tsi)."""
-    from . import traktor
+    """The DJ app's sample folder: Rekordbox's sampler folder, or Traktor's (Preferences → File Management;
+    Browser.Dir.Loops in Traktor Settings.tsi). Sync everything leaves loops already in Rekordbox's folder in place."""
+    from . import library, traktor
 
+    if library.app() == "rekordbox":
+        from . import rekordbox
+        return rekordbox.SAMPLER
     try:
         v = traktor.setting(traktor_nml(), "Browser.Dir.Loops")
         p = traktor.mac_path(v) if v else None
@@ -868,8 +872,10 @@ def sample_root() -> Path:
 def sample_folders() -> dict:
     root = sample_root()
     folders = sorted(d.name for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")) if root.is_dir() else []
+    from . import library
+
     return {"root": str(root), "folders": sorted(set(folders) | {LOOPS_FOLDER}), "default": LOOPS_FOLDER,
-            "file_manager": FILE_MANAGER}
+            "file_manager": FILE_MANAGER, "app": library.app()}
 
 
 FILE_MANAGER = {"darwin": "Finder", "win32": "Explorer"}.get(sys.platform, "file manager")
@@ -936,7 +942,8 @@ def can_browse() -> bool:
 
 
 def _pick_start() -> Path | None:
-    """Where the dialog opens: the current collection's folder, else the first Native Instruments (or Documents) folder."""
+    """Where the dialog opens: the current collection's folder, else the first Native Instruments (or Documents) folder.
+    Always Traktor's: this is the dialog for collection.nml (Rekordbox's master.db passes its own start)."""
     try:
         return traktor.find_collection(None).parent
     except SystemExit:
@@ -1055,7 +1062,7 @@ def set_rekordbox_database(b: dict) -> dict:
 
 
 def reveal_sample(file: str | None = None, folder: str | None = None) -> dict:
-    """Show a saved sample (or a sample folder) in the file manager. Only inside Traktor's sample folder."""
+    """Show a saved sample (or a sample folder) in the file manager. Only inside the DJ app's sample folder."""
     root = sample_root().resolve()
     if file:
         p = Path(file).resolve()
@@ -1140,7 +1147,7 @@ def saved_samples(path: str) -> list[dict]:
 
 
 def save_loop(path: str, start: float, length: float, folder: str, bar: int, kind: str, smooth: bool = False) -> dict:
-    """Save a loop as a WAV sample in Traktor's sample folder: the exact samples (cut by ffmpeg, as for playing),
+    """Save a loop as a WAV sample in the DJ app's sample folder: the exact samples (cut by ffmpeg, as for playing),
     at the source's sample rate; smooth = the loop point crossfaded (`_render_loop`). A loop already saved (same file,
     start, length and smoothing, in any sample folder) isn't saved again. Never overwrites: a name that exists gets (2)…"""
     import sqlite3

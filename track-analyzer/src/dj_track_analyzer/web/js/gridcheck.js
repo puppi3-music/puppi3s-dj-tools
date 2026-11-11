@@ -928,7 +928,7 @@ function bindApprove(c, box, t) {
   box.querySelector("#ap-all")?.addEventListener("click", () => box.querySelectorAll('#approve input[data-key^="a"]:not(:disabled):not([data-more])').forEach(i => { i.checked = true; }) || showSlots());
   const sel = box.querySelector("#smp-folder");
   if (sel) {
-    (S.sampleFolders ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
+    (S.sampleFolders && S.sampleFolders.app === S.libs?.app ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
       let last = null; try { last = localStorage.getItem("ta-sample-folder"); } catch (e) {}
       sel.innerHTML = f.folders.map(n => `<option ${n === (f.folders.includes(last) ? last : f.default) ? "selected" : ""}>${esc(n)}</option>`).join("");
       sel.title = f.root;
@@ -942,7 +942,7 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === b.dataset.save), out = box.querySelector(`[data-saved="${CSS.escape(b.dataset.save)}"]`);
     b.disabled = true; out.textContent = " saving…";
     try {
-      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value, bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
+      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value || S.sampleFolders?.default || "Track Analyzer loops", bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
       out.innerHTML = ` ✓ ${d.already ? "already saved in" : "saved to"} ${esc(d.folder)} ${showBtn(d.saved, c.file_manager)}`;
       b.remove();
     } catch (err) { out.style.color = "var(--bad)"; out.textContent = ` ${err.message}`; }
