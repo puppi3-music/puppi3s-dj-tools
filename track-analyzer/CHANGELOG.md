@@ -3,6 +3,13 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**Fixed**
+- Mixes: a set's tracklist check finds Traktor's history when Traktor was closed on a later day (after midnight,
+  or days later). Traktor names the file by when it closed, and only the set's own day and the day before were
+  looked at, so such a set showed "No tracklist check". Analyse it again to get the full result.
+
 ## 1.2.4 (2026-11-11)
 
 **Changed**
