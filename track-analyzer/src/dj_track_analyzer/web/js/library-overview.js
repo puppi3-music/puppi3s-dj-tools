@@ -31,11 +31,15 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
 }
 document.addEventListener("visibilitychange", () => {  // `tempo load` / `native` may have run in a terminal meanwhile
-  if (!document.hidden && S.libs && !SNAP) loadLibs().catch(() => {});
+  if (!document.hidden && S.libs && !SNAP) loadLibs().then(() => { if (S.page === "overview") route(); }, () => {});  // its Tempo views card too
 });
 async function getTracks(lib = S.lib) {
   if (!S.tracks[lib]) {
-    const d = await api("tracks", { lib });
+    S.tracksLoading ||= {};  // one request per library at a time: a second caller waits for it, no second retry timer
+    if (S.tracksLoading[lib]) { await S.tracksLoading[lib]; return S.tracks[lib] || getTracks(lib); }
+    const req = S.tracksLoading[lib] = api("tracks", { lib });
+    let d;
+    try { d = await req; } finally { delete S.tracksLoading[lib]; }
     S.tracks[lib] = d.tracks;
     S.fixesPending = !!d.corrections_pending;
     navCounts();
