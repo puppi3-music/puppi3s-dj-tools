@@ -274,15 +274,18 @@ _guesses: dict = {"key": None, "data": {}}
 
 
 def colour_guesses() -> set[str]:
-    """Tracks whose colour the app guessed into Traktor and nobody has checked (collection.unchecked_guesses),
-    read again when collection.nml or the database changes. Empty while a tempo view is loaded (not your colours)."""
+    """Tracks whose colour the app guessed into the DJ app and nobody has checked (collection.unchecked_guesses),
+    read again when its library file (collection.nml or Rekordbox's master.db) or the database changes.
+    Empty while a tempo view is loaded (not your colours)."""
     from . import colors
+    from . import library as dj_app
 
     try:
-        nml = traktor_nml()
-        key = (nml.stat().st_mtime, collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
+        app, f = dj_app.app(), dj_app.find_collection(None)
+        key = (app, str(f), f.stat().st_mtime_ns, collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
         if _guesses["key"] != key:
-            _guesses.update(key=key, data=set(collection.unchecked_guesses(colors.read_traktor_colors(str(nml))[1])))
+            colours_now = colors.read_traktor_colors(None if app == "rekordbox" else str(f))[1]
+            _guesses.update(key=key, data=set(collection.unchecked_guesses(colours_now)))
     except (SystemExit, OSError):
         return set()
     return _guesses["data"]
@@ -340,12 +343,14 @@ def _save_fixes():
 
 def correction_counts() -> dict[str, int] | None:
     """{path: proposed corrections of your cues}, worked out in the background (≈30 s for 470 tracks) and again
-    only for tracks whose grid or cues changed in Traktor's collection (all of them when the cue model changes).
+    only for tracks whose grid or cues changed in the DJ app's collection (all of them when the cue model changes).
     None while counting."""
     from . import cues
+    from . import library as dj_app
 
-    try:
-        key = (cues.MODEL.stat().st_mtime, traktor_nml().stat().st_mtime)
+    try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
+        f = dj_app.find_collection(None)
+        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), f.stat().st_mtime_ns)
         g = cue_grids()
     except (OSError, SystemExit):
         return {}
