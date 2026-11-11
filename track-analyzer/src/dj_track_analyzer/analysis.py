@@ -1765,7 +1765,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         from . import standalone as sa
 
         result["standalone"] = sa.find(result, mono44, separate_missing=standalone_separate, say=say)
-        if result["standalone"]["picks"]:  # SoundCloud timestamps for the full set the pieces link to
+        if result["standalone"]["picks"] or result["standalone"]["shorts"]:  # SoundCloud timestamps for the full set the pieces link to
             from . import tracklist as tl
 
             result["standalone"]["timestamps"] = tl.chapters(result, 0)

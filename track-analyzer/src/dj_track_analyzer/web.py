@@ -1564,6 +1564,65 @@ def mix_audio(dirs: list[Path], ident: str) -> Path:
     return p
 
 
+def piece_bounds(c: dict, lead: int = 0, tail: int = 0) -> tuple[float, float, float]:
+    """(start, end, bar length) in mix seconds of a standalone piece: the measured run, `lead` bars earlier and `tail`
+    bars later (negative shortens it). The run's first bar is the measured bar nearest its clock time, as the page finds it."""
+    bars, run = c.get("bars") or [], c.get("run") or {}
+    n = int(run.get("bars") or 0)
+    if not n or len(bars) < 2:
+        raise ValueError("this change has no run to export")
+    t = sum(float(x) * 60 ** k for k, x in enumerate(reversed(str(run["from"]).split(":"))))
+    i0 = min(range(len(bars)), key=lambda i: abs(bars[i][0] - t))
+    L = c.get("bar") or (bars[-1][0] - bars[0][0]) / (len(bars) - 1)
+    if n + lead + tail < 8:
+        raise ValueError("a piece needs at least 8 bars")
+    return max(0.0, bars[i0][0] - lead * L), bars[i0][0] + (n + tail) * L, L
+
+
+def _piece_dir(rec: Path) -> Path:
+    return rec.parent / f"{rec.stem} pieces"
+
+
+def export_piece(dirs: list[Path], ident: str, at: str, lead: int = 0, tail: int = 0, fade: bool = True,
+                 title: str = "", credits: str = "") -> dict:
+    """Cut one standalone piece out of the mix recording as a WAV in '<recording> pieces/' beside it, with the
+    title, artist and credits as tags. Fades: 1 bar in, 2 bars out. Exporting the same title again replaces the file."""
+    import subprocess
+
+    rec = mix_audio(dirs, ident)
+    sa = (_json_in(_saved_path(dirs, ident)) or {}).get("standalone") or {}
+    c = next((x for x in sa.get("changes") or [] if x.get("at") == at), None)
+    if not c:
+        raise ValueError("no such piece in this analysis")
+    start, end, L = piece_bounds(c, int(lead), int(tail))
+    dur = end - start
+    title = " ".join(str(title).split())[:200] or f"{rec.stem} {at}"
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", title).strip(" .") or "piece"
+    out = _piece_dir(rec) / f"{name}.wav"
+    out.parent.mkdir(exist_ok=True)
+    af = ["-af", f"afade=t=in:st=0:d={L:.3f},afade=t=out:st={max(0.0, dur - 2 * L):.3f}:d={2 * L:.3f}"] if fade else []
+    meta = [x for k, v in (("title", title), ("comment", str(credits)[:4000])) if v
+            for x in ("-metadata", f"{k}={v}")]
+    res = subprocess.run([_ffmpeg(), "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{dur:.3f}", "-i", str(rec),
+                          "-map", "0:a:0", *af, "-c:a", _wav_codec(rec), *meta, str(out)], capture_output=True, timeout=600)
+    if res.returncode or not out.is_file():
+        raise ValueError(f"ffmpeg couldn't write the piece: {res.stderr.decode(errors='replace')[:200]}")
+    from .standalone import clock
+
+    return {"saved": str(out), "folder": str(out.parent), "from": clock(start), "to": clock(end),
+            "bars": round(dur / L), "file_manager": FILE_MANAGER}
+
+
+def reveal_piece(dirs: list[Path], ident: str, file: str) -> dict:
+    """Show an exported piece in the file manager: only a file in that mix's pieces folder."""
+    folder = _piece_dir(mix_audio(dirs, ident)).resolve()
+    p = (folder / Path(str(file)).name).resolve()
+    if p.parent != folder or not p.is_file():
+        raise ValueError("that piece isn't exported (any more)")
+    _show(p, select=True)
+    return {"shown": str(p)}
+
+
 def played_tracks(tracks: list[dict]) -> dict:
     """{track number: {hype, colour, guessed}} for a mix's tracklist from the native library, as the timeline draws the
     set: by path (saved since 2026-10-31), else artist + title. Colour = yours in Traktor, else the model's guess."""
@@ -1836,6 +1895,10 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/wave", respond(lambda q: wave_detail(q["path"], num(q, "t0"), num(q, "t1"), int(num(q, "n", 1000))))),
         Route("/api/audio", audio),
         Route("/api/mix-audio", mix_audio_endpoint),
+        Route("/api/standalone/export", post(lambda b: export_piece(
+            log_dirs, str(b["id"]), str(b["at"]), int(b.get("lead") or 0), int(b.get("tail") or 0), bool(b.get("fade", True)),
+            str(b.get("title") or ""), str(b.get("credits") or ""))), methods=["POST"]),
+        Route("/api/standalone/reveal", post(lambda b: reveal_piece(log_dirs, str(b["id"]), str(b["file"]))), methods=["POST"]),
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),

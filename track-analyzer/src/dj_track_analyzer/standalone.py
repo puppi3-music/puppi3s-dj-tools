@@ -5,13 +5,15 @@ change is unmixed into the two originals (non-negative least squares on a band s
 file is unmixed per stem, so a live stem cut or bass swap doesn't read as a fade: it plays in a bar when any of
 its stems is near that stem's own level. A track without one is fit whole (or, as an option, separated by Demucs
 over the stretch where it plays). A change qualifies when both tracks stay near their own level for a long run
-of bars. These are recommendations with a fixed
+of bars: 2:30 of run makes a track candidate, 64 bars (with phrase padding) a short edit. These are recommendations with a fixed
 bar, never a quota: no qualifying change is a valid answer, and then the closest miss is shown.
 """
 
 from __future__ import annotations
 
+import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -24,8 +26,11 @@ FPS = SR / HOP
 EDGES = np.geomspace(40, 16000, 97)  # 96 log bands
 
 NEAR_DB = 12.0  # both tracks within this of their solo level ...
-MIN_BARS = 32  # ... for at least this many bars in a row ...
+MIN_SECONDS = 150.0  # ... for this long (the run itself, not phrase padding): long enough to release as a track ...
+MIN_BARS = 64  # ... or, as a short edit (a moment from the set), this many bars once widened to whole phrases
 GAP = 1  # ... where a run may hold single off bars (a fill, a filter sweep, a misfit)
+PHRASE = 16  # a piece is widened to whole phrases of this many bars of the incoming track's grid
+CONTEXT = 16  # bars measured after a run ends, so the page's strip shows how it ends
 PROBE = 24.0  # seconds of the mix matched against the original at each lineup point
 AGREE = 1.0  # lineup points must agree on the original's position to this many seconds ...
 AGREE_SHARE = 0.6  # ... this share of them
@@ -125,6 +130,7 @@ class Mix:
                 best = {"score": score, "speed": float(s), "offset": float(np.median(offs[good])) if good.any() else med,
                         "agree": float(good.mean()), "span": span, "S": S}
         need_span = min(0.5 * (b - a - PROBE), 60.0)
+        best["need_span"] = need_span
         best["ok"] = best["agree"] >= AGREE_SHARE and best["span"] >= need_span
         return best
 
@@ -190,7 +196,7 @@ def _date(report: dict) -> str:
 def piece(A: dict, B: dict, run: dict, report: dict, name: str = NAMES[0], link: str = "<link>") -> dict:
     """Title, one-line Why and credits for one change."""
     title = f"{(A.get('artist') or '?').strip()} vs {(B.get('artist') or '?').strip()} – " \
-            f"{_plain(A.get('title'))} x {_plain(B.get('title'))} (puppi3 {name})"
+            f"{_plain(A.get('title'))} x {_plain(B.get('title'))} ({name})"
     why = f"{run['bars']} bars ({run['from']}–{run['to']}) with both tracks near full level"
     if B.get("transition") == "clash":
         why += f"; keys clash ({A.get('heard_camelot') or A.get('camelot')} into " \
@@ -257,12 +263,14 @@ HOW = {"stems": "its stem file", "separated": "stems separated here", "whole": "
 
 
 def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=None, separate_missing: bool = False,
-         say=print) -> dict | None:
+         grid=None, say=print, workers: int | None = None) -> dict | None:
     """Standalone pieces of a mix whose tracklist has been checked (`result["tracklist"]`).
     load(path) -> mono 44.1 kHz audio of an original (default: decoded like any track).
     load_stems(path) -> its 4 stems from a stem file, or None (default: the Traktor/NUO stem file, by tags).
     split(path, t0, t1) -> 4 stems of the original's seconds t0..t1 (default: Demucs), used only for a track
-    without a stem file and only when separate_missing is on."""
+    without a stem file and only when separate_missing is on.
+    grid(path) -> (bpm, first downbeat ms) of the original's beat grid in the DJ app, or None (default: the DJ app's
+    grids). The bars are counted on the incoming track's grid, so a piece starts and ends on its downbeats."""
     report = result.get("tracklist")
     if not report or len(report.get("tracks", [])) < 2:
         return None
@@ -281,15 +289,46 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             return decode_stems(f) if f else None
     if split is None:
         split = separate
+    if grid is None:
+        grids: dict = {}
+
+        def grid(path):
+            if not grids:
+                try:
+                    from .cues import grids as read
+
+                    grids.update(read() or {"": None})
+                except (Exception, SystemExit) as err:  # no DJ app collection: bars counted from the change instead
+                    say(f"standalone pieces: no beat grids ({err}); bars won't sit on the downbeats")
+                    grids[""] = None
+            d = grids.get(str(path))
+            return (d["bpm"], d["grid_ms"]) if d and d.get("grid_ms") is not None and d.get("bpm") else None
     if separate_missing:
         from .cues import parts_available
 
         separate_missing = split is not separate or parts_available()
 
-    say("standalone pieces: lining up the original files")
-    mix = Mix(mono44)
     tracks = report["tracks"]
+    say(f"standalone pieces: reading the mix, then lining up {len(tracks)} original files")
+    mix = Mix(mono44)
     placed: dict[int, dict] = {}
+
+    # The originals and their stem files are read and turned into bands in parallel threads (decoding and the FFTs
+    # release the GIL); the same functions on the same input, so the result is the same as reading them in turn.
+    def _orig(path):
+        return bands(load(path))[:, mix.keep]
+
+    def _stems(path):
+        stems = load_stems(path)
+        return None if stems is None else [bands(x)[:, mix.keep] for x in stems]
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    readers = ThreadPoolExecutor(max(1, min(5, (os.cpu_count() or 4) // 2)))  # as AudioPool / `scan`
+    ahead: dict[int, tuple] = {}
+    for i, t in enumerate(tracks):
+        if t.get("path") and Path(t["path"]).exists() and t.get("bpm") and t.get("judged_on"):
+            ahead[i] = (readers.submit(_orig, t["path"]), readers.submit(_stems, t["path"]))
 
     def bar(t: dict) -> float:
         return 240 / (t.get("played_bpm") or 140)
@@ -304,7 +343,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         if i > 0 and tracks[i - 1].get("judged_on"):
             lo = min(lo, win(tracks[i - 1])[0] + SOLO)
         if i + 1 < len(tracks) and tracks[i + 1].get("judged_on"):
-            hi = max(hi, win(tracks[i + 1])[0] + SOLO)
+            hi = max(hi, win(tracks[i + 1])[1])  # a blend may run on into the next track's window
         return lo, hi
 
     def reference(p: dict, t: dict) -> list[float]:
@@ -325,26 +364,42 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             ref.append(float(np.median(G[on, j])) if on.any() else 0.0)
         return ref
 
+    import threading
+
+    locks = {t["n"]: threading.Lock() for t in tracks}
+    split_lock = threading.Lock()  # Demucs already uses every core: one separation at a time
+
     def place(i: int) -> dict:
+        """Track i lined up, once: two changes share each track, the second waits for the first."""
+        with locks[tracks[i]["n"]]:
+            if tracks[i]["n"] not in placed:
+                placed[tracks[i]["n"]] = _place(i)
+            return placed[tracks[i]["n"]]
+
+    def _place(i: int) -> dict:
         t = tracks[i]
-        if t["n"] in placed:
-            return placed[t["n"]]
         p = {"ok": False}
         path = t.get("path")
+        t0 = time.monotonic()
+        name = f"track {i + 1}/{len(tracks)} {_plain(t.get('title'))}"
+        say(f"standalone pieces: {name}: reading and lining up the original")
         if not path or not Path(path).exists():
             p["why"] = "file not found"
         elif not t.get("bpm") or not t.get("judged_on"):
             p["why"] = "no BPM or judged-on window"
         else:
             try:
-                O = bands(load(path))[:, mix.keep]
+                O = ahead[i][0].result()
             except Exception as err:  # an unreadable original only costs that change
                 O, p["why"] = None, f"couldn't read the file ({err})"
             if O is not None:
                 window = win(t)
                 p = mix.line_up(O, t["bpm"], t.get("played_bpm") or t["bpm"], window)
                 if not p["ok"]:
-                    p["why"] = f"the file doesn't match what was played (only {p['agree']:.0%} of lineup points agree)"
+                    p["why"] = (f"the file doesn't match what was played (only {p['agree']:.0%} of lineup points agree)"
+                                if p["agree"] < AGREE_SHARE else
+                                f"couldn't confirm the speed (the agreeing lineup points cover {p['span']:.0f} s, "
+                                f"{p['need_span']:.0f} s needed)")
                 else:
                     p["solo"] = mix.gains(window[0], window[0] + SOLO, [(p["S"], p["offset"])])[0]
                     if p["solo"] <= 0:
@@ -353,27 +408,35 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
                 p["how"], p["parts"] = "whole", [p["S"]]
                 stems = None
                 try:
-                    stems = load_stems(path)
+                    stems = ahead[i][1].result()  # bands of each stem, not yet stretched
                     how = "stems"
                     if stems is None and separate_missing:
                         lo, hi = span(i)
                         o0, o1 = max(0.0, (lo + p["offset"]) * p["speed"]), (hi + p["offset"]) * p["speed"]
-                        say(f"standalone pieces: separating {_plain(t.get('title'))} ({clock(o1 - o0)})")
-                        stems = [np.concatenate([np.zeros(int(o0 * SR), np.float32), np.asarray(x, np.float32)])
-                                 for x in split(path, o0, o1)]
+                        say(f"standalone pieces: {name}: no stem file, separating {clock(o1 - o0)} of it (slow)")
+                        with split_lock:
+                            cut = split(path, o0, o1)
+                        stems = [bands(np.concatenate([np.zeros(int(o0 * SR), np.float32), np.asarray(x, np.float32)]))
+                                 [:, mix.keep] for x in cut]
                         how = "separated"
                 except Exception as err:  # no stems: the whole-track fit still measures it
-                    say(f"standalone pieces: no stems for {_plain(t.get('title'))} ({err})")
+                    say(f"standalone pieces: {name}: no stems ({err})")
                     stems = None
                 if stems:
-                    p["parts"] = [_stretch(bands(x)[:, mix.keep], p["speed"]) for x in stems]
+                    say(f"standalone pieces: {name}: measuring the own level of each of its {len(stems)} stems")
+                    p["parts"] = [_stretch(x, p["speed"]) for x in stems]
                     p["how"] = how
                     p["ref"] = reference(p, t)
                     if not any(r > 0 for r in p["ref"]):
                         p["how"], p["parts"] = "whole", [p["S"]]
                 if p["how"] == "whole":
                     p["ref"] = [p["solo"]]
-        placed[t["n"]] = p
+        took = f"{time.monotonic() - t0:.0f} s"
+        if p["ok"]:
+            say(f"standalone pieces: {name}: lined up at {p['speed']:.3f}x, {p['agree']:.0%} of points agree, "
+                f"measured with {HOW[p['how']]} ({took})")
+        else:
+            say(f"standalone pieces: {name}: skipped, {p['why']} ({took})")
         return p
 
     def fit(x0: float, x1: float, ps: list[dict]) -> tuple[np.ndarray, list[float]]:
@@ -404,48 +467,98 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
                if r > 0 and (len(lv) == 1 or l >= 0.05 * top)]
         return round(min(dbs, key=abs), 1) if dbs else None
 
-    changes = []
-    for i in range(len(tracks) - 1):
+    def change(i: int) -> dict:
+        t_start = time.monotonic()
         A, B = tracks[i], tracks[i + 1]
         c = {"from": A["n"], "to": B["n"], "at": B["start"]}
         pa, pb = place(i), place(i + 1)
         if not (pa["ok"] and pb["ok"]):
             bad = [(t, p) for t, p in ((A, pa), (B, pb)) if not p["ok"]]
             c["status"] = "couldn't measure: " + "; ".join(f"{_plain(t.get('title'))}: {p['why']}" for t, p in bad)
-            changes.append(c)
-            continue
+            return c
         lo, hi = win(A)[0] + SOLO, win(B)[0] + SOLO
+        # measured on until B's window ends, as long as the run lasts (then CONTEXT bars more); once A's original
+        # has run out it counts as silent, so the page's strip shows the run end instead of stopping at it
+        a_end = len(pa["S"]) / FPS - pa["offset"]
+        # no cap at B's window end: a run still going there was cut off at the strip's edge
+        limit = min(len(pb["S"]) / FPS - pb["offset"], len(mix.M) / FPS)
         L = 240 / (B.get("played_bpm") or A.get("played_bpm") or 140)
-        starts = np.arange(lo, hi - L, L)
+        gb, phase = grid(B["path"]), None
+        if gb:  # bars on B's downbeats: original seconds o play at mix seconds o / speed - offset
+            L = 240 / (gb[0] * pb["speed"])
+            phase = gb[1] / 1000 / pb["speed"] - pb["offset"]
+            lo = phase + np.ceil((lo - phase) / L) * L
+        say(f"standalone pieces: change {i + 1}/{len(tracks) - 1} at {B['start']}: measuring "
+            f"{max(0, int((hi - lo) / L))} bars"
+            f"{'' if gb else ' (no beat grid for ' + _plain(B.get('title')) + ')'}")
         na = len(pa["parts"])
-        levels = []
-        for x in starts:
-            g, lv = fit(x, x + L, [pa, pb])
-            levels.append((round(float(x), 1), level(pa, g[:na], lv[:na]), level(pb, g[na:], lv[na:])))
-        near = [da is not None and db is not None and abs(da) <= NEAR_DB and abs(db) <= NEAR_DB
-                for _x, da, db in levels]
+        levels, near, after = [], [], 0
+
+        def is_near(da, db):
+            return da is not None and db is not None and abs(da) <= NEAR_DB and abs(db) <= NEAR_DB
+
+        x = lo
+        while x + L <= limit:
+            if x + L > hi:  # past the usual end: on while the run lasts, then CONTEXT bars more
+                alive = any(near[-(GAP + 1):]) and after == 0
+                after = 0 if alive else after + 1
+                if after > CONTEXT:
+                    break
+            if x + L > a_end:  # A's original is over: only B sounds
+                g, lv = fit(x, x + L, [pb])
+                levels.append((round(float(x), 2), None, level(pb, g, lv)))
+            else:
+                g, lv = fit(x, x + L, [pa, pb])
+                levels.append((round(float(x), 2), level(pa, g[:na], lv[:na]), level(pb, g[na:], lv[na:])))
+            near.append(is_near(*levels[-1][1:]))
+            x += L
         c["bars"] = levels  # [mix seconds, A dB, B dB] vs each track's own level (None: no part sounds)
+        c["bar"] = round(L, 4)  # bar length in mix seconds
         c["measured_with"] = {"from": pa["how"], "to": pb["how"]}
         i0, n = _longest(near)
         c["status"] = "measured"
-        c["run"] = {"bars": n, "from": clock(starts[i0]) if n else "", "to": clock(starts[i0] + n * L) if n else ""}
-        c["qualifies"] = n >= MIN_BARS
+        t0 = levels[i0][0] if n else 0.0
+        c["run"] = {"bars": n, "from": clock(t0) if n else "", "to": clock(t0 + n * L) if n else ""}
+        if n and gb:  # widened to whole phrases of B: bars added before and after (the page's −/+ start there)
+            k = int(round((t0 - phase) / L))
+            c["run"]["lead"], c["run"]["tail"] = k % PHRASE, -(k + n) % PHRASE
+        # long enough as a piece once widened to whole phrases (64 bars: about 1:46 at 145 BPM)
+        c["qualifies"] = n * L >= MIN_SECONDS  # a track of its own
+        c["short"] = not c["qualifies"] and n + c["run"].get("lead", 0) + c["run"].get("tail", 0) >= MIN_BARS
         if n:
             c.update(piece(A, B, c["run"], report))
             for how, words in (("whole", "measured without stems"), ("separated", "stems separated here")):
                 ts = [_plain(t.get("title")) for t, p in ((A, pa), (B, pb)) if p["how"] == how]
                 if ts:
                     c["why"] += f"; {words}: " + ", ".join(ts)
-        changes.append(c)
+        say(f"standalone pieces: change {i + 1}/{len(tracks) - 1} at {B['start']}: done "
+            f"({time.monotonic() - t_start:.0f} s)")
+        return c
+
+    from concurrent.futures import ThreadPoolExecutor as Pool
+
+    pool = Pool(max(1, workers or min(5, (os.cpu_count() or 4) // 2)))
+    try:
+        futures = [pool.submit(change, i) for i in range(len(tracks) - 1)]
+        changes = [f.result() for f in futures]  # in order; an error or a stop re-raises here
+    finally:  # an error or a stop from the page: drop the reads and changes not started yet
+        pool.shutdown(wait=False, cancel_futures=True)
+        readers.shutdown(wait=False, cancel_futures=True)
 
     measured = [c for c in changes if c["status"] == "measured"]
     picks = [c for c in measured if c["qualifies"]]
+    shorts = [c for c in measured if c.get("short")]
     out = {"rule": f"both tracks within {NEAR_DB:g} dB of their own level (with a stem file: any of its stems) "
-                   f"for {MIN_BARS}+ bars"
+                   f"for {clock(MIN_SECONDS)}+ (short edits: {MIN_BARS}+ bars in whole phrases)"
                    + (", single off bars allowed" if GAP == 1 else f", up to {GAP} off bars in a row allowed" if GAP else ""),
+           "near_db": NEAR_DB, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these
            "names": NAMES, "changes": changes, "picks": [c["at"] for c in picks],
+           "shorts": [c["at"] for c in shorts],
            "measured_with": {str(t["n"]): placed[t["n"]]["how"] for t in tracks if placed.get(t["n"], {}).get("ok")}}
-    if not picks and measured:
+    say(f"standalone pieces: done, {len(picks)} of {len(measured)} measured changes qualify as tracks, "
+        f"{len(shorts)} as short edits"
+        + (f" ({len(changes) - len(measured)} couldn't be measured)" if len(changes) > len(measured) else ""))
+    if not picks and not shorts and measured:
         miss = max(measured, key=lambda c: c["run"]["bars"])
         if miss["run"]["bars"]:
             out["closest_miss"] = miss["at"]
@@ -455,19 +568,19 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
 def summary_lines(result: dict, chapters: list[str] | None = None) -> list[str]:
     sa = result.get("standalone")
     if not sa:
-           "near_db": NEAR_DB, "min_bars": MIN_BARS, "gap": GAP,  # the page words the rule from these
         return []
     by_at = {c["at"]: c for c in sa["changes"]}
     names = {t["n"]: t for t in result["tracklist"]["tracks"]}
     lines = ["", f"  Standalone pieces ({sa['rule']})"]
-    if not sa["picks"]:
+    if not sa["picks"] and not sa.get("shorts"):
         lines.append("    Nothing qualifies.")
         if sa.get("closest_miss"):
             c = by_at[sa["closest_miss"]]
             lines.append(f"    Closest miss: the change at {c['at']}, {c['why']}")
-    for at in sa["picks"]:
+    for at in sa["picks"] + sa.get("shorts", []):
         c = by_at[at]
-        lines += ["", f"    {c['title']}", f"      Why: {c['why']}",
+        short = " (short edit)" if at in sa.get("shorts", []) else ""
+        lines += ["", f"    {c['title']}{short}", f"      Why: {c['why']}",
                   "      Name: " + " / ".join(sa["names"]) + " (your call)", "      Credits:"]
         lines += [f"        {x}" for x in c["credits"].splitlines()]
     without = [names[int(n)].get("title", "") for n, how in sa.get("measured_with", {}).items() if how == "whole"]
@@ -477,6 +590,6 @@ def summary_lines(result: dict, chapters: list[str] | None = None) -> list[str]:
     if skipped:
         lines.append("")
         lines += [f"    {c['at']} {names[c['to']].get('title', '')}: {c['status']}" for c in skipped]
-    if sa["picks"] and chapters:
+    if (sa["picks"] or sa.get("shorts")) and chapters:
         lines += ["", "  SoundCloud timestamps (for the full set)"] + [f"    {x}" for x in chapters]
     return lines
