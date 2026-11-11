@@ -43,7 +43,8 @@ async function pageMixes(main, id) {
     catch (e) { if (me === S.routeId && !shownDrop) $("#mix").innerHTML = errBox(e); }
     const f = mixes.find(x => x.id === id), head = $("#mix .page-head");
     if (f && head && !SNAP && me === S.routeId && !shownDrop) {
-      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div><button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
+      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div>${f.recording ? `<button id="mx-again" data-tip="Analyse ${esc(f.recording)} again with today's models and options: ${f.name === f.recording.replace(/\.[^.]+$/, "") + ".json" ? "the new result replaces this one" : "the new result is saved as well, and this one shows as an older copy"}">Reanalyse…</button>` : ""}<button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
+      $("#mx-again")?.addEventListener("click", () => mixDialog(null, id));
       $("#mx-del").onclick = async () => {
         if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}${/\\/.test(f.folder) ? "\\" : "/"}deleted. The recording itself isn't touched.`)) return;
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
@@ -56,17 +57,21 @@ async function pageMixes(main, id) {
   }
 }
 // Pick one of Traktor's recordings and analyse it as a job; the result is saved where the Mixes tab looks.
-async function mixDialog(file) {
+// again: the id of a saved analysis, whose recording comes ticked (Reanalyse on a mix's page)
+async function mixDialog(file, again) {
   const dlg = document.createElement("dialog"); dlg.className = "write"; document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
   dlg.innerHTML = `<h3>Analyse a mix</h3><div class="loading">Looking for your recordings…</div>`; dlg.showModal();
   let R;
   try { R = await api("recordings"); } catch (e) { dlg.innerHTML = `<h3>Analyse a mix</h3>${errBox(e)}<div class="filters" style="margin-top:12px"><button data-close>Close</button></div>`; dlg.querySelector("[data-close]").onclick = () => dlg.close(); return; }
-  const recs = R.recordings, first = recs.findIndex(r => !r.saved.length);
-  dlg.innerHTML = `<h3>Analyse a mix</h3>
+  const recs = R.recordings, mine = again ? recs.findIndex(r => r.saved.includes(again)) : -1,
+    first = again ? mine : recs.findIndex(r => !r.saved.length);
+  const gone = again && mine < 0 ? (LOGS?.files || []).find(x => x.id === again)?.recording : "";  // not in Traktor's Recordings folder
+  dlg.innerHTML = `<h3>${again ? "Analyse again" : "Analyse a mix"}</h3>
+    ${gone ? `<div class="note">${esc(gone)} isn't in Traktor's Recordings folder: drop it below or choose its file to analyse it again.</div>` : ""}
     <div class="small muted" title="${esc(R.folders.join("\n"))}">${R.folders.length ? "Traktor's recordings longer than 12 minutes" : "No Traktor Recordings folder found: drop your mix below or choose its file"}; tick several to analyse them one after another${recs.some(r => !r.saved.length) ? ` · <a href="#" id="mx-new-all">tick all not analysed yet</a>` : ""}</div>
     <div class="list" style="max-height:300px;overflow-y:auto;margin:6px 0">${recs.map((r, i) => `<label class="inline" style="display:flex;padding:4px 2px;white-space:normal">
-      <input type="checkbox" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
+      <input type="checkbox" name="mx-rec" value="${i}" ${i === (again ? first : Math.max(first, 0)) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
     <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against ${DJ()}'s history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
@@ -107,6 +112,7 @@ async function mixDialog(file) {
     count();
   }));
   choose(file); count();
+  if (again && mine >= 0) dlg.querySelectorAll("input[name=mx-rec]")[mine].scrollIntoView({ block: "nearest" });
   $("#mx-new-all")?.addEventListener("click", e => {
     e.preventDefault();
     dlg.querySelectorAll("input[name=mx-rec]").forEach(r => { r.checked = !recs[+r.value].saved.length; });
