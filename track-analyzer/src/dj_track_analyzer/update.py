@@ -34,8 +34,11 @@ from . import analysis
 from .analysis import HOME, log
 
 APP = Path(__file__).resolve().parents[2]  # the track-analyzer folder: pyproject.toml, launchers, src/
-REPO = "puppi3-music/puppi3s-dj-tools"
-RELEASES_API = f"https://api.github.com/repos/{REPO}/releases?per_page=100"  # dsp-v… builds share the list
+# The repo is being renamed puppi3s-dj-tools → puppi3s-track-analyzer: asked in this order, the first that answers
+# wins (GitHub also redirects the old name, as long as nobody takes it). The old name goes once everyone has this.
+REPOS = ("puppi3-music/puppi3s-dj-tools", "puppi3-music/puppi3s-track-analyzer")
+REPO = REPOS[0]  # the one that last answered
+RELEASES_API = "https://api.github.com/repos/{}/releases?per_page=100"  # dsp-v… builds share the list
 RELEASES_PAGE = f"https://github.com/{REPO}/releases"
 BACKUPS = HOME / "app-backups"
 DOWNLOADS = HOME / "updates"
@@ -105,9 +108,20 @@ def _get(url: str, timeout: float = 15) -> bytes:
 
 def releases() -> list[dict]:
     """The app's published releases (tags v…), newest first; the dsp-v… builds and drafts left out."""
-    data = json.loads(_get(RELEASES_API))
-    if not isinstance(data, list):  # GitHub's {"message": …} (a rate limit, say)
-        raise ValueError(f"GitHub answered: {data.get('message') if isinstance(data, dict) else data!r}")
+    global REPO, RELEASES_PAGE
+    err: Exception | None = None
+    for repo in REPOS:
+        try:
+            data = json.loads(_get(RELEASES_API.format(repo)))
+            if not isinstance(data, list):  # GitHub's {"message": …} (a rate limit, say, or "Not Found")
+                raise ValueError(f"GitHub answered: {data.get('message') if isinstance(data, dict) else data!r}")
+        except (OSError, ValueError) as e:  # json's errors are ValueErrors too
+            err = e
+            continue
+        REPO, RELEASES_PAGE = repo, f"https://github.com/{repo}/releases"
+        break
+    else:
+        raise err  # type: ignore[misc]  # REPOS isn't empty
     out = []
     for r in data:
         tag = r.get("tag_name") or ""
@@ -363,6 +377,8 @@ def _git_update(app: Path, dry_run: bool) -> dict:
     if dry_run or not commits:
         return out if commits else {**out, "note": "Already up to date with GitHub's main."}
     _git(app, "merge", "--ff-only", theirs)
+    if not (app / "pyproject.toml").exists() and (app.parent / "pyproject.toml").exists():
+        return {**out, **_moved_to_root(app)}
     BACKUPS.mkdir(parents=True, exist_ok=True)
     bdir = BACKUPS / f"{before}-git-{time.strftime('%Y%m%d-%H%M%S')}"
     bdir.mkdir()
@@ -371,6 +387,58 @@ def _git_update(app: Path, dry_run: bool) -> dict:
                                                   "at": time.strftime("%Y-%m-%d %H:%M:%S")}, indent=1), encoding="utf-8")
     _prune(BACKUPS)
     return {**out, "to": installed_version(app), "backup": str(bdir)}
+
+
+# not moved when the app moves out of track-analyzer/: caches (deleted) and .venv (left; the launcher makes a new one)
+CACHES = {"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
+LEFT_BEHIND = CACHES | {".venv"}
+
+
+def _move_untracked(src: Path, dest: Path, moved: list[str], kept: list[str]) -> None:
+    for p in sorted(src.iterdir()):
+        to = dest / p.name
+        if p.name in LEFT_BEHIND:
+            continue
+        if not to.exists() and not to.is_symlink():
+            try:
+                shutil.move(str(p), str(to))
+                moved.append(str(to))
+            except OSError:  # Windows: a file the page still has open
+                kept.append(str(p))
+        elif p.is_dir() and to.is_dir():
+            _move_untracked(p, to, moved, kept)
+        else:
+            kept.append(str(p))
+
+
+def _moved_to_root(app: Path) -> dict:
+    """The pull moved the app from track-analyzer/ to the top of the clone (the repo became the app's own): what git
+    doesn't track (data/, logs/, your own notes) is moved after it, so the app finds it there. .venv is left: the
+    launcher there makes a new one. No undo: the app runs from another folder now."""
+    root = app.parent
+    moved: list[str] = []
+    kept: list[str] = []
+    _move_untracked(app, root, moved, kept)
+    dirs = []
+    for d, sub, _ in os.walk(app):  # the folders the move emptied, caches gone; never into .venv
+        for c in [c for c in sub if c in LEFT_BEHIND]:
+            sub.remove(c)
+            if c in CACHES:
+                shutil.rmtree(Path(d) / c, ignore_errors=True)
+        dirs.append(Path(d))
+    for d in reversed(dirs):  # deepest first
+        try:
+            d.rmdir()
+        except OSError:  # not empty
+            pass
+    log(f"The app moved to {root}: moved {len(moved)} of your own files and folders after it.")
+    note = (f"Updated. The app now lives in {root} (one folder up): quit this page and start it again with "
+            f"Start Puppi3's Track Analyzer there. Your data moved with it.")
+    if kept:
+        note += f" Move these into {root} yourself (they were open, or a file with that name is there already): " \
+                + ", ".join(kept[:10]) + (" …" if len(kept) > 10 else "")
+    return {"to": installed_version(root), "moved_to": str(root), "moved": len(moved), "not_moved": kept,
+            "no_restart": True, "note": note}
 
 
 # ----------------------------------------------------------------------------
@@ -397,6 +465,9 @@ def update(dry_run: bool = False, app: Path = APP) -> dict:
             res = {**_counts(plan(z, app)), "dry_run": True, "changed": True}
         else:
             res = install_zip(z, app)
+    if res.pop("no_restart", False):  # the app moved: its launcher here is gone, so it can't start itself again
+        res["after_steps"] = [STEPS[s] for s in steps_between(res["from"], res["to"])]
+        return res
     if not dry_run and res.get("changed"):
         res["restart"] = True
         res["note"] = "Updated. The page starts again with the new version (it installs new packages first)."

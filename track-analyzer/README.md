@@ -76,7 +76,7 @@ Keep the Terminal window open while you use the page; close it to stop. Double-c
 To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent. Untick **check when the page opens** to turn that off (**Check now** still works). Other ways to update:
 
 - In a terminal: `uv run dj-track-analyzer update` (`--check`, `--dry-run`, `--undo`), then start the launcher again.
-- A clone: `git pull` (only on `main` without local changes of your own).
+- A clone: `git pull` (only on `main` without local changes of your own). If a pull moves the app from `track-analyzer/` to the top of the folder, the update moves `data/`, `logs/` and your own untracked files after it; start the app again from there.
 - Docker: build the image again.
 
 Each release's notes are in [CHANGELOG.md](CHANGELOG.md).

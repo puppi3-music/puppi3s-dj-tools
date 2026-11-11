@@ -54,7 +54,10 @@ browser (and Export snapshot) still gets one document with one script scope. Edi
   API's asset `digest`), only the app's files (`PROTECTED` data/, logs/, .venv, .git never), each written via a temp
   file + rename, files gone from src/ removed (nothing deleted elsewhere); old copies + update.json in
   data/app-backups/ (last 3) first, a failure halfway restores them. Clones: `git pull --ff-only` on clean main,
-  undo = `git reset --keep`. Docker: refused. `AFTER` {version: step keys} = steps a release needs afterwards
+  undo = `git reset --keep`; a pull that moves the app out of track-analyzer/ (no pyproject.toml left, one in
+  the parent) → `_moved_to_root` moves the untracked files up (not .venv, caches deleted), no backup/undo, no
+  restart (the old launcher is gone). `REPOS` = old name then puppi3s-track-analyzer, first answer wins
+  (sets `REPO`/`RELEASES_PAGE`); drop the old one once the rename has shipped. Docker: refused. `AFTER` {version: step keys} = steps a release needs afterwards
   (add a line when a release changes the genre list, analysis or models); `pending_steps` vs setting
   `app_version_seen` (missing + a collection.db = 1.0.1) → the card's Run buttons. Restart: POST /api/restart →
   server exits `RESTART_CODE` 75 under a launcher (env `TRACK_ANALYZER_LAUNCHER`), whose loop runs `uv sync

@@ -4,7 +4,9 @@ Also the launchers' restart loop, and why the Windows launcher must stay short."
 from __future__ import annotations
 
 import os
+import shutil
 import stat
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -35,6 +37,12 @@ NEW = {
     "data/collection.db": "a zip must never write here",
     "logs/.gitkeep": "",
 }
+
+
+def _write(root: Path, files: dict) -> None:
+    for rel, text in files.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(text.encode())
 
 
 def make_app(root: Path) -> Path:
@@ -80,6 +88,67 @@ def test_a_github_error_message_is_an_error(monkeypatch):
     monkeypatch.setattr(update, "_get", lambda url: b'{"message": "API rate limit exceeded"}')
     with pytest.raises(ValueError, match="rate limit"):
         update.releases()
+
+
+def test_releases_fall_back_to_the_renamed_repo(monkeypatch):
+    asked = []
+
+    def get(url):
+        asked.append(url)
+        if update.REPOS[0] in url:
+            raise OSError("couldn't reach GitHub (HTTP Error 404: Not Found)")
+        return b'[{"tag_name": "v9.0.0", "assets": []}]'
+    monkeypatch.setattr(update, "_get", get)
+    monkeypatch.setattr(update, "RELEASES_PAGE", update.RELEASES_PAGE)  # put back after the test
+    monkeypatch.setattr(update, "REPO", update.REPO)
+    assert [r["version"] for r in update.releases()] == ["9.0.0"]
+    assert [update.REPOS[0] in u for u in asked] == [True, False]
+    assert update.RELEASES_PAGE == f"https://github.com/{update.REPOS[1]}/releases"
+
+
+def test_releases_ask_the_old_name_first_and_stop_there(monkeypatch):
+    asked = []
+    monkeypatch.setattr(update, "_get", lambda url: asked.append(url) or b"[]")
+    assert update.releases() == []
+    assert len(asked) == 1 and update.REPOS[0] in asked[0]
+
+
+def _git(cwd, *args):
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+@pytest.mark.skipif(not shutil.which("git"), reason="needs git")
+def test_a_pull_that_moves_the_app_to_the_top_takes_your_data_along(tmp_path, monkeypatch):
+    for k, v in {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+                 "GIT_COMMITTER_EMAIL": "t@t", "GIT_CONFIG_GLOBAL": str(tmp_path / "gitconfig")}.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(update, "BACKUPS", tmp_path / "backups")
+    origin, clone = tmp_path / "origin", tmp_path / "clone"
+    origin.mkdir()
+    _git(origin, "init", "-q", "-b", "main")
+    _write(origin, {"README.md": "index\n", "track-analyzer/pyproject.toml": 'version = "1.0.1"\n',
+                    "track-analyzer/src/a.py": "A = 1\n", "track-analyzer/docs/GUIDE.html": "guide",
+                    "track-analyzer/.gitignore": "data/\nlogs/\n.venv/\n__pycache__/\n*.local.*\n"})
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-qm", "one")
+    _git(tmp_path, "clone", "-q", str(origin), str(clone))
+    app = clone / "track-analyzer"
+    _write(app, {"data/collection.db": "your scans", "logs/run.json": "{}", "docs/POSTING.local.html": "mine",
+                 ".venv/bin/python": "", "src/__pycache__/a.pyc": "", "CLAUDE.local.md": "notes"})
+    (origin / "README.md").unlink()
+    for p in sorted((origin / "track-analyzer").iterdir()):  # the move: everything up one folder
+        _git(origin, "mv", f"track-analyzer/{p.name}", p.name)
+    (origin / "pyproject.toml").write_bytes(b'version = "1.0.2"\n')
+    _git(origin, "add", "-A")
+    _git(origin, "commit", "-qm", "two")
+
+    res = update._git_update(app, dry_run=False)
+    assert res["to"] == "1.0.2" and res["moved_to"] == str(clone) and res["no_restart"] and not res["not_moved"]
+    assert (clone / "data/collection.db").read_text() == "your scans"
+    assert (clone / "logs/run.json").exists() and (clone / "CLAUDE.local.md").exists()
+    assert (clone / "docs/POSTING.local.html").read_text() == "mine" and (clone / "docs/GUIDE.html").exists()
+    assert sorted(p.name for p in app.iterdir()) == [".venv"]  # left for the old launcher; the new one makes its own
+    assert not (update.BACKUPS).exists()  # no undo across the move
 
 
 def test_install_writes_only_the_apps_files_and_undo_puts_them_back(tmp_path):

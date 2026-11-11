@@ -95,7 +95,7 @@ function jobBar() {
 
 // What a writer reported, readably: the counts, notes, a few examples, and everything else folded away.
 const HIDE = new Set(["dry_run", "app", "undone", "changed", "collection", "examples", "changes", "smartlists", "backup", "undo", "fields", "note", "warning",
-  "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps"]);
+  "now_loaded", "clock", "smartlist_folder", "kept", "restored_from", "restart", "after_steps", "moved_to", "moved", "not_moved"]);
 const LABELS = { would_write: "files that would get a new tag", written: "files tagged", would_restore: "files that would get their old tags back",
   restored: "files given their old tags back", skipped_changed_since_scan: "skipped: changed on disk since the scan (scan again first)",
   unchanged: "already right", missing: "files no longer there", get traktor_tracks() { return `tracks in ${DJ()}`; }, matched_scanned_tracks: "of them scanned",
