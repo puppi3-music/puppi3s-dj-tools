@@ -76,7 +76,23 @@ def compute(con=None, progress=log) -> dict[str, int]:
 
 
 def _traktor_info(nml: str | None) -> dict[str, dict]:
-    """{path: {stars, plays, colour}} from Traktor's collection (read-only)."""
+    """{path: {stars, plays, colour}} from the DJ app's library (read-only): Traktor's collection, or in Rekordbox mode
+    its master.db (Traktor's collection would be stale there, or missing)."""
+    if library.app() == "rekordbox":
+        from . import rekordbox
+        try:
+            rows = rekordbox.read(None)
+        except (SystemExit, OSError):
+            return {}
+        cols = rekordbox.colors(None, rows)[1]
+        out = {}
+        for t in rows["tracks"]:
+            if t["path"]:
+                p, r = rekordbox.norm_path(t["path"]), t.get("rating") or 0
+                c = cols.get(p)
+                out[p] = {"stars": r if 1 <= r <= 5 else None, "plays": t.get("plays") or 0,
+                          "colour": analysis.COLOR_NAMES[c - 1] if c else None}
+        return out
     try:
         root = ET.parse(traktor.find_collection(nml)).getroot()
     except (SystemExit, ET.ParseError, OSError):

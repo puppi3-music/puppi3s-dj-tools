@@ -231,7 +231,7 @@ def tempo_report(bpm: float, limit: int = 25) -> dict:
     from . import tempo
 
     if not (tempo.view_home(bpm) / "collection.db").exists():  # tempo.report would make an empty view (a new library)
-        raise SystemExit(f"No {bpm:g} BPM analysis yet. Run: uv run dj-track-analyzer tempo scan --bpm {bpm:g}")
+        raise SystemExit(f"No {bpm:g} BPM tempo view yet: scan it on the Setup tab (Tempo view step).")
     with library("native"):
         return tempo.report(bpm, limit=limit)
 

@@ -14,10 +14,12 @@ async function pageHype(main) {
   const read = () => { HF.colour = $("#h-colour").value; HF.bpm = $("#h-bpm").value; HF.tolerance = $("#h-tol").value; HF.key = $("#h-key").value; HF.gems = $("#h-gems").checked; HF.least = $("#h-least").checked; load(); };
   main.querySelectorAll(".filters select, .filters input").forEach(el => el.addEventListener("change", read));
   $("#h-write")?.addEventListener("click", () => writeDialog("hype_traktor"));
+  let seq = 0;
   async function load() {
-    const box = $("#hres");
+    const box = $("#hres"), ask = ++seq;  // a later filter change wins; leaving the tab drops the answer
     try {
       const d = await api("hype", { lib: S.lib, colour: HF.colour, bpm: HF.bpm, tolerance: HF.tolerance, key: HF.key, gems: HF.gems ? 1 : 0, least: HF.least ? 1 : 0, limit: 500 });
+      if (ask !== seq || !box.isConnected) return;
       box.className = "";
       if (!d.scored) { box.innerHTML = empty("No hype scores yet", "Hype ranks every track 1-10 by rave sound and energy within your collection. It needs 20 scanned tracks and takes seconds.", toSetup("Score hype")); return; }
       if (!d.matches) { box.innerHTML = empty("No tracks match", `None of the ${d.scored} scored tracks match ${esc(d.filters.join(", "))}.`); return; }
@@ -28,14 +30,14 @@ async function pageHype(main) {
           { h: "BPM", r: 1, f: t => fmt(t.bpm) }, { h: "Key", f: t => esc(t.camelot || "–") },
         ], d.tracks, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` })}</div>`;
       box.onclick = e => { const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path); };
-    } catch (e) { box.className = ""; box.innerHTML = errBox(e); }
+    } catch (e) { if (ask === seq && box.isConnected) { box.className = ""; box.innerHTML = errBox(e); } }
   }
   load();
 }
 
 // ---------- colours ----------
 async function pageColours(main) {
-  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `${DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab, or tempo native), then write` : "";
+  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `${DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab), then write` : "";
   const RSEL = new Set();  // ticked review rows (paths)
   const markCell = t => t.kept || t.recoloured ? "" : t.marked
     ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
@@ -54,7 +56,8 @@ async function pageColours(main) {
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
     <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads ${DJ()}'s collection and History)…</div>`;
   const [rv, ex, kp] = await Promise.allSettled([api("colours/review", { limit: 200 }), api("colours/explain"), api("colours/kept")]);
-  const m = $("#c-model"); m.className = "";
+  const m = $("#c-model"); if (!m) return;  // left the tab while it loaded
+  m.className = "";
   if (rv.status === "rejected") m.innerHTML = errBox(rv.reason);
   else {
     let r = rv.value, byPath = new Map(r.tracks.map(t => [t.path, t]));
@@ -130,7 +133,8 @@ async function pageColours(main) {
     // a hand edit in the track panel changes your colour: list the track as recoloured / kept straight away
     S.reloadColours = async () => {
       if (!m.isConnected) return;
-      const n = await api("colours/review", { limit: 200 });
+      let n;
+      try { n = await api("colours/review", { limit: 200 }); } catch (e) { return; }  // the list stays as it was
       if (!m.isConnected) return;
       r = n; byPath = new Map(r.tracks.map(t => [t.path, t]));
       for (const p of [...RSEL]) if (!byPath.has(p)) RSEL.delete(p);
@@ -176,17 +180,20 @@ async function pageTempo(main, bpmArg) {
   const views = S.libs.libraries.filter(l => l.bpm);
   if (!views.length) {
     main.innerHTML = `<div class="page-head"><div><h2>Tempo view</h2></div></div>` + empty("No tempo view scanned yet",
-      `A tempo view hears your catalogue stretched to the tempo you play at, with key lock, and shows which genres, colours and hype change.${SNAP ? "" : ` In a terminal: <span class="mono">uv run dj-track-analyzer tempo scan --bpm 145</span>`}`,
+      "A tempo view hears your catalogue stretched to the tempo you play at, with key lock, and shows which genres, colours and hype change.",
       toSetup("Scan a tempo view"));
     return;
   }
   const bpm = +(bpmArg || views[0].bpm);
-  const d = await api("tempo/report", { bpm, limit: 25 });
+  let d;
+  try { d = await api("tempo/report", { bpm, limit: 25 }); }
+  catch (e) { if (main.isConnected) main.innerHTML = `<div class="page-head"><div><h2>Tempo view</h2></div></div>${errBox(e)}`; return; }
+  if (!main.isConnected || !location.hash.startsWith("#tempo")) return;  // another tab meanwhile
   const brief = rows => table([{ h: "Track", f: r => esc(r.track) }, { h: "BPM", r: 1, f: r => fmt(r.bpm) }, { h: "Genres", f: r => esc(r.genres) },
     { h: "Colour", f: r => esc(r.colour || "–") }, { h: "Hype", f: r => esc(r.hype) }], rows);
   const toBars = o => Object.entries(o).map(([k, v]) => ({ label: k, value: v }));
-  const max = Math.max(...Object.values(d.genres_native), ...Object.values(d.genres_at_bpm));
-  const cmax = Math.max(...Object.values(d.colours_native), ...Object.values(d.colours_at_bpm));
+  const max = Math.max(1, ...Object.values(d.genres_native), ...Object.values(d.genres_at_bpm));  // 1: a view with no genres or colours yet
+  const cmax = Math.max(1, ...Object.values(d.colours_native), ...Object.values(d.colours_at_bpm));
   const ordered = o => COLOURS.filter(c => o[c]).map(c => ({ label: c, value: o[c] }));
   main.innerHTML = `
     <div class="page-head"><div><h2>Tempo view: ${d.bpm} BPM</h2><div class="muted">Your catalogue as heard stretched to ${d.bpm} BPM with key lock, compared with each track at its own tempo.</div></div>
@@ -215,7 +222,7 @@ async function pageTempo(main, bpmArg) {
     <div class="card"><h3>Turn hardest at ${d.bpm} BPM</h3>${brief(d.hardest_turns)}</div>
     <div class="card"><h3>Turn prettiest</h3>${brief(d.prettiest_turns)}</div>
     <div class="grid two"><div class="card"><h3>Most hype at ${d.bpm} BPM</h3>${brief(d.most_hype)}</div><div class="card"><h3>Biggest hype risers</h3>${brief(d.hype_risers)}</div></div>`;
-  const lexicon = () => (S.libs.status.loaded_in_lexicon || "").includes("BPM");
+  const lexicon = () => (S.libs.status?.loaded_in_lexicon || "").includes("BPM");
   $("#tv-load")?.addEventListener("click", () => writeDialog("tempo_load", { bpm: d.bpm }));
   $("#tv-native")?.addEventListener("click", () => writeDialog("tempo_native", { lexicon: lexicon() }));
 }
