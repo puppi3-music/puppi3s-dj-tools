@@ -1529,6 +1529,9 @@ def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
+        from . import colors
+
+        colors.sync_traktor_colours()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
         data["library"] = played_tracks(data["tracklist"]["tracks"])
     return data
 

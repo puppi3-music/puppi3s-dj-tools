@@ -14,11 +14,12 @@ function mixTitle(f) {
   const t = recDate(f.recording);
   return t ? t.toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : f.recording || f.name;
 }
+const baseName = p => (p || "").split(/[\\/]/).pop();  // a path's last part, also a Windows one
 const mixFile = f => { const stem = n => (n || "").replace(/\.[^.]+$/, ""); return recDate(f.recording) && stem(f.name) === stem(f.recording) ? "" : f.name; };
 async function pageMixes(main, id) {
   const me = S.routeId, L = await getLogs(true), mixes = L.files.filter(f => f.kind === "mix");
   if (me !== S.routeId) return;
-  if (!id && mixes.length) id = mixes[0].id;
+  if ((!id || id !== "~all" && !mixes.some(f => f.id === id)) && mixes.length) id = mixes[0].id;  // also a link to a deleted one
   const all = id === "~all", sets = new Set(mixes.map(f => f.recording || f.id)).size;  // the overview counts each recording once
   const seen = new Set(), older = new Set(mixes.filter(f => f.recording && (seen.has(f.recording) || !seen.add(f.recording))).map(f => f.id));  // newest first: a later save of the same recording
   main.innerHTML = `<div class="split">
@@ -26,23 +27,23 @@ async function pageMixes(main, id) {
         ${sets > 1 ? `<button id="mx-all" class="${all ? "on" : ""}" data-tip="What your mixes add up to: keys to check, mood as played, your sets by fifth">All ${sets} mixes</button>` : ""}
         ${SNAP ? "" : `<button class="primary" id="mx-new">Analyse a mix…</button>`}</div>
       ${mixes.map(f => `<a href="#mixes/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(mixTitle(f))}${older.has(f.id) ? ` <span class="chip warn small" data-tip="The same recording is saved again, newer: All ${sets} mixes counts that one. Open this one and delete it if you don't need it.">older copy</span>` : ""}</div><div class="k">${esc([f.duration, mixFile(f)].filter(Boolean).join(" · "))}</div></a>`).join("") || `<div class="dim small" style="padding:10px">No mixes yet.</div>`}
-      <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(f.split("/").slice(-1)[0])}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
+      <div class="small dim" style="padding:10px">Saved in ${L.folders.map(f => `<span class="mono" title="${esc(f)}">${esc(baseName(f))}/</span>`).join(", ")}${SNAP ? "" : ` · <a href="#" id="pick" style="display:inline;padding:0">Open a saved result…</a>`}<input type="file" id="file" accept=".json,.txt" hidden></div>
     </div><div id="mix">${id ? `<div class="loading">Loading…</div>` : empty("No mix analysed yet",
       `Analyse a recorded DJ mix to see its genre, mood, a loudness timeline, a tracklist check against ${DJ()}'s history and clip ideas.
-      ${SNAP ? "" : `<div style="margin:12px 0"><button class="primary" id="mx-new2">Analyse a mix…</button></div>Or in a terminal:<br>`}
-      <span class="mono">uv run dj-track-analyzer analyze &lt;mix.wav&gt; --tracklist --out logs/mix.json</span>`)}</div></div>`;
+      ${SNAP ? "" : `<div style="margin:12px 0"><button class="primary" id="mx-new2">Analyse a mix…</button></div>`}`)}</div></div>`;
   $("#mx-new")?.addEventListener("click", () => mixDialog());
   $("#mx-all")?.addEventListener("click", () => { location.hash = all && mixes.length ? `#mixes/${encodeURIComponent(mixes[0].id)}` : "#mixes/~all"; });
   $("#mx-new2")?.addEventListener("click", () => mixDialog());
-  dropZone($("#drop"), $("#file"), $("#pick"), data => { $("#mix").innerHTML = data.type === "dj_mix" ? renderMix(data) : `<div class="card tree">${tree(data)}</div>`; },
+  let shownDrop = false;
+  dropZone($("#drop"), $("#file"), $("#pick"), data => { shownDrop = true; $("#mix").innerHTML = data.type === "dj_mix" ? renderMix(data) : `<div class="card tree">${tree(data)}</div>`; },
     SNAP ? null : mixDialog);  // a recording dropped on the list: analyse it
   if (id) {
     const me = S.routeId;  // a newer click wins over a slower earlier answer
-    try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId) $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
-    catch (e) { if (me === S.routeId) $("#mix").innerHTML = errBox(e); }
+    try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId && !shownDrop) $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
+    catch (e) { if (me === S.routeId && !shownDrop) $("#mix").innerHTML = errBox(e); }
     const f = mixes.find(x => x.id === id), head = $("#mix .page-head");
-    if (f && head && !SNAP && me === S.routeId) {
-      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div><button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(f.folder.split("/").pop())}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
+    if (f && head && !SNAP && me === S.routeId && !shownDrop) {
+      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div><button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
       $("#mx-del").onclick = async () => {
         if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}/deleted/. The recording itself isn't touched.`)) return;
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
@@ -58,12 +59,12 @@ async function pageMixes(main, id) {
 async function mixDialog(file) {
   const dlg = document.createElement("dialog"); dlg.className = "write"; document.body.appendChild(dlg);
   dlg.addEventListener("close", () => dlg.remove());
-  dlg.innerHTML = `<h3>Analyse a mix</h3><div class="loading">Looking in Traktor's Recordings folder…</div>`; dlg.showModal();
+  dlg.innerHTML = `<h3>Analyse a mix</h3><div class="loading">Looking for your recordings…</div>`; dlg.showModal();
   let R;
   try { R = await api("recordings"); } catch (e) { dlg.innerHTML = `<h3>Analyse a mix</h3>${errBox(e)}<div class="filters" style="margin-top:12px"><button data-close>Close</button></div>`; dlg.querySelector("[data-close]").onclick = () => dlg.close(); return; }
   const recs = R.recordings, first = recs.findIndex(r => !r.saved.length);
   dlg.innerHTML = `<h3>Analyse a mix</h3>
-    <div class="small muted" title="${esc(R.folders.join("\n"))}">Traktor's recordings longer than 12 minutes${R.folders.length ? "" : " (no Recordings folder found)"}; tick several to analyse them one after another${recs.some(r => !r.saved.length) ? ` · <a href="#" id="mx-new-all">tick all not analysed yet</a>` : ""}</div>
+    <div class="small muted" title="${esc(R.folders.join("\n"))}">${R.folders.length ? "Traktor's recordings longer than 12 minutes" : "No Traktor Recordings folder found: drop your mix below or choose its file"}; tick several to analyse them one after another${recs.some(r => !r.saved.length) ? ` · <a href="#" id="mx-new-all">tick all not analysed yet</a>` : ""}</div>
     <div class="list" style="max-height:300px;overflow-y:auto;margin:6px 0">${recs.map((r, i) => `<label class="inline" style="display:flex;padding:4px 2px;white-space:normal">
       <input type="checkbox" name="mx-rec" value="${i}" ${i === Math.max(first, 0) ? "checked" : ""}><span style="overflow-wrap:anywhere">${esc(mixTitle({ recording: r.name }))}
       ${r.saved.length ? `<span class="chip good">analysed</span>` : ""}<br><span class="dim small">${r.seconds ? mmss(r.seconds) + " · " : ""}${esc(r.name)}</span></span></label>`).join("") || `<div class="dim small">No recordings found.</div>`}</div>
@@ -134,7 +135,7 @@ async function mixDialog(file) {
     catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; return; }
     if (j.error) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(j.error)}</span>`; return; }  // shown here if it failed at once
     if (S.page !== "mixes") return;
-    const stem = n => n.replace(/\.[^.]+$/, ""), name = stem(file.split("/").pop()), L = await getLogs(true);
+    const stem = n => n.replace(/\.[^.]+$/, ""), name = stem(baseName(file)), L = await getLogs(true);
     const f = L.files.find(x => x.kind === "mix" && stem(x.recording || "") === name), to = f ? `#mixes/${encodeURIComponent(f.id)}` : "#mixes";
     if (location.hash === to) route(); else location.hash = to;
   };
@@ -312,7 +313,7 @@ function renderMixReport(r) {
     <div class="page-head"><div><h2>All your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
     ${SHAPE_SHOWN ? `<div class="card" id="shape">${shapeTimeline(SHAPE_SHOWN)}</div>` : ""}
     <div class="card"><h3>Keys ${DJ()} may have wrong <span class="dim small">(heard in your mixes = our key, not ${DJ()}'s; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
-      ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || f.path.split("/").pop())}<div class="dim small">${esc(f.artist || "")}</div>` },
+      ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || baseName(f.path))}<div class="dim small">${esc(f.artist || "")}</div>` },
         { h: DJ(), f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
         : `<div class="dim">None${k.mixes ? "" : " yet: needs mixes analysed with the CNN reading the heard key, played with key lock on"}.</div>`}
       <div class="note">A track heard in one mix only is a hint; the same key in several mixes is a good reason to check it in ${DJ()}.</div></div>
@@ -336,6 +337,8 @@ function renderMixReport(r) {
 function skippedNote(d) {
   const kind = d.tracklist_skipped_kind || (/^Can't tell when/.test(d.tracklist_skipped) ? "start" : /^No Traktor history/.test(d.tracklist_skipped) ? "history" : "");  // saved before the kind was
   if (kind === "start") return `Its name doesn't say when it started, so ${DJ()}'s history of that session can't be found. If you played it in ${DJ()}, analyse it again with its start time (Analyse a mix… → Started at).`;
+  const rb = /Rekordbox/.test(d.tracklist_skipped || "");  // the app it was checked against, maybe not today's
+  if (kind === "history" && rb) return `No Rekordbox History playlist covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. Rekordbox writes one per session as you play: check its History folder, and if the start is wrong, analyse the mix again with the right one (Analyse a mix… → Started at).`;
   if (kind === "history") return `No ${DJ()} history covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. ${DJ()} saves a session's history when it closes: quit ${DJ()} once after the set, then analyse the mix again.`;
   return esc(d.tracklist_skipped);
 }
@@ -365,7 +368,7 @@ function renderMix(d) {
       : `<div class="seg ${pl.guessed && !str ? "pred" : ""}" style="height:${pl.hype * 10}%;${colour}${fade(i)}" data-tip="${esc(tip)}"></div>`;
   };
   return `
-    <div class="page-head"><div><h2>${esc(mixTitle({ recording: (d.file || "").split("/").pop() }))}</h2><div class="muted">${recDate(d.file) ? `${esc(d.file.split("/").pop())} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
+    <div class="page-head"><div><h2>${esc(mixTitle({ recording: baseName(d.file) }))}</h2><div class="muted">${recDate(d.file) ? `${esc(baseName(d.file))} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
     ${d.tracklist_skipped ? `<div class="note" style="margin-bottom:12px"><b>No tracklist check.</b> ${skippedNote(d)}</div>` : ""}
     <div class="grid">
       <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score, sel: { kind: "genre", label: g.genre }, on: isOn("genre", g.genre) })))}
