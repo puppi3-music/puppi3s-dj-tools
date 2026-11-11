@@ -111,11 +111,30 @@ def settings_tsi(recordings: Path, samples: Path) -> str:
             '</TraktorSettings></NIXML>\n')
 
 
+def remove(d: Path) -> None:
+    """Delete a folder for the next test. Windows can't delete a file that is still open, and the last test's SQLite
+    connections stay open until garbage collection (the cache one is kept open on purpose): close them first. A
+    folder that survives would hand the next test the last test's data (a held genre, Rekordbox chosen), so fail."""
+    import gc
+
+    from dj_track_analyzer import analysis
+
+    for con in analysis._db_local.__dict__.pop("cons", {}).values():
+        con.close()
+    gc.collect()
+    for _ in range(20):  # a virus scanner may hold a new file for a moment
+        shutil.rmtree(d, ignore_errors=True)
+        if not d.exists():
+            return
+        time.sleep(0.25)
+    raise RuntimeError(f"{d} could not be deleted (a file in it is still open); the test would see old data")
+
+
 @pytest.fixture
 def library():
     """A fresh music library, Traktor collection and analyzer data folder. Returns paths and the tracks."""
     for d in (TMP / "music", TMP / "data", TRAKTOR_DIR.parent):
-        shutil.rmtree(d, ignore_errors=True)
+        remove(d)
     music = (TMP / "music").resolve()
     files = []
     for i, (folder, name, _genre, _colour) in enumerate(TRACKS):
