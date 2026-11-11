@@ -47,6 +47,14 @@ def find_collection(path: str | None = None):
     return backend().find_collection(_path(path))
 
 
+def changed_at(path) -> tuple:
+    """When the library file last changed, for cache keys: Rekordbox's master.db may only change in its -wal file."""
+    from pathlib import Path
+
+    wal = Path(str(path) + "-wal")
+    return Path(path).stat().st_mtime_ns, wal.stat().st_mtime_ns if wal.exists() else None
+
+
 def collection_tracks(path: str | None = None):
     return backend().collection_tracks(_path(path))
 

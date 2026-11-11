@@ -65,21 +65,26 @@ _sync_lock = threading.Lock()  # the web page asks from several threads
 
 
 def sync_traktor_colours(nml: str | None = None) -> None:
-    """Your colours in the database = Traktor's now, read again whenever collection.nml changes: a recolour from the
+    """Your colours in the database = the DJ app's now, read again whenever its library file changes (collection.nml,
+    or Rekordbox's master.db): a recolour from the
     page, `traktor --undo` or a colour set in Traktor show at once, not only after the next scan or training.
     Left alone while a tempo view is loaded (Traktor then holds the view's colours, not yours)."""
     from . import tempo
 
     try:
-        path = traktor.find_collection(nml)
-        key = (str(path), path.stat().st_mtime_ns)
+        if library.app() == "rekordbox":  # its master.db, not a Traktor collection that may not even exist
+            from . import rekordbox
+            path = rekordbox.find_collection(None)
+        else:
+            path = traktor.find_collection(nml)
+        key = (str(path), library.changed_at(path))
     except (SystemExit, OSError):
         return
     with _sync_lock:
         if _synced["key"] == key or not collection.NATIVE_DB.exists():
             return
         if not tempo.loaded():
-            _p, now, _n = read_traktor_colors(str(path))
+            _p, now, _n = read_traktor_colors(None if library.app() == "rekordbox" else str(path))
             with sqlite3.connect(collection.NATIVE_DB) as con:
                 stored = dict(con.execute("SELECT path, traktor_color FROM tracks"))
                 new = {p: COLOR_NAMES[now[p] - 1] if p in now else None for p in stored}

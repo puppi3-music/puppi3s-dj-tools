@@ -56,7 +56,7 @@ def test_sync_rekordbox(scanned, monkeypatch, tmp_path):
     monkeypatch.setattr(rekordbox, "find_collection", lambda d=None: db)
     monkeypatch.setattr(library, "app", lambda: "rekordbox")
     out = _check(db)
-    assert "Traktor only" in out["steps"]["grids"]["skipped"]
+    assert "Nothing approved" in out["steps"]["grids"]["skipped"]
 
 
 def test_undo_refuses_after_the_app_changed_it(scanned):

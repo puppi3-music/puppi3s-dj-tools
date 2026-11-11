@@ -51,13 +51,15 @@ def refresh(predict: bool = True, progress=log) -> dict:
 
 
 def _tempo_view_loaded() -> bool:
+    """Is a tempo view loaded in the chosen DJ app (its Genre field then holds the view's genres)?"""
     import json
 
-    from . import traktor
+    from . import library, traktor
 
     state = analysis.HOME / traktor.TEMPO_STATE
     try:
-        return bool(state.exists() and json.loads(state.read_text(encoding="utf-8")).get("collection"))
+        st = json.loads(state.read_text(encoding="utf-8")) if state.exists() else {}
+        return bool(st.get("collection")) and st.get("app", "traktor") == library.app()
     except (OSError, ValueError):
         return False
 
@@ -72,7 +74,7 @@ def traktor_choices(nml: str | None = None) -> dict:
     return {
         "playlists": [{"path": p["path"], "name": p["name"], "tracks": len(p["files"])} for p in library.playlists(nml)],
         "genres": [{"genre": g, "tracks": len(v), "built_in": g.casefold() in built} for g, v in field["genres"].items()],
-        "multi": field["multi"], "tempo_view_loaded": library.app() == "traktor" and _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
+        "multi": field["multi"], "tempo_view_loaded": _tempo_view_loaded(), "min_each": analysis.MY_GENRES_MIN_EACH,
     }
 
 
@@ -99,9 +101,9 @@ def traktor_sets(playlists: list[str] | None = None, genres: list[str] | None = 
         sets = {g: [f for f in files if seen[f] == 1] for g, files in sets.items()}
         return sets, {"kind": "traktor_playlists", "playlists": list(playlists)}
     if genres:
-        if library.app() == "traktor" and _tempo_view_loaded():
-            raise SystemExit("A tempo view is loaded in Traktor, so its Genre field holds the view's genres. "
-                             "Switch Traktor back to normal on the Tempo tab first.")
+        if _tempo_view_loaded():
+            raise SystemExit(f"A tempo view is loaded in {library.app_name()}, so its Genre field holds the view's "
+                             f"genres. Switch {library.app_name()} back to normal on the Tempo view tab first.")
         field = library.genre_field(nml)["genres"]
         missing = [g for g in genres if g not in field]
         if missing:

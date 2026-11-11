@@ -34,18 +34,20 @@ async function gridClick(path, g, shift, btn) {
 }
 function renderGrid(g) {
   const ms = v => `${v > 0 ? "+" : ""}${(+v).toFixed(Math.abs(v) < 10 ? 1 : 0)} ms`;
-  const n = (g.sections || []).filter(x => x != null).length;
-  if (g.state === "unclear") return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
-  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
-  if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
+  const n = g.agreeing ?? (g.sections || []).filter(x => x != null).length;  // the stretches that agreed with the reading
+  const appr = g.approved != null;  // an approved fix stays visible (and can be taken back) whatever the check reads now
+  if (g.state === "unclear" && !appr) return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
+  if (g.state === "drift" && !appr) return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
+  if (g.state === "on" && !appr) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
     ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
     : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;
-  return `<div class="small"><span class="chip warn">${g.approved != null ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
-      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.
+  return `<div class="small"><span class="chip warn">${appr ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
+      ${g.offset_ms == null ? `The check now reads ${g.state === "drift" ? `a BPM drift (${ms(g.drift_ms)} from start to end)` : "no steady kick"} on this grid, so it can't confirm the approved move: check it by ear below, or take it back.`
+        : `The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.`}
       ${g.lead_in ? `That's the size of an MP3's lead-in (51.2 ms), what you get from a grid set on a stem file made without it, so the fix is set to exactly that.` : ""}</div>
     ${stemNote}
     <div class="filters small" style="margin-top:6px;align-items:center">
@@ -141,7 +143,8 @@ function gridWave(path, g, box, shift) {
     GRID_VIEW.beats = +b.dataset.gwbeats; box.querySelectorAll("[data-gwbeats]").forEach(o => o.classList.toggle("on", o === b)); fetchWave();
   }));
   box.querySelector("#gr-shift")?.addEventListener("input", draw);
-  new ResizeObserver(() => fetchWave()).observe(cv);
+  box._gwObs?.disconnect();  // the section is redrawn after approve / take back / write: drop the old canvas's watcher
+  box._gwObs = new ResizeObserver(() => fetchWave()); box._gwObs.observe(cv);
 }
 // Write every approved grid fix into the chosen DJ app (= `grids apply`): a preview first, then the write, then Undo.
 async function writeGrids(onDone) {
@@ -186,12 +189,14 @@ function colourNotes(t) {
   const parts = [t.your_colour && `yours at its own tempo: ${esc(t.your_colour)}`, model].filter(Boolean);
   return parts.length ? ` <span class="dim small">· ${parts.join(" · ")}</span>` : "";
 }
+let openSeq = 0;  // each openTrack call; a slower earlier call or its cue reply doesn't land over a newer one
 async function openTrack(path) {
+  const seq = ++openSeq;
   prepFor(path);
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
   if ($("#drawer").dataset.path !== path) gridStop();  // the grid click loop belongs to the track it was started on
   const all = await getTracks(), t = all.find(x => x.path === path);
-  if (!t) return;
+  if (!t || seq !== openSeq) return;
   markOpen(path); hashTrack(path);
   const d = $("#drawer"), body = $("#drawer-body");
   const moods = ["aggressive", "happy", "party", "relaxed", "sad"].filter(m => t["mood_" + m] != null).map(m => ({ label: m, value: t["mood_" + m] }));
@@ -208,12 +213,12 @@ async function openTrack(path) {
       <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
       <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">${t.hype != null ? "of 10, " : ""}compared with your collection</span></dd>
-      <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
+      <dt>Loudness</dt><dd>${t.lufs != null ? `${fmt(t.lufs, 1)} LUFS${t.loudness_range != null ? ` · range ${fmt(t.loudness_range, 1)} LU` : ""}` : "–"}</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
       ${t.error ? `<dt>Note</dt><dd class="small">${esc(t.error)}</dd>` : ""}
     </dl>${editBar(t)}
     ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
-      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
+      <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" min="0" max="50" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
     ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
     ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${genreScores.length || t.styles || yourG || t.tag_genre ? fold("genre", "Genre and style", `
@@ -232,8 +237,8 @@ async function openTrack(path) {
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
-      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: writing genres into your files' tags,
-      syncing into ${DJ()}, the colour writes on the Colours tab and switching to the tempo view all skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
+      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: writing tags, writing to ${DJ()},
+      applying colours and loading a tempo view all skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
       hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
     ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
       hint(t.path.split(/[\\/]/).pop()))}`;
@@ -249,28 +254,29 @@ async function openTrack(path) {
   const acc = body.querySelector("#dr-accept");
   if (acc) acc.onclick = async () => {
     try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
-    catch (e) { acc.textContent = e.message; }
+    catch (e) { acc.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
   };
   $("#dr-edit")?.addEventListener("click", () => { S.editing = editing(t) ? null : t.path; if (S.editing) S.editMsg = null; reopen(t.path); });
   bindEdit(t);
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
-    catch (e) { b.textContent = e.message; }
+    catch (e) { b.nextElementSibling?.remove(); b.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
   });
   const keepScroll = d.classList.contains("open") && d.dataset.path === t.path;
   d.dataset.path = t.path;
   d.classList.add("open"); d.setAttribute("aria-hidden", "false"); if (!keepScroll) d.scrollTop = 0;
   if (t.type !== "track") return;
   if (!SNAP) loadGrid(t);
-  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
-    .catch(e => { const b = $("#cuebox"); if (b && d.dataset.path === t.path) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
+  api("cues", { path: t.path }).then(c => { const b = $("#cuebox"); if (b && seq === openSeq) { b.className = ""; b.innerHTML = renderCues(c); drawWave(c, b); if (!SNAP) { bindApprove(c, b, t); deckAttach(c, b); deckPrefetch(); loadParts(c, b, t.path); } } })
+    .catch(e => { const b = $("#cuebox"); if (b && seq === openSeq) { b.className = ""; b.innerHTML = `<div class="dim small">${esc(e.message)}</div>`; } });
   let sgSeq = 0;
   const load = async () => {
     const box = $("#sugg"), k = ++sgSeq;
     const fresh = () => k === sgSeq && box.isConnected && d.dataset.path === t.path;  // a slower earlier reply, or another track's, doesn't land here
     try {
-      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: $("#sg-tol").value || 4 });
+      const tol = Math.min(Math.max(+$("#sg-tol").value || 4, 0), 50); $("#sg-tol").value = tol;
+      const r = await api("suggest", { lib: S.lib, path: t.path, same_genre: $("#sg-same").checked ? 1 : 0, tolerance: tol });
       if (!fresh()) return;
       box.className = "";
       box.innerHTML = `<div class="dim small" style="margin-bottom:6px">${esc(r.rule)} · ${r.matches} matches</div>` + table([
@@ -319,8 +325,13 @@ function bindEdit(t) {
   const box = $("#drawer-body");
   if (!canEdit(t) || !box.querySelector("#ed-bar")) return;
   const now = editNow(t), save = box.querySelector("#ed-save"), msg = box.querySelector("#ed-msg");
-  const changes = () => Object.fromEntries([...box.querySelectorAll("[data-ed]")].map(e => [e.dataset.ed, e.value.trim()]).filter(([f, x]) => x && x !== now[f]));
-  box.querySelectorAll("[data-ed]").forEach(e => e.addEventListener("input", () => { save.disabled = !Object.keys(changes()).length; }));
+  const same = (f, x) => f === "bpm" ? x !== "" && now[f] !== "" && +x === +now[f] : x === now[f];
+  const fields = () => [...box.querySelectorAll("[data-ed]")].map(e => [e.dataset.ed, e.value.trim()]).filter(([f, x]) => !same(f, x));
+  const changes = () => Object.fromEntries(fields().filter(([, x]) => x));
+  const clears = () => fields().filter(([f, x]) => !x && f === "genre" && (t.by_hand || {}).genre != null).map(([f]) => f);  // an emptied hand-set genre goes back to the analysis
+  const badBpm = () => { const b = changes().bpm; return b != null && !(+b >= 40 && +b <= 300); };
+  const check = () => { save.disabled = !(Object.keys(changes()).length || clears().length) || badBpm(); msg.textContent = badBpm() ? "BPM must be 40–300" : ""; };
+  box.querySelectorAll("[data-ed]").forEach(e => e.addEventListener("input", check));
   const send = async (body, done) => {
     if (save) save.disabled = true;
     msg.textContent = "Saving…";
@@ -333,9 +344,9 @@ function bindEdit(t) {
       await reopen(t.path);
       if (S.page === "tracks") { S.reloadTracks?.(); S.refreshRetrain?.(); }
       if (S.page === "colours") S.reloadColours?.().catch(() => {});
-    } catch (e) { msg.textContent = e.message; if (save) save.disabled = !Object.keys(changes()).length; }
+    } catch (e) { msg.textContent = e.message; if (save) check(); }
   };
-  if (save) save.onclick = () => send({ changes: changes(), clear: [] }, "Saved");
+  if (save) save.onclick = () => send({ changes: changes(), clear: clears() }, "Saved");
   box.querySelector("#ed-cancel")?.addEventListener("click", () => { S.editing = null; reopen(t.path); });
   box.querySelectorAll("[data-clear]").forEach(b => b.onclick = () => send({ changes: {}, clear: [b.dataset.clear] }, `${b.dataset.clear === "bpm" ? "BPM" : b.dataset.clear[0].toUpperCase() + b.dataset.clear.slice(1)} back to the analysis`));
   box.querySelector("#ed-undo")?.addEventListener("click", () => send({ ...S.editMsg.undo, undo: true }, "Undone"));
@@ -439,7 +450,7 @@ const fold = (key, title, html, summaryExtra = "") => `<details class="fold" dat
 document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (!k) return; foldOpen(k); S.folds[k] = e.target.open; try { localStorage.setItem("ta-folds", JSON.stringify(S.folds)); } catch (err) {} }, true);
 const helpFold = (key, title, html) => `<details class="help" data-help="${key}" ${S.helpOpen?.[key] ? "open" : ""}><summary>${title}</summary>${html}</details>`;
 document.addEventListener("toggle", e => { const k = e.target.dataset?.help; if (k) (S.helpOpen ??= {})[k] = e.target.open; }, true);  // toggle doesn't bubble
-const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+const clock = t => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, "0")}`; };  // 59.96 s is 1:00.0, not 0:60.0
 // the track list's approved chip: "+3 approved", "+2 · 1 moved · −1 approved"; long: in words, for its tip
 function approvedText(n, long = false) {
   if (n === true) n = { add: 0, move: 0, remove: 0 };  // an older server: no counts
@@ -576,8 +587,7 @@ function approveBox(c) {
     </div>
     <div class="filters" style="margin-top:8px"><button class="primary" id="ap-save">Approve ticked</button><button id="ap-all">Tick all new cues</button>${SNAP ? "" : `<button id="ap-renum" class="${renumOn(c) ? "primary" : ""}" aria-pressed="${renumOn(c)}" data-tip="Number your cue points 1-7 in the order they play, filling the slots no loop holds. Shows on the pads at once; Approve ticked keeps it, Write to ${DJ()} writes it">Number cues in order</button>`}
       ${ap ? `<button id="ap-clear">Clear approval</button>` : ""}${SNAP ? "" : `<button id="ap-write" data-tip="Write every approved track's cues into ${DJ()} (shows what changes first)">Write to ${DJ()}…</button>`}<span class="small muted" id="ap-msg"></span></div>
-    ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to ${DJ()}…</b> writes all approved tracks at once, with ${DJ()} closed: it shows what would change first, makes a backup and can be undone
-      (same as <span class="mono">cues apply</span> in a terminal). New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div>`)}</div>
+    ${helpFold("approve", "How approving and writing works", `<div class="note" style="margin-top:0">Approving writes nothing yet. <b>Write to ${DJ()}…</b> writes all approved tracks at once, with ${DJ()} closed: it shows what would change first, makes a backup and can be undone. New cues only go into free hot-cue slots; your own cues are only moved when you ticked a correction. When your hot cues are numbered in time order, they stay so: a new cue between 3 and 4 becomes 4 and your later ones move up a slot (hover a pad above to see its old slot).</div>`)}</div>
     ${cueTable(c, c.cues)}`;
 }
 async function postJSON(url, body) {
@@ -610,7 +620,7 @@ async function writeToTraktor(onDone) {
     show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : `Nothing to write: everything approved is already in ${DJ()} or can't be placed.`}</div>`}
       ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in ${DJ()}):</div>${list(d.skipped)}` : ""}
       ${running}
-      <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
+      <div class="note">A backup of ${DJ() === "Rekordbox" ? "master.db" : "collection.nml"} is made first; Undo here puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
       d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to ${DJ()}</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
@@ -928,7 +938,7 @@ function bindApprove(c, box, t) {
   box.querySelector("#ap-all")?.addEventListener("click", () => box.querySelectorAll('#approve input[data-key^="a"]:not(:disabled):not([data-more])').forEach(i => { i.checked = true; }) || showSlots());
   const sel = box.querySelector("#smp-folder");
   if (sel) {
-    (S.sampleFolders ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
+    (S.sampleFolders && S.sampleFolders.app === S.libs?.app ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
       let last = null; try { last = localStorage.getItem("ta-sample-folder"); } catch (e) {}
       sel.innerHTML = f.folders.map(n => `<option ${n === (f.folders.includes(last) ? last : f.default) ? "selected" : ""}>${esc(n)}</option>`).join("");
       sel.title = f.root;
@@ -942,7 +952,7 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === b.dataset.save), out = box.querySelector(`[data-saved="${CSS.escape(b.dataset.save)}"]`);
     b.disabled = true; out.textContent = " saving…";
     try {
-      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value, bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
+      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value || S.sampleFolders?.default || "Track Analyzer loops", bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
       out.innerHTML = ` ✓ ${d.already ? "already saved in" : "saved to"} ${esc(d.folder)} ${showBtn(d.saved, c.file_manager)}`;
       b.remove();
     } catch (err) { out.style.color = "var(--bad)"; out.textContent = ` ${err.message}`; }

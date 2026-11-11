@@ -14,7 +14,7 @@ async function refreshSetupNote() {
     : `<b>Nothing scanned yet</b>, so the tabs are empty. <a href="#setup">Scan your music →</a>`;
 }
 let G_TRAKTOR = null;  // the Setup tab's Traktor choices for learning genres (/api/genres/traktor), read once per visit
-const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: false };
+const SF = { folder: "", gfolder: "", gsrc: "", gpl: null, ggenres: null, bpm: "", noMaest: false, multi: true, colours: true, onlyTraktor: false, lexicon: null };  // lexicon: null until ticked/unticked here (then the tick follows Lexicon having the view)
 function step(state, n, title, body, actions = "") {
   return `<div class="step ${state}"><div class="ic">${state === "done" ? "✓" : n}</div><div><div class="st">${title}</div><div class="small muted">${body}</div></div><div class="act">${actions}</div></div>`;
 }
@@ -53,7 +53,9 @@ async function retrainBars(box, kinds, extra = {}) {
   });
 }
 async function pageSetup(main) {
-  const st = await getSetup(true), b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
+  const me = S.routeId, st = await getSetup(true);
+  if (me !== S.routeId) return;  // a newer page was picked meanwhile
+  const b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
   const jb = (id, text, primary, disabled, why) => `<button id="${id}" class="${primary ? "primary" : ""}" ${disabled || b} ${disabled && why ? `title="${esc(why)}"` : ""}>${text}</button>`;
   const models = st.models.ready
     ? step("done", 1, "Analysis models", `Downloaded${st.models.maest ? "" : ", without MAEST: genres come from the smaller EffNet model only"}. <span class="mono">${esc(st.models.folder)}</span>`,
@@ -96,10 +98,11 @@ async function pageSetup(main) {
     : traktorStep;
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
-    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
+    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${sc.app_tracks ? sc.app_not_scanned ? ` <b>${plural(sc.app_not_scanned, `${DJ()} track`)} not scanned yet.</b>` : ` Every ${DJ()} track is scanned.` : ""}
       ${sc.changed_since_scan ? ` <b>${plural(sc.changed_since_scan, "file")} changed on disk since the scan</b> (another tagger, ${APP} or a sync app): scan again so tags and ${APP} get their current results (quick: the analysis is cached).` : ""}
       Scan again after adding music: only new and changed files are analysed.`;
-  const scanState = !st.models.ready ? "blocked" : sc.tracks && !sc.traktor_not_scanned && !sc.changed_since_scan ? "done" : "todo";
+  const notScanned = sc.app_not_scanned || 0;  // counted from the chosen DJ app's library
+  const scanState = !st.models.ready ? "blocked" : sc.tracks && !notScanned && !sc.changed_since_scan ? "done" : "todo";
   const scanStep = step(scanState, 3, sc.tracks ? "Your music, scanned" : "Scan your music", scanBody + (st.models.ready ? "" : " <b>Download the models first.</b>"),
     `${LIB ? jb("su-scan-tk", `Scan ${APPLIB}`, scanState === "todo", !st.models.ready && "disabled") : ""}
      <input type="text" id="su-folder" placeholder="or a folder: ~/Music/Tracks" value="${esc(SF.folder)}">${jb("su-scan-dir", "Scan folder", !LIB && scanState === "todo", !st.models.ready && "disabled")}`);
@@ -130,7 +133,7 @@ async function pageSetup(main) {
   // Where the examples come from: a folder on disk, a Traktor playlist folder (a playlist per genre) or Traktor's Genre field
   const G_SRC = { folder: "A folder", folder_tags: "Genre tags in a folder", traktor_playlists: `${APP} playlists`, traktor_genres: `${APP}'s Genre field` };
   const lastSrc = GN.source_kind || {};
-  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || tk.collection) ? lastSrc.kind : "folder";
+  if (!G_SRC[SF.gsrc]) SF.gsrc = G_SRC[lastSrc.kind] && (lastSrc.kind.startsWith("folder") || LIB) ? lastSrc.kind : "folder";
   if (!SF.gpl) SF.gpl = lastSrc.kind === "traktor_playlists" ? [...(lastSrc.playlists || [])] : [];
   if (!SF.ggenres) SF.ggenres = lastSrc.kind === "traktor_genres" ? [...lastSrc.genres] : [];
   const gSource = `<div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="small">Learn from:</span>
@@ -168,13 +171,13 @@ async function pageSetup(main) {
   const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 10, "Tempo view",
     `Optional: your catalogue as heard stretched to the tempo you play at, with key lock: which genres, colours and hype change.
      About an hour the first time for 470 tracks, resumable; later only new tracks. ${T.views.length ? `Scanned: ${T.views.map(v => `${v} BPM`).join(", ")}.` : ""}
-     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>${APP} has the ${T.loaded} BPM view loaded.</b>` : ""}`,
+     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>${esc(T.loaded_app || APP)} has the ${T.loaded} BPM view loaded.</b>` : ""}`,
     `<label class="inline small">BPM <input type="number" id="su-bpm" value="${esc(bpm)}" min="60" max="250"></label>
      ${jb("su-tempo", haveView ? "Scan new tracks" : "Scan tempo view", !haveView && st.tools.rubberband && sc.tracks, (!st.tools.rubberband || !sc.tracks) && "disabled")}
-     ${T.loaded ? `<button id="su-native">Switch ${APP} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
-     ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon || T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
+     ${T.loaded ? `<button id="su-native">Switch ${esc(T.loaded_app || APP)} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
+     ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon ?? T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
   const G = st.grids || {};
-  const gridStep = !tk.collection ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
+  const gridStep = !LIB ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",
     `Optional: checks that ${APP}'s grid sits on the kicks, track by track. Grids that are off get a fix to approve in the track's panel (Tracks tab), with a click on the old and new grid to compare by ear; your cues move with the grid. About 3 minutes for 470 tracks; later only changed grids.
      ${G.checked ? `Checked ${G.checked} of ${G.tracks}: <b>${G.off} off</b>${G.drift ? `, ${G.drift} with a BPM that drifts (not fixable by moving the grid)` : ""}${G.approved ? `, ${G.approved} fix${G.approved > 1 ? "es" : ""} approved, not written yet` : ""}.` : ""}`,
     jb("su-grids", G.checked ? "Update beat-grids" : "Check the beat grids", !G.checked && !!sc.tracks,
@@ -192,7 +195,7 @@ async function pageSetup(main) {
       ${tool(9, "rubberband", "Time-stretches tracks for the tempo view.")}${tempoStep}${gridStep}</div></div>
     <div class="card"><h3>Into your files and ${APP}</h3>
       <div class="note" style="margin:0 0 6px">Every change shows a preview first and nothing is written until you press Write. ${APPLIB} is backed up before each write, and you can undo it.</div>
-      ${untested ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
+      ${untested && dj.app !== "rekordbox" ? `<div class="note" style="margin:8px 0">${untested}</div>` : ""}
       <div id="app-open-warn" class="err" style="margin:8px 0" ${st.traktor_running ? "" : "hidden"}>${APP} is open. Previews work, but quit ${APP} before writing to it: it saves its collection when it quits and would undo the changes.</div>
       <div class="steps">
       ${w("wr-tag", "Genre tags in your files", `Writes each track's genre into the file's genre tag, for Lexicon, other players, and the next step. Not needed if you only want genres in ${APP}: tick "only in ${APP}" in the next step instead.
@@ -225,7 +228,7 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { G_TRAKTOR = null; SETUP = null; await loadLibs().catch(() => {}); if (S.page === "setup") route(); else refreshSetupNote(); } }  // a long file dialog: you may be on another tab by now
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
@@ -238,14 +241,15 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { G_TRAKTOR = null; SETUP = null; await loadLibs().catch(() => {}); if (S.page === "setup") route(); else refreshSetupNote(); } }  // a long file dialog: you may be on another tab by now
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
   document.querySelectorAll('input[name="su-app"]').forEach(r => r.onchange = async () => {
-    try { await postJSON("/api/dj-app", { app: r.value }); await loadLibs(); route(); }
+    try { await postJSON("/api/dj-app", { app: r.value }); }
     catch (e) { const was = document.querySelector(`input[name="su-app"][value="${dj.app}"]`); if (was) was.checked = true;  // didn't change
-      const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
+      const msg = $("#su-nml-msg"); msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; return; }
+    G_TRAKTOR = null; SF.gsrc = ""; await loadLibs().catch(() => {}); route();  // switched: redraw even if the library list didn't reload
   });
   on("su-rb-change", () => { $("#su-rb-pick").style.display = "contents"; $("#su-rb-change").style.display = "none"; ($("#su-rb-browse") || $("#su-rb-path")).focus(); });
   on("su-rb-browse", e => rbDb({ browse: true }, e.currentTarget));
@@ -258,7 +262,7 @@ async function pageSetup(main) {
   on("su-scan-tk", () => go("scan", { traktor: true }));
   on("su-scan-dir", () => SF.folder.trim() ? go("scan", { folders: [SF.folder.trim()] }) : $("#su-folder").focus());
   on("su-hype", () => go("hype"));
-  on("su-colours", () => go("colors_train"));
+  on("su-colours", () => go("colors_train", RETRAIN.colours.opts));  // also refreshes the tempo views' colours
   on("su-cues", () => go("cues_train"));
   on("su-cues-scan", () => go("cues_scan"));
   const gmsg = (text, bad) => { const m = $("#su-gmsg"); if (!m) return; m.hidden = !text; m.className = `small${bad ? " err" : ""}`; m.textContent = text || ""; };
@@ -276,10 +280,11 @@ async function pageSetup(main) {
       });
       return;
     }
+    const src = SF.gsrc;
     if (!G_TRAKTOR) {
       box.innerHTML = `<span class="small muted">Reading ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"}…</span>`;
       try { G_TRAKTOR = await api("genres/traktor"); } catch (err) { box.innerHTML = ""; gmsg(err.message, true); return; }
-      if (!document.contains(box)) return;
+      if (!document.contains(box) || SF.gsrc !== src) return;  // another source was picked meanwhile
     }
     const T = G_TRAKTOR, few = n => n < T.min_each ? ` <span class="dim">· under ${T.min_each}</span>` : "";
     const again = `<button id="su-greread" class="mini" title="Read ${DJ() === "Rekordbox" ? "Rekordbox's library" : "Traktor's collection"} again (after changing it in ${DJ()} and saving)">↻</button>`;
@@ -298,7 +303,7 @@ async function pageSetup(main) {
       else ticks(T.playlists.map(p => ({ key: p.path, label: p.path, tracks: p.tracks })), "gpl",
         "Tick at least two playlists: each one is a genre, named after the playlist (like <b>Hyperpop</b>). A track in two of them is left out.");
     } else if (T.tempo_view_loaded) {
-      box.innerHTML = `<div class="small"><b>A tempo view is loaded in ${DJ()}</b>, so its Genre field holds the view's genres. Switch ${DJ()} back to normal on the Tempo tab first.</div>`;
+      box.innerHTML = `<div class="small"><b>A tempo view is loaded in ${DJ()}</b>, so its Genre field holds the view's genres. Switch it back to normal first: <b>Switch ${DJ()} back…</b> under Tempo view, below.</div>`;
     } else if (!T.genres.length) {
       box.innerHTML = `<div class="small">No genres in ${DJ()}'s Genre field yet. ${again}</div>`;
     } else {
@@ -324,13 +329,16 @@ async function pageSetup(main) {
     catch (err) { btn.disabled = false; gmsg(err.message, true); }
   };
   // Starter switches straight back; Both / Mine only show what would change first, then switch on a click
+  let gAsked = null;  // the mode clicked last: an older preview answer doesn't draw
   document.querySelectorAll("#su-gmode button[data-gmode]").forEach(b => b.onclick = async () => {
     const mode = b.dataset.gmode, box = $("#su-gprev");
+    gAsked = mode;
     if (mode === GN.mode) { box.innerHTML = ""; return; }
     if (mode === "starter") return gSwitch("starter", b);
     b.disabled = true; gmsg(""); box.innerHTML = `<div class="small muted">Loading…</div>`;
     try {
       const p = await api(`genres/preview?mode=${mode}`);
+      if (gAsked !== mode || !document.contains(box)) return;
       const by = Object.entries(p.by_genre).map(([g, n]) => `${esc(g)} ${n}`).join(", ");
       const rest = mode === "both" ? "Every other track keeps its built-in genre"
         : "<b>Every track gets one of your genres</b>, also tracks that sound like none of them (best when your genres cover all your music)";
@@ -340,12 +348,17 @@ async function pageSetup(main) {
           </tbody></table></div>${p.changes > p.tracks.length ? `<div class="small muted">The first ${p.tracks.length} shown.</div>` : ""}` : ""}
         <div style="margin-top:8px"><button id="su-guse" class="primary" ${jobRunning() ? "disabled" : ""}>Switch to ${G_MODES[mode]}</button></div>`;
       $("#su-guse").onclick = ev => gSwitch(mode, ev.currentTarget);
-    } catch (err) { box.innerHTML = ""; gmsg(err.message, true); }
+    } catch (err) { if (gAsked === mode) { box.innerHTML = ""; gmsg(err.message, true); } }
     finally { if (document.contains(b)) b.disabled = false; }
   });
   on("su-grids", () => go("grids_check"));
   on("su-install-ffmpeg", () => go("install", { tool: "ffmpeg" }));
   on("su-install-rubberband", () => go("install", { tool: "rubberband" }));
+  $("#su-bpm")?.addEventListener("input", e => {  // the button follows the BPM typed: a new view or new tracks for a scanned one
+    const btn = $("#su-tempo"), have = T.views.includes(+e.target.value);
+    if (!btn || btn.disabled) return;
+    btn.textContent = have ? "Scan new tracks" : "Scan tempo view"; btn.classList.toggle("primary", !have);
+  });
   on("su-tempo", () => go("tempo_scan", { bpm: +($("#su-bpm").value || 145) }));
   const lex = () => !!$("#su-lexicon")?.checked;
   on("su-load", () => writeDialog("tempo_load", { bpm: +($("#su-bpm").value || 145), lexicon: lex() }));
@@ -366,6 +379,7 @@ async function pageSetup(main) {
   jobPanel();
 }
 // The running (or last) job on the Setup page: progress, live log, result.
+let STOP_ERR = null;  // why the last Stop failed: {id, text}, kept across the panel's redraws
 function jobPanel() {
   const box = $("#jobpanel"), j = JOB.job;
   if (!box || S.page !== "setup") return;
@@ -377,13 +391,15 @@ function jobPanel() {
     : `<div style="color:var(--good)"><b>✓ Finished</b> in ${mmss(j.elapsed)}.${j.result?.this_run ? ` Analysed ${plural(j.result.this_run.analyzed, "track")}${j.result.this_run.errors ? `, ${j.result.this_run.errors} errors` : ""}.` : ""}</div>
       ${j.result ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">Everything it reported</summary><div class="tree">${tree(j.result)}</div></details>` : ""}`;
   box.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="filters" style="margin-bottom:8px"><h3 style="margin:0">${esc(j.label)}${j.dry_run ? " (preview)" : ""}</h3><div class="spacer"></div>
-      ${j.running ? `<button id="jp-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>` : `<button id="jp-x">Hide</button>`}</div>
+      ${j.running ? `<button id="jp-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : "Stop"}</button>${STOP_ERR?.id === j.id ? ` <span class="small err">${esc(STOP_ERR.text)}</span>` : ""}` : `<button id="jp-x">Hide</button>`}</div>
     <div class="mono small dim" style="margin-bottom:8px">${esc(j.command)}</div>${status}
     ${j.running ? `<div class="note">Stopping is safe: it keeps what's done and carries on next time. Closing this page doesn't stop it; stopping the web server does.</div>` : ""}
     <pre class="log">${esc(JOB.lines.slice(-400).join("\n")) || "…"}</pre></div>`;
   const p2 = box.querySelector("pre.log");
   p2.scrollTop = atEnd ? p2.scrollHeight : top;
-  $("#jp-stop")?.addEventListener("click", () => postJSON("/api/jobs/stop", {}).then(jobPoll));
+  $("#jp-stop")?.addEventListener("click", e => { const btn = e.currentTarget; btn.disabled = true;
+    STOP_ERR = null;
+    postJSON("/api/jobs/stop", {}).then(jobPoll, err => { STOP_ERR = { id: j.id, text: err.message }; jobPanel(); }); });
   $("#jp-x")?.addEventListener("click", () => { JOB.hidden = j.id; JOB.flash = null; jobPanel(); jobBar(); });
 }
 JOB.listeners.add(jobPanel);

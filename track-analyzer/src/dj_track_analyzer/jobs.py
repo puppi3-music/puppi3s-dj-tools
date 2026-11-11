@@ -57,7 +57,7 @@ def _folders(o: dict) -> list[str]:
 def _scan(o: dict) -> list[str]:
     args = ["scan", *(["--traktor"] if o.get("traktor") else []), *_folders(o)]
     if len(args) == 1:
-        raise ValueError("Pick your Traktor collection, a folder, or both")
+        raise ValueError(f"Pick {library.app_name()}'s library, a folder, or both")
     return [*args, "--rescan"] if o.get("rescan") is True else args
 
 
@@ -193,6 +193,11 @@ def busy() -> bool:
 
 def app_label(action: str, label: str) -> str:
     """A job's name with the chosen DJ app in it ("Hype into Rekordbox's Comment")."""
+    if action == "tempo_native":  # the app holding the view, which may not be the one chosen now
+        from . import tempo
+
+        st = tempo.loaded()
+        return label.replace("Traktor", library.APPS.get(st.get("app", "traktor"), "Traktor") if st else library.app_name())
     if action in ("copy", "copy_undo"):  # the chosen app first: the other's name may be "Traktor" too
         from .sync import other_name
 
@@ -444,6 +449,20 @@ def state(since: int = 0) -> dict:
 _tk_cache: dict = {"key": None, "data": None}
 
 
+_rb_cache: dict = {"key": None, "files": set()}
+
+
+def _rekordbox_files(db: Path) -> set[str]:
+    """Rekordbox's tracks on disk (read once per change of master.db)."""
+    from . import rekordbox
+
+    key = (str(db), db.stat().st_mtime)
+    if _rb_cache["key"] != key:
+        _, files, _ = rekordbox.collection_tracks(str(db))
+        _rb_cache.update(key=key, files={str(f) for f in files if not collection.sync_conflict(f)})
+    return _rb_cache["files"]
+
+
 def _traktor_side(nml: Path) -> dict:
     """Tracks, colours and cues in Traktor's collection (read once per change of collection.nml)."""
     from . import cues
@@ -614,7 +633,16 @@ def setup_status() -> dict:
                 predicted = con.execute("SELECT COUNT(*) FROM tracks WHERE color IS NOT NULL").fetchone()[0]
             if con.execute("SELECT 1 FROM sqlite_master WHERE name='original_tags'").fetchone():
                 tagged = con.execute("SELECT COUNT(*) FROM original_tags").fetchone()[0]
+    app_files = tk_files
+    rb_db = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else None
+    if rb_db:
+        try:
+            app_files = _rekordbox_files(Path(rb_db))
+        except Exception as e:  # e.g. master.db locked by a write: skip this poll's count
+            log(f"Rekordbox track count skipped: {e}")
+            app_files = set()
     st["scan"] = {"tracks": len(scanned), "errors": errors, "hype": hyped, "traktor_not_scanned": len(tk_files - scanned),
+                  "app_not_scanned": len(app_files - scanned), "app_tracks": len(app_files),
                   "changed_since_scan": changed,
                   "traktor_tracks": len(tk_files)}
     stamp = lambda p: time.strftime("%Y-%m-%d %H:%M", time.localtime(p.stat().st_mtime)) if p.exists() else None  # noqa: E731
@@ -657,7 +685,8 @@ def setup_status() -> dict:
     loaded = tempo.loaded()
     st["tempo"] = {"views": [float(d.name[3:]) for d in sorted(HOME.glob("at-*")) if (d / "collection.db").exists()
                              and re.fullmatch(r"at-[\d.]+", d.name)],
-                   "loaded": loaded["bpm"] if loaded else None}
+                   "loaded": loaded["bpm"] if loaded else None,
+                   "loaded_app": library.APPS.get(loaded.get("app", "traktor"), "Traktor") if loaded else None}
     from . import lexicon
 
     st["tempo"]["lexicon_loaded"] = bool(lexicon.loaded())

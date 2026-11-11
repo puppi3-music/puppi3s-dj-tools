@@ -833,7 +833,7 @@ def status() -> dict:
     views = {}
     for d in sorted(HOME.glob("at-*")):
         db = d / "collection.db"
-        if db.exists():
+        if db.exists() and re.fullmatch(r"at-\d+(\.\d+)?", d.name):  # the views the Library picker lists, no stray folders
             with sqlite3.connect(db) as con:
                 views[d.name] = {"tracks": con.execute("SELECT COUNT(*) FROM tracks").fetchone()[0],
                                  "folder": str(d)}

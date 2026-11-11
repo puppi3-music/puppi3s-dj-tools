@@ -374,7 +374,7 @@ Each is described by its sound (Peak groove, Lighter groove, No kick: pads / mel
 - a pad that plays it looped
 - a tick box to approve it as a loop cue
 - a length menu (1-16 bars, as many as fit before the end; see Loop length below)
-- **Save sample**: a WAV of exactly that loop in Traktor's sample folder, in a subfolder you pick (default `Track Analyzer loops`)
+- **Save sample**: a WAV of exactly that loop in the DJ app's sample folder (Traktor's, or Rekordbox's sampler folder `~/Music/rekordbox/Sampler`), in a subfolder you pick (default `Track Analyzer loops`)
 
 The sample is gapless and sample-identical to the track. It keeps the source sample rate and, for lossless files, the source's bit depth; MP3s are saved as 32-bit float, since their loud masters decode above full scale.
 

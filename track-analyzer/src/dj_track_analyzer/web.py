@@ -60,6 +60,7 @@ def libraries() -> dict:
     st, lx = tempo.loaded(), lexicon.loaded()
     return {"libraries": libs, "loaded_view": st["bpm"] if st else None, "status": tempo.status(),
             "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
+            "loaded_app": dj.APPS.get(st.get("app", "traktor"), "Traktor") if st else None,  # the app holding it
             "home": str(HOME), "colours": COLOR_NAMES, "app": dj.app(), "app_name": dj.app_name()}
 
 
@@ -231,7 +232,7 @@ def tempo_report(bpm: float, limit: int = 25) -> dict:
     from . import tempo
 
     if not (tempo.view_home(bpm) / "collection.db").exists():  # tempo.report would make an empty view (a new library)
-        raise SystemExit(f"No {bpm:g} BPM analysis yet. Run: uv run dj-track-analyzer tempo scan --bpm {bpm:g}")
+        raise SystemExit(f"No {bpm:g} BPM tempo view yet: scan it on the Setup tab (Tempo view step).")
     with library("native"):
         return tempo.report(bpm, limit=limit)
 
@@ -274,15 +275,18 @@ _guesses: dict = {"key": None, "data": {}}
 
 
 def colour_guesses() -> set[str]:
-    """Tracks whose colour the app guessed into Traktor and nobody has checked (collection.unchecked_guesses),
-    read again when collection.nml or the database changes. Empty while a tempo view is loaded (not your colours)."""
+    """Tracks whose colour the app guessed into the DJ app and nobody has checked (collection.unchecked_guesses),
+    read again when its library file (collection.nml or Rekordbox's master.db) or the database changes.
+    Empty while a tempo view is loaded (not your colours)."""
     from . import colors
+    from . import library as dj_app
 
     try:
-        nml = traktor_nml()
-        key = (nml.stat().st_mtime, collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
+        app, f = dj_app.app(), dj_app.find_collection(None)
+        key = (app, str(f), dj_app.changed_at(f), collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
         if _guesses["key"] != key:
-            _guesses.update(key=key, data=set(collection.unchecked_guesses(colors.read_traktor_colors(str(nml))[1])))
+            colours_now = colors.read_traktor_colors(None if app == "rekordbox" else str(f))[1]
+            _guesses.update(key=key, data=set(collection.unchecked_guesses(colours_now)))
     except (SystemExit, OSError):
         return set()
     return _guesses["data"]
@@ -292,11 +296,12 @@ _grids: dict = {"mtime": None, "data": {}}
 
 
 def cue_grids() -> dict:
-    """Traktor's beat grids and your cues, read again only when collection.nml changes."""
+    """The DJ app's beat grids and your cues, read again only when its library file (collection.nml, master.db) changes."""
     from . import cues
     from . import library as dj_app
 
-    m = (dj_app.app(), dj_app.find_collection(None).stat().st_mtime)
+    f = dj_app.find_collection(None)
+    m = (dj_app.app(), str(f), dj_app.changed_at(f))  # also another file chosen with the same time
     if _grids["mtime"] != m:
         _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
@@ -340,12 +345,14 @@ def _save_fixes():
 
 def correction_counts() -> dict[str, int] | None:
     """{path: proposed corrections of your cues}, worked out in the background (≈30 s for 470 tracks) and again
-    only for tracks whose grid or cues changed in Traktor's collection (all of them when the cue model changes).
+    only for tracks whose grid or cues changed in the DJ app's collection (all of them when the cue model changes).
     None while counting."""
     from . import cues
+    from . import library as dj_app
 
-    try:
-        key = (cues.MODEL.stat().st_mtime, traktor_nml().stat().st_mtime)
+    try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
+        f = dj_app.find_collection(None)
+        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), dj_app.changed_at(f))
         g = cue_grids()
     except (OSError, SystemExit):
         return {}
@@ -438,14 +445,14 @@ def ignore_correction(path: str, f: dict, on: bool) -> dict:
 
 
 def rescan_track(path: str) -> dict:
-    """Measure the track's audio again and re-read its grid and cues from Traktor's collection."""
+    """Measure the track's audio again and re-read its grid and cues from the DJ app's collection."""
     from . import cues
 
     playable(path)
     _grids["mtime"] = None  # re-read collection.nml
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     with library("native"):
         cues.forget_track(path)
         cues.bars(Path(path), d["bpm"], d["grid_ms"])
@@ -514,7 +521,7 @@ def track_cues(path: str) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+        raise SystemExit(f"{jobs.library.app_name()} has no beat grid for this track: load it in {jobs.library.app_name()} once so it gets analysed.")
     out = {"path": path, "yours": d["cues"], "marks": d.get("marks", []), "grid_ms": d["grid_ms"], "bpm": d["bpm"],
            "free_slots": 8 - len({c["hotcue"] for c in d["all_cues"]} - {-1}), "file_manager": FILE_MANAGER}
     pl = cues.plans().get(path)
@@ -545,7 +552,7 @@ def slot_preview(path: str, plan: dict) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     _moves, adds, renum, skipped, _removes = cues.resolve(d["all_cues"], cues.clean_plan(plan), d["bpm"])
     return {"new": [{"ms": a["ms"], "slot": s} for a, s in adds],
             "moved_up": [{"was": r["hotcue"], "to": r["to"]} for r in renum], "skipped": skipped}
@@ -559,7 +566,7 @@ def loop_parts(path: str, cancel: threading.Event | None = None) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+        raise SystemExit(f"{jobs.library.app_name()} has no beat grid for this track: load it in {jobs.library.app_name()} once so it gets analysed.")
     p = Path(path)
     with library("native"):
         ideas = cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]
@@ -746,7 +753,7 @@ def wave_detail(path: str, t0: float | None = None, t1: float | None = None, n: 
     from . import cues
 
     if path not in cue_grids():
-        raise ValueError("not a track in Traktor's collection")
+        raise ValueError(f"not a track in {jobs.library.app_name()}'s collection")
     with _wave_lock:  # one decode per track, even when the page asks for several windows at once
         if path not in _wave_src:
             while len(_wave_src) >= WAVE_KEEP:
@@ -757,7 +764,7 @@ def wave_detail(path: str, t0: float | None = None, t1: float | None = None, n: 
     if t0 is None or t1 is None:
         t0, t1, n = 0.0, src.dur, max(10, int(src.dur * 100))
     else:
-        n = min(int(n or 1000), 20000)  # a window: a few screens' worth of pixels at most
+        n = min(max(10, int(n or 1000)), 20000)  # a window: a few screens' worth of pixels at most
     t0, t1 = max(0.0, t0), min(src.dur, t1)
     if t1 <= t0:
         raise ValueError("empty stretch")
@@ -843,13 +850,17 @@ def loop_clip(path: str, start: float, length: float, smooth: bool = False, bpm:
     return out.stdout
 
 
-LOOPS_FOLDER = "Track Analyzer loops"  # made inside Traktor's sample folder on the first save there
+LOOPS_FOLDER = "Track Analyzer loops"  # made inside the DJ app's sample folder on the first save there
 
 
 def sample_root() -> Path:
-    """Traktor's sample folder (Preferences → File Management; Browser.Dir.Loops in Traktor Settings.tsi)."""
-    from . import traktor
+    """The DJ app's sample folder: Rekordbox's sampler folder, or Traktor's (Preferences → File Management;
+    Browser.Dir.Loops in Traktor Settings.tsi). Sync everything leaves loops already in Rekordbox's folder in place."""
+    from . import library, traktor
 
+    if library.app() == "rekordbox":
+        from . import rekordbox
+        return rekordbox.SAMPLER
     try:
         v = traktor.setting(traktor_nml(), "Browser.Dir.Loops")
         p = traktor.mac_path(v) if v else None
@@ -861,8 +872,10 @@ def sample_root() -> Path:
 def sample_folders() -> dict:
     root = sample_root()
     folders = sorted(d.name for d in root.iterdir() if d.is_dir() and not d.name.startswith(".")) if root.is_dir() else []
+    from . import library
+
     return {"root": str(root), "folders": sorted(set(folders) | {LOOPS_FOLDER}), "default": LOOPS_FOLDER,
-            "file_manager": FILE_MANAGER}
+            "file_manager": FILE_MANAGER, "app": library.app()}
 
 
 FILE_MANAGER = {"darwin": "Finder", "win32": "Explorer"}.get(sys.platform, "file manager")
@@ -929,7 +942,8 @@ def can_browse() -> bool:
 
 
 def _pick_start() -> Path | None:
-    """Where the dialog opens: the current collection's folder, else the first Native Instruments (or Documents) folder."""
+    """Where the dialog opens: the current collection's folder, else the first Native Instruments (or Documents) folder.
+    Always Traktor's: this is the dialog for collection.nml (Rekordbox's master.db passes its own start)."""
     try:
         return traktor.find_collection(None).parent
     except SystemExit:
@@ -1048,7 +1062,7 @@ def set_rekordbox_database(b: dict) -> dict:
 
 
 def reveal_sample(file: str | None = None, folder: str | None = None) -> dict:
-    """Show a saved sample (or a sample folder) in the file manager. Only inside Traktor's sample folder."""
+    """Show a saved sample (or a sample folder) in the file manager. Only inside the DJ app's sample folder."""
     root = sample_root().resolve()
     if file:
         p = Path(file).resolve()
@@ -1133,7 +1147,7 @@ def saved_samples(path: str) -> list[dict]:
 
 
 def save_loop(path: str, start: float, length: float, folder: str, bar: int, kind: str, smooth: bool = False) -> dict:
-    """Save a loop as a WAV sample in Traktor's sample folder: the exact samples (cut by ffmpeg, as for playing),
+    """Save a loop as a WAV sample in the DJ app's sample folder: the exact samples (cut by ffmpeg, as for playing),
     at the source's sample rate; smooth = the loop point crossfaded (`_render_loop`). A loop already saved (same file,
     start, length and smoothing, in any sample folder) isn't saved again. Never overwrites: a name that exists gets (2)…"""
     import sqlite3
@@ -1181,7 +1195,7 @@ def approve_cues(path: str, plan: dict | None) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     out = cues.set_plan(path, d["bpm"], d["grid_ms"], plan)
     out["corrections"] = recount(path)
     return out
@@ -1198,7 +1212,7 @@ def grid_info(path: str) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     p = Path(path)
     r = gridfix.check_one(p, d["bpm"], d["grid_ms"])
     pl, ign = gridfix.plans().get(path), gridfix.ignored().get(path)
@@ -1223,7 +1237,7 @@ def approve_grid(path: str, shift_ms) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     gridfix.set_plan(path, d["bpm"], d["grid_ms"], None if shift_ms is None else float(shift_ms))
     if shift_ms is not None:
         gridfix.set_ignore(path, d["bpm"], d["grid_ms"], False)
@@ -1235,7 +1249,7 @@ def ignore_grid(path: str, on: bool) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise ValueError("Traktor has no beat grid for this track")
+        raise ValueError(f"{jobs.library.app_name()} has no beat grid for this track")
     reading = gridfix.check_one(Path(path), d["bpm"], d["grid_ms"]) if on else None  # cached: the panel showed it
     gridfix.set_ignore(path, d["bpm"], d["grid_ms"], on, reading)
     if on:
@@ -1524,6 +1538,9 @@ def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
+        from . import colors
+
+        colors.sync_traktor_colours()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
         data["library"] = played_tracks(data["tracklist"]["tracks"])
     return data
 

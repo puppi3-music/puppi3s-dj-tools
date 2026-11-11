@@ -2,16 +2,20 @@
 async function pageFiles(main, id) {
   const me = S.routeId, L = await getLogs(true);
   if (me !== S.routeId) return;
+  const gone = id && !L.files.some(f => f.id === id);  // a link to a file that was deleted or moved
+  if (gone) id = null;
   main.innerHTML = `<div class="split">
     <div class="card list" style="padding:8px"><div class="small muted" style="padding:4px 10px 8px">Saved JSON output in ${L.folders.map(esc).join(", ")}</div>
-      ${L.files.map(f => `<a href="#files/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(f.name)}</div><div class="k">${esc(f.kind)} · ${ago(f.modified)}</div></a>`).join("") || `<div class="dim" style="padding:10px">No JSON files yet.</div>`}
+      ${L.files.map(f => `<a href="#files/${encodeURIComponent(f.id)}" class="${f.id === id ? "on" : ""}"><div>${esc(f.name)}</div><div class="k">${esc(f.kind)} · ${ago(f.modified)}</div></a>`).join("") || `<div class="dim" style="padding:10px">No JSON files yet. Mixes you analyse on the Mixes tab are saved here.</div>`}
       <div style="padding:10px"><div class="drop" id="drop">Drop a JSON file here or <a href="#" id="pick">open one</a><input type="file" id="file" accept=".json,.txt" hidden></div></div>
-    </div><div id="fview">${id ? `<div class="loading">Loading…</div>` : `<div class="card dim">Pick a file. Mix analyses also open nicely in the Mixes tab.</div>`}</div></div>`;
+    </div><div id="fview">${id ? `<div class="loading">Loading…</div>` : `<div class="card dim">${gone ? "That file is no longer in the folder (deleted or moved). " : ""}Pick a file. Mix analyses also open nicely in the Mixes tab.</div>`}</div></div>`;
   const show = d => { $("#fview").innerHTML = d && d.type === "dj_mix" ? renderMix(d) : `<div class="card tree">${tree(d)}</div>`; };
-  dropZone($("#drop"), $("#file"), $("#pick"), show);
+  let shownDrop = false;  // a file dropped while the picked one loads stays on screen
+  dropZone($("#drop"), $("#file"), $("#pick"), d => { shownDrop = true; main.querySelectorAll(".list a.on").forEach(a => a.classList.remove("on")); show(d); },
+    SNAP ? null : mixDialog);  // a recording dropped here: analyse it, as on the Mixes tab
   if (id) {
-    const me = S.routeId;
-    try { const d = await api("saved-file", { id }); if (me === S.routeId) show(d); } catch (e) { if (me === S.routeId) $("#fview").innerHTML = errBox(e); }
+    try { const d = await api("saved-file", { id }); if (me === S.routeId && !shownDrop) show(d); }
+    catch (e) { if (me === S.routeId && !shownDrop) $("#fview").innerHTML = errBox(e); }
   }
 }
 function tree(v, key, depth = 0) {
