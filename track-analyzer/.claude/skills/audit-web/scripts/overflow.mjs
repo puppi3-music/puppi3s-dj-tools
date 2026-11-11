@@ -51,6 +51,9 @@ for (const page of pages) {  // a track's panel is fixed to the window: a tall o
   for (const o of r.over) console.log(`    ${o}`);
   if (shots) {
     const name = `${shots}/${page.split("/")[0]}${page.includes("/") ? "-panel" : ""}-${scheme}-${width}.png`;
+    // a full-page capture (captureBeyondViewport) drops the emulated dark scheme: set the page's own theme switch too
+    await send("Runtime.evaluate", { expression: `document.documentElement.dataset.theme = "${scheme}"` });
+    await sleep(200);
     const shot = await send("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
     writeFileSync(name, Buffer.from(shot.result.data, "base64"));
     console.log(`    ${name}`);

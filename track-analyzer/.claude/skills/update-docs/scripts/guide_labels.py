@@ -1,8 +1,8 @@
 """Bold names in docs/GUIDE.html (<b>…</b>, split on → and ›) that don't appear in the page (web/index.html, web/js,
 web.py). ${...} in the page counts as a wildcard, so "Load into Traktor…" matches `Load into ${DJ()}…`.
 Prints candidates; prose labels ("On a Mac:", "Tip:") are expected noise. Run from track-analyzer/:
-python3 .claude/skills/update-docs/scripts/guide_labels.py"""
-import glob, html, re
+python3 .claude/skills/update-docs/scripts/guide_labels.py [README.md]  (Markdown: **bold** names)"""
+import glob, html, re, sys
 
 W = "src/dj_track_analyzer/web"
 page = html.unescape("".join(open(f, encoding="utf-8").read()
@@ -11,9 +11,10 @@ page = page.replace("\\u2026", "…")
 templ = [re.compile(re.escape(t).replace(re.escape("§"), ".{1,40}"))
          for t in set(re.sub(r"\$\{[^}]*\}", "§", m) for m in re.findall(r"[^`\"<>]*\$\{[^`\"<>]*", page))
          if len(t.replace("§", "").strip()) >= 6]
-guide = open("docs/GUIDE.html", encoding="utf-8").read()
+path = sys.argv[1] if len(sys.argv) > 1 else "docs/GUIDE.html"
+guide = open(path, encoding="utf-8").read()
 seen = set()
-for b in re.findall(r"<b>(.*?)</b>", guide, re.S):
+for b in re.findall(r"\*\*(.*?)\*\*" if path.endswith(".md") else r"<b>(.*?)</b>", guide, re.S):
     for part in re.split(r"→|›", html.unescape(re.sub("<[^>]+>", "", b))):
         t = part.strip().rstrip(":")
         if len(t) < 3 or t in seen or t in page:
