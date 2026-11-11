@@ -36,7 +36,8 @@ function deckSetVolume(v) {
 }
 DECK.audio.volume = deckVolume();
 function deckAttach(c, box) {
-  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; DECK.ready = null; }
+  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; DECK.ready = null;
+    DECK.waiting = false; DECK.active = null; DECK.asked = (DECK.asked || 0) + 1; }  // a play still starting for the last track: dropped
   DECK.c = c; DECK.box = box;
   box.querySelector("#dk-play")?.addEventListener("click", deckToggle);
   box.querySelector("#dk-vol")?.addEventListener("input", e => deckSetVolume(+e.target.value / 100));
@@ -217,7 +218,7 @@ document.addEventListener("keydown", e => {
   if (!DECK.path || !$("#drawer").classList.contains("open") || DECK.path !== $("#drawer").dataset.path || e.target.closest("input, textarea, select") || overlayOpen()) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;  // leave the browser's own shortcuts alone (⌘1 switches tab, alt+← goes back)
   const c = DECK.c, t = deckTime();
-  if (e.code === "Space") { e.preventDefault(); deckToggle(); }
+  if (e.code === "Space") { e.preventDefault(); e.target.closest("button")?.blur(); deckToggle(); }  // blur: a focused ▶ Play would toggle again on keyup
   else if (/^Digit[1-8]$/.test(e.code)) {
     const n = +e.code.slice(5) - 1, p = PEND?.path === c.path ? PEND : null;  // with cues ticked: the slots as the pads show them
     const a = p?.adds.find(a => !a.nofit && a.hotcue === n);
@@ -240,7 +241,7 @@ const RENUM = new Map();  // path -> true while "Number cues in order" is presse
 const DRAGMV = new Map();  // path -> Map("m<slot>:<from_ms>" -> ms): moves of your cues made by dragging them on the waveform
 const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
 let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
-const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
+const WAVE_DETAIL = new Map(), WAVE_FETCH = new Map();  // path -> detailed waveform, fetched on the first zoom; path -> that fetch
 let WAVE_UP = null;  // the drawn waveform's window mouseup listener
 function decodeWave(w) {
   const raw = atob(w.data), a = new Uint8Array(raw.length);
@@ -279,10 +280,11 @@ function drawWave(c, box) {
     let span = Math.min(dur, Math.max(minSpan, v1 - v0));
     v0 = Math.min(Math.max(0, v0), dur - span);
     st.v0 = v0; st.v1 = v0 + span;
-    if (!SNAP && !st.detail && !st.loading && span < dur * 0.6) {  // close in: fetch the detailed waveform
+    if (!SNAP && !st.detail && !st.loading && span < dur * 0.6) {  // close in: fetch the detailed waveform (once, across redraws)
       st.loading = true; render();
-      api("wave", { path: c.path }).then(w => { st.detail = decodeWave(w); WAVE_DETAIL.set(c.path, st.detail); })
-        .catch(() => {}).finally(() => { st.loading = false; render(); });
+      if (!WAVE_FETCH.has(c.path)) WAVE_FETCH.set(c.path, api("wave", { path: c.path }).then(w => { const d = decodeWave(w); WAVE_DETAIL.set(c.path, d); return d; })
+        .finally(() => WAVE_FETCH.delete(c.path)));
+      WAVE_FETCH.get(c.path).then(d => { st.detail = d; }).catch(() => {}).finally(() => { st.loading = false; render(); });
     }
     render();
     refine();  // after render: it measures the canvas
@@ -295,7 +297,7 @@ function drawWave(c, box) {
   let fineTimer = 0, fineSeq = 0;
   function refine() {
     clearTimeout(fineTimer);
-    if (SNAP || !W || rate() <= 100 || fineOk()) return;
+    if (SNAP || !W || rate() <= 100 || fineOk() || box._view !== st) return;
     fineTimer = setTimeout(() => {
       const span = st.v1 - st.v0, t0 = Math.max(0, st.v0 - span / 2), t1 = Math.min(dur, st.v1 + span / 2), seq = ++fineSeq;
       api("wave", { path: c.path, t0: t0.toFixed(4), t1: t1.toFixed(4), n: Math.ceil((t1 - t0) * rate()) })
@@ -303,6 +305,7 @@ function drawWave(c, box) {
     }, 120);
   }
   let render = function () {
+    if (box._view !== st) return;  // drawn again since (an approve re-renders the drawer): a late fetch here mustn't paint the old view
     const dpr = window.devicePixelRatio || 1;
     W = cv.clientWidth; const H = cv.clientHeight;
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }

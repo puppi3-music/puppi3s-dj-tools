@@ -443,7 +443,7 @@ def ignore_correction(path: str, f: dict, on: bool) -> dict:
 
 
 def rescan_track(path: str) -> dict:
-    """Measure the track's audio again and re-read its grid and cues from Traktor's collection."""
+    """Measure the track's audio again and re-read its grid and cues from the DJ app's collection."""
     from . import cues
 
     playable(path)
@@ -519,7 +519,7 @@ def track_cues(path: str) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+        raise SystemExit(f"{jobs.library.app_name()} has no beat grid for this track: load it in {jobs.library.app_name()} once so it gets analysed.")
     out = {"path": path, "yours": d["cues"], "marks": d.get("marks", []), "grid_ms": d["grid_ms"], "bpm": d["bpm"],
            "free_slots": 8 - len({c["hotcue"] for c in d["all_cues"]} - {-1}), "file_manager": FILE_MANAGER}
     pl = cues.plans().get(path)
@@ -564,7 +564,7 @@ def loop_parts(path: str, cancel: threading.Event | None = None) -> dict:
 
     d = cue_grids().get(path)
     if not d:
-        raise SystemExit("Traktor has no beat grid for this track: load it in Traktor once so it gets analysed.")
+        raise SystemExit(f"{jobs.library.app_name()} has no beat grid for this track: load it in {jobs.library.app_name()} once so it gets analysed.")
     p = Path(path)
     with library("native"):
         ideas = cues.suggest(path, d["bpm"], d["grid_ms"])["loop_ideas"]
@@ -751,7 +751,7 @@ def wave_detail(path: str, t0: float | None = None, t1: float | None = None, n: 
     from . import cues
 
     if path not in cue_grids():
-        raise ValueError("not a track in Traktor's collection")
+        raise ValueError(f"not a track in {jobs.library.app_name()}'s collection")
     with _wave_lock:  # one decode per track, even when the page asks for several windows at once
         if path not in _wave_src:
             while len(_wave_src) >= WAVE_KEEP:
@@ -762,7 +762,7 @@ def wave_detail(path: str, t0: float | None = None, t1: float | None = None, n: 
     if t0 is None or t1 is None:
         t0, t1, n = 0.0, src.dur, max(10, int(src.dur * 100))
     else:
-        n = min(int(n or 1000), 20000)  # a window: a few screens' worth of pixels at most
+        n = min(max(10, int(n or 1000)), 20000)  # a window: a few screens' worth of pixels at most
     t0, t1 = max(0.0, t0), min(src.dur, t1)
     if t1 <= t0:
         raise ValueError("empty stretch")
