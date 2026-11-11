@@ -3,6 +3,14 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**Changed**
+- Getting ready for the project's new name on GitHub (puppi3s-track-analyzer): the update check asks the old name
+  first, then the new one. Install this version before the rename, so updates keep coming.
+- A copy made with git now follows the app when a later version moves it from `track-analyzer/` to the top of the
+  folder: your data, logs and own notes go with it, and the page says to start it again from there.
+
 ## 1.2.3 (2026-11-11)
 
 **Fixed**
