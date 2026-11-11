@@ -1,15 +1,15 @@
 # <img src="../puppi3-icon.png" alt="" width="40" align="center"> Puppi3's Track Analyzer
 
-Local music analysis for a DJ's Mac (or Linux computer): BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon), plus an MCP server so a local LLM can search your collection. Fully offline, no length limit, free.
+Local music analysis for a DJ's Mac, Windows or Linux computer: BPM, key, subgenre, mood, your own Traktor colour scale and a hype score, synced into **Traktor Pro 4** (and optionally Lexicon). An MCP server lets a local LLM search your collection. Fully offline, no length limit, free.
 
-> **Already installed?** Day-to-day use is in the **[guide](https://puppi3-music.github.io/puppi3s-dj-tools/track-analyzer/)** (also in the project as `docs/GUIDE.html`): each task in the web page step by step, how to read it, how to undo, and every command in its own section. This README is the full reference.
+> **Already installed?** Day-to-day use is in the **[guide](https://puppi3-music.github.io/puppi3s-dj-tools/track-analyzer/)** (also in the project as `docs/GUIDE.html`). It takes each task in the web page step by step, with how to read the result and how to undo it, and gives every command its own section. This README is the full reference.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/cues-dark.png">
   <img src="docs/img/cues-light.png" alt="A track's waveform in the web page, coloured by lows, mids and highs, with the DJ's own hot cues 1-8 on top, suggested cues below it named Start, Phrase, Lift, Breakdown and Drop, and six loop ideas L1-L6 described by their sound">
 </picture>
 
-*One track in the web page: your hot cues on Traktor's beat grid, the cues and mix loops the analyzer suggests (learned from where you put yours), and loop ideas named by what plays in them. Every pad plays from the page.*
+*One track in the web page: your hot cues on Traktor's beat grid, and the cues and mix loops the analyzer suggests (learned from where you put yours). Loop ideas are named by what plays in them, and every pad plays from the page.*
 
 ## What you get
 
@@ -28,7 +28,7 @@ For every MP3, WAV, FLAC, AIFF or M4A:
 | **Sets and crates** | A set planned along an arc of colour and hype with keys that mix, and warm-up / peak / closing crates, as Traktor playlists if you like. |
 | **DJ mixes** | Files over 12 minutes get a timeline in 2-minute segments. With `--tracklist`, a recorded mix is checked track by track against Traktor's history of that session. |
 
-When a track is in your Traktor collection, Traktor's own BPM and key are stored too, and they win for search, mix suggestions, hype filters and tag writes (you may have fixed the beatgrid by hand).
+When a track is in your Traktor collection, Traktor's own BPM and key are stored too (you may have fixed the beatgrid by hand). They win for search, mix suggestions, hype filters and tag writes.
 
 ## Contents
 
@@ -55,14 +55,31 @@ On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-c
 
 1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), unzip it, and open the folder in Finder. Or clone this project and open its `track-analyzer` folder.
 2. Double-click **`Start Puppi3's Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
-3. A Terminal window opens and does the install for you: it installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
-4. The page starts on its **Setup** tab: a checklist that downloads the models, scans your Traktor collection or a music folder, learns your colours and cue points, installs ffmpeg and rubberband (with Homebrew on a Mac, if you have it; on Windows with winget and Rubber Band's own build) and puts the results into your files and Traktor. Each button runs the same command as below, in the background, with a progress bar and a live log; **Stop** is safe (scans carry on where they stopped next time).
+3. A Terminal window opens and does the install for you. It installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
+4. The page starts on its **Setup** tab, a checklist that:
+   - downloads the models
+   - scans your Traktor collection or a music folder
+   - learns your colours and cue points
+   - installs ffmpeg and rubberband (with Homebrew on a Mac, if you have it; on Windows with winget and Rubber Band's own build)
+   - puts the results into your files and Traktor
+
+   Each button runs the same command as below, in the background, with a progress bar and a live log. **Stop** is safe: scans carry on where they stopped next time.
 
 Keep the Terminal window open while you use the page; close it to stop. Double-click again any time: if the page is already running, it just opens it.
 
-**Updating.** The **Setup** tab says when a new release is out, with its notes. Press **Update now…**: it shows what changes, then installs it, and the page starts again with the new version. Your `data` folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, and **Go back to …** on the same card returns to the version you had. If a release needs a step afterwards (genres again, a rescan, new models), the card offers it as a button. To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent; untick **check when the page opens** to turn that off (**Check now** still works). In a terminal: `uv run dj-track-analyzer update` (`--check`, `--dry-run`, `--undo`), then start the launcher again. A clone is updated with `git pull` (only on `main` without local changes of your own); Docker by building the image again. Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
+**Updating.** The **Setup** tab says when a new release is out, with its notes. Press **Update now…**: it shows what changes, then installs it, and the page starts again with the new version.
 
-*From 1.0.1 on Windows only:* the 1.0.1 launcher can't restart the page by itself, so after that one update close its window and double-click **`Start Puppi3's Track Analyzer.bat`** again. Later updates restart by themselves.
+- Your `data` folder (scans, models, training, settings) isn't touched.
+- The app's own files are backed up first, and **Go back to …** on the same card returns to the version you had.
+- If a release needs a step afterwards (genres again, a rescan, new models), the card offers it as a button.
+
+To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent. Untick **check when the page opens** to turn that off (**Check now** still works). Other ways to update:
+
+- In a terminal: `uv run dj-track-analyzer update` (`--check`, `--dry-run`, `--undo`), then start the launcher again.
+- A clone: `git pull` (only on `main` without local changes of your own).
+- Docker: build the image again.
+
+Each release's notes are in [CHANGELOG.md](CHANGELOG.md).
 
 ### The Terminal way
 
@@ -96,17 +113,28 @@ Under `genre_basis` it should say `"models": "EffNet + MAEST"`. If it says only 
 
 - **Model server unreachable?** `setup` tries a few ways, then prints a download link for each file it couldn't get. Open them in a browser, drop the files into `data/models/`, and run `setup` again to confirm.
 - **Speed.** The first run takes a few extra seconds while TensorFlow loads; after that a typical track takes about 10–15 seconds on an M1 Pro Mac (MAEST is about half of that).
-- **Requirements.** Apple Silicon with macOS 14 or newer, an Intel Mac with macOS 11 or newer, Windows 10 or 11 on x64 (see below), or Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below).
-- **How it measures.** The signal processing (loudness, resampling, the models' mel input, key, BPM) is Essentia's, ported to Rust in a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases): 5–7 times faster, and the same results on every platform. They are Essentia's, or a millionth or less off where its maths is more exact. Audio is decoded with current FFmpeg (PyAV) and the models run on TensorFlow 2.15, the version Essentia used. Nothing to set up; no Rust needed.
-- **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB),
-  which separates each loop idea into drums, bass, synths and vocals, so the loop buttons say "vocals", "vocal bits",
-  "synth", "no bass" or "drums + bass only", and whether a loop has a kick comes from the drum stem (no bassline in the
-  way, so it hears quiet and filtered kicks the full-mix measurement misses). It runs when you open a track (about 8 seconds on Apple Silicon, then cached), only
-  on the loops. Male / female isn't detected: no model tried could tell them apart in club tracks.
+- **Requirements.** One of:
+  - Apple Silicon with macOS 14 or newer
+  - an Intel Mac with macOS 11 or newer
+  - Windows 10 or 11 on x64 (see below)
+  - Linux on x86_64 with glibc 2.28 or newer (Ubuntu 20.04, Debian 10 and later; see below)
+- **How it measures.** The signal processing (loudness, resampling, the models' mel input, key, BPM) is Essentia's, ported to Rust in a small prebuilt module (`track-analyzer-dsp`, downloaded from this repo's GitHub releases). It's 5–7 times faster and gives the same results on every platform: Essentia's, or a millionth or less off where its maths is more exact. Audio is decoded with current FFmpeg (PyAV) and the models run on TensorFlow 2.15, the version Essentia used. Nothing to set up; no Rust needed.
+- **Vocals and synths in loop ideas (optional).** `uv sync --inexact --extra stems` adds Demucs (PyTorch, about 600 MB), which separates each loop idea into drums, bass, synths and vocals. The loop buttons then say "vocals", "vocal bits", "synth", "no bass" or "drums + bass only". Whether a loop has a kick comes from the drum stem, with no bassline in the way, so it hears quiet and filtered kicks the full-mix measurement misses. It runs only on the loops, when you open a track (about 8 seconds on Apple Silicon, then cached). Male / female isn't detected: no model tried could tell them apart in club tracks.
 
 ### Linux
 
-Everything that works on your music files works on Linux (x86_64 only: the Rust module is built for that): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Traktor doesn't run on Linux, so the steps that read or write Traktor's collection don't apply: `traktor`, `scan --traktor` (scan your folders instead), colours, cue points, `tempo load` / `native` / `nml`, `hype --traktor`, `analyze --tracklist` and `--chapters`, and Lexicon (`--lexicon`). `hype --gems` needs Traktor's stars and play counts, so it finds nothing. `set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor. Without Traktor, scans use the analyzer's own BPM and key.
+Everything that works on your music files works on Linux (x86_64 only: the Rust module is built for that): scanning, BPM, key, genres, moods, hype, tags, search, mix checks, clips, the tempo view, the web page and the MCP server. Without Traktor, scans use the analyzer's own BPM and key.
+
+Traktor and Rekordbox don't run on Linux, so the steps that read or write a DJ app's library don't apply:
+
+- `traktor`, `sync` and `scan --traktor` (scan your folders instead)
+- colours, cue points and beat grids
+- `tempo load` / `native` / `nml`
+- `hype --traktor`, and `hype --gems` (it needs Traktor's stars and play counts, so it finds nothing)
+- `analyze --tracklist` and `--chapters`
+- Lexicon (`--lexicon`)
+
+`set` and `crates` work, without stars; their `--traktor`, `--playlist` and `set --arc mine` need Traktor.
 
 Install the same way, from a terminal: `./"Start Puppi3's Track Analyzer.command"` (it opens the page with `xdg-open`), or the Terminal steps above. Install the tools with your package manager, for example `sudo apt install ffmpeg rubberband-cli`. The tempo view needs Rubber Band 3.0 or newer (Ubuntu 24.04 and Debian 12 have it; Ubuntu 22.04's 2.0 is too old). A drive that isn't plugged in (under `/media`, `/run/media` or `/mnt`) keeps its tracks in the database, as on a Mac.
 
@@ -140,7 +168,7 @@ docker compose down                      # stop it
 ```
 
 - `MUSIC` is mounted at the same path inside the container, so paths in the database are your real ones. Data (database, models, backups) goes in `data-docker/` (or `TRACK_ANALYZER_DATA`), separate from a native install's `data/`.
-- `TRAKTOR_DIR` mounts the folder holding `Traktor <version>` (your `Documents/Native Instruments`). The container can't see whether Traktor is open, so every write to Traktor asks you to confirm it's closed: the page asks in a dialog, a command asks y/N in a terminal, and without a terminal it needs `TRACK_ANALYZER_TRAKTOR_CLOSED=1`. Traktor on Windows stores `C:` paths, which the analyzer doesn't read yet ([docs/WINDOWS.md](docs/WINDOWS.md)): until then, scan folders rather than `scan --traktor`.
+- `TRAKTOR_DIR` mounts the folder holding `Traktor <version>` (your `Documents/Native Instruments`). The container can't see whether Traktor is open, so every write to Traktor asks you to confirm it's closed. The page asks in a dialog, a command asks y/N in a terminal, and without a terminal it needs `TRACK_ANALYZER_TRAKTOR_CLOSED=1`. Traktor on Windows stores `C:` paths, which the analyzer doesn't read yet ([docs/WINDOWS.md](docs/WINDOWS.md)); until then, scan folders rather than `scan --traktor`.
 - The page answers only `127.0.0.1` and `localhost`. To open it from another device, publish the port on more than localhost in `compose.yaml` and list the names in `TRACK_ANALYZER_HOSTS`.
 - Docker runs x86_64 only. On a Mac use the launcher above: it runs natively and much faster.
 - `docker compose run --rm test` checks everything end to end on a few synthetic tracks (`scripts/make_fixtures.py`, `scripts/docker_smoke.py`), as CI does.
@@ -151,55 +179,39 @@ docker compose down                      # stop it
 uv run dj-track-analyzer analyze ~/path/Recording_2026-01-31_22h00m00s.wav --tracklist
 ```
 
-Traktor saves a history file for every session (`Documents/Native Instruments/Traktor x/History/`): each
-track played, on which deck, when it started. Its own recordings are named after the time they started, so
-`--tracklist` finds the right history file and places each track in the recording. For a recording with
-another name add `--start 22:00:00`; to use a particular history file, pass its path after `--tracklist`.
-If no history file covers the recording (Traktor writes it when it closes), or the recording's start can't be told
-(another app's recording without `--start`), the mix is analysed without the check and the result says why, so
-`--tracklist` works on any file. A history file you name, or `--chapters`, has to work, or it stops.
+Traktor saves a history file for every session (`Documents/Native Instruments/Traktor <version>/History/`): each track played, on which deck, when it started. Its own recordings are named after the time they started, so `--tracklist` finds the right history file and places each track in the recording.
+
+- For a recording with another name, add `--start 22:00:00`.
+- To use a particular history file, pass its path after `--tracklist`.
+
+If no history file covers the recording, the mix is analysed without the check and the result says why, so `--tracklist` works on any file. That happens when Traktor hasn't written the history yet (it writes it when it closes), or when the recording's start can't be told (another app's recording without `--start`). A history file you name, or `--chapters`, has to work, or it stops.
 
 After the JSON, a mix gets a readable summary (genre, tempo, loudness, mood, key lock, a table of the tracks
 with their keys and genres, and the timeline's genres); `--json-only` leaves it out. In the JSON, under
 `tracklist`, per track:
 
-- **Key:** Traktor's key against the key heard (by the same key CNN as your library) in the middle of the track's main stretch (from its start to
-  the next track's start). Long blends and effects are normal, so the tool measures how long after Traktor
-  logs a start a track takes over (`blend_lag_seconds`) as the delay at which most keys match. A mismatch
-  can still be the other deck; a track with under 30 s of its own gets no verdict. `matches_per_lag` shows how
-  clearly that lag won. `library_camelot` is our key of the track alone; `transition` rates the change from the
-  track before, key to key as heard (same key, one step, two steps or clash on the Camelot wheel), totalled in
-  `transitions`.
-- **Mood:** `heard_mood` is the track's mood as played (its stretch of the mix), next to `own_mood` (the track
-  alone at its own tempo) and, with a tempo view near the tempo played, `view_mood` and `view_genre`.
+- **Key:** Traktor's key against the key heard (by the same key CNN as your library) in the middle of the track's main stretch, from its start to the next track's start. Long blends and effects are normal, so the tool measures how long after Traktor logs a start a track takes over (`blend_lag_seconds`): the delay at which most keys match. `matches_per_lag` shows how clearly that lag won. A mismatch can still be the other deck; a track with under 30 s of its own gets no verdict.
+
+  `library_camelot` is our key of the track alone. `transition` rates the change from the track before, key to key as heard (same key, one step, two steps or clash on the Camelot wheel), totalled in `transitions`.
+- **Mood:** `heard_mood` is the track's mood as played (its stretch of the mix). Next to it are `own_mood` (the track alone at its own tempo) and, with a tempo view near the tempo played, `view_mood` and `view_genre`.
 - **Key lock:** history files don't record it. It's taken as on, unless the keys fit the pitch-shifted
   keys (key lock off) clearly better.
 - **Tempo:** the track's own BPM, the BPM it was played at and the change (`speed`).
-- **Genre:** how the mix sounds as played, at the BPM you played it: speeding a track up and your mixing
-  (stems, layers, effects) both really change it, and both count. Only one thing is held back: sped up, the
-  models hear psytrance in almost any four-on-the-floor (a pop track at 145 gets called psytrance). As in the
-  tempo view (section 6), psy counts only up to 1.5× what each track had at its own tempo, so scan the tracks
-  first. With a tempo view near the mix's tempo (`tempo scan`), `mixing` lists the styles your mixing pushed
-  up or down against each track alone at that tempo (part of that can be the other deck still playing).
-  The label without the psy limit is kept as `dj_genre_uncorrected` (also per track and timeline segment),
-  and the library's genre per track as `library_genre`.
+- **Genre:** how the mix sounds as played, at the BPM you played it. Speeding a track up and your mixing (stems, layers, effects) both really change it, and both count. Only one thing is held back: sped up, the models hear psytrance in almost any four-on-the-floor (a pop track at 145 gets called psytrance). As in the [tempo view](#6-your-catalogue-at-your-play-tempo-tempo-view), psy counts only up to 1.5× what each track had at its own tempo, so scan the tracks first.
 
-**Posting the mix as a video:** `--chapters --offset 0:14` prints YouTube chapters for a video where the
-first track starts 0:14 in. Read that off the finished video itself: it depends on how you lined the audio
-up, so it can't come from the recording. The video's opening becomes an "Intro" chapter at 0:00, and very
-short plays fold into the next chapter (YouTube wants at least three, 10 s apart). `--highlights` suggests
-two 40-second stretches for short clips (`--highlights 5` for five; loud, rising out of something quieter;
-loudness only, so pick by eye and snap to a bar), in video times with `--offset`, each ranked (#1 best). Trimming silence off the audio file doesn't change
-the times: they're counted from the first track's start.
+  With a tempo view near the mix's tempo (`tempo scan`), `mixing` lists the styles your mixing pushed up or down against each track alone at that tempo (part of that can be the other deck still playing). The label without the psy limit is kept as `dj_genre_uncorrected` (also per track and timeline segment), and the library's genre per track as `library_genre`.
 
-**Clips from the video:** `clips <analysis>.json --video final.mp4` cuts quick 720p previews of every
-suggestion into `/tmp/clip-previews/<analysis name>/` so you can watch and choose. While cutting, it measures
-how much moves on screen in each and ranks them by the audio and the movement together (files start with that
-rank, e.g. `#1 clip-1 7m37s.mp4`): the audio can't see a stretch where the DJ stands still. On a test set the
-audio's second pick was one of the stillest stretches of the whole video and dropped to fourth. Then `--pick 1 4` (suggestion numbers, or your own ranges like `20:30-21:10`) makes those clips at
-full quality next to the video, named by suggestion number (`<video>-clip-1.mp4`, `-clip-4.mp4`; own ranges as `-clip-20m30s-21m10s.mp4`) (1440p30 H.264; hardware encoder on a Mac, software elsewhere;
-`--height`, `--bitrate 16M`, `--out`). The JSON must come from `analyze` with `--highlights` and `--offset`.
-Needs ffmpeg (`brew install ffmpeg`; Linux: `sudo apt install ffmpeg`). Existing clips are never overwritten without `--force`; `--dry-run` lists them.
+**Posting the mix as a video:** `--chapters --offset 0:14` prints YouTube chapters for a video where the first track starts 0:14 in. Read that off the finished video itself: it depends on how you lined the audio up, so it can't come from the recording. The video's opening becomes an "Intro" chapter at 0:00, and very short plays fold into the next chapter (YouTube wants at least three, 10 s apart). Trimming silence off the audio file doesn't change the times: they're counted from the first track's start.
+
+`--highlights` suggests two 40-second stretches for short clips (`--highlights 5` for five), in video times with `--offset`, each ranked (#1 best). It looks for loud stretches rising out of something quieter. That's loudness only, so pick by eye and snap to a bar.
+
+**Clips from the video:** `clips <analysis>.json --video final.mp4` cuts quick 720p previews of every suggestion into `/tmp/clip-previews/<analysis name>/` so you can watch and choose. The JSON must come from `analyze` with `--highlights` and `--offset`. While cutting, it measures how much moves on screen in each. It ranks them by the audio and the movement together, and files start with that rank (e.g. `#1 clip-1 7m37s.mp4`).
+
+The audio alone can't see a stretch where the DJ stands still: on a test set the audio's second pick was one of the stillest stretches of the whole video and dropped to fourth.
+
+Then `--pick 1 4` makes those clips at full quality next to the video (1440p30 H.264; hardware encoder on a Mac, software elsewhere; `--height`, `--bitrate 16M`, `--out`). Pick suggestion numbers, or your own ranges like `20:30-21:10`. Clips are named by suggestion number (`<video>-clip-1.mp4`, `-clip-4.mp4`), own ranges like `-clip-20m30s-21m10s.mp4`. Existing clips are never overwritten without `--force`; `--dry-run` lists them.
+
+Needs ffmpeg (the Setup tab installs it; or `brew install ffmpeg` on a Mac, `winget install ffmpeg` on Windows, `sudo apt install ffmpeg` on Linux).
 
 On a test mix of 22 house and melodic techno tracks, all sped up 12-20% with stems layered, 12 keys matched
 Traktor's and 1 was one step away. Without the tracklist the mix was called Psytrance (0.59); with it, Trance,
@@ -248,15 +260,30 @@ uv run dj-track-analyzer web
 Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac, or `Start Puppi3's Track Analyzer.bat` on Windows, does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts. Click a bar, column or tile to list those tracks.
-- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both); the filter **Our key doesn't mix with Traktor's** lists the tracks where the two keys don't mix, to check by ear. Each check in the **All tracks** menu shows how many tracks it would list with the other filters you've set. **⇤ Wide** widens the panel for the waveform and cues. A page refresh keeps your filters, sort, scroll position and the open track.
+- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). The filter **Our key doesn't mix with Traktor's** lists the tracks where the two keys don't mix, to check by ear.
+
+  Each check in the **All tracks** menu shows how many tracks it would list with the other filters you've set. **⇤ Wide** widens the panel for the waveform and cues. A page refresh keeps your filters, sort, scroll position and the open track.
 - **Hype**: the hype finder.
 - **Colours**: the `colors review` and `colors explain` results.
 - **Tempo view**: the `tempo report` results.
-- **Mixes**: saved `analyze` results of recorded mixes, with the timeline (the hype and Traktor colour of each track you played, or loudness; click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist), tracklist check (with each track's mood as played and the key change from the track before), clip suggestions and chapters; **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another (a mix asked for while one is analysed waits its turn; **Stop all** empties the queue; the bar says when one of them failed). **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**; **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
+- **Mixes**: saved `analyze` results of recorded mixes, each with:
+  - the timeline: the hype and Traktor colour of each track you played, or loudness. Click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist.
+  - the tracklist check, with each track's mood as played and the key change from the track before
+  - clip suggestions and chapters
+
+  **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another. A mix asked for while one is analysed waits its turn, **Stop all** empties the queue, and the bar says when one of them failed.
+
+  **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**. **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
-The **This page shows** menu switches the page between your normal library and a tempo view; it changes only the page. The **Traktor tempo view** and **Lexicon tempo view** labels beside it (Lexicon only if you use it) say what is loaded there right now, on every tab, and update when you come back to the page after a `tempo load` or `native` in a terminal. Browsing changes nothing; the page only writes when you press a button that says so (holds, cue approvals, saved samples, and the writers on the Setup tab), and anything that changes your files or Traktor shows a preview first. In a tempo view, colours show as `tempo load` puts them into Traktor (your colour moved by how the track sounds at that tempo; the track's panel also shows yours at its own tempo). Hype comes from the last scan, and `colors explain` leaves out tracks that haven't had the deep listening pass yet. The page runs only on this computer. Stop it with Ctrl-C.
+The **This page shows** menu switches the page between your normal library and a tempo view; it changes only the page. The **Traktor tempo view** and **Lexicon tempo view** labels beside it (Lexicon only if you use it) say what is loaded there right now, on every tab. They update when you come back to the page after a `tempo load` or `native` in a terminal.
+
+Browsing changes nothing. The page only writes when you press a button that says so (holds, cue approvals, saved samples, and the writers on the Setup tab), and anything that changes your files or Traktor shows a preview first.
+
+In a tempo view, colours show as `tempo load` puts them into Traktor: your colour moved by how the track sounds at that tempo (the track's panel also shows yours at its own tempo). Hype comes from the last scan, and `colors explain` leaves out tracks that haven't had the deep listening pass yet.
+
+The page runs only on this computer. Stop it with Ctrl-C.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/overview-dark.png">
@@ -272,13 +299,24 @@ The **This page shows** menu switches the page between your normal library and a
 
 *A track's panel: Traktor's BPM and key next to the analyzer's, your colour next to the model's, hype, and what the models hear: genres, Discogs styles, moods, instruments.*
 
-**Setup tab: everything without a terminal.** A checklist from a fresh install to everything in Traktor: download the models, scan (your Traktor collection, a folder, or both), score hype, learn your colours and cue points, install ffmpeg and rubberband with Homebrew (without Homebrew, on Linux for example, it shows the command to run), scan a tempo view, check the beat grids. It shows what's done (models, how many Traktor tracks aren't scanned yet, files changed on disk since the scan, trained models with their dates) and what each step needs (for example 30 coloured tracks for the colour model). **Update training** and **Update beat-grids** are greyed out when nothing is new or changed since the last run (hover for why). A button starts the step's command in the background, one at a time: a progress bar and the live log show on the page and in a bar at the top of every tab, and **Stop** works like Ctrl-C (scans keep what's done). The command is shown, so you can run the same thing in a terminal later. Stopping the web page stops a running step too.
+**Setup tab: everything without a terminal.** A checklist from a fresh install to everything in your DJ app:
+
+- **Get started:** download the models, pick your DJ app (Traktor or Rekordbox) and its library, scan (your DJ app's collection, a folder, or both), score hype.
+- **Learn from your own work** (optional): your colours, your cue points, your own genres.
+- **Extra tools** (optional): install ffmpeg and rubberband, scan a tempo view, check the beat grids. ffmpeg and rubberband come with Homebrew on a Mac, and with winget and Rubber Band's own build on Windows; on Linux it shows the command to run.
+- **Into your files and your DJ app:** the writers below.
+
+It shows what's done and what each step needs (for example 30 coloured tracks for the colour model). "Done" covers the models, how many Traktor tracks aren't scanned yet, files changed on disk since the scan, and trained models with their dates. **Update training** and **Update beat-grids** are greyed out when nothing is new or changed since the last run (hover for why).
+
+A button starts the step's command in the background, one at a time. A progress bar and the live log show on the page and in a bar at the top of every tab, and **Stop** works like Ctrl-C (scans keep what's done). The command is shown, so you can run the same thing in a terminal later. Stopping the web page stops a running step too.
 
 The writers are there too, each with **Preview…** first (the command's `--dry-run`: counts and examples of what would change), then **Write it**, then **Undo**:
 
 | Button | Same as | Undo |
 |---|---|---|
 | Genre tags in your files | `tag` (`--multi` when "close runner-up genres" is ticked) | `untag` |
+| Sync everything into Traktor | `sync` (tick the steps in the preview: `--only`) | **Undo sync…** (`sync --undo`) |
+| Copy Rekordbox into Traktor (when both are found) | `sync --copy` | **Undo copy…** (`sync --copy --undo`) |
 | Genres, colours and Smartlists in Traktor | `traktor` (`--no-colors` when "colours too" is off) | `traktor --undo` |
 | Hype in Traktor's Comment | `hype --traktor` | `traktor --undo`, or **Take it out…** (`hype --traktor --remove`) |
 | Colour new tracks | `colors apply` | `traktor --undo` |
@@ -287,9 +325,11 @@ The writers are there too, each with **Preview…** first (the command's `--dry-
 | Load into Traktor (tempo view) | `tempo load` (`--lexicon` when ticked; also on the Tempo view tab) | `tempo native` |
 | Undo the last change to Traktor | `traktor --undo` (refuses if Traktor saved since; no `--force` from the page) | |
 
-The Traktor writers refuse while Traktor is open, exactly as in a terminal; the preview says so and offers **Check again**. The Hype tab has the Comment button as well.
+With Rekordbox chosen, the buttons say Rekordbox instead of Traktor. The writers refuse while your DJ app is open, exactly as in a terminal; the preview says so and offers **Check again**. The Hype tab has the Comment button as well.
 
-**Hold a track's genre or colour.** In **Tracks**, tick tracks (the header box ticks every track shown) and choose **Hold genre** or **Hold colour**, or use the switches in a track's panel. A held genre or colour stays as it is in your files, Traktor and Lexicon: `tag`, `scan --write-tags`, `traktor` (also with `--overwrite-colors`), `colors review --apply` and `tempo load` skip it and count it as `genre_held` / `colour_held`. Holding writes nothing at the time; it only changes the analyzer's own list. Release a track the same way. The colour hold is the same list as `colors review`'s "keep always". From a terminal:
+**Hold a track's genre or colour.** In **Tracks**, tick tracks (the header box ticks every track shown) and choose **Hold genre** or **Hold colour**, or use the switches in a track's panel. Release a track the same way. A held genre or colour stays as it is in your files, Traktor and Lexicon. These skip it and count it as `genre_held` / `colour_held`: `tag`, `scan --write-tags`, `traktor` (also with `--overwrite-colors`), `colors review --apply` and `tempo load`.
+
+Holding writes nothing at the time; it only changes the analyzer's own list. The colour hold is the same list as `colors review`'s "keep always". From a terminal:
 
 ```bash
 uv run dj-track-analyzer hold                                # list held tracks
@@ -297,7 +337,14 @@ uv run dj-track-analyzer hold --genre "Artist - Title"       # hold the genre of
 uv run dj-track-analyzer hold --colour "Title" --release     # take one off the colour hold list
 ```
 
-**Edit a track by hand.** Press **✎ Edit** at the top right of a track's panel: its BPM, key (Camelot), colour, genre and hype become fields where they're shown. **Save** writes colour, key and genre into Traktor too (quit Traktor first; a backup is made, and **Undo** in the panel puts the track back; **Cancel** leaves it as it was), plus the Hype in Traktor's Comment where the Comment already has one from `hype --traktor`. A colour you set is kept always and counts as yours when the colour model trains; a genre you set is held. Genre, hype and BPM stay yours when the analysis runs again (`scan`, `regenre`, hype scoring); **↺** next to one goes back to the analysis. A BPM you set changes what the analyzer uses (search, mix suggestions, genre rules, sets, tempo views) but not Traktor: Traktor's BPM goes with its beat grid, which the analyzer never writes. Editing works in the normal library, and colour, key and genre are refused while a tempo view is loaded in Traktor. From a terminal:
+**Edit a track by hand.** Press **✎ Edit** at the top right of a track's panel: its BPM, key (Camelot), colour, genre and hype become fields where they're shown.
+
+- **Save** writes colour, key and genre into Traktor too, plus the Hype in Traktor's Comment where the Comment already has one from `hype --traktor`. Quit Traktor first. A backup is made, and **Undo** in the panel puts the track back.
+- **Cancel** leaves it as it was.
+
+A colour you set is kept always and counts as yours when the colour model trains; a genre you set is held. Genre, hype and BPM stay yours when the analysis runs again (`scan`, `regenre`, hype scoring); **↺** next to one goes back to the analysis.
+
+A BPM you set changes what the analyzer uses (search, mix suggestions, genre rules, sets, tempo views) but not Traktor: Traktor's BPM goes with its beat grid, which the analyzer never writes. Editing works in the normal library; colour, key and genre are refused while a tempo view is loaded in Traktor. From a terminal:
 
 ```bash
 uv run dj-track-analyzer edit "Title" --colour Magenta --key 8A --hype 3 --dry-run   # show what would change
@@ -306,7 +353,9 @@ uv run dj-track-analyzer edit "Title" --clear genre --clear hype                
 uv run dj-track-analyzer edit                                                        # list tracks edited by hand
 ```
 
-**Cue points and a mix loop, learned from yours.** The analyzer can learn where you put cues: it measures every bar on Traktor's own beat grid (loudness, bass, kick, brightness, timbre) and learns from the tracks you cued yourself which bars you cue and where you put your mix loop. Each track's panel in the web page then shows its waveform (coloured like DJ software: lows red, mids green, highs blue, ticks every 8 bars) with your cues on top and the suggestions below, named by what happens there (Intro, Drop, Breakdown, Kick in, Bass in, Lift, Outro, Phrase), plus a suggested loop. Zoom in (+, pinch or ctrl+scroll) down to a single beat: close in, the waveform is cut from the audio at the screen's own resolution, down to single samples.
+**Cue points and a mix loop, learned from yours.** The analyzer can learn where you put cues. It measures every bar on Traktor's own beat grid (loudness, bass, kick, brightness, timbre), and learns from the tracks you cued yourself which bars you cue and where you put your mix loop.
+
+Each track's panel in the web page then shows its waveform with your cues on top and the suggestions below, plus a suggested loop. The waveform is coloured like DJ software (lows red, mids green, highs blue, ticks every 8 bars). Suggestions are named by what happens there: Intro, Drop, Breakdown, Kick in, Bass in, Lift, Outro, Phrase. Zoom in (+, pinch or ctrl+scroll) down to a single beat: close in, the waveform is cut from the audio at the screen's own resolution, down to single samples.
 
 ```bash
 uv run dj-track-analyzer cues train            # learn from your cues (listens to the cued tracks first, ~13 min once)
@@ -314,26 +363,93 @@ uv run dj-track-analyzer cues scan             # listen to the other tracks with
 uv run dj-track-analyzer cues show "Title"     # suggestions for one track, next to yours
 ```
 
-**Loop ideas.** Each track gets up to 6 loops (L1-L6, in your most common loop length): the two most like where you put your own loops, two peak-energy loops (the cleanest-looping stretches within 1.5 dB of the track's loudest, kick playing, outside the first and last 15% of the track where DJ intros and outros sit; looser when too few qualify), then the stretches that loop most cleanly anywhere in the track (bars that sound alike at a steady level, starting on the bar grid chosen in training, at least 8 bars apart), each described by its sound (Peak groove, Lighter groove, No kick: pads / melody, very steady). On the test collection the DJ's own loop was within 4 bars of one of the five ideas other than the peak ones 70% of the time (one suggestion alone: 34%). Each has a pad that plays it looped, a tick box to approve it as a loop cue, a length menu (1-16 bars, as many as fit before the end), and **Save sample**: a WAV of exactly that loop (gapless, sample-identical to the track: source sample rate, the source's bit depth for lossless files, 32-bit float for MP3s, whose loud masters decode above full scale) in Traktor's sample folder, into a subfolder you pick (default `Track Analyzer loops`). Every loop gets the same tiny fades at its two ends that Traktor puts on its own captured samples (64 samples, about 1.5 ms): Traktor reads a little past the end of a looping sample, and a loop cut from a loud groove would click there. Otherwise the samples are the track's own, cut on Traktor's timeline (see **Listen**), so they start exactly on Traktor's beat. **smooth loop point** (off by default) fades the loop's last 5 ms into the audio just before its start, the way samplers do, so a sound ringing over the end isn't cut off with a click; it changes the loop pads too, so you can hear it before saving, and leaves every other sample exact (saved as "…, smooth"). A loop that's already saved (same track, start, length and smoothing, in any sample folder, found by the note each sample carries) isn't saved twice: it shows **✓ saved in** its folder instead. Files are never overwritten. **Open folder** and, after saving, **Show in Finder** (**Show in file manager** on Linux) take you to them. Needs ffmpeg.
+**Loop ideas.** Each track gets up to 6 loops (L1-L6, in your most common loop length):
 
-**Listen.** Above the waveform is a small deck: ▶ Play, your hot cues 1-8 and every suggestion as pads (click to jump there and play; loops play looped), and a ▶ next to each item in the approve list (corrections get ▶ yours and ▶ there, which plays the bar picked in its list, to hear which bar the phrase starts on); while it plays it turns into ⏸, which stops it. Click the waveform to move the playhead (it plays on only if it was already playing); Space plays/pauses, 1-8 hit your cues, ←/→ jump a bar, shift+←/→ a phrase (8 bars). Only files in your scanned library can be played, and only on this computer; a snapshot file has no audio. Everything in the page runs on Traktor's timeline: most MP3s start with a header frame and encoder padding that other decoders skip and Traktor plays (about 51 ms), so the player, the waveform and the cue measurements shift those files to match Traktor's beat grid exactly (checked against Traktor's own captures). The first play of such a track takes a few seconds while a matching copy is prepared. **at 145 BPM** (shown once you've scanned a tempo view; on by default while you browse one) plays the track as the view hears it: stretched with key lock by Rubber Band's R3 engine, from the tempo the view's scan stretched from. One Rubber Band uses one core (≈30 s for a track), so the player stretches 15 s pieces 8 at a time (each started 4 s early so the stretcher has settled, joined with a 30 ms crossfade): ≈6 s for a 4-minute track, started when you open it, then kept for the last few tracks. It sounds like the scan's whole-track stretch, though the samples differ. Cue pads, loops, the waveform and bar/beat stay on the track's own timeline, so switching mid-play carries on from the same beat. Saved samples stay at the track's own tempo.
+- the two most like where you put your own loops
+- two peak-energy loops: the cleanest-looping stretches within 1.5 dB of the track's loudest, with the kick playing. They stay outside the first and last 15% of the track, where DJ intros and outros sit (looser when too few qualify).
+- then the stretches that loop most cleanly anywhere in the track: bars that sound alike at a steady level, starting on the bar grid chosen in training, at least 8 bars apart
 
-**Approve and write them.** Under the waveform, tick the suggested cues and loop you want, and any proposed correction of your own cues (a yellow arrow: one of your cues the model would put 1-2 bars away, or onto the downbeat; judged by a model that never saw that track's cues, since some off-grid cues are on purpose). Each correction has a list of the other bars the model found for that cue (the bar before and after, nearby bars it scores well, the suggested cues, the downbeat of its own bar), each with its score; ★ marks the proposal, and picking one ticks the move. Hovering a bar in the list lights it, and the cue where it is now, on the waveform. You can also drag one of your cues on the waveform to another beat: the move is ticked under **Your cues moved by hand** (a cue you set by hand just moves). To move a cue that has no correction onto a suggestion, use **move my cue here…** next to that suggested cue: the move appears under **Your cues moved by hand**, ticked, where you can still pick another bar. **C** (or **+ Cue**) sets a new cue where the playhead is, on the nearest beat. Each new cue has a slot menu: **Auto** takes a free hot-cue slot, or pick one your cue holds and that cue and the ones after it move up a slot. With a free slot, a folded list under New cues offers more places for a new cue (lower scores, away from your cues and the suggestions). To delete one of your cues, loops or fade / load markers from Traktor, press the ✕ on its pad (or tick it under **Delete your cues**): its slot is left free. **Number cues in order** puts your cue points 1-7 (and any new ones) in the order they play, filling the slots no loop holds; the pads show the new numbers at once and **Approve ticked** keeps it. A volume slider on the deck sets the page's playback level only. **Approve ticked** only remembers your choice. Then quit Traktor and press **Write to Traktor…** (in the track's panel or at the top of the Tracks tab): it lists every new and moved cue across all approved tracks, and anything that won't fit, before writing anything, refuses while Traktor is open, makes a backup, and offers **Undo** afterwards (which also brings your approvals back). The same from a terminal:
+Each is described by its sound (Peak groove, Lighter groove, No kick: pads / melody, very steady). On the test collection, the DJ's own loop was within 4 bars of one of the five ideas other than the peak ones 70% of the time (one suggestion alone: 34%). Each loop has:
+
+- a pad that plays it looped
+- a tick box to approve it as a loop cue
+- a length menu (1-16 bars, as many as fit before the end; see Loop length below)
+- **Save sample**: a WAV of exactly that loop in Traktor's sample folder, in a subfolder you pick (default `Track Analyzer loops`)
+
+The sample is gapless and sample-identical to the track. It keeps the source sample rate and, for lossless files, the source's bit depth; MP3s are saved as 32-bit float, since their loud masters decode above full scale.
+
+Every loop gets the same tiny fades at its two ends that Traktor puts on its own captured samples (64 samples, about 1.5 ms). Traktor reads a little past the end of a looping sample, and a loop cut from a loud groove would click there. Otherwise the samples are the track's own, cut on Traktor's timeline (see **Listen**), so they start exactly on Traktor's beat.
+
+**smooth loop point** (off by default) fades the loop's last 5 ms into the audio just before its start, the way samplers do. A sound ringing over the end then isn't cut off with a click. It changes the loop pads too, so you can hear it before saving. Every other sample stays exact (saved as "…, smooth").
+
+A loop that's already saved isn't saved twice: it shows **✓ saved in** its folder instead. "Already saved" means the same track, start, length and smoothing, in any sample folder, found by the note each sample carries. Files are never overwritten. **Open folder** and, after saving, **Show in Finder** (**Show in file manager** on Linux) take you to them. Needs ffmpeg.
+
+**Listen.** Above the waveform is a small deck:
+
+- ▶ Play, your hot cues 1-8 and every suggestion as pads: click one to jump there and play (loops play looped).
+- A ▶ next to each item in the approve list. Corrections get ▶ yours and ▶ there; ▶ there plays the bar picked in its list, so you can hear which bar the phrase starts on.
+- While something plays, its ▶ turns into ⏸, which stops it.
+
+Click the waveform to move the playhead (it plays on only if it was already playing). Keys: Space plays/pauses, 1-8 hit your cues, ←/→ jump a bar, shift+←/→ a phrase (8 bars). Only files in your scanned library can be played, and only on this computer; a snapshot file has no audio.
+
+Everything in the page runs on Traktor's timeline. Most MP3s start with a header frame and encoder padding (about 51 ms) that other decoders skip and Traktor plays. So the player, the waveform and the cue measurements shift those files to match Traktor's beat grid exactly (checked against Traktor's own captures). The first play of such a track takes a few seconds while a matching copy is prepared.
+
+**at 145 BPM** (shown once you've scanned a tempo view; on by default while you browse one) plays the track as the view hears it. It's stretched with key lock by Rubber Band's R3 engine, from the tempo the view's scan stretched from. It sounds like the scan's whole-track stretch, though the samples differ. Cue pads, loops, the waveform and bar/beat stay on the track's own timeline, so switching mid-play carries on from the same beat. Saved samples stay at the track's own tempo.
+
+One Rubber Band uses one core (≈30 s for a track), so the player stretches 15 s pieces 8 at a time. Each piece starts 4 s early so the stretcher has settled, and the pieces are joined with a 30 ms crossfade. That takes ≈6 s for a 4-minute track; it starts when you open the track, and the last few tracks are kept.
+
+**Approve and write them.** Under the waveform, tick the suggested cues and loop you want, and any proposed correction of your own cues. A correction is a yellow arrow: one of your cues the model would put 1-2 bars away, or onto the downbeat. It's judged by a model that never saw that track's cues, since some off-grid cues are on purpose.
+
+Each correction has a list of other bars the model found for that cue, each with its score. They are the bar before and after, nearby bars it scores well, the suggested cues, and the downbeat of its own bar. ★ marks the proposal, and picking one ticks the move. Hovering a bar in the list lights it, and the cue where it is now, on the waveform.
+
+To change your cues by hand:
+
+- Move a cue: drag it on the waveform to another beat. The move is ticked under **Your cues moved by hand** (a cue you set by hand just moves).
+- Move a cue that has no correction onto a suggestion: use **move my cue here…** next to that suggested cue. The move appears under **Your cues moved by hand**, ticked, where you can still pick another bar.
+- Add a cue: **C** (or **+ Cue**) sets a new cue where the playhead is, on the nearest beat. Each new cue has a slot menu: **Auto** takes a free hot-cue slot, or pick one your cue holds and that cue and the ones after it move up a slot. With a free slot, a folded list under New cues offers more places for a new cue (lower scores, away from your cues and the suggestions).
+- Delete one of your cues, loops or fade / load markers from Traktor: press the ✕ on its pad (or tick it under **Delete your cues**). Its slot is left free.
+- **Number cues in order** puts your cue points 1-7 (and any new ones) in the order they play, filling the slots no loop holds. The pads show the new numbers at once and **Approve ticked** keeps it.
+
+A volume slider on the deck sets the page's playback level only.
+
+**Approve ticked** only remembers your choice. To write it:
+
+1. Quit Traktor.
+2. Press **Write to Traktor…** (in the track's panel or at the top of the Tracks tab). Before writing anything, it lists every new and moved cue across all approved tracks, and anything that won't fit.
+
+It refuses while Traktor is open and makes a backup first. **Undo** afterwards puts it back, and brings your approvals back too. The same from a terminal:
 
 ```bash
 uv run dj-track-analyzer cues apply --dry-run   # what would be added / moved
 uv run dj-track-analyzer cues apply             # write it (backup; undo: traktor --undo)
 ```
 
-Approved items move into a **✓ Approved** group and show as your cues everywhere (waveform, pads, keys 1-8: green = new, → = moved), as they'll be in Traktor; they no longer count as corrections. **Ignore** hides a correction you disagree with (Restore brings it back; it returns by itself only if the cue moves). **Rescan track** measures the track's audio again and re-reads its beat grid and cues from Traktor's collection, which Traktor saves when it quits.
+Approved items move into a **✓ Approved** group and show as your cues everywhere, as they'll be in Traktor: on the waveform, the pads and keys 1-8 (green = new, → = moved). They no longer count as corrections. **Ignore** hides a correction you disagree with (Restore brings it back; it returns by itself only if the cue moves). **Rescan track** measures the track's audio again and re-reads its beat grid and cues from Traktor's collection, which Traktor saves when it quits.
 
-New cues go only into free hot-cue slots (cue points in 1-7, the loop in slot 8 when free) and are skipped within a bar of one of your cues (one you set at the playhead only on the same spot). If your hot cues were in time order, they stay so: a new cue between your 3 and 4 becomes 4 and your 4, 5, 6 become 5, 6, 7 (loops keep their slots). Deleted cues go first, and deleting one in slots 1-7 slides the ones after it back to close the gap (slot 8 stays). Until you write, a pad that changes slot shows both numbers, like **4→5**, and **Delete your cues** names it the same way (Cue 4 → 5), so you always know which cue in Traktor you're deleting; your own cues are only moved where you ticked a correction, and only if they're still where they were. A track whose beat grid changed after you approved is left alone. The Tracks filter **Cues approved, not written to Traktor yet** lists what's waiting.
+New cues go only into free hot-cue slots: cue points in 1-7, the loop in slot 8 when free. They're skipped within a bar of one of your cues (for a cue you set at the playhead, only on the same spot). If your hot cues were in time order, they stay so. A new cue between your 3 and 4 becomes 4, and your 4, 5, 6 become 5, 6, 7 (loops keep their slots). Deleted cues go first, and deleting one in slots 1-7 slides the ones after it back to close the gap (slot 8 stays).
 
-`train` reports how often its suggestions land on the bars you cued, for tracks it never saw (cross-validated). On a test collection of about 470 tracks: 61% of suggested cues were on a bar the DJ cued, and 64% of their cues were found, against 29% / 35% for a cue every 16 bars. The loop landed within 4 bars of theirs 36% of the time. Needs at least 30 tracks with 3+ of your own cue points; train again after cueing more.
+Until you write, a pad that changes slot shows both numbers, like **4→5**, and **Delete your cues** names it the same way (Cue 4 → 5). So you always know which cue in Traktor you're deleting. Your own cues are only moved where you ticked a correction, and only if they're still where they were. A track whose beat grid changed after you approved is left alone. The Tracks filter **Cues approved, not written to Traktor yet** lists what's waiting.
 
-**Loop length.** The length menu starts on the length you'd likely give a loop there: `cues train` also learns your loop lengths (1, 2, 4 or 8 bars) from how cleanly the audio loops at each length where you put your own loops, and keeps that only if it picks your length more often than always using your most common one (on the test collection 54% against 45% for always 4 bars). Otherwise it's your most common length. Changing the length of an approved loop saves it straight away.
+`train` reports how often its suggestions land on the bars you cued, for tracks it never saw (cross-validated). On a test collection of about 470 tracks, 61% of suggested cues were on a bar the DJ cued and 64% of their cues were found. A cue every 16 bars gets 29% / 35%. The loop landed within 4 bars of theirs 36% of the time. Needs at least 30 tracks with 3+ of your own cue points; train again after cueing more.
 
-**Beat grids that sit on the kicks.** The cue suggestions, loops and samples all trust Traktor's beat grid, so the analyzer can check that grid: in up to six 8-bar stretches where the kick plays, it finds where the kick lands against the grid lines. Each track's panel shows the result under **Beat grid**: *on the kicks* (within a few ms), *kick +14 ms* (a grid off by 10 ms or more, the same all through the track), *BPM drifts* (the kick slides against the grid from start to end: Traktor's BPM is slightly off, which moving the grid can't fix; check it in Traktor) or *couldn't tell*. For a grid that's off, **▶ Click on the grid now** and **▶ Click on the moved grid** loop a few bars with a click on each grid line so you can hear which is right, the box sets how far to move it, **Approve** remembers it and **The grid is right** stops proposing it (until the grid changes). If the track has a stem file, the panel says whether the stem lines up with the track: Traktor uses one grid for both, so a stem that's off needs remaking first (a grid set on a stem made without the MP3's 51.2 ms lead-in is off by exactly that, and the fix is set to it). Then quit Traktor and press **Write grid fixes to Traktor…** (in the panel or at the top of the Tracks tab): it lists what moves, makes a backup, moves each approved grid together with every cue, loop and marker of that track (so they stay on the beat) and your approved cues for it, and offers **Undo**, which also brings back your approvals. The Tracks filter **Grid off the kicks or drifting** lists the tracks to look at. Checking takes about 3 minutes for 470 tracks the first time, then only new and changed grids:
+**Loop length.** The length menu starts on the length you'd likely give a loop there. `cues train` also learns your loop lengths (1, 2, 4 or 8 bars) from how cleanly the audio loops at each length where you put your own loops. It keeps that only if it picks your length more often than always using your most common one (on the test collection 54% against 45% for always 4 bars). Otherwise it's your most common length. Changing the length of an approved loop saves it straight away.
+
+**Beat grids that sit on the kicks.** The cue suggestions, loops and samples all trust Traktor's beat grid, so the analyzer can check that grid. In up to six 8-bar stretches where the kick plays, it finds where the kick lands against the grid lines. Each track's panel shows the result under **Beat grid**:
+
+- *on the kicks*: within a few ms
+- *kick +14 ms*: a grid off by 10 ms or more, the same all through the track
+- *BPM drifts*: the kick slides against the grid from start to end. Traktor's BPM is slightly off, which moving the grid can't fix; check it in Traktor.
+- *couldn't tell*
+
+For a grid that's off:
+
+- **▶ Click on the grid now** and **▶ Click on the moved grid** loop a few bars with a click on each grid line, so you can hear which is right.
+- The box sets how far to move it.
+- **Approve** remembers it, and **The grid is right** stops proposing it (until the grid changes).
+
+If the track has a stem file, the panel says whether the stem lines up with the track. Traktor uses one grid for both, so a stem that's off needs remaking first. (A grid set on a stem made without the MP3's 51.2 ms lead-in is off by exactly that, and the fix is set to it.)
+
+Then quit Traktor and press **Write grid fixes to Traktor…** (in the panel or at the top of the Tracks tab). It lists what moves and makes a backup. Then it moves each approved grid together with every cue, loop and marker of that track (so they stay on the beat), and your approved cues for it. It offers **Undo**, which also brings back your approvals. The Tracks filter **Grid off the kicks or drifting** lists the tracks to look at. Checking takes about 3 minutes for 470 tracks the first time, then only new and changed grids:
 
 ```bash
 uv run dj-track-analyzer grids check             # measure every track with a beat grid (cached)
@@ -342,13 +458,19 @@ uv run dj-track-analyzer grids apply --dry-run   # what the approved fixes would
 uv run dj-track-analyzer grids apply             # write them (Traktor closed; backup; undo: traktor --undo)
 ```
 
-On the test collection 403 of 473 grids were on the kicks (median 0 ms), 62 off, 2 drifting and 6 unclear; 41 of the off ones had been set on stem files that left out the MP3 lead-in.
+On the test collection, 403 of 473 grids were on the kicks (median 0 ms), 62 off, 2 drifting and 6 unclear. 41 of the off ones had been set on stem files that left out the MP3 lead-in.
 
-**Starter model.** Until you train your own, suggestions and loop ideas come from a starter model that ships with the app, learned from one DJ's hand-placed cues on that test collection (cues on 8-bar phrases, a 4-bar mix loop near the end). Run `cues scan` so it can hear your tracks. It doesn't propose corrections of your own cues; `cues train` replaces it.
+**Starter model.** Until you train your own, suggestions and loop ideas come from a starter model that ships with the app. It learned from one DJ's hand-placed cues on that test collection (cues on 8-bar phrases, a 4-bar mix loop near the end). Run `cues scan` so it can hear your tracks. It doesn't propose corrections of your own cues; `cues train` replaces it.
 
 **Share it.** **Export snapshot** (top right) saves the whole page as one HTML file, with the data inside: open it in any browser, offline, or send it to someone. It includes track names, file paths, playlists and play counts. A snapshot can't change anything, and mix suggestions in it use the default rule (same genre, BPM ±4%). From a terminal: `uv run dj-track-analyzer web --export set.html`.
 
-The Mixes and Files tabs read `logs/`. Analyse a mix from the Mixes tab (**Analyse a mix…**: one of Traktor's recordings, or drop any mix file on it; saved as `logs/<recording>.json`, replacing an earlier analysis of it), save one there yourself with `analyze <mix> --tracklist --out logs/<name>.json`, or drop a JSON file saved elsewhere onto the page. Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
+The Mixes and Files tabs read `logs/`. To get a mix there:
+
+- Analyse it from the Mixes tab: **Analyse a mix…** takes one of Traktor's recordings, or drop any mix file on it. It's saved as `logs/<recording>.json`, replacing an earlier analysis of it.
+- Save one there yourself with `analyze <mix> --tracklist --out logs/<name>.json`.
+- Drop a JSON file saved elsewhere onto the page.
+
+Use `--logs <folder>` (repeatable) to read other folders, `--port` for another port and `--no-open` to keep the browser closed.
 
 ---
 
@@ -422,7 +544,17 @@ Before every change it saves `collection.nml.before-track-analyzer-<date-time>` 
 
 ### Rekordbox instead of Traktor
 
-On the web page's **Setup** tab, step 2, pick **DJ app: Rekordbox** and its `master.db` (found automatically, or **Browse…**). From then on, everything this README says about Traktor works with Rekordbox too: scan (`scan --traktor` reads every DJ app it finds), genres and colours, hype in the Comment, sets and crates as playlists, cues, grid fixes, the tempo view, and recorded mixes checked against Rekordbox's History. A `--nml` path is Traktor's and is ignored with Rekordbox.
+On the web page's **Setup** tab, step 2, pick **DJ app: Rekordbox** and its `master.db` (found automatically, or **Browse…**). From then on, everything this README says about Traktor works with Rekordbox too:
+
+- scan (`scan --traktor` reads every DJ app it finds)
+- genres and colours
+- hype in the Comment
+- sets and crates as playlists
+- cues and grid fixes
+- the tempo view
+- recorded mixes, checked against Rekordbox's History
+
+A `--nml` path is Traktor's and is ignored with Rekordbox.
 
 - **Quit Rekordbox before writing**; previews work while it's open.
 - Before every write, `master.db` (and, for grid fixes, the tracks' analysis files) is copied to `data/rekordbox-backups/`. `traktor --undo` puts back the last one, and refuses if Rekordbox changed the library since (`--force` restores anyway and loses those changes).
@@ -453,7 +585,16 @@ uv run dj-track-analyzer sync --undo               # put back the library from b
 
 A step with nothing to do is listed with its reason and skipped. Set playlists aren't rebuilt (each has its own arc and name: `set --traktor`). `--undo` refuses if the DJ app changed the library since; `--undo --force` restores anyway and loses those changes.
 
-**Copy the other app's library** (`--copy`, or the page's **Copy … into …** button): when you have both Traktor and Rekordbox, this brings what the *other* app has into the chosen one: tracks it lacks, genres and colours (the other app's value wins where it has one; an empty value never erases), hot cues and loops into free slots (nothing of yours moves), Traktor's beat grids into Rekordbox (tick them on the page; untested in real Rekordbox), its playlists in a **From … (Track Analyzer)** folder, and its samples. Recordings are never copied. It has its own undo, separate from the sync's.
+**Copy the other app's library** (`--copy`, or the page's **Copy … into …** button): when you have both Traktor and Rekordbox, this brings what the *other* app has into the chosen one:
+
+- tracks it lacks
+- genres and colours: the other app's value wins where it has one; an empty value never erases
+- hot cues and loops, into free slots (nothing of yours moves)
+- Traktor's beat grids into Rekordbox (tick them on the page; untested in real Rekordbox)
+- its playlists, in a **From … (Track Analyzer)** folder
+- its samples
+
+Recordings are never copied. It has its own undo, separate from the sync's.
 
 ```bash
 uv run dj-track-analyzer sync --copy --dry-run
@@ -496,7 +637,7 @@ If you colour-code tracks in Traktor, the app learns your system from the tracks
 
 It works best when your colours mean something that runs in that order. The labels and the LLM tools assume Red = hardest/darkest and Magenta = softest/prettiest; the model itself just learns whatever order you use.
 
-**Starter scale.** Until you train your own, the app uses a starter model that ships with it, learned from one DJ's colours on a test collection of about 470 tracks (Red = hard, heavy … Magenta = peaceful, pretty). Scans predict colours with it and `colors apply` can write them; `colors review` waits for your own model, since it compares your colours with what it learned from them. `colors train` replaces the starter for good (it stays in the app, unused).
+**Starter scale.** Until you train your own, the app uses a starter model that ships with it. It learned from one DJ's colours on a test collection of about 470 tracks (Red = hard, heavy … Magenta = peaceful, pretty). Scans predict colours with it and `colors apply` can write them. `colors review` waits for your own model, since it compares your colours with what it learned from them. `colors train` replaces the starter for good (it stays in the app, unused).
 
 ```bash
 uv run dj-track-analyzer scan --traktor           # 1. analyse your Traktor tracks
@@ -508,7 +649,7 @@ uv run dj-track-analyzer colors train             # 2. learn your scale (only re
 - Tries several models and keeps the one with the lowest error *averaged per colour*, so Red and Magenta count as much as the crowded middle. All scores are measured on tracks the model didn't train on.
 - Prints a colour-scale check (BPM, loudness, aggressiveness per colour), the instruments that change most from Red to Magenta, and the tracks whose sound disagrees most with your colour.
 
-**How good is it?** That depends on how consistent your colours are and how much they follow the sound. On a test collection of about 470 house/techno/trance tracks (Red = hard … Magenta = pretty), it was off by **1.10 colours** on average (always guessing the middle colour: 1.59) and right or one step off **70%** of the time. Neighbouring colours were close to a coin flip from the sound alone; the two ends were clearly apart. `colors train` prints these numbers for your collection. Retrain whenever you've coloured more tracks.
+**How good is it?** That depends on how consistent your colours are and how much they follow the sound. On a test collection of about 470 house/techno/trance tracks (Red = hard … Magenta = pretty), it was off by **1.10 colours** on average (always guessing the middle colour: 1.59). It was right or one step off **70%** of the time. Neighbouring colours were close to a coin flip from the sound alone; the two ends were clearly apart. `colors train` prints these numbers for your collection. Retrain whenever you've coloured more tracks.
 
 After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning Violet) and a `confidence`: how often tracks placed there really had that colour. Most tracks are 0.2–0.3.
 
@@ -541,13 +682,41 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `--json` | `explain` | Raw numbers instead of tables | off |
 | `--nml <path>` | all | Another collection | newest Traktor folder |
 
-`review --apply` asks about each track first (yes / no / keep always / all the rest / cancel). **Keep always** (`k`) keeps your colour and puts the track on a keep-always list, so `review --apply` never suggests it again; plain `review` still lists it, marked `kept`. See the list with `colors review --kept`, add tracks with `--keep "<part of the name>"`, and put one back in play with `--forget "<part of the name>"`. The list lives in the analyzer's database, not in Traktor. `--yes` skips the questions, and they're skipped anyway when the input isn't a terminal. It skips tracks you've recoloured since training. `apply` and `review --apply` make the same backup as `traktor`, so **undo** is `traktor --undo` (Traktor closed).
+`review --apply` asks about each track first (yes / no / keep always / all the rest / cancel). It skips tracks you've recoloured since training. `--yes` skips the questions, and they're skipped anyway when the input isn't a terminal.
 
-**What training learns from.** Every colour you set or accepted, whoever suggested it. A recolour you said yes to in `review --apply` counts as yours. A colour `apply` or `traktor` filled in (or replaced, with `--overwrite-colors`) is the model's own guess that nobody looked at, so `train` leaves it out: learning from its own guesses would only make the model surer of its mistakes. It counts once you change it in Traktor, or accept it: `colors guessed --accept "<part of the name>"` (or `all`), or on the Tracks tab (**All tracks → Colour guessed by the app, not checked yet**; select tracks and press **Guessed colours are right**, or **It's right** in a track's panel). The Setup tab shows how many colours and cued tracks are new or changed since you trained your own models, so you know when **Update training** has something to learn (counted from the first training after this update).
+**Keep always** (`k`) keeps your colour and puts the track on a keep-always list, so `review --apply` never suggests it again; plain `review` still lists it, marked `kept`. The list lives in the analyzer's database, not in Traktor.
 
-**Your no's are kept too.** Every no or ignore you give a suggestion is logged in the analyzer's database: a **no** or **keep always** in `review --apply`, holds, cue corrections you ignore, the suggested cues you leave unticked when you write cues, grids you mark as right (with what the check measured), and the grid fixes you write. Training doesn't use the log yet. It's there so that, once there are enough answers, we can test whether giving them extra weight makes the suggestions better.
+- See the list: `colors review --kept`
+- Add tracks: `--keep "<part of the name>"`
+- Put one back in play: `--forget "<part of the name>"`
 
-**`colors explain`** (first run adds about 10 minutes of analysis) shows, per colour: approachability, moods, instruments, vocals, drop height, intro length, breakdowns, BPM, loudness, key, length, median plays and share of purchased tracks, each with its correlation with your scale. Then your playlists sorted hard → pretty, how often each colour is played in the first, middle and last third of your sets (from Traktor's History), and how consistent each artist's colours are.
+`apply` and `review --apply` make the same backup as `traktor`, so **undo** is `traktor --undo` (Traktor closed).
+
+**What training learns from.** Every colour you set or accepted, whoever suggested it. A recolour you said yes to in `review --apply` counts as yours. A colour `apply` or `traktor` filled in (or replaced, with `--overwrite-colors`) is the model's own guess that nobody looked at, so `train` leaves it out. Learning from its own guesses would only make the model surer of its mistakes. Such a colour counts once you change it in Traktor, or accept it:
+
+- in a terminal: `colors guessed --accept "<part of the name>"` (or `all`)
+- on the Tracks tab: pick **All tracks → Colour guessed by the app, not checked yet**, select tracks and press **Guessed colours are right**
+- in a track's panel: **It's right**
+
+The Setup tab shows how many colours and cued tracks are new or changed since you trained your own models, so you know when **Update training** has something to learn. (It counts from the first training after this update.)
+
+**Your no's are kept too.** Every no or ignore you give a suggestion is logged in the analyzer's database:
+
+- a **no** or **keep always** in `review --apply`
+- holds
+- cue corrections you ignore
+- the suggested cues you leave unticked when you write cues
+- grids you mark as right (with what the check measured)
+- the grid fixes you write
+
+Training doesn't use the log yet. It's there so that, once there are enough answers, we can test whether giving them extra weight makes the suggestions better.
+
+**`colors explain`** (first run adds about 10 minutes of analysis) shows:
+
+- per colour, each with its correlation with your scale: approachability, moods, instruments, vocals, drop height, intro length, breakdowns, BPM, loudness, key, length, median plays and share of purchased tracks
+- your playlists sorted hard → pretty
+- how often each colour is played in the first, middle and last third of your sets (from Traktor's History)
+- how consistent each artist's colours are
 
 ---
 
@@ -583,11 +752,23 @@ uv run dj-track-analyzer hype --traktor                # write "Hype 08" into Co
 uv run dj-track-analyzer hype --traktor --remove       # take it out again (this is the undo)
 ```
 
-It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment 2 from older versions is taken out; to do only that, run `hype --traktor --clean-comment2`. Each track is marked as up to date with its file, so Traktor doesn't re-read the file's comment tag over it, unless the file's title, artist, album or comment were edited since Traktor last read them: those tracks are skipped and listed under `skipped_examples`, so Traktor still picks up your edits. Open Traktor, load them (or run **Check Consistency**), quit, and run it again. It refuses while Traktor is set to write tags into your files (Preferences → File Management), since Traktor would then copy "Hype NN" into the files; turn that off, or add `--force`. In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
+It's added after any text already in Comment ("Check intro" becomes "Check intro · Hype 08"); re-running only updates the Hype part. A "Hype NN" left in Comment 2 from older versions is taken out; to do only that, run `hype --traktor --clean-comment2`.
+
+Each track is marked as up to date with its file, so Traktor doesn't re-read the file's comment tag over it. The exception is a track whose file's title, artist, album or comment were edited since Traktor last read them. Those tracks are skipped and listed under `skipped_examples`, so Traktor still picks up your edits: open Traktor, load them (or run **Check Consistency**), quit, and run it again.
+
+It refuses while Traktor is set to write tags into your files (Preferences → File Management), since Traktor would then copy "Hype NN" into the files. Turn that off, or add `--force`.
+
+In Traktor, show the **Comment** column and sort by it. Because hype is relative, it can shift a step when you add many tracks, so re-run after big additions.
 
 ### Plan a set
 
-A set that follows an arc on two axes at once, colour (hard ↔ pretty) and hype (chill ↔ peak), with keys that mix from track to track. Each slot of the set gets a target colour and hype from the arc; the planner picks the order that stays closest to it, avoiding key clashes (same key, ±1 on the Camelot wheel and the relative major/minor count as mixing), the same artist twice in a row and, with `--bpm-step`, big BPM jumps. More stars help a little. It only reads, unless you add `--traktor`.
+A set that follows an arc on two axes at once, colour (hard ↔ pretty) and hype (chill ↔ peak), with keys that mix from track to track. Each slot of the set gets a target colour and hype from the arc. The planner picks the order that stays closest to it, avoiding:
+
+- key clashes (same key, ±1 on the Camelot wheel and the relative major/minor count as mixing)
+- the same artist twice in a row
+- with `--bpm-step`, big BPM jumps
+
+More stars help a little. It only reads, unless you add `--traktor`.
 
 ```bash
 uv run dj-track-analyzer set                                   # 20 tracks, warm-up arc
@@ -633,15 +814,17 @@ uv run dj-track-analyzer crates --traktor --dry-run      # preview, then without
 uv run dj-track-analyzer crates --remove                 # take them out again (the undo; add --tempo 145 for those)
 ```
 
-With `--traktor` each crate becomes a playlist in a **Crates (Track Analyzer)** folder; re-running replaces them, so run it again after scanning or recolouring. With `--tempo 145` the playlists are named "Warm-up @145" and so on, next to the normal ones. A track can be in more than one crate when the hype ranges overlap (with the defaults they don't). `--bpm`, `--genre`, `--playlist`, `--min-stars` and `--exclude` narrow the pool as for `set`. Approachability is a model's guess at how easy a track is to get into; it runs with prettier colours and lower hype.
+With `--traktor` each crate becomes a playlist in a **Crates (Track Analyzer)** folder. Re-running replaces them, so run it again after scanning or recolouring. With `--tempo 145` the playlists are named "Warm-up @145" and so on, next to the normal ones. A track can be in more than one crate when the hype ranges overlap (with the defaults they don't). `--bpm`, `--genre`, `--playlist`, `--min-stars` and `--exclude` narrow the pool as for `set`.
+
+Approachability is a model's guess at how easy a track is to get into; it runs with prettier colours and lower hype.
 
 ---
 
 ## 6. Your catalogue at your play tempo (tempo view)
 
-If you play a set at one tempo with key lock, `tempo` stretches every scanned track to that tempo with [Rubber Band](https://breakfastquay.com/rubberband/) (pitch kept, like key lock) and analyses it again: genre, moods, colour and hype. Your normal results are never touched.
+If you play a set at one tempo with key lock, `tempo` stretches every scanned track to that tempo with [Rubber Band](https://breakfastquay.com/rubberband/) (pitch kept, like key lock). Then it analyses it again: genre, moods, colour and hype. Your normal results are never touched.
 
-**Pick any tempo.** The default is 145; add `--bpm 140` (or any tempo) to `scan`, `report`, `export`, `nml`, `refresh` and `load`. Each tempo is a separate view with its own data in `data/at-<bpm>/`, so several can exist side by side; only one can be loaded at a time, and `native` switches back whichever one is. The examples below use the default.
+**Pick any tempo.** The default is 145; add `--bpm 140` (or any tempo) to `scan`, `report`, `export`, `nml`, `refresh` and `load`. Each tempo is a separate view with its own data in `data/at-<bpm>/`, so several can exist side by side. Only one can be loaded at a time, and `native` switches back whichever one is. The examples below use the default.
 
 ```bash
 uv run dj-track-analyzer scan --traktor              # new tracks first
@@ -677,7 +860,7 @@ While loaded, Traktor shows per track:
 While the view is loaded, `hype`, `stats` and `export` use the view's data (hype at the view tempo); add `--native` for each track at its own tempo.
 
 Safety while the view is loaded:
-- `traktor`, `traktor --undo`, `hype --traktor`, `colors apply` and `colors review --apply` refuse to run, so they can't mix your values into the view. `colors train` and `colors explain` refuse too: they read your colours from Traktor, and the view's shifted colours would skew them.
+- `traktor`, `traktor --undo`, `sync` (also `--copy`), `hype --traktor`, `colors apply`, `colors review --apply`, `cues apply`, `grids apply` and `edit` refuse to run, so they can't mix your values into the view. `colors train` and `colors explain` refuse too: they read your colours from Traktor, and the view's shifted colours would skew them.
 - `load` refuses while Traktor writes tags to your files (Preferences → File Management; `FileAccess.TagsSerialization` in Traktor Settings.tsi), because Traktor could write the view's genres into them and `native` only restores the collection. `--force` loads anyway.
 - When a file changed since Traktor last read it, Traktor re-reads its tags on deck load and the file's genre and colour replace the view's. `load` sets each changed entry's modified stamp to the file's own time to prevent that; `native` puts the old stamp back. (Not yet confirmed in real Traktor.)
 - Backups are named `collection.nml.before-tempo-view-…` and `Traktor Settings.tsi.before-tempo-view-…`; `traktor --undo` ignores them.
@@ -695,7 +878,9 @@ Safety while the view is loaded:
 | `--lexicon` | `load`, `native` | Switch Lexicon too (below) | off |
 | `--nml <path>` | all | Another collection | newest Traktor folder |
 
-**How to read it.** The genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so the models have hardly ever heard a house track there: stretched to 145, a rolling house track sounds to them like the trance and psytrance they *did* hear at that tempo. Read the view as how the models hear the sped-up track, not as facts. The worst case, psytrance, is held back: in the view, psy only counts as much as the track already had at its own tempo, so most tracks that turn trancey become Trance or Progressive Trance instead. A Rubber Band pass without a tempo change gives the normal results, so the shifts come from the speed. Traktor's own stretcher sounds close to Rubber Band, not identical.
+**How to read it.** The genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so the models have hardly ever heard a house track there. Stretched to 145, a rolling house track sounds to them like the trance and psytrance they *did* hear at that tempo. Read the view as how the models hear the sped-up track, not as facts.
+
+The worst case, psytrance, is held back. In the view, psy only counts as much as the track already had at its own tempo, so most tracks that turn trancey become Trance or Progressive Trance instead. A Rubber Band pass without a tempo change gives the normal results, so the shifts come from the speed. Traktor's own stretcher sounds close to Rubber Band, not identical.
 
 > **Tested with Traktor Pro 4.5:** a `tempo scan` of about 470 tracks; loading the view into Traktor, which opened and saved it; and `tempo native` putting back every value.
 
@@ -709,7 +894,14 @@ uv run dj-track-analyzer tempo load --lexicon
 uv run dj-track-analyzer tempo native --lexicon
 ```
 
-Per track it changes Lexicon's **genre**, **colour** (moved by the same shift; shades other than Lexicon's 7 main colours are left alone), **comment** ("Hype NN" after your text) and **energy** (the hype at the view tempo, 1–10, replacing Lexicon's own), and adds a "Genres @145 (Track Analyzer)" smartlist folder. Its smartlists match a whole genre entry, so "Trance" doesn't catch "Hard Trance". If Traktor already has the view, `load --lexicon` only switches Lexicon; `native --lexicon` switches both back, restoring a field only if it still holds the view's value.
+Per track it changes these Lexicon fields:
+
+- **genre**
+- **colour**: moved by the same shift; shades other than Lexicon's 7 main colours are left alone
+- **comment**: "Hype NN" after your text
+- **energy**: the hype at the view tempo, 1–10, replacing Lexicon's own
+
+It also adds a "Genres @145 (Track Analyzer)" smartlist folder. Its smartlists match a whole genre entry, so "Trance" doesn't catch "Hard Trance". If Traktor already has the view, `load --lexicon` only switches Lexicon; `native --lexicon` switches both back, restoring a field only if it still holds the view's value.
 
 While Lexicon has the view, **don't sync Lexicon → Traktor or import from Traktor into Lexicon**. Syncing to a USB is fine; sync again after `native`.
 
@@ -741,7 +933,9 @@ The models use Discogs' style names, and some DJ terms don't exist there: "Acid 
 
 There are 42 DJ genres, from Deep House to Speedcore. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house) and **Ambient** (stays part of Downtempo). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
 
-> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it), so none of the 42 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest. It says nothing about the music: out of the box, a hyperpop track gets spread over the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. You can teach it:
+> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). So none of the 42 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest.
+>
+> It says nothing about the music. Out of the box, a hyperpop track gets spread over the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. You can teach it:
 > - **One track at a time:** type **Hyperpop** as the genre in a track's **✎ Edit**. It's kept from then on, through rescans and in Traktor.
 > - **Your whole collection:** learn your own genres (section 9) from a Hyperpop folder of 20–50 example tracks plus at least one other genre, then set **Genres used** to **Both**. Only tracks that clearly sound like hyperpop get it; the rest keep their built-in genre.
 
@@ -810,7 +1004,7 @@ uv run dj-track-analyzer serve --http --host 0.0.0.0       # Open WebUI in Docke
 >
 > Break down the mix at ~/Music/Mixes/acid-set.mp3: where does the tempo change?
 
-Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as Pathname**. On Linux, copy the file in the file manager and paste it as text, or drag it into a terminal window.
+Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as Pathname**. On Windows, hold **Shift**, right-click the file and choose **Copy as path**. On Linux, copy the file in the file manager and paste it as text, or drag it into a terminal window.
 
 ### Tools the LLM gets
 
@@ -830,7 +1024,7 @@ Tip: in Finder, hold **Option**, right-click a file and choose **Copy "…" as P
 
 For genres the built-in ones don't have (Hyperpop, Afro House, Big Room, …) or your own way of splitting them. The pretrained models still do the heavy lifting; you teach a small layer on top.
 
-Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; the name becomes the genre. At least two genres. Finder aliases aren't followed, so use copies or playlists.
+Make a folder with one subfolder (or one `.m3u` / `.m3u8` playlist) per genre; the name becomes the genre. At least two genres. Finder aliases and Windows shortcuts aren't followed, so use copies or playlists.
 
 ```
 ~/Music/Genre Training/
@@ -860,7 +1054,13 @@ uv run dj-track-analyzer train --traktor-genre Hyperpop --traktor-genre "Afro Ho
 
 **Only where it fits.** Besides your examples it learns what the rest of your scanned collection sounds like (copies of the examples left out), so it needs 30 scanned tracks first. A track gets one of your genres only when it sounds more like that genre than like the rest of your music; every other track keeps its built-in genre. You don't have to train every genre you play.
 
-**Nothing changes until you switch it on.** Afterwards each track's panel shows *Your genre* next to the built-in one, and the Setup step shows how well it did: a cross-validated test on your own tracks (how many examples it recognised, how many of your other tracks it would give one of your genres, and the mix-ups, like `Hyperpop → built-in genre: 3`). Then pick which genres are used:
+**Nothing changes until you switch it on.** Afterwards each track's panel shows *Your genre* next to the built-in one, and the Setup step shows how well it did. That's a cross-validated test on your own tracks:
+
+- how many examples it recognised
+- how many of your other tracks it would give one of your genres
+- the mix-ups, like `Hyperpop → built-in genre: 3`
+
+Then pick which genres are used:
 
 | Genres used | What a track gets |
 |---|---|
@@ -868,7 +1068,7 @@ uv run dj-track-analyzer train --traktor-genre Hyperpop --traktor-genre "Afro Ho
 | **Both** | Your genre where one clearly fits, the built-in genre everywhere else |
 | **Mine only** | The closest of your genres on every track, also tracks that sound like none of them (best when your genres cover all your music) |
 
-Picking **Both** or **Mine only** first lists every track that would change; **Switch to …** then puts those genres in the Tracks tab, mix suggestions, sets and the LLM, and in your files and Traktor the next time you write genres (section 3), with a Smartlist per genre. **Starter** goes back. Genres you set by hand always stay. Both and Mine only need 30 example tracks with at least 10 in each genre. From a terminal: `train --use starter|both|mine`.
+Picking **Both** or **Mine only** first lists every track that would change. **Switch to …** then puts those genres in the Tracks tab, mix suggestions, sets and the LLM. They reach your files and Traktor the next time you write genres ([section 3](#3-genres-in-your-files-and-in-traktor)), with a Smartlist per genre. **Starter** goes back. Genres you set by hand always stay. Both and Mine only need 30 example tracks with at least 10 in each genre. From a terminal: `train --use starter|both|mine`.
 
 Add examples to weak genres and learn again; analysis is cached, so only new tracks are processed. Pick clear, typical examples, keep genres balanced, and aim for 20 (usable) to 50+ (better) per genre.
 
@@ -958,7 +1158,13 @@ dj-track-analyzer/
 
 ## Good to know
 
-- **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA): it agreed with Traktor's key on 75% of a test collection of about 470 tracks, Essentia's key-finder on 58% (it mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
+- **Accuracy.** BPM and key are measured from the audio, as whole BPMs and one key per track. The key comes from a small neural network, [MusicalKeyCNN](https://github.com/puppi3-music/MusicalKeyCNN-CKA). It agreed with Traktor's key on 75% of a test collection of about 470 tracks, against 58% for Essentia's key-finder (which mixed up major and minor of the same root on 19%). Neither is ground truth, and Traktor's key wins where it has one. Genres and colours are model predictions: read the scores as confidence.
 - **Surround (5.1) files** are mixed down to stereo with FFmpeg's standard downmix.
-- **Licences.** This project and Essentia are AGPL. The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results; each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md). The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)), taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018). Personal use is fine. Demucs (the `stems` extra) and its weights are MIT, © Meta Platforms. Every third-party project, package and licence is listed in [`THIRD-PARTY.md`](THIRD-PARTY.md).
+- **Licences.** This project and Essentia are AGPL.
+  - The models it downloads (EffNet, MAEST and the heads on top of them) are by the Music Technology Group of Universitat Pompeu Fabra, from [Essentia's models](https://essentia.upf.edu/models/), under [CC BY-NC-SA 4.0](https://creativecommons.org/licenses/by-nc-sa/4.0/): non-commercial use only (MTG licenses them for other uses). Personal use is fine.
+  - The Rust module in `dsp/` re-implements parts of Essentia (AGPL), FFTW (GPL) and libsamplerate (BSD) so that it gives their results. Each is credited, with its licence, in [`dsp/NOTICE.md`](dsp/NOTICE.md).
+  - The key model (`keycnn.py` and its weights `starter/keynet.npz`) is from [MusicalKeyCNN](https://github.com/a1ex90/MusicalKeyCNN), Copyright (c) 2025 Alexander Sommer, MIT License (full text in [`starter/keynet.LICENSE`](src/dj_track_analyzer/starter/keynet.LICENSE)). It's taken via the fork [MusicalKeyCNN-CKA](https://github.com/puppi3-music/MusicalKeyCNN-CKA); its design is KeyNet by Korzeniowski & Widmer (ISMIR 2018).
+  - Demucs (the `stems` extra) and its weights are MIT, © Meta Platforms.
+
+  Every third-party project, package and licence is listed in [`THIRD-PARTY.md`](THIRD-PARTY.md).
 - **Uninstall.** Delete this folder and `data`.
