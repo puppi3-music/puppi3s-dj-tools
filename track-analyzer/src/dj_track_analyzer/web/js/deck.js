@@ -78,7 +78,7 @@ function deckReady() {  // the file loads only once you play or jump: opening a 
     return true;
   }, err => { if (DECK.path !== path) return false;  // another track meanwhile (its stretch was cancelled)
     if (DECK.readyBpm === bpm) DECK.ready = null;  // asks again on the next play
-    if (!aborted(err)) deckMsg(`Couldn't stretch: ${err.message}`); return false; });
+    if (!aborted(err)) deckMsg(`Couldn't stretch: ${forPage(err.message)}`); return false; });
   return DECK.ready;
 }
 function deckTime() {  // where playback is now, looping or not, in Traktor's time (the track's own tempo)
@@ -117,8 +117,9 @@ async function deckLoop(a, b) {
         if (aborted(e) || DECK.path !== want) throw e;
         deckMsg("Preparing a gapless loop…");
         if (DECK.bufPath !== `${want}|${bpm}`) {
-          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) })).arrayBuffer();
-          DECK.buf = await DECK.ctx.decodeAudioData(data); DECK.bufPath = `${want}|${bpm}`;
+          const res = await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) });
+          if (!res.ok) throw new Error((await readJSON(res)).error);  // the server's reason, not "unable to decode audio data"
+          DECK.buf = await DECK.ctx.decodeAudioData(await res.arrayBuffer()); DECK.bufPath = `${want}|${bpm}`;
         }
         buf = DECK.buf; whole = true;
       }
@@ -131,7 +132,7 @@ async function deckLoop(a, b) {
     DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b, k, bpm }; DECK.waiting = false;
     deckTick();
   } catch (err) { if (DECK.path !== want || DECK.asked !== ask) return;  // another track meanwhile: its deck isn't this loop's
-    DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
+    DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${forPage(err.message)}`); deckUi(); }
 }
 function deckSeek(t, play = true, loop = null) {
   if (!DECK.path) return;
@@ -195,7 +196,7 @@ function deckUi() {
   if (sw) sw.hidden = !stretching;
   const bi = Math.floor((t - c.first_bar_s + 1e-6) / c.bar_seconds), bl = barLabel(c, bi), bt = Math.floor((t - c.first_bar_s - bi * c.bar_seconds) / (c.bar_seconds / 4) + 1e-6) + 1;
   const tm = box.querySelector("#dk-time");
-  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) setText(tm, `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`);
+  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) setText(tm, `${clock(t)} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`);
   box.querySelectorAll("button.mini[data-t]").forEach(b => {
     b.dataset.label ??= b.textContent;
     const on = deckPlaying() && DECK.active === `${+b.dataset.t}|${b.dataset.loop ? +b.dataset.loop : 0}`;
@@ -464,7 +465,7 @@ function drawWave(c, box) {
       g.strokeStyle = "#fff"; g.strokeRect(a + 0.5, OV0 + 0.5, Math.max(2, z - a - 1), OV1 - OV0 - 1);
     }
     if (zl) {  // close in: times to the hundredth, the length in beats, and how fine the waveform is
-      const tm = t => span < 10 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}` : mmss(t);
+      const tm = t => { if (span >= 10) return mmss(t); const d = Math.round(t * 100); return `${Math.floor(d / 6000)}:${((d % 6000) / 100).toFixed(2).padStart(5, "0")}`; };
       const len = span < 2 * c.bar_seconds ? `${(span / beat).toFixed(1)} beats` : `${Math.round(span / c.bar_seconds)} bars`;
       const res = data === over ? "" : ` · ${span * 1000 / W < 10 ? (span * 1000 / W).toFixed(2) + " ms" : (span / W).toFixed(2) + " s"} a pixel${rate() <= 100 || fineOk() ? "" : " · sharpening…"}`;
       zl.textContent = zoomed() ? `${tm(st.v0)}–${tm(st.v1)} · ${len}${st.loading ? " · loading detail…" : res}` : "whole track";

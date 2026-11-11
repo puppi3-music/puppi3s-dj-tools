@@ -37,7 +37,7 @@ async function pageHype(main) {
 
 // ---------- colours ----------
 async function pageColours(main) {
-  const viewOn = S.libs.loaded_view, viewTip = viewOn ? `${DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab), then write` : "";
+  const me = S.routeId, viewOn = S.libs.loaded_view, viewTip = viewOn ? `${S.libs.loaded_app || DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab), then write` : "";
   const RSEL = new Set();  // ticked review rows (paths)
   const markCell = t => t.kept || t.recoloured ? "" : t.marked
     ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
@@ -56,7 +56,7 @@ async function pageColours(main) {
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
     <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads ${DJ()}'s collection and History)…</div>`;
   const [rv, ex, kp] = await Promise.allSettled([api("colours/review", { limit: 200 }), api("colours/explain"), api("colours/kept")]);
-  const m = $("#c-model"); if (!m) return;  // left the tab while it loaded
+  const m = $("#c-model"); if (!m || me !== S.routeId) return;  // left the tab (or came back to it) while it loaded
   m.className = "";
   if (rv.status === "rejected") m.innerHTML = errBox(rv.reason);
   else {
@@ -95,7 +95,7 @@ async function pageColours(main) {
         await postJSON("/api/colours/mark", { paths, action });
         for (const p of paths) { const t = byPath.get(p); if (t) { if (action) t.marked = action; else delete t.marked; } }
         RSEL.clear(); draw();
-      } catch (err) { const el = $("#c-markmsg") || $("#c-selmsg"); if (el) el.textContent = err.message; }
+      } catch (err) { const el = $("#c-markmsg") || $("#c-selmsg") || $("#c-sel"); if (el) el.textContent = err.message; }  // a row's button with no bar yet: #c-sel
     };
     const selbar = () => {
       const box = $("#c-sel"), n = RSEL.size;
@@ -171,7 +171,7 @@ async function pageColours(main) {
       <div class="card"><h3>Artists</h3>${e.artists ? `<div class="muted small" style="margin-bottom:8px">${e.artists.artists_with_3_plus} artists with 3+ tracks. Their tracks sit ${e.artists.spread_within_artist} colours from the artist's average, random groups ${e.artists.spread_random_groups}.</div>
         ${table([{ h: "Artist", f: a => esc(a.artist) }, { h: "Tracks", r: 1, f: a => a.tracks }, { h: "Average", f: a => `${colour(a.average_colour)} <span class="dim small">${a.average}</span>` }], e.artists.top)}` : `<div class="dim">Not enough artists with 3+ tracks.</div>`}</div>
     </div>
-    ${kp.status === "fulfilled" && kp.value.always_kept.length ? `<div class="card"><h3>Kept always <span class="dim small">(review --apply skips these)</span></h3>
+    ${kp.status === "fulfilled" && kp.value.always_kept.length ? `<div class="card"><h3>Kept always <span class="dim small">(Recolour them… skips these)</span></h3>
       ${table([{ h: "Track", f: k => esc(k.file) }, { h: "Your colour", f: k => colour(k.your_colour) }, { h: "Since", f: k => esc(k.kept_since) }], kp.value.always_kept)}</div>` : ""}`;
 }
 
@@ -184,11 +184,11 @@ async function pageTempo(main, bpmArg) {
       toSetup("Scan a tempo view"));
     return;
   }
-  const bpm = +(bpmArg || views[0].bpm);
+  const bpm = +(bpmArg || views[0].bpm), me = S.routeId;
   let d;
   try { d = await api("tempo/report", { bpm, limit: 25 }); }
-  catch (e) { if (main.isConnected) main.innerHTML = `<div class="page-head"><div><h2>Tempo view</h2></div></div>${errBox(e)}`; return; }
-  if (!main.isConnected || !location.hash.startsWith("#tempo")) return;  // another tab meanwhile
+  catch (e) { if (me === S.routeId) main.innerHTML = `<div class="page-head"><div><h2>Tempo view</h2></div></div>${errBox(e)}`; return; }
+  if (me !== S.routeId) return;  // another tab, or another view picked, meanwhile
   const brief = rows => table([{ h: "Track", f: r => esc(r.track) }, { h: "BPM", r: 1, f: r => fmt(r.bpm) }, { h: "Genres", f: r => esc(r.genres) },
     { h: "Colour", f: r => esc(r.colour || "–") }, { h: "Hype", f: r => esc(r.hype) }], rows);
   const toBars = o => Object.entries(o).map(([k, v]) => ({ label: k, value: v }));

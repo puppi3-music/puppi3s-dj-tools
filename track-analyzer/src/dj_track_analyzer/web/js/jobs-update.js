@@ -111,7 +111,7 @@ function resultSummary(r, depth = 0) {
   const nested = Object.entries(r).filter(([k, v]) => v && typeof v === "object" && !Array.isArray(v) && !HIDE.has(k));
   const ex = r.examples || r.changes || [];
   return `${nums.length ? `<ul style="max-height:none">${nums.map(([k, v]) => `<li>${esc(human(k))}: <b>${v}</b></li>`).join("")}</ul>` : ""}
-    ${r.warning ? `<div class="warnbox">${esc(r.warning)}</div>` : ""}
+    ${r.warning ? `<div class="warnbox">${esc(forPage(r.warning))}</div>` : ""}
     ${[r.skipped && `Skipped: ${r.skipped}`, r.undone && `Put back: ${r.undone.join(", ")}`, r.note, r.clock && `Clock: ${r.clock}`, r.now_loaded && `Now loaded: ${r.now_loaded}`, r.smartlist_folder && `Smartlist folder: ${r.smartlist_folder}`]
       .filter(Boolean).map(t => `<div class="small">${esc(t)}</div>`).join("")}
     ${Array.isArray(r.smartlists) && r.smartlists.length ? `<div class="small muted">${r.smartlists.length} Smartlists: ${esc(r.smartlists.join(", "))}</div>` : ""}
@@ -173,12 +173,12 @@ async function writeDialog(action, options = {}, onDone) {
     }
     busy("Checking what would change…");
     const j = await run(act, opts, true);
-    if (j.error) return show(`<div class="err">${esc(j.error)}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Check again</button>`), again(act, opts);
+    if (j.error) return show(`<div class="err">${esc(forPage(j.error))}</div>${j.command ? cmdNote(j) : ""}`, `<button data-again>Check again</button>`), again(act, opts);
     const open = j.traktor_running && TOUCHES_TRAKTOR.has(act), nothing = nothingToDo(j.result);
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
       ${MULTI.has(act) && !nothing ? syncSteps(j.result, st, act === "copy") : resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
-      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${st?.dj_app?.app === "rekordbox" ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
+      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${(act === "tempo_native" && st?.tempo?.loaded_app ? st.tempo.loaded_app === "Rekordbox" : st?.dj_app?.app === "rekordbox") ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
         : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}${cmdNote(j)}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);
@@ -201,7 +201,7 @@ async function writeDialog(action, options = {}, onDone) {
     // An undo refused because Traktor saved the collection since: offer to restore anyway, losing what it saved
     const forceable = (act === "traktor_undo" || act in ONE_UNDO) && !opts.force && /--force/.test(j.error || "");
     if (j.error) {
-      show(`<div class="err">${esc(j.error.replace(/ Run again with --force to restore anyway\./, ""))}</div>${j.command ? cmdNote(j) : ""}`,
+      show(`<div class="err">${esc(forPage(j.error))}</div>${j.command ? cmdNote(j) : ""}`,
         `${forceable ? `<button data-force>Undo anyway</button>` : ""}<button data-again>Try again</button>`);
       dlg.querySelector("[data-force]")?.addEventListener("click", () => {
         if (confirm(`Put the backup back anyway?\n\nEverything ${DJ()} saved since the analyzer's change is lost: plays, cue points, new tracks, your own edits.`)) write(act, { ...opts, force: true });
@@ -244,7 +244,7 @@ async function restartApp(show, r = {}) {
   const to = r.to && r.to !== "main" ? ` ${esc(r.to)}` : "";
   const steps = (r.after_steps || []).length ? `<div class="note">After it starts, the Setup tab offers what this update needs: ${esc(r.after_steps.join("; "))}.</div>` : "";
   const manual = why => show(`<div style="color:var(--good)"><b>✓ Version${to} is installed.</b></div><div style="margin-top:8px">${esc(why)}</div>${steps}`);
-  if (st && !st.restart) return manual("To start it, close the analyzer's window and double-click Start Puppi3's Track Analyzer again.");
+  if (st && !st.restart) return manual(`To start it, close the analyzer's window and double-click ${LAUNCHER} again.`);
   show(`<div style="color:var(--good)"><b>✓ Version${to} is installed.</b></div><div class="muted" style="margin-top:8px">Starting the page again with it: installing its packages first, which can take a minute…</div>${steps}`);
   try { await postJSON("/api/restart", {}); } catch (e) { return manual(e.message); }
   let gone = false;
@@ -253,7 +253,7 @@ async function restartApp(show, r = {}) {
     try { const res = await fetch("/api/libraries", { cache: "no-store" }); if (res.ok && gone) { location.hash = "setup"; location.reload(); return; } gone ||= !res.ok; }
     catch (e) { gone = true; }
   }
-  manual("It's taking a while. Look at the analyzer's window for what it's doing; if it stopped, double-click Start Puppi3's Track Analyzer again.");
+  manual(`It's taking a while. Look at the analyzer's window for what it's doing; if it stopped, double-click ${LAUNCHER} again.`);
 }
 // What each step after an update runs (update.STEPS' keys)
 const AFTER_JOBS = { models: ["setup", {}], regenre: ["regenre", {}], rescan: ["scan", { traktor: true, rescan: true }], train: ["colors_train", { views: true }] };
@@ -288,20 +288,21 @@ async function updateCard(force = false) {
   on("up-go", () => writeDialog("update"));
   on("up-back", e => { e.preventDefault(); writeDialog("update_undo"); });
   const saved = async (body, el) => {  // a setting that didn't save says so instead of looking saved
-    try { await postJSON("/api/update/settings", body); updateCard(); }
+    try { await postJSON("/api/update/settings", body); await updateCard(); updateDot(); }
     catch (err) { if (el.type === "checkbox") el.checked = !el.checked; el.closest(".card").insertAdjacentHTML("beforeend", `<div class="err small">${esc(err.message)}</div>`); }
   };
   on("up-seen", e => saved({ seen: true }, e.currentTarget));
   $("#up-auto").onchange = e => saved({ auto: e.target.checked }, e.target);
   box.querySelectorAll("[data-after]").forEach(el => el.onclick = () => {
     const [action, opts] = AFTER_JOBS[el.dataset.after];
-    startJob(action, opts).catch(err => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(err.message)}</div>`; });
+    startJob(action, opts).catch(err => { const p = $("#jobpanel"); if (p) p.innerHTML = `<div class="err" style="margin-bottom:16px">${esc(err.message)}</div>`; });
   });
 }
 // The Setup link's dot: an update is out, or steps after one are left
 function updateDot() {
   const link = document.querySelector('#nav a[href="#setup"]'), u = UPD;
-  if (!link || !u || link.querySelector(".dot")) return;
+  if (!link || !u) return;
+  link.querySelector(".dot")?.remove();  // drawn again from the latest check: gone once the update or its steps are done
   const why = u.newer ? `Version ${u.latest} is out` : u.pending?.steps?.length ? "Steps left after the update" : "";
   if (why) link.insertAdjacentHTML("beforeend", `<span class="dot" data-tip="${esc(why)}"></span>`);
 }

@@ -193,6 +193,11 @@ def busy() -> bool:
 
 def app_label(action: str, label: str) -> str:
     """A job's name with the chosen DJ app in it ("Hype into Rekordbox's Comment")."""
+    if action == "tempo_native":  # the app holding the view, which may not be the one chosen now
+        from . import tempo
+
+        st = tempo.loaded()
+        return label.replace("Traktor", library.APPS.get(st.get("app", "traktor"), "Traktor") if st else library.app_name())
     if action in ("copy", "copy_undo"):  # the chosen app first: the other's name may be "Traktor" too
         from .sync import other_name
 

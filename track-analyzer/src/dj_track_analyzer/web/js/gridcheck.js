@@ -439,7 +439,7 @@ const fold = (key, title, html, summaryExtra = "") => `<details class="fold" dat
 document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (!k) return; foldOpen(k); S.folds[k] = e.target.open; try { localStorage.setItem("ta-folds", JSON.stringify(S.folds)); } catch (err) {} }, true);
 const helpFold = (key, title, html) => `<details class="help" data-help="${key}" ${S.helpOpen?.[key] ? "open" : ""}><summary>${title}</summary>${html}</details>`;
 document.addEventListener("toggle", e => { const k = e.target.dataset?.help; if (k) (S.helpOpen ??= {})[k] = e.target.open; }, true);  // toggle doesn't bubble
-const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+const clock = t => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, "0")}`; };  // 59.96 s is 1:00.0, not 0:60.0
 // the track list's approved chip: "+3 approved", "+2 · 1 moved · −1 approved"; long: in words, for its tip
 function approvedText(n, long = false) {
   if (n === true) n = { add: 0, move: 0, remove: 0 };  // an older server: no counts
