@@ -3,6 +3,22 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**New**
+- Mixes: **Standalone pieces** finds long blends in a recorded set that work as their own track, to post on
+  SoundCloud. A change counts when both tracks stay near their own level for 32 bars or more. Tracks with a stem
+  file are measured per stem, so a live stem cut or bass swap isn't read as a fade. Each piece gets a name, a
+  title and credits with a link to the full set, ready to copy, and a level strip with a preview player that plays
+  your recording there; pieces are marked on the mix's timeline. When no change qualifies, it says so and shows the
+  closest one. On by default in **Analyse a mix…**; **Separate tracks without a stem file** (off, slow) measures
+  the other tracks by stem too.
+
+**Fixed**
+- Mixes: a set's tracklist check finds Traktor's history when Traktor was closed on a later day (after midnight,
+  or days later). Traktor names the file by when it closed, and only the set's own day and the day before were
+  looked at, so such a set showed "No tracklist check". Analyse it again to get the full result.
+
 ## 1.2.4 (2026-11-11)
 
 **Changed**

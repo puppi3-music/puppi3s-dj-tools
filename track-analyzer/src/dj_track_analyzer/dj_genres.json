@@ -21,6 +21,8 @@
     "Trance":            {"needs": [["Trance", "Neo Trance"]], "bpm": [126, 145]},
     "Progressive Trance": {"needs": [["Progressive Trance"]], "bpm": [126, 145]},
     "Psytrance":         {"needs": [["Psy-Trance", "Goa Trance"]], "bpm": [135, 150]},
+    "Darkpsy":           {"needs": [["Psy-Trance", "Goa Trance"]], "bpm": [150, 165]},
+    "Hi-Tech":           {"needs": [["Psy-Trance", "Goa Trance"]], "bpm": [165, 200]},
     "Hard Techno":       {"needs": [["Hard Techno", "Schranz"]], "bpm": [140, 170]},
     "Techno":            {"needs": [["Techno", "Deep Techno"]], "bpm": [120, 142]},
     "Minimal":           {"needs": [["Minimal", "Minimal Techno"]], "bpm": [120, 132]},

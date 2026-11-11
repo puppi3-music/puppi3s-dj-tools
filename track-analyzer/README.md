@@ -20,7 +20,7 @@ For every MP3, WAV, FLAC, AIFF or M4A:
 | **BPM** | A whole number, folded into 85–220 (a 170 BPM track heard as 85 is reported as 170). |
 | **Key** | Key name plus **Camelot** code (8A, 11B, …), the wheel DJs use for harmonic mixing. |
 | **Loudness** | Integrated **LUFS** (overall loudness), loudness range, and an energy curve through the track. |
-| **DJ subgenre** | 42 DJ genres (Acid Trance, Hard Trance, Progressive Trance, Techno, Melodic House & Techno, Psytrance, …), top 3 with scores. No training needed. |
+| **DJ subgenre** | 44 DJ genres (Acid Trance, Hard Trance, Progressive Trance, Techno, Melodic House & Techno, Psytrance, Darkpsy, Hi-Tech, …), top 3 with scores. No training needed. |
 | **Discogs styles** | The raw top 5 of the 400 styles the genre models know. |
 | **Mood, instruments, vocals** | Aggressive / happy / party / relaxed / sad, the strongest instruments, and how much of the track has a voice. |
 | **Colour** | A Traktor colour for uncoloured tracks, learned from the tracks you've already coloured (Traktor's 7 colours read as a scale, Red … Magenta). |
@@ -269,9 +269,12 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 - **Mixes**: saved `analyze` results of recorded mixes, each with:
   - the timeline: the hype and Traktor colour of each track you played, or loudness. Click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist.
   - the tracklist check, with each track's mood as played and the key change from the track before
-  - clip suggestions and chapters
+  - video clip suggestions and chapters
+  - possible sub-mixes (standalone pieces): long blends where both tracks play near full level for 2:30 or more, long enough to release as their own track; shorter ones of 64+ bars (whole phrases) as short edits (below)
 
   **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another. A mix asked for while one is analysed waits its turn, **Stop all** empties the queue, and the bar says when one of them failed.
+
+  **Find possible sub-mixes** (on) looks for those blends while the mix is analysed (= without `--no-standalone`). Each track's own file is lined up with the recording and every bar of a change is split into the two tracks. A track with a stem file (Traktor's or NUO's `.stem.mp4`) is measured per stem: it plays in a bar when any of its stems is within 12 dB of its own level, so a live stem cut or bass swap doesn't count as a fade. A track without one is measured whole, unless **Separate tracks without a stem file** is ticked (= `--standalone-separate`, off): then Demucs splits it over the stretch where it plays (slow: a few minutes per track; needs the `stems` extra). The panel lists each piece with its span and why it qualifies, a strip of both tracks' level per bar with **▶ Preview** (plays the recording from 4 bars before the piece and stops at its end; **Run start**, **Middle**, **Last 8 bars**, **After the end** plays on past it, or click the strip). Bars are counted on the incoming track's beat grid from your DJ app, a run is followed until one track drops out (even well into the next track), and each piece starts widened to whole 16-bar phrases of the incoming track; **Start**/**End** −8/+8 move it from there, a **Name** menu (Live Mashup, Live Rework, …), the title and credits with your **Full set link**, and **Copy**. A fixed bar, no quota: when no change qualifies, it says so and shows the closest miss.
 
   **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**. **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
 - **Files**: any other saved JSON.
@@ -931,9 +934,9 @@ The models use Discogs' style names, and some DJ terms don't exist there: "Acid 
 - Outside the BPM range a genre is scored down gradually, not excluded. Traktor's BPM is used when it has one.
 - The top 3 come back as `dj_genre`.
 
-There are 42 DJ genres, from Deep House to Speedcore. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house) and **Ambient** (stays part of Downtempo). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
+There are 44 DJ genres, from Deep House to Speedcore. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house) and **Ambient** (stays part of Downtempo). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
 
-> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). So none of the 42 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest.
+> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). So none of the 44 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest.
 >
 > It says nothing about the music. Out of the box, a hyperpop track gets spread over the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. You can teach it:
 > - **One track at a time:** type **Hyperpop** as the genre in a track's **✎ Edit**. It's kept from then on, through rescans and in Traktor.

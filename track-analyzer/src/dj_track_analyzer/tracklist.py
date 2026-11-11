@@ -39,6 +39,7 @@ from .analysis import camelot, dj_genre, fmt_time, fold_bpm, label_scores, round
 HISTORY_GLOB = "Documents/Native Instruments/Traktor*/History/history_*.nml"  # in every Documents folder: traktor.traktor_glob
 RECORDING_RE = re.compile(r"(\d{4})-(\d{2})-(\d{2})_(\d{2})h(\d{2})m(\d{2})s")
 HISTORY_RE = re.compile(r"history_(\d{4})y(\d{1,2})m(\d{1,2})d")
+HISTORY_DAYS_AFTER = 7  # history files named up to this many days after the recording began are read
 PITCH_NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 
 MAIN_TRIM = 0.2      # share of a track's main stretch left off each end (blending in, the next intro)
@@ -143,8 +144,9 @@ def _overlap(plays: list[dict], start: datetime, duration: float) -> float:
 
 
 def find_history(start: datetime, duration: float) -> Path | None:
-    """The history file covering most of the recording (sessions can run past midnight)."""
-    days = {start.date(), (start - timedelta(days=1)).date()}
+    """The history file covering most of the recording. Traktor names the file when it closes, so the name's
+    day can be days after the set (quit after midnight, or left open); the day before is kept for safety."""
+    days = {(start + timedelta(days=n)).date() for n in range(-1, HISTORY_DAYS_AFTER + 1)}
     best = None
     from . import traktor
 
@@ -704,6 +706,10 @@ def summary(result: dict) -> str:
             energy = f", energy {h['energy']:.2f}" if h.get("energy") is not None else ""
             lines.append(f"    Clip {i}: {span}{best}  {h['lufs']} LUFS{rise}{energy}"
                          + (f"  ({h['track']})" if h.get("track") else ""))
+    if result.get("standalone"):
+        from .standalone import summary_lines
+
+        lines += summary_lines(result, chapters(result, 0))
     if tl:
         lines += ["", "  Timeline (genre)"]
         lines += [f"    {r}" for r in _runs(tl, "dj_genre")]

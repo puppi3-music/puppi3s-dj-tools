@@ -94,7 +94,10 @@ def _analyze_mix(o: dict) -> list[str]:
         raise ValueError(f"Start time as YYYY-MM-DD HH:MM(:SS), not {start!r}")
     tl = o.get("tracklist", True)
     return ["analyze", str(p.resolve()), *(["--tracklist"] if tl else []), *(["--start", start] if tl and start else []),
-            *(["--highlights"] if o.get("highlights", True) else []), "--json-only", "--out", str(out)]
+            *(["--highlights"] if o.get("highlights", True) else []),
+            *(["--no-standalone"] if tl and not o.get("standalone", True) else []),
+            *(["--standalone-separate"] if tl and o.get("standalone", True) and o.get("standalone_separate") else []),
+            "--json-only", "--out", str(out)]
 
 
 def _tool_install(o: dict) -> list[str]:
