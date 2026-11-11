@@ -65,6 +65,8 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
 - Psy gate: sped up, the models hear Psy-Trance 0.6-0.9 in house that scores 0.0-0.1 at its own tempo (a tempo
   shortcut, not the BPM rules). In a view Psy-Trance/Goa are capped at 1.5 × the track's own-tempo psy
   (`tempo.view_genres`, in the scan loop and `tempo refresh`).
+- Juke hold (mix tracklist only, 2026-11-11): house played at ~163 came out Footwork on Juke 0.12-0.13 once psy
+  was capped. `tracklist.corrected()` caps Juke/Footwork at 1.5 × own-tempo too (`tempo.JUKE_STYLES`).
 - `load`/`native` = carry-over swap: only INFO GENRE/COLOR/COMMENT (views loaded before 2026-10-28 remembered RATING; `native` restores whatever field is stored), the genre Smartlist folder (@<bpm> folder takes
   the native folder's place, `traktor.swap_root_folder`), each changed entry's MODIFIED_DATE/TIME and the clock
   change. State in `data/tempo-loaded.json` as {VOLUME|DIR|FILE: {field: [yours, view]}}; `native`
