@@ -396,7 +396,7 @@ function renderMix(d) {
       ${kl ? `<dt>Key lock</dt><dd><b>${esc(kl.verdict)}</b> · ${esc(kl.summary)} <span class="dim small">(${esc(kl.basis)}; blend lag ${kl.blend_lag_seconds} s)</span></dd>` : ""}
       ${kl?.matches_per_lag ? `<dt>Blend lag</dt><dd>${Object.entries(kl.matches_per_lag).map(([lag, n]) => `<span class="${+lag === kl.blend_lag_seconds ? "" : "dim"}">${lag} s: ${n}</span>`).join(" · ")} <span class="dim small">keys matching at each lag; a clear winner means the tracks' stretches are placed right</span></dd>` : ""}
       ${tlist.transitions ? `<dt>Changes</dt><dd>${Object.entries(tlist.transitions).map(([k, n]) => `${n} ${esc(k)}`).join(", ")} <span class="dim small">key to key as heard, on the Camelot wheel</span></dd>` : ""}
-      ${tlist.overlap_share != null ? `<dt>Overlap</dt><dd>${pct(tlist.overlap_share)} of the mix has two decks playing</dd>` : ""}</dl>
+      ${tlist.overlap_share != null ? `<dt>Overlap</dt><dd>${pct(tlist.overlap_share)} of the mix has two or more decks playing</dd>` : ""}</dl>
       ${table([{ h: "#", r: 1, f: t => t.n }, { h: "Start", f: t => esc(t.start) }, { h: "Deck", f: t => esc(t.deck || "") }, { h: "Track", f: trackName },
         ...(canHype ? [{ h: "Hype", r: 1, f: t => lib[t.n] ? `<span class="nowrap">${sw(lib[t.n].colour, lib[t.n].guessed)} ${lib[t.n].hype ?? "–"}</span>` : "–" }] : []),
         { h: "BPM", f: t => `${fmt(t.bpm)}${t.played_bpm ? ` → ${t.played_bpm} <span class="dim small">${esc(t.speed || "")}</span>` : ""}` },
