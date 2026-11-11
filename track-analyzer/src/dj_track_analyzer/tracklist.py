@@ -704,6 +704,10 @@ def summary(result: dict) -> str:
             energy = f", energy {h['energy']:.2f}" if h.get("energy") is not None else ""
             lines.append(f"    Clip {i}: {span}{best}  {h['lufs']} LUFS{rise}{energy}"
                          + (f"  ({h['track']})" if h.get("track") else ""))
+    if result.get("standalone"):
+        from .standalone import summary_lines
+
+        lines += summary_lines(result, chapters(result, 0))
     if tl:
         lines += ["", "  Timeline (genre)"]
         lines += [f"    {r}" for r in _runs(tl, "dj_genre")]

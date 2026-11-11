@@ -71,6 +71,8 @@ async function mixDialog(file) {
     <div class="drop" id="mx-drop" style="margin-top:8px;padding:12px">Or drop a mix here, or <a href="#" id="mx-pick">choose a file</a></div><input type="file" id="mx-file" accept="audio/*,${[...AUDIO_EXTS].join(",")}" hidden>
     <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against ${DJ()}'s history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
       <div id="mx-startrow" style="margin:2px 0 4px 22px"><label class="inline" style="white-space:normal;flex-wrap:wrap">Started at <input type="datetime-local" step="1" id="mx-start"> <span class="dim small">only for a recording whose name doesn't say (Traktor's do)</span></label></div>
+      <div id="mx-sarow" style="margin:2px 0 4px 0"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-sa" checked> Find standalone pieces: long blends where both tracks play near full level, to post as their own track</label><br>
+        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sas"> Separate tracks without a stem file <span class="dim small">(slow: a few minutes per track; without it they're measured whole)</span></label></div>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
@@ -96,8 +98,10 @@ async function mixDialog(file) {
     const n = dropped ? 1 : picked().length;
     $("#mx-go").textContent = n > 1 ? `Analyse ${n} mixes` : "Analyse"; $("#mx-go").disabled = !n;
     $("#mx-startrow").hidden = n !== 1 || !$("#mx-tl").checked;  // one start time is for one recording
+    $("#mx-sarow").hidden = !$("#mx-tl").checked;  // the pieces are found from the tracklist
+    $("#mx-sas").disabled = !$("#mx-sa").checked;
   };
-  $("#mx-tl").addEventListener("change", count);
+  $("#mx-tl").addEventListener("change", count); $("#mx-sa").addEventListener("change", count);
   dlg.querySelectorAll("input[name=mx-rec]").forEach(r => r.addEventListener("change", () => {
     if (dropped) { dropped = null; zone.innerHTML = zoneText; $("#mx-pick").onclick = e => { e.preventDefault(); input.click(); }; }
     count();
@@ -125,7 +129,8 @@ async function mixDialog(file) {
     let j;
     const queued = jobRunning() && JOB.job.action === "analyze_mix";  // goes after the one running: no waiting here
     const start = $("#mx-startrow").hidden ? "" : $("#mx-start").value;
-    const opts = { ...(files.length > 1 ? { files } : { file, start }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked };
+    const opts = { ...(files.length > 1 ? { files } : { file, start }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked,
+      standalone: $("#mx-sa").checked, standalone_separate: $("#mx-sa").checked && $("#mx-sas").checked };
     if (queued) {
       try { await postJSON("/api/jobs/start", { action: "analyze_mix", options: opts }); await jobPoll(); dlg.close(); }
       catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
@@ -343,6 +348,47 @@ function skippedNote(d) {
   if (kind === "history") return `No ${DJ()} history covers it${d.recording_start ? ` (it started ${esc(new Date(d.recording_start.replace(" ", "T")).toLocaleString())})` : ""}. ${DJ()} saves a session's history when it closes: quit ${DJ()} once after the set, then analyse the mix again.`;
   return esc(d.tracklist_skipped);
 }
+// Standalone pieces (standalone.py): long blends that work as their own track, ready to post on SoundCloud
+let SA_SHOWN = null;
+const COPY_BTN = `<button class="small" data-sa-copy>Copy</button>`;
+function saFill(card) {  // the chosen name and the full-set link, written into each pick's title and credits
+  const link = card.querySelector("#sa-link")?.value.trim() || "<link>";
+  card.querySelectorAll("[data-sa-at]").forEach(el => {
+    const c = SA_SHOWN.find(x => x.at === el.dataset.saAt), name = el.querySelector("[data-sa-name]").value;
+    el.querySelector(".sa-title").value = c.title.replace(/\(puppi3 [^)]*\)$/, `(puppi3 ${name})`);
+    el.querySelector(".sa-credits").value = c.credits.replace("<link>", link);
+  });
+}
+const SA_FIT = "min-height:0;field-sizing:content";  // as tall as the text (rows= where field-sizing isn't supported)
+function standalonePanel(d) {
+  const sa = d.standalone; if (!sa) return "";
+  const byAt = Object.fromEntries(sa.changes.map(c => [c.at, c])), tracks = Object.fromEntries((d.tracklist?.tracks || []).map(t => [t.n, t]));
+  const title = n => esc(tracks[n]?.title || `track ${n}`), picks = sa.picks.map(at => byAt[at]);
+  SA_SHOWN = picks;
+  const how = Object.entries(sa.measured_with || {}), whole = how.filter(([, h]) => h === "whole").map(([n]) => title(+n));
+  const skipped = sa.changes.filter(c => c.status !== "measured"), miss = sa.closest_miss && byAt[sa.closest_miss];
+  return `<div class="card" id="sa"><h3>Standalone pieces <span class="dim small">${esc(sa.rule)}</span></h3>
+    ${picks.length ? `<div class="filters"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label></div>
+      ${picks.map(c => `<div data-sa-at="${esc(c.at)}" style="border-top:1px solid var(--line);padding:10px 0;margin-top:8px">
+        <div><b>${esc(c.run.from)}–${esc(c.run.to)}</b> · ${title(c.from)} into ${title(c.to)}</div>
+        <div class="small muted" style="margin:2px 0 6px">Why: ${esc(c.why)}</div>
+        <div class="filters" style="flex-wrap:wrap"><label class="inline">Name <select data-sa-name>${sa.names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
+          <span class="dim small">your call: pick what fits how much you changed it</span></div>
+        <div class="filters" style="margin-top:6px"><textarea class="sa-title" readonly rows="2" style="${SA_FIT};flex:1;min-width:0;font:inherit;resize:none">${esc(c.title)}</textarea>${COPY_BTN}</div>
+        <div style="margin-top:6px"><div class="small muted">Credits ${COPY_BTN}</div><textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea></div></div>`).join("")}`
+      : `<div>Nothing qualifies in this mix.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>`}
+    ${whole.length && whole.length < how.length ? `<div class="note">Measured without stems (no stem file): ${whole.join(", ")}. Tick "Separate tracks without a stem file" when you analyse it again to measure these by stem.</div>` : ""}
+    ${skipped.length ? `<details style="margin-top:8px"><summary class="small muted">Couldn't measure ${skipped.length} ${skipped.length === 1 ? "change" : "changes"}</summary>
+      <ul class="small">${skipped.map(c => `<li>${esc(c.at)} ${title(c.to)}: ${esc(c.status)}</li>`).join("")}</ul></details>` : ""}
+    </div>
+    ${picks.length && sa.timestamps?.length ? `<div class="card"><h3>SoundCloud timestamps <span class="dim small">for the full set's description</span> <button style="float:right" data-sa-copy>Copy</button></h3><textarea readonly rows="8">${esc(sa.timestamps.join("\n"))}</textarea></div>` : ""}`;
+}
+document.addEventListener("input", e => { if (e.target.closest("#sa-link, [data-sa-name]")) saFill(e.target.closest("#sa")); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-sa-copy]"); if (!b) return;
+  const box = b.parentElement.querySelector("input[readonly], textarea") || b.parentElement.parentElement.querySelector("textarea");
+  navigator.clipboard.writeText(box.value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy"; }, 1500); });
+});
 function renderMix(d) {
   const tl = d.timeline || [], tlist = d.tracklist, hl = d.highlights || [];
   const lufs = tl.map(s => s.lufs ?? -40), lo = Math.min(...lufs) - 2, hi = Math.max(...lufs);
@@ -416,6 +462,7 @@ function renderMix(d) {
     ${hl.length ? `<div class="card"><h3>Clip suggestions</h3>${table([{ h: "Rank", r: 1, f: h => h.rank }, { h: "Mix time", f: h => `${esc(h.start)}–${esc(h.end)}` },
         { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, ...(hl.some(h => h.energy != null) ? [{ h: "Energy", r: 1, f: h => pct(h.energy) }] : []), { h: "Track", f: h => esc(h.track || "") }], hl)}
       <div class="note">Make previews: <span class="mono">clips &lt;this.json&gt; --video &lt;final.mp4&gt;</span></div></div>` : ""}
+    ${standalonePanel(d)}
     ${d.chapters?.length ? `<div class="card"><h3>YouTube chapters <button style="float:right" onclick="navigator.clipboard.writeText(this.closest('.card').querySelector('textarea').value);this.textContent='Copied'">Copy</button></h3><textarea readonly>${esc(d.chapters.join("\n"))}</textarea></div>` : ""}
     <details class="card"><summary class="muted">Raw JSON</summary><div class="tree" style="margin-top:8px">${tree(d)}</div></details>`;
 }

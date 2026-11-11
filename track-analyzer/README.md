@@ -270,8 +270,11 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
   - the timeline: the hype and Traktor colour of each track you played, or loudness. Click a genre, style or mood of the mix to light up where it is in the timeline and the tracklist.
   - the tracklist check, with each track's mood as played and the key change from the track before
   - clip suggestions and chapters
+  - standalone pieces: long blends where both tracks play near full level for 32 bars or more, to post as their own track (below)
 
   **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another. A mix asked for while one is analysed waits its turn, **Stop all** empties the queue, and the bar says when one of them failed.
+
+  **Find standalone pieces** (on) looks for those blends while the mix is analysed (= without `--no-standalone`). Each track's own file is lined up with the recording and every bar of a change is split into the two tracks. A track with a stem file (Traktor's or NUO's `.stem.mp4`) is measured per stem: it plays in a bar when any of its stems is within 12 dB of its own level, so a live stem cut or bass swap doesn't count as a fade. A track without one is measured whole, unless **Separate tracks without a stem file** is ticked (= `--standalone-separate`, off): then Demucs splits it over the stretch where it plays (slow: a few minutes per track; needs the `stems` extra). The panel lists each piece with its span and why it qualifies, a **Name** menu (Live Mashup, Live Rework, …), the title and credits with your **Full set link**, and **Copy**. A fixed bar, no quota: when no change qualifies, it says so and shows the closest miss.
 
   **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**. **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
 - **Files**: any other saved JSON.

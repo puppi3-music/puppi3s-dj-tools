@@ -1622,14 +1622,16 @@ def track_embedding(p: Path):
 def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool = True,
                  genre_bpm: float | None = None, tempo: tuple[float, float] | None = None,
                  progress: bool = False, tracklist: tuple | None = None, highlights: int = 0,
-                 clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0) -> dict:
+                 clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0,
+                 standalone: bool = True, standalone_separate: bool = False) -> dict:
     """tracklist: (plays, history path, recording start) from tracklist.py, for a mix: adds a per-track
     report and judges genres at the tracks' own BPMs. genre_bpm: a BPM to judge the genre rules by instead of the measured one (scan passes
     Traktor's, which the user may have corrected by hand). tempo: (track's BPM, BPM to play it at)
     analyses the track sped up / slowed down with key lock (`tempo scan`). own_bpm: with tempo, the BPM we
     measured at the track's own tempo, for the colour model (trained on those; defaults to tempo[0]). progress: print the stage
     being worked on to stderr (the `analyze` command). clip_mood: weight of how party / aggressive a clip sounds in
-    the highlights' score (tracklist.highlights' energy_weight)."""
+    the highlights' score (tracklist.highlights' energy_weight). standalone: with a tracklist, find the standalone
+    pieces (standalone.py); standalone_separate: there, separate tracks without a stem file with Demucs (slow)."""
     def say(msg: str) -> None:
         if progress:
             log(f"[{time.time() - t0:5.1f}s] {msg}")
@@ -1759,6 +1761,14 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
 
                 say("checking against the tracklist")
                 tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p)
+    if standalone and tracklist and is_mix and result.get("tracklist"):
+        from . import standalone as sa
+
+        result["standalone"] = sa.find(result, mono44, separate_missing=standalone_separate, say=say)
+        if result["standalone"]["picks"]:  # SoundCloud timestamps for the full set the pieces link to
+            from . import tracklist as tl
+
+            result["standalone"]["timestamps"] = tl.chapters(result, 0)
 
     result["analysis_seconds"] = round(time.time() - t0, 1)
     return result

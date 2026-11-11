@@ -101,6 +101,11 @@ def main() -> None:
     a.add_argument("--json-only", action="store_true", help="for a mix: leave out the readable summary after the JSON")
     a.add_argument("--out", default=None, metavar="FILE.json",
                    help="save the JSON in this file instead of printing it (replaced once the analysis is done)")
+    a.add_argument("--no-standalone", action="store_true",
+                   help="with --tracklist: don't look for standalone pieces (long blends that work as their own track)")
+    a.add_argument("--standalone-separate", action="store_true",
+                   help="with --tracklist: tracks without a stem file are split into stems by Demucs over the stretch "
+                        "where they play, for the standalone pieces (slow; needs the stems extra)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
     cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")
@@ -404,7 +409,8 @@ def main() -> None:
                            **({"recording_start": e.start.isoformat(sep=" ")} if e.start else {})}
                 log(f"No tracklist check: {e.code}")
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
-                              highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood)
+                              highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood,
+                              standalone=not args.no_standalone, standalone_separate=args.standalone_separate)
         if skipped and result.get("type") == "dj_mix":
             result.update(skipped)
         if result.get("type") == "dj_mix":

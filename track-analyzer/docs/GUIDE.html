@@ -418,13 +418,19 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="note"><p><b>Keep in mind:</b> the genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so stretched to 145 a rolling house track sounds to them like the trance and psytrance they <i>did</i> hear at that tempo. Read the view as how the models hear the sped-up track, not as facts. Psytrance, the worst case, is held back: in the view, psy only counts as much as the track already had at its own tempo. Rubber Band also isn't Traktor's own stretcher, so it sounds close but not identical. While a view is loaded in Traktor, the other Traktor writers and colour training refuse to run; switch back first.</p></div>
 
 <h3 id="mixes">My recorded mixes</h3>
-<p>The Mixes tab shows, for a recorded set:</p><ul><li>its genre and mood</li><li>a timeline of the set: each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness. Click one of the mix's genres, styles or moods to light up the stretches and tracks where it is</li><li>a check of the tracklist against Traktor's history: key heard vs Traktor's, the tempo each track was played at, key lock</li><li>clip ideas</li></ul>
+<p>The Mixes tab shows, for a recorded set:</p><ul><li>its genre and mood</li><li>a timeline of the set: each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness. Click one of the mix's genres, styles or moods to light up the stretches and tracks where it is</li><li>a check of the tracklist against Traktor's history: key heard vs Traktor's, the tempo each track was played at, key lock</li><li>clip ideas</li><li>standalone pieces: long blends that work as their own track, to post on SoundCloud (below)</li></ul>
 <ol>
   <li>On the Mixes tab, press <b>Analyse a mix…</b> and tick one or more of Traktor's recordings (<i>tick all not analysed yet</i> picks the new ones), or drop any other mix file on it. A recording whose name doesn't carry its start time (Traktor's do) can't be matched to Traktor's history: give it under <b>Started at</b> when you analyse that one mix.</li>
   <li>They run in the background one after another; the bar at the top says how many are still to go, and whether one failed. <b>Stop all</b> stops the one running and the rest.</li>
   <li>Each result is saved in <code>logs/</code> (replacing an earlier analysis of that recording) and opens on the tab. A result saved somewhere else can be dropped onto the tab.</li>
   <li>When the same recording is saved more than once, the older saves say <b>older copy</b> (the overview only counts the newest). Open one and press <b>Delete…</b> to move its file to <code>logs/deleted/</code>, from where you can move it back.</li>
 </ol>
+<p><b>Standalone pieces.</b> Two ticks in <b>Analyse a mix…</b>:</p>
+<ul>
+  <li><b>Find standalone pieces</b> (on): looks for changes where both tracks play near their own level for 32 bars or more. A track with a stem file is measured per stem, so a live stem cut or bass swap isn't read as a fade.</li>
+  <li><b>Separate tracks without a stem file</b> (off): splits those tracks into stems over the stretch where they play. Slow, a few minutes per track. Without it they're measured whole.</li>
+</ul>
+<p>The mix then has a <b>Standalone pieces</b> panel after the clip suggestions. Each piece shows its span and why it qualifies. Pick a <b>Name</b> (Live Mashup, Live Rework, …), paste the <b>Full set link</b> and press <b>Copy</b> for the title and credits. When no change qualifies, the panel says so and shows the closest one: no piece is a valid answer.</p>
 <p>The same from a terminal: <a href="#cli-mix">recorded mixes</a>.</p>
 <p>With two or more mixes analysed, the <b>All N mixes</b> button above the list adds them up:</p>
 <ul>
@@ -869,6 +875,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <tr><td><code>--tracklist [history.nml]</code></td><td><code>analyze</code></td><td>Check a recorded mix against Traktor's history of that session (found automatically if no file given)</td></tr>
 <tr><td><code>--chapters --offset 0:14</code></td><td><code>analyze --tracklist</code></td><td>YouTube chapter lines, for a video where the first track starts 14 seconds in (read it off the finished video)</td></tr>
 <tr><td><code>--highlights</code> / <code>--clip-length 40</code></td><td><code>analyze</code> (mix)</td><td>Suggest 2 (or N) of the best 40-second stretches for short clips, each ranked (#1 best); video times with <code>--offset</code></td></tr>
+<tr><td><code>--no-standalone</code> / <code>--standalone-separate</code></td><td><code>analyze --tracklist</code></td><td>Don't look for standalone pieces / split tracks without a stem file with Demucs for them (slow)</td></tr>
 <tr><td><code>--clip-mood 3</code></td><td><code>analyze --highlights</code></td><td>Also favour clips that sound party / aggressive, worth up to 3 LU of loudness (default 0)</td></tr>
 <tr><td><code>--json-only</code></td><td><code>analyze</code></td><td>For a mix, leave out the readable summary printed after the JSON</td></tr>
 <tr><td><code>--out &lt;file.json&gt;</code></td><td><code>analyze</code></td><td>Save the JSON in this file instead of printing it (replacing it)</td></tr>

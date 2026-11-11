@@ -35,6 +35,15 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   first track's start (`anchor()`; `first_sound_seconds` without a tracklist) + offset, offset read off the
   finished video by the user (required for --chapters; never guessed from the audio); highlights from 1 s means
   of EBU short-term loudness, level + 0.5·rise (capped 8 LU), windows touching < −45 LUFS skipped. Missing data → SystemExit saying how to get it.
+- `standalone.py` (`result.standalone`, with a tracklist; off with `--no-standalone`): long blends that work as
+  their own track. Each original is lined up with the mix (speed searched ±1.5% around played/own BPM, lineup
+  points every 12 s, ≥60% agreeing to 1 s), then each bar of a change is unmixed by NNLS on a 96-band log
+  spectrogram (8 blocks per bar). Stem file (`gridfix.find_stem`) → per-stem fit, a track plays in a bar when ANY
+  stem is within 12 dB of that stem's solo level (first 20 s of its window); no stem file → whole-track fit, or
+  Demucs over the played stretch with `--standalone-separate` (`separate()`; never run for real yet). Rule: both
+  tracks ≥ 32 bars in a row, single off bars allowed; key clash only noted in Why. Fixed bar, no quota: no pick →
+  `closest_miss`. Output: `picks`, `changes`, `closest_miss`, `measured_with`, `rule`, `names`, `timestamps`
+  (chapters at offset 0 for the full-set description). Page: `standalonePanel(d)` in web/js/mixes.js.
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
