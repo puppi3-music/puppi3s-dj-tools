@@ -96,7 +96,7 @@ in the Docker test image. Nothing has been written to Rekordbox yet. Plan: stage
 - Through `library`: scan's DJ-app tracks (`--traktor`), the BPM/key comparison (`load_traktor_info`), learning
   genres from playlists or the Genre field (mygenres). A `--nml` path is Traktor's: with Rekordbox it's ignored.
 - (At 1b, writes, colours, cues, grids, tempo view and set plans were still Traktor only; stages 2–4 added them all.)
-- `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macOS (macos-15, Apple Silicon).
+- `pyrekordbox>=0.5.0` is a main dependency; CI now also runs the tests on macOS (macos-latest, Apple Silicon).
 
 ## Real-library check (2026-11-03, copy of the user's Rekordbox 7 master.db, 455 tracks)
 - Reads: all 455 paths exist, keys all map to Camelot (8 without a key), 6239 cues on 450 tracks, 100 genre rows of
