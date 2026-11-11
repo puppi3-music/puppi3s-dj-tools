@@ -505,7 +505,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now:</p><ul><li>planning a set, and taking set or crate playlists out again</li><li>saving a tempo view as a spreadsheet or standalone collection (<code>tempo export</code>, <code>tempo nml</code>)</li><li>cutting clips from a mix's video</li><li>working out genres again or re-analysing everything outside an update (after an update, its card has a <b>Run</b> button for them)</li></ul>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
-    <div class="cmd"><pre>cd ~/Downloads/puppi3s-track-analyzer-1.2.2</pre></div> (the folder you unzipped, wherever you put it; in a clone, its <code>track-analyzer</code> folder). On Windows, use PowerShell or Command Prompt.</li>
+    <div class="cmd"><pre>cd ~/Downloads/puppi3s-track-analyzer-1.2.3</pre></div> (the folder you unzipped, wherever you put it; in a clone, its <code>track-analyzer</code> folder). On Windows, use PowerShell or Command Prompt.</li>
   <li><b>Every command starts with <code>uv run dj-track-analyzer</code></b>, for example <code>uv run dj-track-analyzer stats</code>. The copy buttons on this page copy the whole command.</li>
   <li><b>Try <code>--dry-run</code> first</b> on anything that changes files. It shows what would happen and changes nothing.</li>
   <li><b>To keep a copy of the output</b>, add <code>2>&amp;1 | tee logs/something.txt</code> to the end of a command. Handy when asking for help.</li>
