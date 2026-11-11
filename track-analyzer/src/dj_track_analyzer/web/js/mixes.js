@@ -45,7 +45,7 @@ async function pageMixes(main, id) {
     if (f && head && !SNAP && me === S.routeId && !shownDrop) {
       head.insertAdjacentHTML("beforeend", `<div class="spacer"></div><button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
       $("#mx-del").onclick = async () => {
-        if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}/deleted/. The recording itself isn't touched.`)) return;
+        if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}${/\\/.test(f.folder) ? "\\" : "/"}deleted. The recording itself isn't touched.`)) return;
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
         LOGS = null;
         const left = mixes.filter(x => x.id !== id);
@@ -136,6 +136,7 @@ async function mixDialog(file) {
     if (j.error) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(j.error)}</span>`; return; }  // shown here if it failed at once
     if (S.page !== "mixes") return;
     const stem = n => n.replace(/\.[^.]+$/, ""), name = stem(baseName(file)), L = await getLogs(true);
+    if (S.page !== "mixes") return;  // went to another tab while the list loaded
     const f = L.files.find(x => x.kind === "mix" && stem(x.recording || "") === name), to = f ? `#mixes/${encodeURIComponent(f.id)}` : "#mixes";
     if (location.hash === to) route(); else location.hash = to;
   };

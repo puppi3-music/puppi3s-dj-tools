@@ -226,8 +226,8 @@ async function openTrack(path) {
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
-      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
-      <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
+      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: writing tags, writing to ${DJ()},
+      applying colours and loading a tempo view all skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
       hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
     ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
       hint(t.path.split(/[\\/]/).pop()))}`;
@@ -610,7 +610,7 @@ async function writeToTraktor(onDone) {
     show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : `Nothing to write: everything approved is already in ${DJ()} or can't be placed.`}</div>`}
       ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in ${DJ()}):</div>${list(d.skipped)}` : ""}
       ${running}
-      <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
+      <div class="note">A backup of ${DJ() === "Rekordbox" ? "master.db" : "collection.nml"} is made first; Undo here puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
       d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to ${DJ()}</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
