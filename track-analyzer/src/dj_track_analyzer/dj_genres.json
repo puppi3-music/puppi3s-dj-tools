@@ -5,10 +5,11 @@
     "(each group scores as its strongest Discogs style), so 'Acid Trance' needs both an acid",
     "style AND a trance style. Genres with 2+ groups get a small bonus for being more specific, but only",
     "when different styles fill the groups (Acid House alone in both groups of 'Acid House' gets none).",
-    "'bpm' is the usual tempo range; tracks outside it are scored lower (gradually, down to 60% at 3 BPM outside), not excluded.",
+    "'bpm' is the usual tempo range; tracks outside it are scored lower (gradually, down to 60% at 3 BPM outside), not excluded. Leave 'bpm' out for music with no steady beat (Ambient): tempo then plays no part.",
     "Edit freely. To keep your edits safe from updates, copy this file to data/dj_genres.json.",
     "Style names must match Discogs exactly; run `uv run server.py styles` to list them all.",
     "Neo Trance, Hard Beat, Doomcore and J-Core only exist in the MAEST model (519 styles).",
+    "Neo Trance sits in Melodic House & Techno, not Trance: MAEST gives it to modern melodic house at 120-128 (tested 2026-11-11: 27 tracks with Neo Trance on top, shop tags melodic house/techno, none trance).",
     "Electro House is left inside House on purpose: the models give Discogs' 2010s 'Electro House' to most modern melodic/peak-time house (tested 2026-10-22: 49 of 82 House tracks).",
     "Avoid '/' and ';' in genre names: Navidrome splits genres on them, and ';' separates multiple genres."
   ],
@@ -18,7 +19,7 @@
     "Acid House":        {"needs": [["Acid House", "Acid"], ["House", "Acid House", "Ghetto House", "Hip-House"]], "bpm": [118, 132]},
     "Hard Trance":       {"needs": [["Hard Trance"]], "bpm": [138, 165]},
     "Tech Trance":       {"needs": [["Tech Trance"]], "bpm": [130, 145]},
-    "Trance":            {"needs": [["Trance", "Neo Trance"]], "bpm": [126, 145]},
+    "Trance":            {"needs": [["Trance"]], "bpm": [126, 145]},
     "Progressive Trance": {"needs": [["Progressive Trance"]], "bpm": [126, 145]},
     "Psytrance":         {"needs": [["Psy-Trance", "Goa Trance"]], "bpm": [135, 150]},
     "Darkpsy":           {"needs": [["Psy-Trance", "Goa Trance"]], "bpm": [150, 165]},
@@ -28,7 +29,7 @@
     "Minimal":           {"needs": [["Minimal", "Minimal Techno"]], "bpm": [120, 132]},
     "Dub Techno":        {"needs": [["Dub Techno"]], "bpm": [115, 128]},
     "Industrial Techno": {"needs": [["Industrial", "EBM", "Rhythmic Noise"], ["Techno", "Hard Techno"]], "bpm": [125, 150]},
-    "Melodic House & Techno": {"needs": [["Progressive House", "Deep House", "Progressive Trance"], ["Techno", "Deep Techno", "Minimal", "Minimal Techno"]], "bpm": [115, 128]},
+    "Melodic House & Techno": {"needs": [["Progressive House", "Deep House", "Progressive Trance", "Neo Trance"], ["Techno", "Deep Techno", "Minimal", "Minimal Techno"]], "bpm": [115, 128]},
     "Progressive House": {"needs": [["Progressive House"]], "bpm": [118, 130]},
     "Deep House":        {"needs": [["Deep House"]], "bpm": [112, 125]},
     "Tech House":        {"needs": [["Tech House"]], "bpm": [120, 130]},
@@ -56,6 +57,7 @@
     "Dance Pop":         {"needs": [["Dance-pop"]], "bpm": [95, 135]},
     "Synthwave":         {"needs": [["Synthwave", "Synth-pop", "Darkwave", "New Wave"]], "bpm": [80, 125]},
     "IDM":               {"needs": [["IDM", "Glitch"]], "bpm": [80, 180]},
-    "Downtempo": {"needs": [["Downtempo", "Ambient", "Trip Hop", "Chillwave"]], "bpm": [60, 115]}
+    "Downtempo":         {"needs": [["Downtempo", "Trip Hop", "Chillwave"]], "bpm": [60, 115]},
+    "Ambient":           {"needs": [["Ambient", "Dark Ambient", "Drone", "New Age", "Modern Classical", "Berlin-School"]]}
   }
 }

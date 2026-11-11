@@ -20,7 +20,7 @@ For every MP3, WAV, FLAC, AIFF or M4A:
 | **BPM** | A whole number, folded into 85–220 (a 170 BPM track heard as 85 is reported as 170). |
 | **Key** | Key name plus **Camelot** code (8A, 11B, …), the wheel DJs use for harmonic mixing. |
 | **Loudness** | Integrated **LUFS** (overall loudness), loudness range, and an energy curve through the track. |
-| **DJ subgenre** | 42 DJ genres (Acid Trance, Hard Trance, Progressive Trance, Techno, Melodic House & Techno, Psytrance, …), top 3 with scores. No training needed. |
+| **DJ subgenre** | 45 DJ genres (Acid Trance, Hard Trance, Progressive Trance, Techno, Melodic House & Techno, Psytrance, …), top 3 with scores. No training needed. |
 | **Discogs styles** | The raw top 5 of the 400 styles the genre models know. |
 | **Mood, instruments, vocals** | Aggressive / happy / party / relaxed / sad, the strongest instruments, and how much of the track has a voice. |
 | **Colour** | A Traktor colour for uncoloured tracks, learned from the tracks you've already coloured (Traktor's 7 colours read as a scale, Red … Magenta). |
@@ -931,9 +931,9 @@ The models use Discogs' style names, and some DJ terms don't exist there: "Acid 
 - Outside the BPM range a genre is scored down gradually, not excluded. Traktor's BPM is used when it has one.
 - The top 3 come back as `dj_genre`.
 
-There are 42 DJ genres, from Deep House to Speedcore. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house) and **Ambient** (stays part of Downtempo). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
+There are 45 DJ genres, from Deep House to Speedcore. Psytrance is split by tempo into Psytrance (135-150), Darkpsy (150-165) and Hi-Tech (165-200). **Ambient** has no tempo range, so a beatless track isn't pushed out by a BPM reading. Discogs' "Neo Trance" style counts towards Melodic House & Techno, not Trance: the models give it to modern melodic house. Left out on purpose: **Electro House** (the models give Discogs' 2010s "Electro House" to most modern melodic and peak-time house). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass and Hard Groove don't exist as Discogs styles; train them from examples instead (section 9).
 
-> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). So none of the 42 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest.
+> **The built-in genres don't know hyperpop.** The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). So none of the 45 DJ names is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest.
 >
 > It says nothing about the music. Out of the box, a hyperpop track gets spread over the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. You can teach it:
 > - **One track at a time:** type **Hyperpop** as the genre in a track's **✎ Edit**. It's kept from then on, through rescans and in Traktor.

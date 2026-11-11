@@ -33,9 +33,19 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
 
 
 ### Genre set
-- 42 DJ genres. Progressive Trance is its own genre (126-145 BPM, taken out of Trance's needs).
+- 45 DJ genres. Progressive Trance is its own genre (126-145 BPM, taken out of Trance's needs). Psy-Trance is split
+  by tempo: Psytrance 135-150, Darkpsy 150-165, Hi-Tech 165-200.
+- 2026-11-11 audit (rules rerun on cached scores of the ~470-track test collection, checked against shop genre tags):
+  Neo Trance (MAEST only) moved from Trance to Melodic House & Techno: it topped 27 melodic-house tracks, 8 called
+  Trance, none shop-tagged trance; 17 top genres changed, all towards the shop tag. Ambient is its own genre with no
+  `bpm` (a rule without `bpm` ignores tempo); 3 beatless tracks that got no genre are now Ambient, the psytrance track
+  that went Ambient in 2026-10 testing stays Darkpsy. BPM_MARGIN 3 kept: margin 10 moved 27 winners, mostly back to
+  the Neo Trance/Psy-Trance mislabels the tempo penalty fixes. A "Progressive Psy" rule (Psy-Trance + Progressive
+  Trance, 130-138) was not added: candidates at 130-132 are shop-tagged melodic house/techno, and the 134-136 psy
+  tracks all score Progressive Trance too, so it would take nearly all of Psytrance. Not testable here: Hard Techno,
+  Hardcore/Gabber splits, half/double-time (no such tracks).
 - Deliberately NOT added: Electro House (the models give Discogs' 2010s "Electro House" to most modern melodic/
-  peak-time house), Ambient (it went to a psytrance track in testing), Afro/Organic House as 2-style combos (matched
+  peak-time house), Afro/Organic House as 2-style combos (matched
   nothing). Big Room, Future House, Afro House, Organic House, Melodic Techno, Future Bass, Hard Groove don't
   exist in Discogs: only via `train` with example folders.
 - No Hyperpop either: Discogs has the style now, but neither model's class list (400 / 519, from the Discogs list
