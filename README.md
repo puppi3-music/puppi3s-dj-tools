@@ -14,7 +14,7 @@ Each tool is run from its own folder, e.g. `cd track-analyzer && uv sync`.
 
 Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**) and unzip it, or clone this repo. Then, in the `track-analyzer` folder:
 
-- **Mac:** double-click **`Start Puppi3's Track Analyzer.command`**. If macOS says it's from an unidentified developer, right-click it and choose **Open**.
+- **Mac:** double-click **`Start Puppi3's Track Analyzer.command`**. If macOS won't open it the first time, go to **System Settings → Privacy & Security**, scroll down and press **Open Anyway** (on macOS 14 or older: right-click it and choose **Open**).
 - **Windows:** double-click **`Start Puppi3's Track Analyzer.bat`**. If Windows warns that it's from the internet, choose **More info → Run anyway**.
 - **Linux:** run `./"Start Puppi3's Track Analyzer.command"` from a terminal in that folder.
 

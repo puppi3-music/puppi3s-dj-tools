@@ -171,8 +171,25 @@ async function pageColours(main) {
       <div class="card"><h3>Artists</h3>${e.artists ? `<div class="muted small" style="margin-bottom:8px">${e.artists.artists_with_3_plus} artists with 3+ tracks. Their tracks sit ${e.artists.spread_within_artist} colours from the artist's average, random groups ${e.artists.spread_random_groups}.</div>
         ${table([{ h: "Artist", f: a => esc(a.artist) }, { h: "Tracks", r: 1, f: a => a.tracks }, { h: "Average", f: a => `${colour(a.average_colour)} <span class="dim small">${a.average}</span>` }], e.artists.top)}` : `<div class="dim">Not enough artists with 3+ tracks.</div>`}</div>
     </div>
-    ${kp.status === "fulfilled" && kp.value.always_kept.length ? `<div class="card"><h3>Kept always <span class="dim small">(Recolour them… skips these)</span></h3>
-      ${table([{ h: "Track", f: k => esc(k.file) }, { h: "Your colour", f: k => colour(k.your_colour) }, { h: "Since", f: k => esc(k.kept_since) }], kp.value.always_kept)}</div>` : ""}`;
+    <div id="c-kept"></div>`;
+  if (kp.status !== "fulfilled") return;
+  let kept = kp.value.always_kept;
+  const k = $("#c-kept");
+  const drawKept = (msg = "") => {
+    k.innerHTML = kept.length ? `<div class="card"><h3>Kept always <span class="dim small">(Recolour them… skips these)</span></h3>
+      ${table([{ h: "Track", f: t => esc(t.file) }, { h: "Your colour", f: t => colour(t.your_colour) }, { h: "Since", f: t => esc(t.kept_since) },
+        ...(SNAP ? [] : [{ h: "", f: t => `<button class="mini" data-forget="${esc(t.path)}" data-tip="Take it off this list, so the review can suggest a new colour for it again">Forget</button>` }])], kept)}
+      <div class="small muted" id="c-keptmsg">${esc(msg)}</div></div>` : "";
+  };
+  k.onclick = async e => {
+    const b = e.target.closest("button[data-forget]"); if (!b) return;
+    b.disabled = true;
+    try {
+      kept = (await postJSON("/api/colours/forget", { paths: [b.dataset.forget] })).always_kept;
+      drawKept(); S.reloadColours?.();  // the review list drops its "kept" chip
+    } catch (err) { b.disabled = false; const el = $("#c-keptmsg"); if (el) el.textContent = err.message; }
+  };
+  drawKept();
 }
 
 // ---------- tempo ----------
@@ -220,10 +237,10 @@ async function pageTempo(main, bpmArg) {
         <div><div class="small muted">at ${d.bpm} BPM</div>${bars(ordered(d.colours_at_bpm), { max: cmax, colourLabels: true })}</div></div></div>
     </div>
     <div class="card"><h3>Turn hardest at ${d.bpm} BPM</h3>${brief(d.hardest_turns)}</div>
-    <div class="card"><h3>Turn prettiest</h3>${brief(d.prettiest_turns)}</div>
+    <div class="card"><h3>Stay prettiest / turn prettier</h3>${brief(d.prettiest_turns)}</div>
     <div class="grid two"><div class="card"><h3>Most hype at ${d.bpm} BPM</h3>${brief(d.most_hype)}</div><div class="card"><h3>Biggest hype risers</h3>${brief(d.hype_risers)}</div></div>`;
   const lexicon = () => (S.libs.status?.loaded_in_lexicon || "").includes("BPM");
-  $("#tv-load")?.addEventListener("click", () => writeDialog("tempo_load", { bpm: d.bpm }));
+  $("#tv-load")?.addEventListener("click", () => writeDialog("tempo_load", { bpm: d.bpm, lexicon: SF.lexicon === true }));  // Lexicon too: the Setup tab's tick box
   $("#tv-native")?.addEventListener("click", () => writeDialog("tempo_native", { lexicon: lexicon() }));
 }
 

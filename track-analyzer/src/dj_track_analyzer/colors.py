@@ -711,10 +711,11 @@ def _kept_forever() -> set[str]:
     return collection.held("colour")
 
 
-def kept(forget: str | None = None, keep: str | None = None, nml: str | None = None) -> dict:
+def kept(forget: str | None = None, keep: str | None = None, nml: str | None = None,
+         forget_paths: list[str] | None = None) -> dict:
     """The tracks you answered "always keep" for. forget: take the ones whose path contains this text
-    off the list, so review --apply can suggest them again. keep: add the coloured tracks whose path
-    contains this text, with their colour in Traktor now."""
+    off the list, so review --apply can suggest them again; forget_paths: these exact paths (the page's Forget).
+    keep: add the coloured tracks whose path contains this text, with their colour in Traktor now."""
     _kept_forever()  # creates the table
     out = {}
     if keep:
@@ -729,8 +730,9 @@ def kept(forget: str | None = None, keep: str | None = None, nml: str | None = N
         out["added"] = [{"file": Path(p).name, "your_colour": COLOR_NAMES[c - 1]} for p, c in hits.items()]
     con = collection.db()
     rows = [dict(r) for r in con.execute("SELECT path, colour, at FROM color_keep ORDER BY at, path")]
-    if forget:
-        gone = [r for r in rows if forget.lower() in r["path"].lower()]
+    if forget or forget_paths:
+        exact = set(forget_paths or [])
+        gone = [r for r in rows if r["path"] in exact or (forget and forget.lower() in r["path"].lower())]
         con.executemany("DELETE FROM color_keep WHERE path=?", [(r["path"],) for r in gone])
         con.commit()
         out["forgotten"] = [Path(r["path"]).name for r in gone]

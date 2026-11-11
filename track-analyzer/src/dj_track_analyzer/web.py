@@ -228,6 +228,14 @@ def colour_kept() -> dict:
         return colors.kept()
 
 
+def colour_forget(paths: list[str]) -> dict:
+    """Take these exact tracks off the keep-always list (the Kept always card's Forget)."""
+    from . import colors
+
+    with library("native"):
+        return colors.kept(forget_paths=paths)
+
+
 def tempo_report(bpm: float, limit: int = 25) -> dict:
     from . import tempo
 
@@ -1814,6 +1822,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),
         Route("/api/track/edit", post(lambda b: edit_track(str(b["path"]), b.get("changes") or {}, b.get("clear") or [], b.get("traktor_genre"))), methods=["POST"]),
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
+        Route("/api/colours/forget", post(lambda b: colour_forget([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),

@@ -667,7 +667,7 @@ def summary(result: dict) -> str:
     if report:
         k = report["keylock"]
         lines += ["", f"  Tracklist  {len(report['tracks'])} tracks from {Path(report['history']).name}",
-                  f"             recording started {report['recording_start']}; two decks playing "
+                  f"             recording started {report['recording_start']}; two or more decks playing "
                   f"{report['overlap_share']:.0%} of the time",
                   f"  Key lock   {k['verdict']} ({k['matches_with_keylock_on']} keys fit on, "
                   f"{k['matches_with_keylock_off']} off); blends take ~{k['blend_lag_seconds']} s"
