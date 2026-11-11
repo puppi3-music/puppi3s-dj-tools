@@ -455,6 +455,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
 def summary_lines(result: dict, chapters: list[str] | None = None) -> list[str]:
     sa = result.get("standalone")
     if not sa:
+           "near_db": NEAR_DB, "min_bars": MIN_BARS, "gap": GAP,  # the page words the rule from these
         return []
     by_at = {c["at"]: c for c in sa["changes"]}
     names = {t["n"]: t for t in result["tracklist"]["tracks"]}

@@ -39,7 +39,7 @@ async function pageMixes(main, id) {
     SNAP ? null : mixDialog);  // a recording dropped on the list: analyse it
   if (id) {
     const me = S.routeId;  // a newer click wins over a slower earlier answer
-    try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId && !shownDrop) $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
+    try { const d = all ? await api("mixes-report") : await api("saved-file", { id }); if (me === S.routeId && !shownDrop) MIX_ID = id, $("#mix").innerHTML = all ? renderMixReport(d) : renderMix(d); }
     catch (e) { if (me === S.routeId && !shownDrop) $("#mix").innerHTML = errBox(e); }
     const f = mixes.find(x => x.id === id), head = $("#mix .page-head");
     if (f && head && !SNAP && me === S.routeId && !shownDrop) {
@@ -366,28 +366,140 @@ function saFill(card) {  // the chosen name and the full-set link, written into 
   });
 }
 const SA_FIT = "min-height:0;field-sizing:content";  // as tall as the text (rows= where field-sizing isn't supported)
+// Each change's per-bar levels as a strip: both tracks against their own level, the 12 dB line, the qualifying run
+// shaded; click it to hear the mix recording from there (preview player below)
+const SA_TOP = 6, SA_LOW = -30;  // dB at the strip's top and bottom
+function saRunIdx(c) {  // [first bar, bars] of the run in c.bars (run.from is rounded to the second)
+  const t = toSec(c.run.from), bars = c.bars || [];
+  let i = 0; bars.forEach((b, k) => { if (Math.abs(b[0] - t) < Math.abs(bars[i][0] - t)) i = k; });
+  return [i, c.run.bars || 0];
+}
+function saSpan(c) {  // [start, end] mix seconds of the strip
+  const bars = c.bars, L = bars.length > 1 ? bars[1][0] - bars[0][0] : 2;
+  return [bars[0][0], bars[bars.length - 1][0] + L, L];
+}
+function saStrip(c, nameA, nameB, near) {
+  if (!c.bars?.length) return "";
+  const [t0, t1, L] = saSpan(c), W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
+  const y = db => ((SA_TOP - Math.max(SA_LOW, Math.min(SA_TOP, db ?? SA_LOW))) / (SA_TOP - SA_LOW) * H).toFixed(1);
+  const line = k => c.bars.map((b, i) => `${i ? "L" : "M"}${x(b[0] + L / 2)} ${y(b[k])}`).join("");
+  const [i0, n] = saRunIdx(c), run = n ? `<rect x="${x(c.bars[i0][0])}" width="${x(c.bars[i0][0] + n * L) - x(c.bars[i0][0])}" y="0" height="${H}" fill="var(--accent-soft)"/>` : "";
+  return `<div class="sa-strip" data-sa-strip="${esc(c.at)}" data-t0="${t0}" data-t1="${t1}" data-tip="Click to hear the mix from there">
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Level of both tracks per bar">${run}
+      <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line-strong)" vector-effect="non-scaling-stroke"/>
+      <line x1="0" x2="${W}" y1="${y(-near)}" y2="${y(-near)}" stroke="var(--text-3)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
+      <path d="${line(1)}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <path d="${line(2)}" fill="none" stroke="var(--warn)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      <line class="sa-head" x1="-10" x2="-10" y1="0" y2="${H}" stroke="var(--text)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
+    <div class="sa-x"><span>${esc(clockS(t0))}</span><span>${esc(clockS(t1))}</span></div></div>
+    <div class="legend small"><span><i style="background:var(--accent)"></i>${nameA}</span><span><i style="background:var(--warn)"></i>${nameB}</span>
+      <span>dashed: ${near} dB below its own level · line above: its own level${n ? " · shaded: the run" : ""}</span></div>`;
+}
+const clockS = t => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
+function saPlayer(c) {  // ▶ from a few bars before the run; jumps into it
+  const [i0, n] = saRunIdx(c), [t0, , L] = saSpan(c), a = n ? c.bars[i0][0] : t0;
+  const jump = (label, t, tip) => `<button class="small" data-sa-play="${esc(c.at)}" data-t="${Math.max(0, t).toFixed(1)}" data-tip="${esc(tip)}">${label}</button>`;
+  return `<div class="filters sa-player" data-sa-player="${esc(c.at)}" style="margin:6px 0">
+    <button class="small" data-sa-play="${esc(c.at)}" data-t="${Math.max(0, a - 4 * L).toFixed(1)}" data-toggle="1" data-tip="Play the mix recording from 4 bars before ${n ? "the run" : "the change"}">▶ Preview</button>
+    ${n ? jump("Lead-in", a - 16 * L, "Play the 16 bars before the run: hear whether the lead-in belongs in the piece")
+      + jump("Run start", a, "Jump to where the run starts") + jump("Middle", a + n * L / 2, "Jump to the middle of the run")
+      + jump("Last 8 bars", a + (n - 8) * L, "Jump to 8 bars before the run ends; it plays on past the end")
+      + jump("After the end", a + (n - 1) * L, "Play from the run's last bar on into what follows: hear whether the piece should run longer") : ""}
+    <span class="dim small sa-time"></span></div>`;
+}
+let MIX_ID = null;  // the saved analysis on screen
+const SAP = { audio: null, id: null, at: null, raf: 0 };  // the preview player: the mix recording of the mix on screen
+function saAudio() {
+  if (SAP.audio) return SAP.audio;
+  const a = SAP.audio = new Audio(); a.preload = "none";
+  ["play", "pause", "ended"].forEach(ev => a.addEventListener(ev, saUi));
+  a.addEventListener("loadedmetadata", () => { if (SAP.seekTo != null) { a.currentTime = SAP.seekTo; SAP.seekTo = null; } });
+  a.addEventListener("error", async () => {  // the server says why (moved recording, …)
+    let msg = "can't play the recording";
+    try { const r = await fetch(a.src, { headers: { Range: "bytes=0-0" } }); if (!r.ok) msg = (await r.json()).error || msg; } catch (e) {}
+    SAP.err = msg; a.pause(); saUi();
+  });
+  DECK.audio.addEventListener("play", () => a.pause());  // one player at a time
+  return a;
+}
+function saPlay(at, t, toggle) {
+  const a = saAudio(), id = MIX_ID;
+  if (toggle && SAP.at === at && !a.paused) { a.pause(); return; }
+  if (toggle && SAP.at === at && SAP.id === id && a.currentTime > 0 && !SAP.err) { a.play(); return; }  // ▶ again: carry on
+  if (SAP.id !== id || SAP.err) { SAP.err = null; a.src = `/api/mix-audio?id=${encodeURIComponent(id)}`; SAP.id = id; }
+  DECK.audio.pause(); if (DECK.src) deckStopLoop();
+  a.volume = deckVolume(); SAP.at = at;
+  if (a.readyState >= 1) a.currentTime = t; else SAP.seekTo = t;  // before the file's length is known a seek can be lost
+  a.play().catch(e => { if (e.name !== "AbortError") { SAP.err = SAP.err || e.message; saUi(); } });
+  saUi();
+}
+function saUi() {
+  const a = SAP.audio, playing = a && !a.paused && !SAP.err;
+  document.querySelectorAll("[data-sa-player]").forEach(p => {
+    const me = p.dataset.saPlayer === SAP.at;
+    p.querySelector("[data-toggle]").textContent = me && playing ? "⏸ Pause" : "▶ Preview";
+    p.querySelector(".sa-time").textContent = me && SAP.err ? SAP.err : me && a?.currentTime ? clockS(a.currentTime) : "";
+  });
+  cancelAnimationFrame(SAP.raf);
+  const tick = () => {
+    document.querySelectorAll("[data-sa-strip]").forEach(st => {
+      const t0 = +st.dataset.t0, t1 = +st.dataset.t1, t = a?.currentTime ?? -1, on = st.dataset.saStrip === SAP.at && t >= t0 && t <= t1;
+      const x = on ? ((t - t0) / (t1 - t0) * 1000).toFixed(1) : -10;
+      st.querySelector(".sa-head")?.setAttribute("x1", x); st.querySelector(".sa-head")?.setAttribute("x2", x);
+    });
+    const p = document.querySelector(`[data-sa-player="${CSS.escape(SAP.at || "")}"] .sa-time`);
+    if (p && a && !SAP.err) p.textContent = clockS(a.currentTime);
+    if (playing) SAP.raf = requestAnimationFrame(tick);
+  };
+  tick();
+}
+addEventListener("hashchange", () => { if (SAP.audio && !location.hash.startsWith("#mixes/" + encodeURIComponent(SAP.id || ""))) SAP.audio.pause(); });
+function saRule(sa) {
+  if (sa.near_db == null) return `<div class="small muted">${esc(sa.rule)}</div>`;  // analysed before the page worded it
+  return `<div class="small muted" style="margin-bottom:4px">Picked when both tracks stay up together for ${sa.min_bars} bars or more: each no more than ${sa.near_db} dB
+    below how loud it is on its own (with a stem file, one of its stems is enough)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
+}
 function standalonePanel(d) {
   const sa = d.standalone; if (!sa) return "";
   const byAt = Object.fromEntries(sa.changes.map(c => [c.at, c])), tracks = Object.fromEntries((d.tracklist?.tracks || []).map(t => [t.n, t]));
-  const title = n => esc(tracks[n]?.title || `track ${n}`), picks = sa.picks.map(at => byAt[at]);
+  const title = n => esc(tracks[n]?.title || `track ${n}`), picks = sa.picks.map(at => byAt[at]), near = sa.near_db ?? 12;
   SA_SHOWN = picks;
   const how = Object.entries(sa.measured_with || {}), whole = how.filter(([, h]) => h === "whole").map(([n]) => title(+n));
   const skipped = sa.changes.filter(c => c.status !== "measured"), miss = sa.closest_miss && byAt[sa.closest_miss];
-  return `<div class="card" id="sa"><h3>Standalone pieces <span class="dim small">${esc(sa.rule)}</span></h3>
-    ${picks.length ? `<div class="filters"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label></div>
-      ${picks.map(c => `<div data-sa-at="${esc(c.at)}" style="border-top:1px solid var(--line);padding:10px 0;margin-top:8px">
-        <div><b>${esc(c.run.from)}–${esc(c.run.to)}</b> · ${title(c.from)} into ${title(c.to)}</div>
+  return `<div class="card" id="sa"><h3>Standalone pieces <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
+    ${picks.length ? picks.map(c => `<div data-sa-at="${esc(c.at)}" style="border-top:1px solid var(--line);padding:10px 0;margin-top:8px">
+        <div><b>${esc(c.run.from)}–${esc(c.run.to)}</b> · ${title(c.from)} into ${title(c.to)} <span class="dim small">${c.run.bars} bars</span></div>
         <div class="small muted" style="margin:2px 0 6px">Why: ${esc(c.why)}</div>
-        <div class="filters" style="flex-wrap:wrap"><label class="inline">Name <select data-sa-name>${sa.names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
+        ${saPlayer(c)}${saStrip(c, title(c.from), title(c.to), near)}
+        <div class="filters" style="flex-wrap:wrap;margin-top:8px"><label class="inline">Name <select data-sa-name>${sa.names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
           <span class="dim small">your call: pick what fits how much you changed it</span></div>
         <div class="filters" style="margin-top:6px"><textarea class="sa-title" readonly rows="2" style="${SA_FIT};flex:1;min-width:0;font:inherit;resize:none">${esc(c.title)}</textarea>${COPY_BTN}</div>
-        <div style="margin-top:6px"><div class="small muted">Credits ${COPY_BTN}</div><textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea></div></div>`).join("")}`
-      : `<div>Nothing qualifies in this mix.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>`}
+        <div style="margin-top:6px"><div class="small muted">Credits ${COPY_BTN}</div><textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea></div></div>`).join("")
+      + `<div class="filters" style="border-top:1px solid var(--line);padding-top:10px;margin-top:8px"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label>
+        <span class="dim small">goes into each piece's credits above</span></div>`
+      : `<div>Nothing qualifies in this mix.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>
+        ${miss ? `<div data-sa-at="${esc(miss.at)}" style="margin-top:6px">${saPlayer(miss)}${saStrip(miss, title(miss.from), title(miss.to), near)}</div>` : ""}`}
     ${whole.length && whole.length < how.length ? `<div class="note">Measured without stems (no stem file): ${whole.join(", ")}. Tick "Separate tracks without a stem file" when you analyse it again to measure these by stem.</div>` : ""}
     ${skipped.length ? `<details style="margin-top:8px"><summary class="small muted">Couldn't measure ${skipped.length} ${skipped.length === 1 ? "change" : "changes"}</summary>
       <ul class="small">${skipped.map(c => `<li>${esc(c.at)} ${title(c.to)}: ${esc(c.status)}</li>`).join("")}</ul></details>` : ""}
     </div>
     ${picks.length && sa.timestamps?.length ? `<div class="card"><h3>SoundCloud timestamps <span class="dim small">for the full set's description</span> <button style="float:right" data-sa-copy>Copy</button></h3><textarea readonly rows="8">${esc(sa.timestamps.join("\n"))}</textarea></div>` : ""}`;
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-sa-play]");
+  if (b) { saPlay(b.dataset.saPlay, +b.dataset.t, !!b.dataset.toggle); return; }
+  const st = e.target.closest("[data-sa-strip]");
+  if (st) { const r = st.getBoundingClientRect(), f = (e.clientX - r.left) / r.width; saPlay(st.dataset.saStrip, +st.dataset.t0 + f * (st.dataset.t1 - st.dataset.t0)); return; }
+  const go = e.target.closest("[data-sa-go]");
+  if (go) document.querySelector(`[data-sa-at="${CSS.escape(go.dataset.saGo)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+});
+// The pieces on the main timeline: segments that overlap one, click to go to it
+function saTimelineRow(d, tl) {
+  const sa = d.standalone, picks = (sa?.picks || []).map(at => sa.changes.find(c => c.at === at)).filter(Boolean);
+  if (!picks.length) return "";
+  const runs = picks.map(c => [toSec(c.run.from), toSec(c.run.to), c.at]);
+  return `<div class="tl-clips tl-sa">${tl.map(s => { const r = runs.find(([a, b]) => toSec(s.start) < b && toSec(s.end) > a);
+    return r ? `<span class="on" data-sa-go="${esc(r[2])}" data-tip="Standalone piece ${esc(clockS(r[0]))}–${esc(clockS(r[1]))}: click to go to it"></span>` : "<span></span>"; }).join("")}</div>`;
 }
 document.addEventListener("input", e => { if (e.target.closest("#sa-link, [data-sa-name]")) saFill(e.target.closest("#sa")); });
 document.addEventListener("click", e => {
@@ -440,11 +552,12 @@ function renderMix(d) {
       <div class="timeline">${tl.map(segBar).join("")}</div>
       ${str ? `<div class="tl-clips tl-sel">${tl.map((s, i) => `<span style="opacity:${str[i] ?? 0}"></span>`).join("")}</div>` : ""}
       ${hl.length ? `<div class="tl-clips">${tl.map(s => `<span class="${segHl(s) ? "on" : ""}"></span>`).join("")}</div>` : ""}
+      ${saTimelineRow(d, tl)}
       ${tlAxis(tl.flatMap((s, i) => i % everyX ? [] : [[i / tl.length, s.start]]), tl[tl.length - 1].end)}
       <div class="legend">${sel ? `<span><i style="background:var(--accent)"></i>${esc(selName)}: ${sel.kind === "genre" ? "the segment's genre" : sel.kind === "mood" ? "brighter = more of the segment sounds it, against the most" : "brighter = higher among the segment's top 3 styles, against the highest"}${str.every(v => !v) ? " (in no segment)" : ""}</span>` : ""}
         ${view === "hype" || plays.some(x => x.colour) ? `<span>height = ${view === "hype" ? "hype 1-10" : "loudness"}${plays.some(x => x.colour) ? ` · colour = your ${DJ()} colour of the track playing longest${plays.some(x => x.guessed) ? " (faded: the model's guess)" : ""}` : ""}</span>` : ""}
         ${view === "hype" && plays.some(x => x.hype == null) ? `<span><i style="background:var(--line-strong)"></i>track not in your library</span>` : ""}
-        ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${canHype || d.tracklist ? "" : `<span>${d.tracklist_skipped ? "No tracklist check (see above), so no hype or colours of what you played." : "Analyse it with the tracklist check to see the hype and colours of what you played."}</span>`}</div>
+        ${hl.length ? `<span><i style="background:var(--text)"></i>contains a clip suggestion</span>` : ""}${d.standalone?.picks?.length ? `<span><i style="background:var(--good)"></i>standalone piece (click to go to it)</span>` : ""}${canHype || d.tracklist ? "" : `<span>${d.tracklist_skipped ? "No tracklist check (see above), so no hype or colours of what you played." : "Analyse it with the tracklist check to see the hype and colours of what you played."}</span>`}</div>
       <details style="margin-top:10px"><summary class="small muted">Table</summary>${table([{ h: "Time", f: s => `${esc(s.start)}–${esc(s.end)}` }, { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") },
         { h: "LUFS", r: 1, f: s => fmt(s.lufs, 1) }, ...(canHype ? [{ h: "Hype", r: 1, f: s => { const pl = plays[tl.indexOf(s)]; return pl.hype == null ? "–" : `${sw(pl.colour, pl.guessed)} ${fmt(pl.hype, 1)}`; } }] : []), { h: "Genre", f: s => esc(s.dj_genre || "–") }, { h: "Styles", f: s => `<span class="small">${esc((s.styles || []).join(", "))}</span>` }, { h: "Tracks", f: s => `<span class="small">${esc((s.tracks || []).join(" · "))}</span>` }], tl)}</details></div>` : ""}
     ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against ${DJ()}'s history</span></h3>

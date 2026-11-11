@@ -1553,6 +1553,17 @@ def saved_file(dirs: list[Path], ident: str):
     return data
 
 
+def mix_audio(dirs: list[Path], ident: str) -> Path:
+    """The recording a saved mix analysis was made from, for the page's preview of its standalone pieces: only the file
+    that analysis names (never an arbitrary path), and only while it's still there."""
+    data = _json_in(_saved_path(dirs, ident))
+    p = Path(str(data.get("file") or "")) if isinstance(data, dict) and data.get("type") == "dj_mix" else None
+    if not p or p.suffix.lower() not in analysis.AUDIO_EXTS or not p.is_file():
+        raise ValueError(f"the recording isn't at {p} any more: use Reanalyse… to point to where it is now" if p
+                         else "not a mix analysis")
+    return p
+
+
 def played_tracks(tracks: list[dict]) -> dict:
     """{track number: {hype, colour, guessed}} for a mix's tracklist from the native library, as the timeline draws the
     set: by path (saved since 2026-10-31), else artist + title. Colour = yours in Traktor, else the model's guess."""
@@ -1721,6 +1732,13 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
             return failed(e)
         return FileResponse(p)  # supports Range requests, so jumping around doesn't load the whole file
 
+    async def mix_audio_endpoint(request: Request):
+        try:
+            p = await run_in_threadpool(mix_audio, log_dirs, request.query_params.get("id", ""))
+        except (Exception, SystemExit) as e:
+            return failed(e)
+        return FileResponse(p)
+
     async def loop_endpoint(request: Request):
         from starlette.responses import Response
 
@@ -1817,6 +1835,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/cues/parts", respond_until_gone(lambda q, cancel: loop_parts(q["path"], cancel))),
         Route("/api/wave", respond(lambda q: wave_detail(q["path"], num(q, "t0"), num(q, "t1"), int(num(q, "n", 1000))))),
         Route("/api/audio", audio),
+        Route("/api/mix-audio", mix_audio_endpoint),
         Route("/api/loop", loop_endpoint),
         Route("/api/deck/stretch", respond_until_gone(lambda q, cancel: {"ratio": deck_stretched(q["path"], float(q["bpm"]), cancel)[1]})),
         Route("/api/hold", post(lambda b: hold(list(b["paths"]), b["kind"], bool(b["on"]))), methods=["POST"]),

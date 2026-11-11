@@ -140,3 +140,24 @@ def test_mix_job_passes_the_standalone_ticks(tmp_path):
     off = jobs._analyze_mix({**base, "standalone": False, "standalone_separate": True})
     assert "--standalone-separate" not in off
     assert "--no-standalone" not in jobs._analyze_mix({**base, "tracklist": False, "standalone": False})
+
+
+def test_preview_plays_only_the_recording_a_saved_mix_names(tmp_path):
+    import json
+
+    import pytest
+
+    from dj_track_analyzer import web
+
+    rec = tmp_path / "Recording_2026-10-27_14h57m24s.wav"
+    rec.write_bytes(b"RIFF")
+    (tmp_path / "mix.json").write_text(json.dumps({"type": "dj_mix", "file": str(rec)}))
+    (tmp_path / "other.json").write_text(json.dumps({"type": "track", "file": str(rec)}))
+    assert web.mix_audio([tmp_path], "0/mix.json") == rec
+    with pytest.raises(ValueError, match="not a mix"):
+        web.mix_audio([tmp_path], "0/other.json")
+    with pytest.raises(ValueError, match="unknown file"):
+        web.mix_audio([tmp_path], "0/../mix.json")
+    rec.unlink()
+    with pytest.raises(ValueError, match="Reanalyse"):
+        web.mix_audio([tmp_path], "0/mix.json")

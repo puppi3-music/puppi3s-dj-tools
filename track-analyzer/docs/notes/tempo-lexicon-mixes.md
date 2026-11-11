@@ -42,8 +42,10 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   stem is within 12 dB of that stem's solo level (first 20 s of its window); no stem file → whole-track fit, or
   Demucs over the played stretch with `--standalone-separate` (`separate()`; never run for real yet). Rule: both
   tracks ≥ 32 bars in a row, single off bars allowed; key clash only noted in Why. Fixed bar, no quota: no pick →
-  `closest_miss`. Output: `picks`, `changes`, `closest_miss`, `measured_with`, `rule`, `names`, `timestamps`
-  (chapters at offset 0 for the full-set description). Page: `standalonePanel(d)` in web/js/mixes.js.
+  `closest_miss`. Output: `picks`, `changes`, `closest_miss`, `measured_with`, `rule` (+ `near_db`, `min_bars`, `gap` for the page's wording), `names`, `timestamps`
+  (chapters at offset 0 for the full-set description). Page: `standalonePanel(d)` in web/js/mixes.js: level strip per change from `bars`, preview via
+  `/api/mix-audio?id=<saved id>` (web.mix_audio: only the `file` a saved dj_mix names; Range for seeking), timeline row
+  `saTimelineRow`.
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
