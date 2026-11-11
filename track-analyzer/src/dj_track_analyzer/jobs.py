@@ -444,6 +444,20 @@ def state(since: int = 0) -> dict:
 _tk_cache: dict = {"key": None, "data": None}
 
 
+_rb_cache: dict = {"key": None, "files": set()}
+
+
+def _rekordbox_files(db: Path) -> set[str]:
+    """Rekordbox's tracks on disk (read once per change of master.db)."""
+    from . import rekordbox
+
+    key = (str(db), db.stat().st_mtime)
+    if _rb_cache["key"] != key:
+        _, files, _ = rekordbox.collection_tracks(str(db))
+        _rb_cache.update(key=key, files={str(f) for f in files if not collection.sync_conflict(f)})
+    return _rb_cache["files"]
+
+
 def _traktor_side(nml: Path) -> dict:
     """Tracks, colours and cues in Traktor's collection (read once per change of collection.nml)."""
     from . import cues
@@ -614,7 +628,16 @@ def setup_status() -> dict:
                 predicted = con.execute("SELECT COUNT(*) FROM tracks WHERE color IS NOT NULL").fetchone()[0]
             if con.execute("SELECT 1 FROM sqlite_master WHERE name='original_tags'").fetchone():
                 tagged = con.execute("SELECT COUNT(*) FROM original_tags").fetchone()[0]
+    app_files = tk_files
+    rb_db = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else None
+    if rb_db:
+        try:
+            app_files = _rekordbox_files(Path(rb_db))
+        except Exception as e:  # e.g. master.db locked by a write: skip this poll's count
+            log(f"Rekordbox track count skipped: {e}")
+            app_files = set()
     st["scan"] = {"tracks": len(scanned), "errors": errors, "hype": hyped, "traktor_not_scanned": len(tk_files - scanned),
+                  "app_not_scanned": len(app_files - scanned), "app_tracks": len(app_files),
                   "changed_since_scan": changed,
                   "traktor_tracks": len(tk_files)}
     stamp = lambda p: time.strftime("%Y-%m-%d %H:%M", time.localtime(p.stat().st_mtime)) if p.exists() else None  # noqa: E731

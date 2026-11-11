@@ -96,10 +96,10 @@ async function pageSetup(main) {
     : traktorStep;
   const scanBody = !sc.tracks ? `Listens to every track once: BPM, key, genre, mood, loudness, instruments. On a test collection of about 470 tracks this took 33 minutes on an M1 Pro.
       You can stop any time: it keeps what's done and carries on next time.`
-    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned ? ` <b>${plural(sc.traktor_not_scanned, "Traktor track")} not scanned yet.</b>` : " Every Traktor track is scanned." : ""}
+    : `${plural(sc.tracks, "file")} scanned${sc.errors ? `, ${sc.errors} with errors (see the Tracks tab)` : ""}.${sc.app_tracks ? sc.app_not_scanned ? ` <b>${plural(sc.app_not_scanned, `${DJ()} track`)} not scanned yet.</b>` : ` Every ${DJ()} track is scanned.` : ""}
       ${sc.changed_since_scan ? ` <b>${plural(sc.changed_since_scan, "file")} changed on disk since the scan</b> (another tagger, ${APP} or a sync app): scan again so tags and ${APP} get their current results (quick: the analysis is cached).` : ""}
       Scan again after adding music: only new and changed files are analysed.`;
-  const notScanned = dj.app !== "rekordbox" && tk.collection ? sc.traktor_not_scanned : 0;  // counted from Traktor's collection only
+  const notScanned = sc.app_not_scanned || 0;  // counted from the chosen DJ app's library
   const scanState = !st.models.ready ? "blocked" : sc.tracks && !notScanned && !sc.changed_since_scan ? "done" : "todo";
   const scanStep = step(scanState, 3, sc.tracks ? "Your music, scanned" : "Scan your music", scanBody + (st.models.ready ? "" : " <b>Download the models first.</b>"),
     `${LIB ? jb("su-scan-tk", `Scan ${APPLIB}`, scanState === "todo", !st.models.ready && "disabled") : ""}
