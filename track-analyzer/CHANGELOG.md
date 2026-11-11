@@ -3,7 +3,7 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
-## Unreleased
+## 1.3.0 (2026-11-11)
 
 **New**
 - Mixes: **Standalone pieces** finds long blends in a recorded set that work as their own track, to post on
@@ -13,6 +13,9 @@ module's builds, which installs download by themselves.
   your recording there; pieces are marked on the mix's timeline. When no change qualifies, it says so and shows the
   closest one. On by default in **Analyse a mix…**; **Separate tracks without a stem file** (off, slow) measures
   the other tracks by stem too.
+- DJ genres: **Darkpsy** (150-165 BPM) and **Hi-Tech** (165-200 BPM) are split from Psytrance by tempo, and
+  **Ambient** is its own genre at any tempo. Neo Trance now counts as Melodic House & Techno. After updating, press
+  **Work out the genres again** on the Setup tab (takes seconds).
 
 **Fixed**
 - Mixes: a set's tracklist check finds Traktor's history when Traktor was closed on a later day (after midnight,
