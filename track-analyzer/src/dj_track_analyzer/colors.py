@@ -77,7 +77,7 @@ def sync_traktor_colours(nml: str | None = None) -> None:
             path = rekordbox.find_collection(None)
         else:
             path = traktor.find_collection(nml)
-        key = (str(path), path.stat().st_mtime_ns)
+        key = (str(path), library.changed_at(path))
     except (SystemExit, OSError):
         return
     with _sync_lock:

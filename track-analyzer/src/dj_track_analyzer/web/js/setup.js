@@ -228,7 +228,7 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { G_TRAKTOR = null; await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/traktor/collection", body); if (!r.cancelled) { G_TRAKTOR = null; SETUP = null; await loadLibs().catch(() => {}); if (S.page === "setup") route(); else refreshSetupNote(); } }  // a long file dialog: you may be on another tab by now
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };
@@ -241,7 +241,7 @@ async function pageSetup(main) {
     const msg = $("#su-nml-msg"), label = btn?.textContent;
     msg.hidden = true;
     if (btn) { btn.disabled = true; if (body.browse) btn.textContent = "Waiting for the file dialog…"; }
-    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { G_TRAKTOR = null; await loadLibs().catch(() => {}); route(); } }
+    try { const r = await postJSON("/api/rekordbox/database", body); if (!r.cancelled) { G_TRAKTOR = null; SETUP = null; await loadLibs().catch(() => {}); if (S.page === "setup") route(); else refreshSetupNote(); } }  // a long file dialog: you may be on another tab by now
     catch (e) { msg.hidden = false; msg.className = "small err"; msg.textContent = e.message; }
     finally { if (btn && document.contains(btn)) { btn.disabled = false; btn.textContent = label; } }
   };

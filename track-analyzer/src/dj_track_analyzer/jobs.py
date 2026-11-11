@@ -57,7 +57,7 @@ def _folders(o: dict) -> list[str]:
 def _scan(o: dict) -> list[str]:
     args = ["scan", *(["--traktor"] if o.get("traktor") else []), *_folders(o)]
     if len(args) == 1:
-        raise ValueError("Pick your Traktor collection, a folder, or both")
+        raise ValueError(f"Pick {library.app_name()}'s library, a folder, or both")
     return [*args, "--rescan"] if o.get("rescan") is True else args
 
 

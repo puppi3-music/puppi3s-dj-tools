@@ -283,7 +283,7 @@ def colour_guesses() -> set[str]:
 
     try:
         app, f = dj_app.app(), dj_app.find_collection(None)
-        key = (app, str(f), f.stat().st_mtime_ns, collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
+        key = (app, str(f), dj_app.changed_at(f), collection.NATIVE_DB.stat().st_mtime if collection.NATIVE_DB.exists() else None)
         if _guesses["key"] != key:
             colours_now = colors.read_traktor_colors(None if app == "rekordbox" else str(f))[1]
             _guesses.update(key=key, data=set(collection.unchecked_guesses(colours_now)))
@@ -296,11 +296,12 @@ _grids: dict = {"mtime": None, "data": {}}
 
 
 def cue_grids() -> dict:
-    """Traktor's beat grids and your cues, read again only when collection.nml changes."""
+    """The DJ app's beat grids and your cues, read again only when its library file (collection.nml, master.db) changes."""
     from . import cues
     from . import library as dj_app
 
-    m = (dj_app.app(), dj_app.find_collection(None).stat().st_mtime)
+    f = dj_app.find_collection(None)
+    m = (dj_app.app(), str(f), dj_app.changed_at(f))  # also another file chosen with the same time
     if _grids["mtime"] != m:
         _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
@@ -351,7 +352,7 @@ def correction_counts() -> dict[str, int] | None:
 
     try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
         f = dj_app.find_collection(None)
-        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), f.stat().st_mtime_ns)
+        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), dj_app.changed_at(f))
         g = cue_grids()
     except (OSError, SystemExit):
         return {}
