@@ -29,15 +29,18 @@ const SORTS = {
   genre: t => (t.genre || "~").toLowerCase(), colour: colourPos, cues: t => -((t.corrections || 0) * 100 + (t.own_cues || 0)), hype: t => -(t.hype ?? -1), lufs: t => -(t.lufs ?? -99), length: t => t.duration_sec ?? 0,
 };
 async function pageTracks(main, open) {
+  const me = S.routeId;
   let all = await getTracks();
-  const genres = [...new Set(all.flatMap(t => [t.genre, t.genre_2, t.my_genre]).filter(Boolean))].sort();
+  if (me !== S.routeId) return;  // a newer page or library was picked meanwhile
+  // a filter kept from before (a refresh, the Overview, another library) stays in its menu even when no track has it now
+  const genres = [...new Set([TF.genre, ...all.flatMap(t => [t.genre, t.genre_2, t.my_genre])].filter(Boolean))].sort();
   main.innerHTML = `
     <div class="page-head"><div><h2>Tracks</h2><div class="muted" id="tcount"></div></div><div class="spacer"></div>
       ${!SNAP ? `<button id="t-grids" data-tip="Move every approved beat grid (and its cues) in ${DJ()} (shows what changes first)">Write grid fixes to ${DJ()}…</button><button id="t-write" data-tip="Write every approved track's cues into ${DJ()} (shows what changes first)">Write approved cues to ${DJ()}…</button>` : ""}</div>
     <div class="filters">
       <input type="search" id="f-q" placeholder="Search artist, title, file, album…" style="width:260px" value="${esc(TF.q)}">
       <select id="f-genre"><option value="">All genres</option>${genres.map(g => `<option ${g === TF.genre ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>
-      <select id="f-colour"><option value="">All colours</option>${COLOURS.map(c => `<option ${c === TF.colour ? "selected" : ""}>${c}</option>`).join("")}</select>
+      <select id="f-colour"><option value="">All colours</option>${[...COLOURS, ...(TF.colour && !COLOURS.includes(TF.colour) ? [TF.colour] : [])].map(c => `<option ${c === TF.colour ? "selected" : ""}>${c}</option>`).join("")}</select>
       <label class="inline">BPM <input type="number" id="f-bmin" placeholder="min" value="${esc(TF.bpmMin)}"> – <input type="number" id="f-bmax" placeholder="max" value="${esc(TF.bpmMax)}"></label>
       <label class="inline">Key <input type="text" id="f-key" placeholder="8A" style="width:56px" value="${esc(TF.key)}"></label>
       <label class="inline"><input type="checkbox" id="f-harm" ${TF.harmonic ? "checked" : ""}> mixes with it</label>
@@ -98,7 +101,7 @@ async function pageTracks(main, open) {
     $("#f-chips").innerHTML = (TF.errors ? chip("errors", "Only analysis errors", "Files that couldn't be analysed") : "")
       + (TF.genre && TF.genreTop ? chip("genreTop", "Top genre only", `Only tracks whose top genre is ${esc(TF.genre)}; ✕ also lists tracks with it as their 2nd genre`) : "");
     $("#f-chips").querySelectorAll("[data-unchip]").forEach(b => b.addEventListener("click", () => { TF[b.dataset.unchip] = false; draw(); }));
-    const { key, dir } = S.trackSort, f = SORTS[key];
+    const { key, dir } = S.trackSort, f = SORTS[key] || SORTS.track;  // a sort kept from an older page may be gone
     rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
     $("#tcount").innerHTML = `${rows.length} of ${all.length} files${S.fixesPending ? ` · <span class="counting">counting proposed corrections (about 30 s)…</span>` : ""}`;
     const head = [["colour", "Colour"], ["track", "Track"], ["bpm", "BPM", 1], ["key", "Key"], ["genre", "Genre"], ["hype", "Hype", 1], ["cues", "Cues", 1], ["lufs", "LUFS", 1], ["length", "Length", 1]];
@@ -134,7 +137,7 @@ async function pageTracks(main, open) {
     selbar();
   }
   S.redrawTracks = draw;
-  S.reloadTracks = async () => { delete S.tracks[S.lib]; all = await getTracks(); draw(); };
+  S.reloadTracks = async () => { delete S.tracks[S.lib]; const list = await getTracks(); if ($("#ttable")) { all = list; draw(); } };  // a write that ends after you left the tab
   S.refreshTracks = () => { if (S.tracks[S.lib] && $("#ttable")) { all = S.tracks[S.lib]; draw(); } };
   draw();
   if (open) openTrack(open);

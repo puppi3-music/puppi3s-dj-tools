@@ -34,18 +34,20 @@ async function gridClick(path, g, shift, btn) {
 }
 function renderGrid(g) {
   const ms = v => `${v > 0 ? "+" : ""}${(+v).toFixed(Math.abs(v) < 10 ? 1 : 0)} ms`;
-  const n = (g.sections || []).filter(x => x != null).length;
-  if (g.state === "unclear") return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
-  if (g.state === "drift") return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
-  if (g.state === "on" && g.approved == null) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
+  const n = g.agreeing ?? (g.sections || []).filter(x => x != null).length;  // the stretches that agreed with the reading
+  const appr = g.approved != null;  // an approved fix stays visible (and can be taken back) whatever the check reads now
+  if (g.state === "unclear" && !appr) return `<div class="small dim">Couldn't tell: no steady kick to measure against the grid.</div>`;
+  if (g.state === "drift" && !appr) return `<div class="small"><span class="chip warn">BPM drifts</span> The kick moves ${ms(g.drift_ms)} against the grid from the start of the track to the end: ${DJ()}'s BPM looks slightly off. Moving the grid can't fix that; check the BPM in ${DJ()}.</div>`;
+  if (g.state === "on" && !appr) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
     ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
     : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;
-  return `<div class="small"><span class="chip warn">${g.approved != null ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
-      The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.
+  return `<div class="small"><span class="chip warn">${appr ? "fix approved" : `kick ${ms(g.offset_ms)}`}</span>
+      ${g.offset_ms == null ? `The check now reads ${g.state === "drift" ? `a BPM drift (${ms(g.drift_ms)} from start to end)` : "no steady kick"} on this grid, so it can't confirm the approved move: check it by ear below, or take it back.`
+        : `The kick lands <b>${ms(g.offset_ms)}</b> ${g.offset_ms > 0 ? "after" : "before"} ${DJ()}'s grid lines, the same in ${n} stretches across the track.`}
       ${g.lead_in ? `That's the size of an MP3's lead-in (51.2 ms), what you get from a grid set on a stem file made without it, so the fix is set to exactly that.` : ""}</div>
     ${stemNote}
     <div class="filters small" style="margin-top:6px;align-items:center">
@@ -141,7 +143,8 @@ function gridWave(path, g, box, shift) {
     GRID_VIEW.beats = +b.dataset.gwbeats; box.querySelectorAll("[data-gwbeats]").forEach(o => o.classList.toggle("on", o === b)); fetchWave();
   }));
   box.querySelector("#gr-shift")?.addEventListener("input", draw);
-  new ResizeObserver(() => fetchWave()).observe(cv);
+  box._gwObs?.disconnect();  // the section is redrawn after approve / take back / write: drop the old canvas's watcher
+  box._gwObs = new ResizeObserver(() => fetchWave()); box._gwObs.observe(cv);
 }
 // Write every approved grid fix into the chosen DJ app (= `grids apply`): a preview first, then the write, then Undo.
 async function writeGrids(onDone) {
@@ -223,8 +226,8 @@ async function openTrack(path) {
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
-      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
-      <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
+      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: writing tags, writing to ${DJ()},
+      applying colours and loading a tempo view all skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
       hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
     ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
       hint(t.path.split(/[\\/]/).pop()))}`;
@@ -436,7 +439,7 @@ const fold = (key, title, html, summaryExtra = "") => `<details class="fold" dat
 document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (!k) return; foldOpen(k); S.folds[k] = e.target.open; try { localStorage.setItem("ta-folds", JSON.stringify(S.folds)); } catch (err) {} }, true);
 const helpFold = (key, title, html) => `<details class="help" data-help="${key}" ${S.helpOpen?.[key] ? "open" : ""}><summary>${title}</summary>${html}</details>`;
 document.addEventListener("toggle", e => { const k = e.target.dataset?.help; if (k) (S.helpOpen ??= {})[k] = e.target.open; }, true);  // toggle doesn't bubble
-const clock = t => `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")}`;
+const clock = t => { const d = Math.round(t * 10); return `${Math.floor(d / 600)}:${((d % 600) / 10).toFixed(1).padStart(4, "0")}`; };  // 59.96 s is 1:00.0, not 0:60.0
 // the track list's approved chip: "+3 approved", "+2 · 1 moved · −1 approved"; long: in words, for its tip
 function approvedText(n, long = false) {
   if (n === true) n = { add: 0, move: 0, remove: 0 };  // an older server: no counts
@@ -607,7 +610,7 @@ async function writeToTraktor(onDone) {
     show(`${d.changed ? `<div>${what} on <b>${d.tracks}</b> track${d.tracks > 1 ? "s" : ""}:</div>${list(d.changes || [])}` : `<div>${d.nothing_approved ? "Nothing approved yet: tick cues in a track's panel and press Approve ticked." : `Nothing to write: everything approved is already in ${DJ()} or can't be placed.`}</div>`}
       ${(d.skipped || []).length ? `<div class="small" style="margin-top:6px"><b>Won't be written</b> (approve these again after freeing a hot-cue slot in ${DJ()}):</div>${list(d.skipped)}` : ""}
       ${running}
-      <div class="note">A backup of collection.nml is made first; Undo here (or <span class="mono">traktor --undo</span>) puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
+      <div class="note">A backup of ${DJ() === "Rekordbox" ? "master.db" : "collection.nml"} is made first; Undo here puts it back. Your own cues are only moved where you approved a correction, and only deleted where you approved that.</div>`,
       d.changed ? (d.traktor_running ? `<button class="primary" data-check>Check again</button>` : `<button class="primary" data-write>Write to ${DJ()}</button>`) : "");
     dlg.querySelector("[data-check]")?.addEventListener("click", preview);
     dlg.querySelector("[data-write]")?.addEventListener("click", async e => {
@@ -925,7 +928,7 @@ function bindApprove(c, box, t) {
   box.querySelector("#ap-all")?.addEventListener("click", () => box.querySelectorAll('#approve input[data-key^="a"]:not(:disabled):not([data-more])').forEach(i => { i.checked = true; }) || showSlots());
   const sel = box.querySelector("#smp-folder");
   if (sel) {
-    (S.sampleFolders ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
+    (S.sampleFolders && S.sampleFolders.app === S.libs?.app ? Promise.resolve(S.sampleFolders) : api("samples/folders").then(f => (S.sampleFolders = f))).then(f => {
       let last = null; try { last = localStorage.getItem("ta-sample-folder"); } catch (e) {}
       sel.innerHTML = f.folders.map(n => `<option ${n === (f.folders.includes(last) ? last : f.default) ? "selected" : ""}>${esc(n)}</option>`).join("");
       sel.title = f.root;
@@ -939,7 +942,7 @@ function bindApprove(c, box, t) {
     const it = items.find(i => i.key === b.dataset.save), out = box.querySelector(`[data-saved="${CSS.escape(b.dataset.save)}"]`);
     b.disabled = true; out.textContent = " saving…";
     try {
-      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value, bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
+      const d = await postJSON("/api/samples/save", { path: t.path, start: it.data.ms / 1000, len: it.data.len_ms / 1000, folder: sel.value || S.sampleFolders?.default || "Track Analyzer loops", bar: it.sample.bar, kind: it.sample.kind, smooth: smoothLoops() });
       out.innerHTML = ` ✓ ${d.already ? "already saved in" : "saved to"} ${esc(d.folder)} ${showBtn(d.saved, c.file_manager)}`;
       b.remove();
     } catch (err) { out.style.color = "var(--bad)"; out.textContent = ` ${err.message}`; }

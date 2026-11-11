@@ -11,7 +11,7 @@ const fmt = (v, d = 2) => v == null || v === "" ? "–" : typeof v === "number" 
 const pct = v => v == null ? "–" : Math.round(v * 100) + "%";
 // a colour and its neighbours on the scale: "Blue–Magenta" for Violet, "Red–Orange" for Red
 const nearRange = c => { const i = COLOURS.indexOf(c); return i < 0 ? c : `${COLOURS[Math.max(0, i - 1)]}–${COLOURS[Math.min(COLOURS.length - 1, i + 1)]}`; };
-const mmss = s => s == null ? "–" : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+const mmss = s => { if (s == null) return "–"; const t = Math.round(s); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`; };  // 59.6 s is 1:00, not 0:60
 const sw = (c, predicted) => c ? `<span class="sw sw-${esc(c)}${predicted ? " pred" : ""}"></span>` : "";
 const colour = (c, predicted) => c ? `<span class="colour" data-tip="${predicted ? "Predicted by the colour model (not set by you)" : `Your colour in ${DJ()}`}">${sw(c, predicted)}${esc(c)}${predicted ? "?" : ""}</span>` : `<span class="dim">–</span>`;
 const trackName = t => `<div class="trk"><div class="t">${esc(t.title || t.filename || t.file || "")}</div>${t.artist ? `<div class="a">${esc(t.artist)}</div>` : ""}</div>`;
@@ -25,6 +25,13 @@ const parseScores = s => (s || "").split(";").map(x => x.trim()).filter(Boolean)
 });
 
 const SNAP = window.SNAPSHOT || null;
+const LAUNCHER = `Start Puppi3's Track Analyzer.${/Windows/.test(navigator.userAgent) ? "bat" : "command"}`;
+// A message the CLI also prints, with its terminal hints swapped for this page's controls
+const forPage = m => String(m ?? "")
+  .replace(/\b(Rubber Band|ffmpeg) isn't installed(?:: [^.()]*| \([^)]*\))/g, "$1 isn't installed: install it on the Setup tab")
+  .replace(/ Run again with --force to restore anyway\./, "")
+  .replace(/,? or pass --force\./, ".")
+  .replace(/Switch back first: uv run dj-track-analyzer tempo native/, "Switch back first: Switch … back to normal on the Tempo view tab");
 const LOCK = `<svg width="11" height="12" viewBox="0 0 11 12" aria-hidden="true"><rect x="1" y="5" width="9" height="7" rx="1.5" fill="currentColor"/><path d="M3 5V3.5a2.5 2.5 0 0 1 5 0V5" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>`;
 const lock = what => `<span class="lock" data-tip="${what} held: kept as it is when writing to files, ${DJ()} or Lexicon">${LOCK}</span>`;
 const GUESS_TIP = () => `The app guessed this colour into ${DJ()} and nobody has checked it yet, so the colour model doesn't learn from it. Change it in ${DJ()}, or mark it right here, and it counts as yours.`;
@@ -95,12 +102,12 @@ async function api(path, params = {}, { signal } = {}) {
     try { r = await fetch(`/api/${path}${q.toString() ? "?" + q : ""}`, { signal }); break; }
     catch (e) { // no answer at all: the server is restarting, or was stopped
       if (e.name === "AbortError") throw e;  // given up on by the page (another track opened)
-      if (attempt >= 2) throw new Error("Can't reach the Puppi3's Track Analyzer server. Start it again: double-click Start Puppi3's Track Analyzer.command (on a Mac), or run `uv run dj-track-analyzer web` in a terminal.");
+      if (attempt >= 2) throw new Error(`Can't reach Puppi3's Track Analyzer: it was stopped or is restarting. Start it again: double-click ${LAUNCHER} in its folder, then press Retry.`);
       await new Promise(ok => setTimeout(ok, 600 * (attempt + 1)));
     }
   }
   const d = await readJSON(r);
-  if (!r.ok) throw new Error(d.error || r.statusText);
+  if (!r.ok) throw new Error(d?.error || `The server answered ${r.status} ${r.statusText}`);
   return d;
 }
 const errBox = e => `<div class="err">${esc(e.message || e)}${SNAP ? "" : ` <button style="margin-left:8px" onclick="route()">Retry</button>`}</div>`;
@@ -140,7 +147,7 @@ document.addEventListener("mouseover", e => {
 });
 document.addEventListener("mousemove", e => {
   if (tip.style.display !== "block") return;
-  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = e.clientY + 16 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
+  const x = Math.max(8, Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8)), y = e.clientY + 16 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
   tip.style.left = x + "px"; tip.style.top = y + "px";
 });
 

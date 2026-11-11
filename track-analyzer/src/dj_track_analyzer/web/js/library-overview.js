@@ -1,9 +1,10 @@
 // ---------- library ----------
+const VIEWAPP = () => S.libs?.loaded_app || DJ();  // the DJ app holding the loaded tempo view (maybe not the chosen one)
 async function loadLibs() {
   S.libs = await api("libraries");
   const sel = $("#lib");
   const inTraktor = l => (l.bpm || null) === (S.libs.loaded_view || null);  // the one Traktor has loaded
-  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? ` (as ${DJ()})` : ""}</option>`).join("");
+  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? ` (as ${esc(VIEWAPP())})` : ""}</option>`).join("");
   if (!S.libs.libraries.some(l => l.id === S.lib)) S.lib = "native";
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
@@ -14,9 +15,9 @@ function libNote() {
   $("#libwrap").style.visibility = usesLib ? "visible" : "hidden";
   loadedChips();
   const parts = [], shown = S.lib !== "native" ? +S.lib.replace("at-", "") : null;
-  if (v) parts.push(`${DJ()} has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
+  if (v) parts.push(`${esc(VIEWAPP())} has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
   if (usesLib && shown) parts.push(`This page shows <b>every track at ${esc(shown)} BPM</b>: as heard stretched to that tempo with key lock.`);
-  if (!SNAP && usesLib && shown && shown !== v) parts.push(`${DJ()} itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
+  if (!SNAP && usesLib && shown && shown !== v) parts.push(`${v ? esc(VIEWAPP()) : DJ()} itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
 }
 function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loaded right now, on every tab
@@ -24,18 +25,22 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
   el.hidden = !!SNAP;  // a snapshot can't know what's loaded now
   if (SNAP) return;
   const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
-  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip(`${DJ()} + Lexicon`, L.loaded_view)  // saves a header row
-    : chip(DJ(), L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
-  el.dataset.tip = `${DJ()}: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
+  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip(`${esc(VIEWAPP())} + Lexicon`, L.loaded_view)  // saves a header row
+    : chip(esc(VIEWAPP()), L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
+  el.dataset.tip = `${VIEWAPP()}: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
     + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
 }
 document.addEventListener("visibilitychange", () => {  // `tempo load` / `native` may have run in a terminal meanwhile
-  if (!document.hidden && S.libs && !SNAP) loadLibs().catch(() => {});
+  if (!document.hidden && S.libs && !SNAP) loadLibs().then(() => { if (S.page === "overview") route(); }, () => {});  // its Tempo views card too
 });
 async function getTracks(lib = S.lib) {
   if (!S.tracks[lib]) {
-    const d = await api("tracks", { lib });
+    S.tracksLoading ||= {};  // one request per library at a time: a second caller waits for it, no second retry timer
+    if (S.tracksLoading[lib]) { await S.tracksLoading[lib]; return S.tracks[lib] || getTracks(lib); }
+    const req = S.tracksLoading[lib] = api("tracks", { lib });
+    let d;
+    try { d = await req; } finally { delete S.tracksLoading[lib]; }
     S.tracks[lib] = d.tracks;
     S.fixesPending = !!d.corrections_pending;
     navCounts();
@@ -60,7 +65,7 @@ function navCounts() {
 const PAGES = { overview: pageOverview, tracks: pageTracks, hype: pageHype, colours: pageColours, tempo: pageTempo, mixes: pageMixes, files: pageFiles, setup: pageSetup };
 async function route() {
   const [page, ...rest] = (location.hash.slice(1) || "overview").split("/");
-  S.page = PAGES[page] ? page : "overview";
+  S.page = PAGES[page] && !(SNAP && (page === "files" || page === "setup")) ? page : "overview";  // a snapshot has neither
   document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + S.page));
   if (S.libs) libNote();
   if (!SNAP) { jobBar(); refreshSetupNote(); }
@@ -104,7 +109,7 @@ async function pageOverview(main) {
       </div>
     </div>
     <div class="card"><h3>Tempo views</h3>
-      <dl class="facts"><dt>${DJ()}</dt><dd>${esc(st.loaded_in_traktor)}</dd>${S.libs.lexicon ? `<dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>` : ""}
+      <dl class="facts">${SNAP ? "" : `<dt>${esc(VIEWAPP())}</dt><dd>${esc(st.loaded_in_traktor)}</dd>`}${!SNAP && S.libs.lexicon ? `<dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>` : ""}
       ${Object.entries(st.views).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v.tracks} tracks <span class="dim mono">${esc(v.folder)}</span></dd>`).join("") || "<dt>Views</dt><dd class='dim'>none scanned yet: make one on the <a href='#tempo'>Tempo view</a> tab</dd>"}</dl>
     </div>`;
 }

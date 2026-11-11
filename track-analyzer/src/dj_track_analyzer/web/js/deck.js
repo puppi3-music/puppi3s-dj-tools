@@ -36,7 +36,8 @@ function deckSetVolume(v) {
 }
 DECK.audio.volume = deckVolume();
 function deckAttach(c, box) {
-  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; DECK.ready = null; }
+  if (DECK.path !== c.path) { deckStopLoop(); DECK.audio.pause(); DECK.audio.removeAttribute("src"); DECK.audio.load(); DECK.path = c.path; DECK.loop = null; DECK.loaded = false; DECK.preparing = false; DECK.buf = null; DECK.bufPath = null; DECK.ready = null;
+    DECK.waiting = false; DECK.active = null; DECK.asked = (DECK.asked || 0) + 1; }  // a play still starting for the last track: dropped
   DECK.c = c; DECK.box = box;
   box.querySelector("#dk-play")?.addEventListener("click", deckToggle);
   box.querySelector("#dk-vol")?.addEventListener("input", e => deckSetVolume(+e.target.value / 100));
@@ -77,7 +78,7 @@ function deckReady() {  // the file loads only once you play or jump: opening a 
     return true;
   }, err => { if (DECK.path !== path) return false;  // another track meanwhile (its stretch was cancelled)
     if (DECK.readyBpm === bpm) DECK.ready = null;  // asks again on the next play
-    if (!aborted(err)) deckMsg(`Couldn't stretch: ${err.message}`); return false; });
+    if (!aborted(err)) deckMsg(`Couldn't stretch: ${forPage(err.message)}`); return false; });
   return DECK.ready;
 }
 function deckTime() {  // where playback is now, looping or not, in Traktor's time (the track's own tempo)
@@ -116,8 +117,9 @@ async function deckLoop(a, b) {
         if (aborted(e) || DECK.path !== want) throw e;
         deckMsg("Preparing a gapless loop…");
         if (DECK.bufPath !== `${want}|${bpm}`) {
-          const data = await (await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) })).arrayBuffer();
-          DECK.buf = await DECK.ctx.decodeAudioData(data); DECK.bufPath = `${want}|${bpm}`;
+          const res = await fetch(`/api/audio?path=${encodeURIComponent(want)}${bpm ? `&bpm=${bpm}` : ""}`, { signal: prepFor(want) });
+          if (!res.ok) throw new Error((await readJSON(res)).error);  // the server's reason, not "unable to decode audio data"
+          DECK.buf = await DECK.ctx.decodeAudioData(await res.arrayBuffer()); DECK.bufPath = `${want}|${bpm}`;
         }
         buf = DECK.buf; whole = true;
       }
@@ -130,7 +132,7 @@ async function deckLoop(a, b) {
     DECK.src = src; DECK.wa = { t0: DECK.ctx.currentTime, a, b, k, bpm }; DECK.waiting = false;
     deckTick();
   } catch (err) { if (DECK.path !== want || DECK.asked !== ask) return;  // another track meanwhile: its deck isn't this loop's
-    DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${err.message}`); deckUi(); }
+    DECK.loop = null; DECK.waiting = false; if (!aborted(err)) deckMsg(`Couldn't loop: ${forPage(err.message)}`); deckUi(); }
 }
 function deckSeek(t, play = true, loop = null) {
   if (!DECK.path) return;
@@ -194,7 +196,7 @@ function deckUi() {
   if (sw) sw.hidden = !stretching;
   const bi = Math.floor((t - c.first_bar_s + 1e-6) / c.bar_seconds), bl = barLabel(c, bi), bt = Math.floor((t - c.first_bar_s - bi * c.bar_seconds) / (c.bar_seconds / 4) + 1e-6) + 1;
   const tm = box.querySelector("#dk-time");
-  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) setText(tm, `${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, "0")} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`);
+  if (tm && !DECK.preparing && (DECK.loaded || DECK.src || t > 0) && !(DECK.loop && !DECK.src)) setText(tm, `${clock(t)} · ${bl.n >= 1 ? `bar ${bl.n}, beat ${bt}` : "before bar 1"}${DECK.loop ? " · looping" : ""}${(DECK.src ? DECK.wa.bpm : DECK.loaded && DECK.bpm) ? ` · at ${DECK.src ? DECK.wa.bpm : DECK.bpm} BPM` : ""}`);
   box.querySelectorAll("button.mini[data-t]").forEach(b => {
     b.dataset.label ??= b.textContent;
     const on = deckPlaying() && DECK.active === `${+b.dataset.t}|${b.dataset.loop ? +b.dataset.loop : 0}`;
@@ -217,7 +219,7 @@ document.addEventListener("keydown", e => {
   if (!DECK.path || !$("#drawer").classList.contains("open") || DECK.path !== $("#drawer").dataset.path || e.target.closest("input, textarea, select") || overlayOpen()) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;  // leave the browser's own shortcuts alone (⌘1 switches tab, alt+← goes back)
   const c = DECK.c, t = deckTime();
-  if (e.code === "Space") { e.preventDefault(); deckToggle(); }
+  if (e.code === "Space") { e.preventDefault(); e.target.closest("button")?.blur(); deckToggle(); }  // blur: a focused ▶ Play would toggle again on keyup
   else if (/^Digit[1-8]$/.test(e.code)) {
     const n = +e.code.slice(5) - 1, p = PEND?.path === c.path ? PEND : null;  // with cues ticked: the slots as the pads show them
     const a = p?.adds.find(a => !a.nofit && a.hotcue === n);
@@ -240,7 +242,7 @@ const RENUM = new Map();  // path -> true while "Number cues in order" is presse
 const DRAGMV = new Map();  // path -> Map("m<slot>:<from_ms>" -> ms): moves of your cues made by dragging them on the waveform
 const HAND = new Map();  // path -> cues you set by hand with + Cue, not approved yet: [{ms, name}]
 let PEND = null;  // the open track's cues ticked in the approve panel, not approved yet (the pads, waveform and 1–8 keys show them)
-const WAVE_DETAIL = new Map();  // path -> detailed waveform, fetched on the first zoom
+const WAVE_DETAIL = new Map(), WAVE_FETCH = new Map();  // path -> detailed waveform, fetched on the first zoom; path -> that fetch
 let WAVE_UP = null;  // the drawn waveform's window mouseup listener
 function decodeWave(w) {
   const raw = atob(w.data), a = new Uint8Array(raw.length);
@@ -279,10 +281,11 @@ function drawWave(c, box) {
     let span = Math.min(dur, Math.max(minSpan, v1 - v0));
     v0 = Math.min(Math.max(0, v0), dur - span);
     st.v0 = v0; st.v1 = v0 + span;
-    if (!SNAP && !st.detail && !st.loading && span < dur * 0.6) {  // close in: fetch the detailed waveform
+    if (!SNAP && !st.detail && !st.loading && span < dur * 0.6) {  // close in: fetch the detailed waveform (once, across redraws)
       st.loading = true; render();
-      api("wave", { path: c.path }).then(w => { st.detail = decodeWave(w); WAVE_DETAIL.set(c.path, st.detail); })
-        .catch(() => {}).finally(() => { st.loading = false; render(); });
+      if (!WAVE_FETCH.has(c.path)) WAVE_FETCH.set(c.path, api("wave", { path: c.path }).then(w => { const d = decodeWave(w); WAVE_DETAIL.set(c.path, d); return d; })
+        .finally(() => WAVE_FETCH.delete(c.path)));
+      WAVE_FETCH.get(c.path).then(d => { st.detail = d; }).catch(() => {}).finally(() => { st.loading = false; render(); });
     }
     render();
     refine();  // after render: it measures the canvas
@@ -295,7 +298,7 @@ function drawWave(c, box) {
   let fineTimer = 0, fineSeq = 0;
   function refine() {
     clearTimeout(fineTimer);
-    if (SNAP || !W || rate() <= 100 || fineOk()) return;
+    if (SNAP || !W || rate() <= 100 || fineOk() || box._view !== st) return;
     fineTimer = setTimeout(() => {
       const span = st.v1 - st.v0, t0 = Math.max(0, st.v0 - span / 2), t1 = Math.min(dur, st.v1 + span / 2), seq = ++fineSeq;
       api("wave", { path: c.path, t0: t0.toFixed(4), t1: t1.toFixed(4), n: Math.ceil((t1 - t0) * rate()) })
@@ -303,6 +306,7 @@ function drawWave(c, box) {
     }, 120);
   }
   let render = function () {
+    if (box._view !== st) return;  // drawn again since (an approve re-renders the drawer): a late fetch here mustn't paint the old view
     const dpr = window.devicePixelRatio || 1;
     W = cv.clientWidth; const H = cv.clientHeight;
     if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -461,7 +465,7 @@ function drawWave(c, box) {
       g.strokeStyle = "#fff"; g.strokeRect(a + 0.5, OV0 + 0.5, Math.max(2, z - a - 1), OV1 - OV0 - 1);
     }
     if (zl) {  // close in: times to the hundredth, the length in beats, and how fine the waveform is
-      const tm = t => span < 10 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}` : mmss(t);
+      const tm = t => { if (span >= 10) return mmss(t); const d = Math.round(t * 100); return `${Math.floor(d / 6000)}:${((d % 6000) / 100).toFixed(2).padStart(5, "0")}`; };
       const len = span < 2 * c.bar_seconds ? `${(span / beat).toFixed(1)} beats` : `${Math.round(span / c.bar_seconds)} bars`;
       const res = data === over ? "" : ` · ${span * 1000 / W < 10 ? (span * 1000 / W).toFixed(2) + " ms" : (span / W).toFixed(2) + " s"} a pixel${rate() <= 100 || fineOk() ? "" : " · sharpening…"}`;
       zl.textContent = zoomed() ? `${tm(st.v0)}–${tm(st.v1)} · ${len}${st.loading ? " · loading detail…" : res}` : "whole track";

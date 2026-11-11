@@ -640,9 +640,9 @@ def write_grids(tk: dict[str, dict], db: str | None = None, dry_run: bool = Fals
             if hit is None or not t.get("bpm") or t.get("grid_ms") is None:
                 continue
             c, d = hit
-            if not d.get("nogrid") and _same_grid(d, t):
-                continue
             got = _anlz_grid(master, c)
+            if not d.get("nogrid") and _same_grid(d, t) and (got is None or len(_tempos(got[2])) <= 1):
+                continue  # a grid with tempo changes isn't Traktor's steady one, even when beat 1 and BPM match
             if got is None:
                 stats["not_analysed"].append(Path(p).name)
                 continue
