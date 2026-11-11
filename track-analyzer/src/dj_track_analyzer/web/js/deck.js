@@ -464,6 +464,7 @@ function drawWave(c, box) {
       const tm = t => span < 10 ? `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, "0")}` : mmss(t);
       const len = span < 2 * c.bar_seconds ? `${(span / beat).toFixed(1)} beats` : `${Math.round(span / c.bar_seconds)} bars`;
       const res = data === over ? "" : ` · ${span * 1000 / W < 10 ? (span * 1000 / W).toFixed(2) + " ms" : (span / W).toFixed(2) + " s"} a pixel${rate() <= 100 || fineOk() ? "" : " · sharpening…"}`;
+      const mv = box.querySelector("#wavemove"); if (mv) mv.hidden = !zoomed();
       zl.textContent = zoomed() ? `${tm(st.v0)}–${tm(st.v1)} · ${len}${st.loading ? " · loading detail…" : res}` : "whole track";
     }
   }

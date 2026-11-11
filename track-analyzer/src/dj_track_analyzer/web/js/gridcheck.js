@@ -176,6 +176,16 @@ async function writeGrids(onDone) {
     onDone?.();
   });
 }
+// the panel's facts: BPM agreement, and what's said beside the colour (yours at its own tempo, what the model hears)
+const bpmAgree = t => t.traktor_bpm != null && t.bpm != null && t.mix_bpm != null
+  && Math.round(t.traktor_bpm) === Math.round(t.bpm) && Math.round(t.bpm) === Math.round(t.mix_bpm);
+function colourNotes(t) {
+  const near = t.color_confidence_near != null ? nearRange(t.color).split("–") : null;
+  const model = t.traktor_color && t.color ? `<span${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model says ${esc(t.color)}${t.color_confidence != null
+    ? ` (${pct(t.color_confidence)} sure${near ? `; ${pct(t.color_confidence_near)} sure it's ${near.length > 1 ? `between ${esc(near[0])} and ${esc(near[1])}` : esc(near[0])}` : ""})` : ""}</span>` : "";
+  const parts = [t.your_colour && `yours at its own tempo: ${esc(t.your_colour)}`, model].filter(Boolean);
+  return parts.length ? ` <span class="dim small">· ${parts.join(" · ")}</span>` : "";
+}
 async function openTrack(path) {
   prepFor(path);
   if (DECK.path && DECK.path !== path) { deckStopLoop(); DECK.audio.pause(); }
@@ -192,19 +202,20 @@ async function openTrack(path) {
       <div class="acts">${canEdit(t) ? `<button id="dr-edit" class="${editing(t) ? "on" : ""}" aria-pressed="${editing(t)}" data-tip="${editing(t) ? "Stop editing without saving" : "Change this track's BPM, key, colour, genre or hype by hand"}">✎ Edit</button>` : ""}<button class="wide-btn" id="dr-wide" aria-pressed="${drawerWide()}" data-tip="${drawerWide() ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"}">${drawerWide() ? "⇥ Narrow" : "⇤ Wide"}</button>
       <button id="dr-close" aria-label="Close" data-tip="Close (Esc)">✕</button></div></div>
     <dl class="facts">
-      <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">${DJ()} ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
-      <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot ? `${DJ()} ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})</span></dd>
-      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${t.your_colour ? ` <span class="dim small">yours at its own tempo: ${esc(t.your_colour)} ·</span>` : ""}${t.traktor_color && t.color ? ` <span class="dim small"${t.colour_unbiased ? ` data-tip="${UNBIASED_TIP}"` : ""}>model: ${esc(t.color)}${t.color_confidence != null ? ` (${pct(t.color_confidence)})` : ""}${t.color_confidence_near != null ? ` · ${pct(t.color_confidence_near)} sure it's ${esc(nearRange(t.color))}` : ""}</span>` : ""}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
+      <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">${bpmAgree(t) ? `${DJ()} and ours agree` : `${DJ()} ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}`}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
+      <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot && t.traktor_camelot === t.camelot && t.camelot === t.mix_camelot
+        ? `${esc(t.key || "–")} · ${DJ()} and ours agree` : `${t.traktor_camelot ? `${DJ()} ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})`}</span></dd>
+      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
-      <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">1-10 within your collection</span></dd>
+      <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">${t.hype != null ? "of 10, " : ""}compared with your collection</span></dd>
       <dt>Loudness</dt><dd>${fmt(t.lufs, 1)} LUFS · range ${fmt(t.loudness_range, 1)} LU</dd>
       <dt>Length</dt><dd>${mmss(t.duration_sec)}</dd>
       ${t.error ? `<dt>Note</dt><dd class="small">${esc(t.error)}</dd>` : ""}
     </dl>${editBar(t)}
-    ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
-    ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${t.type === "track" ? fold("mixes", "Mixes well with", `<div class="filters small"><label class="inline"><input type="checkbox" id="sg-same" checked ${SNAP ? "disabled" : ""}> same genre</label>
       <label class="inline">BPM ± <input type="number" id="sg-tol" value="4" style="width:56px" ${SNAP ? "disabled" : ""}>%</label></div><div id="sugg" class="loading">Loading…</div>`) : ""}
+    ${t.type === "track" ? `<div class="section"><h3>Cues and phrases</h3><div id="cuebox" class="loading">Loading…</div></div>` : ""}
+    ${t.type === "track" && !SNAP ? fold("grid", "Beat grid", `<div id="gridbox" class="loading small">Checking where the kicks land…</div>`, `<span id="gridstate" class="hint"></span>`) : ""}
     ${genreScores.length || t.styles || yourG || t.tag_genre ? fold("genre", "Genre and style", `
       ${genreScores.length ? `<div class="sub">Genres</div>${bars(genreScores, { max: Math.max(...genreScores.map(g => g.value || 0), 0.01) })}` : ""}
       ${t.styles ? `<div class="sub">Discogs styles</div>${bars(parseScores(t.styles))}` : ""}
@@ -221,8 +232,8 @@ async function openTrack(path) {
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
         : `<button data-hold="${k}" class="${t["held_" + k] ? "on" : ""}">${t["held_" + k] ? `${LOCK} Held · release` : "Hold"}</button>`}</span>`).join("")}</div>
-      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: <span class="mono">tag</span>, <span class="mono">traktor</span>,
-      <span class="mono">colors review --apply</span> and <span class="mono">tempo load</span> skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
+      <div class="note">A held genre or colour stays as it is in your files, ${DJ()} and Lexicon: writing genres into your files' tags,
+      syncing into ${DJ()}, the colour writes on the Colours tab and switching to the tempo view all skip it. Holding only changes the analyzer's list; nothing is written now.</div>`,
       hint([t.held_genre && "genre held", t.held_colour && "colour held"].filter(Boolean).join(" · "))) : ""}
     ${fold("file", "File", `<dl class="facts" style="margin:0">${t.album ? `<dt>Album</dt><dd>${esc(t.album)}</dd>` : ""}<dt>Path</dt><dd class="mono" style="word-break:break-all">${esc(t.path)}</dd></dl>`,
       hint(t.path.split(/[\\/]/).pop()))}`;
@@ -336,7 +347,7 @@ function loopPads(c) {
   const parts = l => l.parts ? ` · drums ${Math.round(l.parts.drums * 100)}%, bass ${Math.round(l.parts.bass * 100)}%, synth ${Math.round(l.parts.synth * 100)}%, vocals ${Math.round(l.parts.vocals * 100)}% of its beats` : "";
   const wait = c.parts_pending && !SNAP;
   return `<div class="pads${wait ? " listening" : ""}" id="loop-pads"><span class="small muted">Loop ideas:</span>${c.loop_ideas.map((l, k) =>
-    `<button class="lp" data-t="${l.ms / 1000}" data-loop="${l.len_ms / 1000}" data-tip="L${k + 1}: ${esc(l.kind)} · ${l.bars} bars from bar ${barLabel(c, l.bar).n} · ${esc(l.why)}${parts(l)}. Plays looped, gapless.">L${k + 1} · ${esc(l.kind.split(" · ")[0])}${l.parts?.label ? " · " + esc(l.parts.label.replaceAll(" · ", ", ")) : ""} · ${barLabel(c, l.bar).n}</button>`).join("")}${wait ? `<span class="small dim parts-wait" id="parts-wait" data-tip="Separating each loop into drums, bass, synths and vocals: about 8 seconds, once per track">Listening for vocals, synths and kicks…</span>` : ""}</div>`;
+    `<button class="lp" data-t="${l.ms / 1000}" data-loop="${l.len_ms / 1000}" data-tip="L${k + 1}: ${esc(l.kind)} · ${l.bars} bars from bar ${barLabel(c, l.bar).n} · ${esc(l.why)}${parts(l)}. Plays looped, gapless.">L${k + 1} · ${esc(l.kind.split(" · ")[0])}${l.parts?.label ? " · " + esc(l.parts.label.replaceAll(" · ", ", ")) : ""} · bar ${barLabel(c, l.bar).n}</button>`).join("")}${wait ? `<span class="small dim parts-wait" id="parts-wait" data-tip="Separating each loop into drums, bass, synths and vocals: about 8 seconds, once per track">Listening for vocals, synths and kicks…</span>` : ""}</div>`;
 }
 
 // What plays in each loop idea, separated on the server (~8 s the first time per track); updates the buttons in place
@@ -373,10 +384,10 @@ function renderCues(c) {
       <button id="dk-cue" data-tip="Set a cue where the playhead is, on the nearest beat (C): it's ticked under New cues; Approve ticked keeps it, Write to ${DJ()} writes it">+ Cue</button>
       <button id="dk-rescan" data-tip="Measure this track's audio again and re-read its beat grid and cues from ${DJ()} (${DJ()} saves them when it quits)">Rescan track</button></div>
     <div class="pads"><span class="small muted">${c.approved_view ? "Yours, with approved:" : "Yours:"}</span><span id="your-pads" style="display:contents">${yourPads(c, null)}</span>
-      <span class="small muted" style="margin-left:8px">Suggested:</span>${c.cues.filter(q => !sugHidden(c, q)).map(q => `<button class="sug" data-t="${q.ms / 1000}">${esc(q.name)} · ${barLabel(c, q.bar).n}</button>`).join("")}
+      <span class="small muted" style="margin-left:8px">Suggested:</span>${c.cues.filter(q => !sugHidden(c, q)).map(q => `<button class="sug" data-t="${q.ms / 1000}">${esc(q.name)} · bar ${barLabel(c, q.bar).n}</button>`).join("")}
       </div>${loopPads(c)}`;
   return `${deck}<div class="filters" style="margin:0 0 6px"><button data-zoom="in" data-tip="Zoom in, down to a single beat (or pinch / ctrl+scroll on the waveform, double-click)">+</button><button data-zoom="out" data-tip="Zoom out (shift+double-click)">−</button><button data-zoom="fit">Fit</button>
-    <span class="small muted" id="wavezoom"></span><span class="small dim">drag or scroll sideways to move</span></div>
+    <span class="small muted" id="wavezoom"></span><span class="small dim" id="wavemove" hidden>drag or scroll sideways to move</span></div>
     <div class="wavewrap"><div class="wavehl" id="wavehl"></div><div class="wavebeat" id="wavebeat"></div><div class="playhead" id="ph"></div><div class="playhead ov" id="phov"></div><canvas id="wave" aria-label="Waveform with your cues (white, top) and suggested cues (blue, bottom)"></canvas></div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${SNAP ? "" : helpFold("keys", "Keys", `<div class="small dim">Space play/pause · 1–8 your cues · C cue here · ←/→ 1 bar · shift+←/→ 8 bars · click the waveform to jump</div>`)}
     ${helpFold("legend", "Legend", `<div class="legend" style="margin-top:0"><span><i style="background:var(--text)"></i>your cues (numbered, top; loops shaded over their length, fades and load named)</span><span><i style="background:#6fb4ff"></i>suggested (named, bottom)</span>

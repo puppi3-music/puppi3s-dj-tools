@@ -195,7 +195,7 @@ label.approved { background: color-mix(in srgb, var(--good) 10%, transparent); b
 .usemenu div { padding: 4px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .usemenu div:hover, .usemenu div.on { background: var(--accent-soft); }
 .fixbox select.target { font-size: 12px; padding: 1px 4px; max-width: 100%; }
-#approve select.slot { font-size: 12px; padding: 1px 4px; }
+#approve select.slot, #approve select.as, #approve select.len { font-size: 12px; padding: 1px 4px; }
 #approve label.add { display: flex; align-items: flex-start; gap: 6px; margin: 3px 0; padding: 4px 6px; }
 #approve label.add input { margin-top: 3px; }
 #approve label.add > span > div:first-child > .mini { margin: 0 6px 0 0; }
