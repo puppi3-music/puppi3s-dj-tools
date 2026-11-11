@@ -84,7 +84,7 @@ function jobBar() {
     bar.className = "jobbar"; bar.hidden = false;
     bar.innerHTML = `<b>${esc(j.label)}${j.dry_run ? " (preview)" : ""}</b>${j.queued?.length ? `<span class="muted" data-tip="${esc(["Then:", ...j.queued].join("\n"))}">${j.queued.length} more to go</span>` : ""}${failedNote()}${progressBar(j)}<span class="muted jobnow" data-tip="${esc(j.live?.trim() || jobLast(j) || "")}">${progressText(j)}${j.live ? ` · ${esc(j.live.trim())}` : jobLast(j) ? ` · ${esc(jobLast(j))}` : ""}</span>
       ${S.page !== "setup" ? `<a href="#setup">Show</a>` : ""}<button id="jb-stop" ${j.stopping ? "disabled" : ""}>${j.stopping ? "Stopping…" : j.queued?.length ? "Stop all" : "Stop"}</button>`;
-    $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll);
+    $("#jb-stop").onclick = () => postJSON("/api/jobs/stop", {}).then(jobPoll, jobPoll);  // ended meanwhile: the bar catches up
   } else if (JOB.flash && JOB.flash.id === j.id) {
     bar.className = `jobbar ${j.error ? "bad" : "good"}`; bar.hidden = false;
     bar.innerHTML = `<span>${j.error === "Stopped." ? `<b>${esc(j.label)}</b> stopped. It carries on where it stopped next time.` : j.error ? `<b>${esc(j.label)}</b> stopped: ${esc(j.error)}` : `<b>✓ ${esc(j.label)}</b> finished`}</span>${failedNote()}
@@ -187,10 +187,12 @@ async function writeDialog(action, options = {}, onDone) {
     go?.addEventListener("click", () => {
       if (!MULTI.has(act)) return write(act, opts);
       const only = [...dlg.querySelectorAll("[data-step]:checked")].map(b => b.dataset.step);
-      write(act, { ...opts, only });
+      if (only.length) write(act, { ...opts, only });  // never an empty list: the server reads no --only as every step
     });
-    // sync: write only the ticked steps; nothing ticked, nothing to write
-    dlg.querySelectorAll("[data-step]").forEach(b => b.onchange = () => { if (go) go.disabled = !dlg.querySelector("[data-step]:checked"); });
+    // sync: write only the ticked steps; nothing ticked, nothing to write (also at first: a copy's grids start unticked)
+    const ticked = () => { if (go && MULTI.has(act)) go.disabled = !dlg.querySelector("[data-step]:checked"); };
+    dlg.querySelectorAll("[data-step]").forEach(b => b.onchange = ticked);
+    ticked();
   }
   function again(act, opts) { dlg.querySelector("[data-again]")?.addEventListener("click", () => preview(act, opts)); }
   async function write(act, opts) {
@@ -285,8 +287,12 @@ async function updateCard(force = false) {
   on("up-check", async e => { e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking…"; await updateCard(true); updateDot(); });
   on("up-go", () => writeDialog("update"));
   on("up-back", e => { e.preventDefault(); writeDialog("update_undo"); });
-  on("up-seen", async () => { await postJSON("/api/update/settings", { seen: true }); updateCard(); });
-  $("#up-auto").onchange = async e => { await postJSON("/api/update/settings", { auto: e.target.checked }); updateCard(); };
+  const saved = async (body, el) => {  // a setting that didn't save says so instead of looking saved
+    try { await postJSON("/api/update/settings", body); updateCard(); }
+    catch (err) { if (el.type === "checkbox") el.checked = !el.checked; el.closest(".card").insertAdjacentHTML("beforeend", `<div class="err small">${esc(err.message)}</div>`); }
+  };
+  on("up-seen", e => saved({ seen: true }, e.currentTarget));
+  $("#up-auto").onchange = e => saved({ auto: e.target.checked }, e.target);
   box.querySelectorAll("[data-after]").forEach(el => el.onclick = () => {
     const [action, opts] = AFTER_JOBS[el.dataset.after];
     startJob(action, opts).catch(err => { $("#jobpanel").innerHTML = `<div class="err" style="margin-bottom:16px">${esc(err.message)}</div>`; });
