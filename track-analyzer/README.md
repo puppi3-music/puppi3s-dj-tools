@@ -54,7 +54,7 @@ Every command runs from the project folder and starts with `uv run dj-track-anal
 On Windows, see [Windows](#windows) below: its launcher is a `.bat` you double-click. On Linux, see [Linux](#linux): the same launcher runs from a terminal.
 
 1. Download the zip from the [latest release](https://github.com/puppi3-music/puppi3s-dj-tools/releases/latest) (under **Assets**), unzip it, and open the folder in Finder. Or clone this project and open its `track-analyzer` folder.
-2. Double-click **`Start Puppi3's Track Analyzer.command`**. The first time, macOS may say it's from an unidentified developer: right-click it, choose **Open**, then **Open** again.
+2. Double-click **`Start Puppi3's Track Analyzer.command`**. If macOS won't open it the first time, go to **System Settings → Privacy & Security**, scroll down and press **Open Anyway** (on macOS 14 or older: right-click it and choose **Open**).
 3. A Terminal window opens and does the install for you. It installs **uv** (the Python manager, from astral.sh) if it's missing, then Python and the analyzer (about 400 MB, a few minutes the first time). Then the web page opens in your browser.
 4. The page starts on its **Setup** tab, a checklist that:
    - downloads the models
@@ -686,9 +686,9 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 
 **Keep always** (`k`) keeps your colour and puts the track on a keep-always list, so `review --apply` never suggests it again; plain `review` still lists it, marked `kept`. The list lives in the analyzer's database, not in Traktor.
 
-- See the list: `colors review --kept`
+- See the list: the Colours tab's **Kept always** card, or `colors review --kept`
 - Add tracks: `--keep "<part of the name>"`
-- Put one back in play: `--forget "<part of the name>"`
+- Put one back in play: **Forget** on its row in **Kept always**, or `--forget "<part of the name>"`
 
 `apply` and `review --apply` make the same backup as `traktor`, so **undo** is `traktor --undo` (Traktor closed).
 
