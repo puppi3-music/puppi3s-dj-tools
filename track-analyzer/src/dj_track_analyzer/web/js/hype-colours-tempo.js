@@ -198,7 +198,7 @@ async function pageTempo(main, bpmArg) {
   main.innerHTML = `
     <div class="page-head"><div><h2>Tempo view: ${d.bpm} BPM</h2><div class="muted">Your catalogue as heard stretched to ${d.bpm} BPM with key lock, compared with each track at its own tempo.</div></div>
       <div class="spacer"></div>${views.length > 1 ? `<select onchange="location.hash='tempo/'+this.value">${views.map(v => `<option value="${v.bpm}" ${v.bpm === bpm ? "selected" : ""}>${v.bpm} BPM</option>`).join("")}</select>` : ""}
-      ${SNAP ? "" : S.libs.loaded_view ? `<button id="tv-native">Switch ${DJ()} back to normal…</button>` : `<button id="tv-load" data-tip="${DJ()}'s genres, colours and hype as heard at ${d.bpm} BPM (shows what changes first; switch back any time)">Load into ${DJ()}…</button>`}</div>
+      ${SNAP ? "" : S.libs.loaded_view ? `<button id="tv-native">Switch ${esc(S.libs.loaded_app || DJ())} back to normal…</button>` : `<button id="tv-load" data-tip="${DJ()}'s genres, colours and hype as heard at ${d.bpm} BPM (shows what changes first; switch back any time)">Load into ${DJ()}…</button>`}</div>
     <div class="tiles">
       <div class="tile"><div class="v">${d.tracks}</div><div class="l">tracks compared</div></div>
       <div class="tile"><div class="v">${d.tempo_change.median_pct > 0 ? "+" : ""}${d.tempo_change.median_pct}%</div><div class="l">median tempo change (${d.tempo_change.min_pct > 0 ? "+" : ""}${d.tempo_change.min_pct}% … ${d.tempo_change.max_pct > 0 ? "+" : ""}${d.tempo_change.max_pct}%)</div></div>

@@ -680,7 +680,8 @@ def setup_status() -> dict:
     loaded = tempo.loaded()
     st["tempo"] = {"views": [float(d.name[3:]) for d in sorted(HOME.glob("at-*")) if (d / "collection.db").exists()
                              and re.fullmatch(r"at-[\d.]+", d.name)],
-                   "loaded": loaded["bpm"] if loaded else None}
+                   "loaded": loaded["bpm"] if loaded else None,
+                   "loaded_app": library.APPS.get(loaded.get("app", "traktor"), "Traktor") if loaded else None}
     from . import lexicon
 
     st["tempo"]["lexicon_loaded"] = bool(lexicon.loaded())

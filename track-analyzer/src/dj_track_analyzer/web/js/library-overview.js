@@ -1,9 +1,10 @@
 // ---------- library ----------
+const VIEWAPP = () => S.libs?.loaded_app || DJ();  // the DJ app holding the loaded tempo view (maybe not the chosen one)
 async function loadLibs() {
   S.libs = await api("libraries");
   const sel = $("#lib");
   const inTraktor = l => (l.bpm || null) === (S.libs.loaded_view || null);  // the one Traktor has loaded
-  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? ` (as ${DJ()})` : ""}</option>`).join("");
+  sel.innerHTML = S.libs.libraries.map(l => `<option value="${esc(l.id)}" title="${esc(l.label)}">${l.bpm ? `all tracks at ${esc(l.bpm)} BPM` : "tracks at own BPM"}${!SNAP && inTraktor(l) ? ` (as ${esc(VIEWAPP())})` : ""}</option>`).join("");
   if (!S.libs.libraries.some(l => l.id === S.lib)) S.lib = "native";
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
@@ -14,9 +15,9 @@ function libNote() {
   $("#libwrap").style.visibility = usesLib ? "visible" : "hidden";
   loadedChips();
   const parts = [], shown = S.lib !== "native" ? +S.lib.replace("at-", "") : null;
-  if (v) parts.push(`${DJ()} has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
+  if (v) parts.push(`${esc(VIEWAPP())} has the <b>${v} BPM view</b> loaded, so its Genre/Colour/Comment show ${v} BPM values.`);
   if (usesLib && shown) parts.push(`This page shows <b>every track at ${esc(shown)} BPM</b>: as heard stretched to that tempo with key lock.`);
-  if (!SNAP && usesLib && shown && shown !== v) parts.push(`${DJ()} itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
+  if (!SNAP && usesLib && shown && shown !== v) parts.push(`${v ? esc(VIEWAPP()) : DJ()} itself has ${v ? `the ${v} BPM tempo view` : "<b>no tempo view</b> loaded (each track's own values)"}.`);
   n.innerHTML = parts.join(" "); n.hidden = !parts.length;
 }
 function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loaded right now, on every tab
@@ -24,9 +25,9 @@ function loadedChips() {  // what Traktor (and Lexicon, if you use it) has loade
   el.hidden = !!SNAP;  // a snapshot can't know what's loaded now
   if (SNAP) return;
   const chip = (app, bpm) => `<span class="chip${bpm ? " warn" : ""}">${app} tempo view: ${bpm ? `${esc(bpm)} BPM` : "off"}</span>`;
-  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip(`${DJ()} + Lexicon`, L.loaded_view)  // saves a header row
-    : chip(DJ(), L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
-  el.dataset.tip = `${DJ()}: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
+  el.innerHTML = L.lexicon && L.lexicon_view === L.loaded_view ? chip(`${esc(VIEWAPP())} + Lexicon`, L.loaded_view)  // saves a header row
+    : chip(esc(VIEWAPP()), L.loaded_view) + (L.lexicon ? chip("Lexicon", L.lexicon_view) : "");
+  el.dataset.tip = `${VIEWAPP()}: ${L.loaded_view ? `the ${L.loaded_view} BPM tempo view is loaded (genres, colours and Comment as heard with every track at ${L.loaded_view} BPM)` : "no tempo view loaded, so genres, colours and Comment are each track's own, at its own BPM"}`
     + (L.lexicon ? `. Lexicon: ${L.lexicon_view ? `the ${L.lexicon_view} BPM tempo view is loaded` : "no tempo view loaded"}` : "")
     + ". The Library picker only changes what this page shows. Switch on the Tempo view tab.";
 }
@@ -108,7 +109,7 @@ async function pageOverview(main) {
       </div>
     </div>
     <div class="card"><h3>Tempo views</h3>
-      <dl class="facts"><dt>${DJ()}</dt><dd>${esc(st.loaded_in_traktor)}</dd>${S.libs.lexicon ? `<dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>` : ""}
+      <dl class="facts">${SNAP ? "" : `<dt>${esc(VIEWAPP())}</dt><dd>${esc(st.loaded_in_traktor)}</dd>`}${!SNAP && S.libs.lexicon ? `<dt>Lexicon</dt><dd>${esc(st.loaded_in_lexicon)}</dd>` : ""}
       ${Object.entries(st.views).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v.tracks} tracks <span class="dim mono">${esc(v.folder)}</span></dd>`).join("") || "<dt>Views</dt><dd class='dim'>none scanned yet: make one on the <a href='#tempo'>Tempo view</a> tab</dd>"}</dl>
     </div>`;
 }

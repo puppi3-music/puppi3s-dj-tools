@@ -53,7 +53,9 @@ async function retrainBars(box, kinds, extra = {}) {
   });
 }
 async function pageSetup(main) {
-  const st = await getSetup(true), b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
+  const me = S.routeId, st = await getSetup(true);
+  if (me !== S.routeId) return;  // a newer page was picked meanwhile
+  const b = jobRunning() ? "disabled" : "", tk = st.traktor, sc = st.scan;
   const jb = (id, text, primary, disabled, why) => `<button id="${id}" class="${primary ? "primary" : ""}" ${disabled || b} ${disabled && why ? `title="${esc(why)}"` : ""}>${text}</button>`;
   const models = st.models.ready
     ? step("done", 1, "Analysis models", `Downloaded${st.models.maest ? "" : ", without MAEST: genres come from the smaller EffNet model only"}. <span class="mono">${esc(st.models.folder)}</span>`,
@@ -169,10 +171,10 @@ async function pageSetup(main) {
   const tempoStep = step(!st.tools.rubberband || !sc.tracks ? "blocked" : haveView ? "done" : "todo", 10, "Tempo view",
     `Optional: your catalogue as heard stretched to the tempo you play at, with key lock: which genres, colours and hype change.
      About an hour the first time for 470 tracks, resumable; later only new tracks. ${T.views.length ? `Scanned: ${T.views.map(v => `${v} BPM`).join(", ")}.` : ""}
-     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>${APP} has the ${T.loaded} BPM view loaded.</b>` : ""}`,
+     ${!st.tools.rubberband ? "<b>Needs rubberband (above).</b>" : ""} ${T.loaded ? `<b>${esc(T.loaded_app || APP)} has the ${T.loaded} BPM view loaded.</b>` : ""}`,
     `<label class="inline small">BPM <input type="number" id="su-bpm" value="${esc(bpm)}" min="60" max="250"></label>
      ${jb("su-tempo", haveView ? "Scan new tracks" : "Scan tempo view", !haveView && st.tools.rubberband && sc.tracks, (!st.tools.rubberband || !sc.tracks) && "disabled")}
-     ${T.loaded ? `<button id="su-native">Switch ${APP} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
+     ${T.loaded ? `<button id="su-native">Switch ${esc(T.loaded_app || APP)} back…</button>` : T.views.length ? `<button id="su-load">Load into ${APP}…</button>` : ""}
      ${T.views.length ? `<label class="inline small"><input type="checkbox" id="su-lexicon" ${SF.lexicon ?? T.lexicon_loaded ? "checked" : ""}> Lexicon too</label>` : ""}`);
   const G = st.grids || {};
   const gridStep = !LIB ? "" : step(!sc.tracks ? "blocked" : G.checked && G.checked >= (G.tracks || 0) ? "done" : "todo", 11, "Beat grids",

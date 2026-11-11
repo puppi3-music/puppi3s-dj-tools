@@ -29,7 +29,9 @@ const SORTS = {
   genre: t => (t.genre || "~").toLowerCase(), colour: colourPos, cues: t => -((t.corrections || 0) * 100 + (t.own_cues || 0)), hype: t => -(t.hype ?? -1), lufs: t => -(t.lufs ?? -99), length: t => t.duration_sec ?? 0,
 };
 async function pageTracks(main, open) {
+  const me = S.routeId;
   let all = await getTracks();
+  if (me !== S.routeId) return;  // a newer page or library was picked meanwhile
   // a filter kept from before (a refresh, the Overview, another library) stays in its menu even when no track has it now
   const genres = [...new Set([TF.genre, ...all.flatMap(t => [t.genre, t.genre_2, t.my_genre])].filter(Boolean))].sort();
   main.innerHTML = `

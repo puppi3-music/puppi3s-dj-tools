@@ -60,6 +60,7 @@ def libraries() -> dict:
     st, lx = tempo.loaded(), lexicon.loaded()
     return {"libraries": libs, "loaded_view": st["bpm"] if st else None, "status": tempo.status(),
             "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
+            "loaded_app": dj.APPS.get(st.get("app", "traktor"), "Traktor") if st else None,  # the app holding it
             "home": str(HOME), "colours": COLOR_NAMES, "app": dj.app(), "app_name": dj.app_name()}
 
 
