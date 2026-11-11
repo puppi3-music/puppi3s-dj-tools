@@ -64,7 +64,7 @@ function navCounts() {
 const PAGES = { overview: pageOverview, tracks: pageTracks, hype: pageHype, colours: pageColours, tempo: pageTempo, mixes: pageMixes, files: pageFiles, setup: pageSetup };
 async function route() {
   const [page, ...rest] = (location.hash.slice(1) || "overview").split("/");
-  S.page = PAGES[page] ? page : "overview";
+  S.page = PAGES[page] && !(SNAP && (page === "files" || page === "setup")) ? page : "overview";  // a snapshot has neither
   document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + S.page));
   if (S.libs) libNote();
   if (!SNAP) { jobBar(); refreshSetupNote(); }
