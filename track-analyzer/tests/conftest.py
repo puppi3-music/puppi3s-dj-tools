@@ -216,8 +216,28 @@ class FakeTraktor:
         raise AssertionError(f"the stand-in Traktor {'never showed up in' if running else 'stayed in'} the process list")
 
 
+_ONE_TRAKTOR = Path(tempfile.gettempdir()) / "dj-tools-tests-fake-traktor.lock"  # shared by all xdist workers
+
+
+@pytest.fixture(autouse=True)
+def _alone_with_fake_traktor(request):
+    """The stand-in Traktor is a real process every test can see: while a test runs one (exclusive lock), no other
+    test runs, or a parallel worker's write is refused with "Traktor is running"."""
+    if sys.platform == "win32":  # no fcntl; the Windows check runs the suite in one process
+        yield
+        return
+    import fcntl
+
+    with open(_ONE_TRAKTOR, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX if "fake_traktor" in request.fixturenames else fcntl.LOCK_SH)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 @pytest.fixture
-def fake_traktor(tmp_path):
+def fake_traktor(tmp_path, _alone_with_fake_traktor):
     t = FakeTraktor(tmp_path)
     yield t
     t.stop()
