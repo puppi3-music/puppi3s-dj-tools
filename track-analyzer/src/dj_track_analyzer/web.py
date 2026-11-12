@@ -116,6 +116,8 @@ def tracks(lib: str = "native") -> dict:
     guessed = colour_guesses()
     from . import cues, gridfix
 
+    review = colors.review_marks({r["path"]: r.get("traktor_color") for r in rows}) if not lib or lib == "native" else {}
+
     approved = cues.plans()
     fixes = correction_counts()
     try:
@@ -151,6 +153,8 @@ def tracks(lib: str = "native") -> dict:
             r["by_hand"] = by_hand[r["path"]]
         if r["path"] in guessed:  # guessed into Traktor by the app, not checked yet: training leaves it out
             r["colour_guess"] = True
+        if r["path"] in review:  # the colour review lists it: Approve / Keep in the panel, written from the Colours tab
+            r["colour_review"] = review[r["path"]]
     return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
 
 

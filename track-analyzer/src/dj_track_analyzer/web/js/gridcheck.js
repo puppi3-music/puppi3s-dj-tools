@@ -189,6 +189,23 @@ function colourNotes(t) {
   const parts = [t.your_colour && `yours at its own tempo: ${esc(t.your_colour)}`, model].filter(Boolean);
   return parts.length ? ` <span class="dim small">· ${parts.join(" · ")}</span>` : "";
 }
+// the colour review (Colours tab) lists this track: mark it here the same way; Write stays on the Colours tab
+function colourReview(t) {
+  const r = t.colour_review;
+  if (SNAP || S.lib !== "native") return "";
+  if (t.colour_guess) return `<div class="small" style="margin-top:4px"><span class="dim">Guessed by the app:</span>
+    <button type="button" class="mini" data-cguess data-tip="${GUESS_TIP()}">It's right</button></div>`;
+  if (!t.traktor_color && t.color && canEdit(t)) return `<div class="small" style="margin-top:4px"><span class="dim">No colour in ${DJ()} yet; the model says ${esc(t.color)}:</span>
+    <button type="button" class="mini" data-cuse="${esc(t.color)}" data-tip="Write ${esc(t.color)} into ${DJ()} as your colour (quit ${DJ()} first; a backup is made, and Undo puts it back)">Use ${esc(t.color)}</button></div>`;
+  if (!r) return "";
+  const write = `<a href="#colours" data-tip="Marks are written together from the Colours tab">Write on the Colours tab</a>`;
+  if (r.marked) return `<div class="small" style="margin-top:4px"><span class="chip warn">${r.marked === "approve"
+    ? `will recolour to&nbsp; ${sw(r.sounds_like)}${esc(r.sounds_like)}` : `will keep&nbsp; ${sw(r.your_colour)}${esc(r.your_colour)} always`}</span>
+    <button type="button" class="mini" data-cmark="" data-tip="Unmark">✕</button> ${write}</div>`;
+  return `<div class="small" style="margin-top:4px"><span class="dim">Sounds like ${esc(r.sounds_like)}${r.confidence_exact != null ? ` (${pct(r.confidence_exact)} sure)` : ""}:</span>
+    <button type="button" class="mini" data-cmark="approve" data-tip="Mark: recolour it ${esc(r.sounds_like)} when you press Write on the Colours tab">Approve ${esc(r.sounds_like)}</button>
+    <button type="button" class="mini" data-cmark="keep" data-tip="Mark: keep your ${esc(r.your_colour)} always when you press Write on the Colours tab">Keep ${esc(r.your_colour)}</button></div>`;
+}
 let openSeq = 0;  // each openTrack call; a slower earlier call or its cue reply doesn't land over a newer one
 async function openTrack(path) {
   const seq = ++openSeq;
@@ -210,7 +227,7 @@ async function openTrack(path) {
       <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">${bpmAgree(t) ? `${DJ()} and ours agree` : `${DJ()} ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}`}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
       <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot && t.traktor_camelot === t.camelot && t.camelot === t.mix_camelot
         ? `${esc(t.key || "–")} · ${DJ()} and ours agree` : `${t.traktor_camelot ? `${DJ()} ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})`}</span></dd>
-      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}</dd>
+      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}${colourReview(t)}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
       <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">${t.hype != null ? "of 10, " : ""}compared with your collection</span></dd>
       <dt>Loudness</dt><dd>${t.lufs != null ? `${fmt(t.lufs, 1)} LUFS${t.loudness_range != null ? ` · range ${fmt(t.loudness_range, 1)} LU` : ""}` : "–"}</dd>
@@ -251,13 +268,31 @@ async function openTrack(path) {
     b.dataset.tip = wide ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"; tip.style.display = "none";
   };
   d.classList.toggle("wide", drawerWide());
-  const acc = body.querySelector("#dr-accept");
-  if (acc) acc.onclick = async () => {
+  body.querySelectorAll("#dr-accept, [data-cguess]").forEach(acc => acc.onclick = async () => {
     try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
     catch (e) { acc.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
-  };
+  });
   $("#dr-edit")?.addEventListener("click", () => { S.editing = editing(t) ? null : t.path; if (S.editing) S.editMsg = null; reopen(t.path); });
   bindEdit(t);
+  body.querySelectorAll("[data-cuse]").forEach(b => b.onclick = async () => {  // as ✎ Edit's Save with only the colour
+    b.disabled = true;
+    try {
+      const r = await postJSON("/api/track/edit", { path: t.path, changes: { colour: b.dataset.cuse } });
+      const tk = typeof r.traktor === "string" ? r.traktor : r.traktor?.changed ? `${DJ()}: ${r.traktor.changed_fields.join(", ")} written` : `${DJ()} already had it`;
+      S.editMsg = { path: t.path, text: `Colour set to ${b.dataset.cuse} · ${tk}${r.traktor?.warning ? ` · ${r.traktor.warning}` : ""}`, undo: r.undo };
+      S.tracks = {}; SETUP = null;
+      await reopen(t.path);
+      if (S.page === "tracks") { S.reloadTracks?.(); S.refreshRetrain?.(); }
+    } catch (e) { b.disabled = false; b.parentElement.querySelector(".err")?.remove(); b.parentElement.insertAdjacentHTML("beforeend", ` <span class="small err" style="color:var(--bad)">${esc(e.message)}</span>`); }
+  });
+  body.querySelectorAll("[data-cmark]").forEach(b => b.onclick = async () => {
+    const action = b.dataset.cmark || null;
+    try {
+      await postJSON("/api/colours/mark", { paths: [t.path], action });
+      colourMarked([t.path], action); if (S.page === "colours") S.colourMarked?.([t.path], action);
+      const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.();
+    } catch (e) { b.parentElement.querySelector(".err")?.remove(); b.parentElement.insertAdjacentHTML("beforeend", ` <span class="small err" style="color:var(--bad)">${esc(e.message)}</span>`); }
+  });
   body.querySelectorAll("[data-hold]").forEach(b => b.onclick = async () => {
     const k = b.dataset.hold;
     try { await hold([t.path], k, !t["held_" + k]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }

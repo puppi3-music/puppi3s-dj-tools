@@ -94,9 +94,10 @@ async function pageColours(main) {
       try {
         await postJSON("/api/colours/mark", { paths, action });
         for (const p of paths) { const t = byPath.get(p); if (t) { if (action) t.marked = action; else delete t.marked; } }
-        RSEL.clear(); draw();
+        colourMarked(paths, action); RSEL.clear(); draw();
       } catch (err) { const el = $("#c-markmsg") || $("#c-selmsg") || $("#c-sel"); if (el) el.textContent = err.message; }  // a row's button with no bar yet: #c-sel
     };
+    S.colourMarked = (paths, action) => { if (me !== S.routeId) return; for (const p of paths) { const t = byPath.get(p); if (t) { if (action) t.marked = action; else delete t.marked; } } draw(); };  // marked in the track panel
     const selbar = () => {
       const box = $("#c-sel"), n = RSEL.size;
       m.querySelectorAll("table").forEach(tb => {  // each list's header box: ticked when all its rows are

@@ -88,6 +88,10 @@ async function acceptColours(paths) {  // guessed colours checked and right: you
   SETUP = null;  // the Setup tab's count of new colours to learn from changed
   return d;
 }
+function colourMarked(paths, action) {  // a colour review mark changed: the cached track lists show it too
+  const set = new Set(paths);
+  for (const list of Object.values(S.tracks)) for (const t of list) if (set.has(t.path) && t.colour_review) { if (action) t.colour_review.marked = action; else delete t.colour_review.marked; }
+}
 async function hold(paths, kind, on) {
   const d = await postJSON("/api/hold", { paths, kind, on });
   const set = new Set(paths);
