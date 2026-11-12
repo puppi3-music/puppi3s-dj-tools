@@ -1591,7 +1591,7 @@ def export_piece(dirs: list[Path], ident: str, at: str, lead: int = 0, tail: int
 
     rec = mix_audio(dirs, ident)
     sa = (_json_in(_saved_path(dirs, ident)) or {}).get("standalone") or {}
-    c = next((x for x in sa.get("changes") or [] if x.get("at") == at), None)
+    c = next((x for x in (sa.get("changes") or []) + (sa.get("solos") or []) if x.get("at") == at), None)
     if not c:
         raise ValueError("no such piece in this analysis")
     start, end, L = piece_bounds(c, int(lead), int(tail))

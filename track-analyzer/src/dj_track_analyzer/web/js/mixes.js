@@ -78,7 +78,8 @@ async function mixDialog(file, again, was = {}) {
     <div style="margin-top:10px"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-tl" checked> Check each against ${DJ()}'s history of that session <span class="dim small">(skipped, with a note, when there's none)</span></label><br>
       <div id="mx-startrow" style="margin:2px 0 4px 22px"><label class="inline" style="white-space:normal;flex-wrap:wrap">Started at <input type="datetime-local" step="1" id="mx-start"> <span class="dim small">only for a recording whose name doesn't say (Traktor's do)</span></label></div>
       <div id="mx-sarow" style="margin:2px 0 4px 0"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-sa" checked> Find possible sub-mixes: long blends where both tracks play near full level, to post as their own track</label><br>
-        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sas"${was.separated ? " checked" : ""}> Separate tracks without a stem file <span class="dim small">(slow: a few minutes per track; without it they're measured whole)</span></label></div>
+        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sas"${was.separated ? " checked" : ""}> Separate tracks without a stem file <span class="dim small">(slow: a few minutes per track; without it they're measured whole)</span></label><br>
+        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sar" checked> Also solo reworks <span class="dim small">(one track alone, played changed: EQ, stems, re-arranged)</span></label></div>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
@@ -105,7 +106,7 @@ async function mixDialog(file, again, was = {}) {
     $("#mx-go").textContent = n > 1 ? `Analyse ${n} mixes` : "Analyse"; $("#mx-go").disabled = !n;
     $("#mx-startrow").hidden = n !== 1 || !$("#mx-tl").checked;  // one start time is for one recording
     $("#mx-sarow").hidden = !$("#mx-tl").checked;  // the pieces are found from the tracklist
-    $("#mx-sas").disabled = !$("#mx-sa").checked;
+    $("#mx-sas").disabled = $("#mx-sar").disabled = !$("#mx-sa").checked;
   };
   $("#mx-tl").addEventListener("change", count); $("#mx-sa").addEventListener("change", count);
   dlg.querySelectorAll("input[name=mx-rec]").forEach(r => r.addEventListener("change", () => {
@@ -137,7 +138,8 @@ async function mixDialog(file, again, was = {}) {
     const queued = jobRunning() && JOB.job.action === "analyze_mix";  // goes after the one running: no waiting here
     const start = $("#mx-startrow").hidden ? "" : $("#mx-start").value;
     const opts = { ...(files.length > 1 ? { files } : { file, start }), tracklist: $("#mx-tl").checked, highlights: $("#mx-hl").checked,
-      standalone: $("#mx-sa").checked, standalone_separate: $("#mx-sa").checked && $("#mx-sas").checked };
+      standalone: $("#mx-sa").checked, standalone_separate: $("#mx-sa").checked && $("#mx-sas").checked,
+      standalone_solo: $("#mx-sar").checked };
     if (queued) {
       try { await postJSON("/api/jobs/start", { action: "analyze_mix", options: opts }); await jobPoll(); dlg.close(); }
       catch (e) { go.disabled = false; msg.innerHTML = `<span class="err">${esc(e.message)}</span>`; }
@@ -369,7 +371,7 @@ function saFill(card) {  // the chosen name and the full-set link, written into 
   });
 }
 const SA_FIT = "min-height:0;field-sizing:content";  // as tall as the text (rows= where field-sizing isn't supported)
-// Each change's per-bar levels as a strip: both tracks against their own level, the 12 dB line, the qualifying run
+// Each change's per-bar levels as a strip: both tracks against their own level, the near_db line, the qualifying run
 // shaded; click it to hear the mix recording from there (preview player below)
 const SA_TOP = 6, SA_LOW = -30;  // dB at the strip's top and bottom
 function saRunIdx(c) {  // [first bar, bars] of the run in c.bars (run.from is rounded to the second)
@@ -387,21 +389,25 @@ function saSpan(c) {  // [start, end] mix seconds of the strip
   const bars = c.bars, L = c.bar || (bars.length > 1 ? (bars[bars.length - 1][0] - bars[0][0]) / (bars.length - 1) : 2);
   return [bars[0][0], bars[bars.length - 1][0] + L, L];
 }
-function saStrip(c, nameA, nameB, near) {
+const SA_MORE = ["var(--good)", "var(--text-2)"];  // lines of the other tracks around a change
+function saStrip(c, nameA, nameB, near, others = []) {  // others: titles of c.others (bars columns 3+)
   if (!c.bars?.length) return "";
-  const [t0, t1, L] = saSpan(c), W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
+  const [a, n] = saRun(c), [s0, s1, L] = saSpan(c);
+  const t0 = n ? Math.min(s0, a) : s0, t1 = n ? Math.max(s1, a + n * L) : s1;  // the piece always fits, past the measured bars too
+  const W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
   const y = db => ((SA_TOP - Math.max(SA_LOW, Math.min(SA_TOP, db ?? SA_LOW))) / (SA_TOP - SA_LOW) * H).toFixed(1);
   const line = k => c.bars.map((b, i) => `${i ? "L" : "M"}${x(b[0] + L / 2)} ${y(b[k])}`).join("");
-  const [a, n] = saRun(c), run = n ? `<rect x="${x(a)}" width="${x(a + n * L) - x(a)}" y="0" height="${H}" fill="var(--accent-soft)"/>` : "";
+  const run = n ? `<rect x="${x(a)}" width="${x(a + n * L) - x(a)}" y="0" height="${H}" fill="var(--accent-soft)"/>` : "";
   return `<div class="sa-strip" data-sa-strip="${esc(c.at)}" data-t0="${t0}" data-t1="${t1}" data-tip="Click to hear the mix from there">
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Level of both tracks per bar">${run}
       <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line-strong)" vector-effect="non-scaling-stroke"/>
       <line x1="0" x2="${W}" y1="${y(-near)}" y2="${y(-near)}" stroke="var(--text-3)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
       <path d="${line(1)}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
       <path d="${line(2)}" fill="none" stroke="var(--warn)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      ${others.map((_, q) => `<path d="${line(3 + q)}" fill="none" stroke="${SA_MORE[q % SA_MORE.length]}" stroke-width="1.5" stroke-dasharray="6 3" vector-effect="non-scaling-stroke"/>`).join("")}
       <line class="sa-head" x1="-10" x2="-10" y1="0" y2="${H}" stroke="var(--text)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
     <div class="sa-x"><span>${esc(clockS(t0))}</span><span>${esc(clockS(t1))}</span></div></div>
-    <div class="legend small"><span><i style="background:var(--accent)"></i>${nameA}</span><span><i style="background:var(--warn)"></i>${nameB}</span>
+    <div class="legend small"><span><i style="background:var(--accent)"></i>${nameA}</span><span><i style="background:var(--warn)"></i>${nameB}</span>${others.map((t, q) => `<span><i style="background:${SA_MORE[q % SA_MORE.length]}"></i>${t}</span>`).join("")}
       <span>dashed: ${near} dB below its own level · line above: its own level${n ? " · shaded: the run" : ""}</span></div>`;
 }
 const clockS = t => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
@@ -438,7 +444,8 @@ function saAdjust(at, k, d) {
   j[k] += d;
   const el = document.querySelector(`[data-sa-at="${CSS.escape(at)}"]`), [a, n, L] = saRun(c), [title, near] = SA_NAMES;
   [el.querySelector("[data-sa-span]").textContent, el.querySelector("[data-sa-bars]").textContent] = saHead(c);
-  el.querySelector("[data-sa-view]").innerHTML = saPlayer(c) + saStrip(c, title(c.from), title(c.to), near);
+  el.querySelector("[data-sa-view]").innerHTML = saPlayer(c) + (c.solo ? saStrip(c, title(c.solo), c.others?.length ? title(c.others[0]) : "", near, (c.others || []).slice(1).map(title))
+    : saStrip(c, title(c.from), title(c.to), near, (c.others || []).map(title)));
   el.querySelector("[data-sa-out]").textContent = "";
   if (SAP.at === at && SAP.end != null) SAP.end = a + n * L;  // the preview playing now stops at the new end
   saUi();
@@ -541,35 +548,41 @@ function saUi() {
 addEventListener("hashchange", () => { if (SAP.audio && !location.hash.startsWith("#mixes/" + encodeURIComponent(SAP.id || ""))) SAP.audio.pause(); });
 function saRule(sa) {
   if (sa.near_db == null) return `<div class="small muted">${esc(sa.rule)}</div>`;  // analysed before the page worded it
-  return `<div class="small muted" style="margin-bottom:4px">Picked when both tracks stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
-    below how loud it is on its own (with a stem file, one of its stems is enough)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
+  return `<div class="small muted" style="margin-bottom:4px">Picked when ${sa.multi ? "two or more tracks around a change" : "both tracks"} stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
+    below how loud it is on its own (with a stem file: its stems that play there, weighted by how loud each is, so a stem cut isn't read as a fade)${sa.steady_db != null ? `, or lower (down to ${-sa.steady_db} dB below) but steady, its level changing by ${sa.steady} dB or less from bar to bar, as when it plays bass-down or filtered` : ""}${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
 }
 function standalonePanel(d) {
   const sa = d.standalone; if (!sa) return "";
   const byAt = Object.fromEntries(sa.changes.map(c => [c.at, c])), tracks = Object.fromEntries((d.tracklist?.tracks || []).map(t => [t.n, t]));
   const title = n => esc(tracks[n]?.title || `track ${n}`), picks = sa.picks.map(at => byAt[at]), shorts = (sa.shorts || []).map(at => byAt[at]), near = sa.near_db ?? 12;
-  SA_SHOWN = picks.concat(shorts); SA_NAMES = [title, near];
+  const bySolo = Object.fromEntries((sa.solos || []).map(c => [c.at, c])), solos = [...(sa.solo_picks || []), ...(sa.solo_shorts || [])].map(at => bySolo[at]).filter(Boolean);
+  SA_SHOWN = picks.concat(shorts, solos); SA_NAMES = [title, near];
   for (const k in SA_ADJ) delete SA_ADJ[k];  // a fresh panel shows the runs as found
   const how = Object.entries(sa.measured_with || {}), whole = how.filter(([, h]) => h === "whole").map(([n]) => title(+n));
   const skipped = sa.changes.filter(c => c.status !== "measured"), miss = sa.closest_miss && byAt[sa.closest_miss];
   SA_MISS = miss || null;
+  const strip = c => c.solo ? saStrip(c, title(c.solo), c.others?.length ? title(c.others[0]) : "", near, (c.others || []).slice(1).map(title))
+    : saStrip(c, title(c.from), title(c.to), near, (c.others || []).map(title));
+  const head = c => c.solo ? `${title(c.solo)} alone, played changed (solo rework${(sa.solo_shorts || []).includes(c.at) ? ", short edit" : ""})`
+    : `${title(c.from)} into ${title(c.to)}${(c.with || []).map(n => ` with ${title(n)}`).join("")}`;
   const card = (c, i) => `<details class="sa-piece" open data-sa-at="${esc(c.at)}">
-        <summary><span class="sa-num">${i + 1}</span><b data-sa-span>${esc(saHead(c)[0])}</b> · ${title(c.from)} into ${title(c.to)} <span class="dim small" data-sa-bars>${esc(saHead(c)[1])}</span></summary>
+        <summary><span class="sa-num">${i + 1}</span><b data-sa-span>${esc(saHead(c)[0])}</b> · ${head(c)} <span class="dim small" data-sa-bars>${esc(saHead(c)[1])}</span></summary>
         <div class="sa-body"><div class="small muted" style="margin:0 0 6px">Why: ${esc(c.why)}</div>
-        <div data-sa-view>${saPlayer(c)}${saStrip(c, title(c.from), title(c.to), near)}</div>
+        <div data-sa-view>${saPlayer(c)}${strip(c)}</div>
         ${saExportRow(c)}
         <div class="filters" style="flex-wrap:wrap;margin-top:8px"><label class="inline">Name <select data-sa-name>${sa.names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
           <span class="dim small">your call: pick what fits how much you changed it</span></div>
         <div style="margin-top:6px">${copyBox(`<textarea class="sa-title" readonly rows="2" style="${SA_FIT};font:inherit;resize:none">${esc(c.title)}</textarea>`)}</div>
         <div style="margin-top:6px"><div class="small muted">Credits</div>${copyBox(`<textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea>`)}</div>
-        <div style="margin-top:6px"><div class="small muted">Genre, BPM, key and tags</div>${copyBox(`<textarea readonly rows="5" style="${SA_FIT}">${esc(scInfo([tracks[c.from], tracks[c.to]].filter(Boolean)))}</textarea>`)}</div></div></details>`;
+        <div style="margin-top:6px"><div class="small muted">Genre, BPM, key and tags</div>${copyBox(`<textarea readonly rows="5" style="${SA_FIT}">${esc(scInfo([...new Set([c.from, c.to, ...(c.with || [])])].map(n => tracks[n]).filter(Boolean)))}</textarea>`)}</div></div></details>`;
   return `<div class="card" id="sa"><h3>Possible sub-mixes <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
     ${SA_SHOWN.length ? (picks.length ? picks.map(card).join("") : `<div class="small muted">No blend long enough to release as a track.</div>`)
-      + (shorts.length ? `<h4 style="margin:12px 0 4px">Short edits <span class="dim small">a moment from the set, too short to be a track of its own</span></h4>` + shorts.map(card).join("") : "")
+      + (shorts.length ? `<h4 style="margin:12px 0 4px">Short edits <span class="dim small">a moment from the set, too short to be a track of its own</span></h4>` + shorts.map((c, i) => card(c, picks.length + i)).join("") : "")
+      + (solos.length ? `<h4 style="margin:12px 0 4px">Solo reworks <span class="dim small">one track alone, played changed in ${Math.round((sa.rework_share ?? 0.5) * 100)}%+ of its bars: EQ, stems or re-arranged</span></h4>` + solos.map((c, i) => card(c, picks.length + shorts.length + i)).join("") : "")
       + `<div class="filters" style="border-top:1px solid var(--line);padding-top:10px;margin-top:8px"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label>
         <span class="dim small">goes into each piece's credits above</span></div>`
       : `<div>Nothing qualifies in this mix, not even as a short edit.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>
-        ${miss ? `<div data-sa-at="${esc(miss.at)}" style="margin-top:6px">${saPlayer(miss)}${saStrip(miss, title(miss.from), title(miss.to), near)}</div>` : ""}`}
+        ${miss ? `<div data-sa-at="${esc(miss.at)}" style="margin-top:6px">${saPlayer(miss)}${saStrip(miss, title(miss.from), title(miss.to), near, (miss.others || []).map(title))}</div>` : ""}`}
     ${whole.length && whole.length < how.length ? `<div class="note">Measured without stems (no stem file): ${whole.join(", ")}. Tick "Separate tracks without a stem file" when you analyse it again to measure these by stem.</div>` : ""}
     ${skipped.length ? `<details style="margin-top:8px"><summary class="small muted">Couldn't measure ${skipped.length} ${skipped.length === 1 ? "change" : "changes"}</summary>
       <ul class="small">${skipped.map(c => `<li>${esc(c.at)} ${title(c.to)}: ${esc(c.status)}</li>`).join("")}</ul></details>` : ""}
@@ -594,7 +607,8 @@ document.addEventListener("click", e => {
 });
 // The pieces on the main timeline: segments that overlap one, click to go to it
 function saTimelineRow(d, tl) {
-  const sa = d.standalone, picks = [...(sa?.picks || []), ...(sa?.shorts || [])].map(at => sa.changes.find(c => c.at === at)).filter(Boolean);
+  const sa = d.standalone, all = [...(sa?.changes || []), ...(sa?.solos || [])];
+  const picks = [...(sa?.picks || []), ...(sa?.shorts || []), ...(sa?.solo_picks || []), ...(sa?.solo_shorts || [])].map(at => all.find(c => c.at === at)).filter(Boolean);
   if (!picks.length) return "";
   const runs = picks.map(c => [toSec(c.run.from), toSec(c.run.to), c.at]);
   return `<div class="tl-clips tl-sa">${tl.map(s => { const r = runs.find(([a, b]) => toSec(s.start) < b && toSec(s.end) > a);

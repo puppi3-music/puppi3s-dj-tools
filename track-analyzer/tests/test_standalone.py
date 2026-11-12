@@ -29,16 +29,16 @@ def track(seed: int, seconds: float) -> np.ndarray:
     return x / np.abs(x).max() * 0.3
 
 
-def setup(tmp_path, overlap: float, wrong_b: bool = False, cut_a: bool = False):
-    """A plays 0-90 s, B comes in under it and plays on alone. A is 4 stems; cut_a: through the blend only its
-    quietest stem plays (about -15 dB of the whole track), as a live stem cut leaves it."""
+def setup(tmp_path, overlap: float, wrong_b: bool = False, cut_a: int = 0):
+    """A plays 0-90 s, B comes in under it and plays on alone. A is 4 stems (one quiet, three loud); cut_a: that
+    many loud stems cut through the blend, as a live stem cut leaves it (2: half the track, -5 dB)."""
     stems_a = [track(10 + i, 100) * (0.3 if i == 0 else 1) for i in range(4)]
     a, b = sum(stems_a), track(2, 120)
     b_in = 90 - overlap
     mix = np.zeros(int((b_in + 120) * SR), np.float32)
     mix[: 90 * SR] += a[: 90 * SR]
     if cut_a:
-        mix[int(b_in * SR): 90 * SR] -= sum(stems_a[1:])[int(b_in * SR): 90 * SR]
+        mix[int(b_in * SR): 90 * SR] -= sum(stems_a[1:1 + cut_a])[int(b_in * SR): 90 * SR]
     mix[int(b_in * SR): int(b_in * SR) + len(b)] += b
     files = {"a": a, "b": track(3, 120) if wrong_b else b}
     paths = {}
@@ -98,19 +98,21 @@ def test_wrong_file_cannot_be_measured(tmp_path):
 
 
 def test_stem_cut_still_counts_with_stems(tmp_path):
-    _result, whole = run(tmp_path, overlap=45, cut_a=True)
+    _result, whole = run(tmp_path, overlap=45, cut_a=2)
     (c,) = whole["changes"]
     assert c["measured_with"] == {"from": "whole", "to": "whole"} and not c["qualifies"]  # read as a fade
-    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=True)
+    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=2)
     (c,) = out["changes"]
     assert c["measured_with"] == {"from": "stems", "to": "whole"}
     assert c["qualifies"] and c["run"]["bars"] >= 40, c["run"]
     assert c["why"].endswith("; measured without stems: Song B")
     assert out["measured_with"] == {"1": "stems", "2": "whole"}
+    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=3)  # only its quiet stem left: a fade, stems or not
+    assert not out["changes"][0]["qualifies"]
 
 
 def test_separation_only_when_asked(tmp_path):
-    result, mix, load, stems = setup(tmp_path, overlap=45, cut_a=True)
+    result, mix, load, stems = setup(tmp_path, overlap=45, cut_a=2)
     asked = []
 
     def split(path, t0, t1):
@@ -134,6 +136,20 @@ def test_longest_run_allows_single_off_bars():
     assert sa._longest([F, T, F, F, T, T, T], gap=1) == (4, 3)
     assert sa._longest([T, F, T], gap=0) == (0, 1)
     assert sa._longest([F, F]) == (0, 0)
+
+
+def test_lower_but_steady_counts_as_near():
+    N = None
+    assert sa._near([0.0, -3.0, -6.0, -7.0]) == [True, True, True, False]  # -7 alone, jumping from -6: off
+    # bass-down: steady (the first and last bar measured have only 3 readings around them)
+    assert sa._near([-10.0, -10.5, -10.0, -10.4, -10.2]) == [False, True, True, True, False]
+    assert sa._near([-8.0, -12.0, -7.0, -11.0, -9.0]) == [False] * 5  # a track that isn't playing: jumpy floor
+    assert sa._near([-17.0, -17.0, -17.0, -17.0]) == [False] * 4  # too far down, however steady
+    assert sa._near([-10.0, N, N, -10.0]) == [False, False, False, False]  # too few readings
+    run = [-10.0] * 40  # a blend with one track steady at -10 dB qualifies on the 2-near count
+    rows = [(i * 2.0, 0.0, v) for i, v in enumerate(run)]
+    a, b = sa._near_bars(rows)
+    assert all(a) and all(b[1:-1]) and sa._longest([x and y for x, y in zip(a, b)]) == (1, 38)
 
 
 def test_mix_job_passes_the_standalone_ticks(tmp_path):
@@ -241,6 +257,7 @@ def test_run_is_measured_until_it_ends_on_the_incoming_grid(tmp_path):
     k0 = round(t0 - 60.3) - c["run"]["lead"]
     assert k0 % 16 == 0 and (k0 + c["run"]["lead"] + c["run"]["bars"] + c["run"]["tail"]) % 16 == 0
     assert c["bar"] == 1.0
+    assert c["bars"][0][0] <= t0 - c["run"]["lead"]  # the strip shows the whole widened piece, its start too
 
 
 def test_no_grid_still_measures_to_the_end(tmp_path):
@@ -286,3 +303,67 @@ def test_long_blend_short_of_a_track_is_a_short_edit(tmp_path, monkeypatch):
     assert out["picks"] == [] and out["shorts"] == [c["at"]] and "closest_miss" not in out
     result["standalone"] = out
     assert "(short edit)" in "\n".join(sa.summary_lines(result))
+
+
+def setup_three(tmp_path):
+    """A plays 0-130 s; B is an insert 40-90 s; C comes in at 85 s under A: A and C overlap 45 s, around the
+    change from B into C, where B and C overlap only 5 s."""
+    srcs = {k: track(s, 200) for k, s in (("a", 21), ("b", 22), ("c", 23))}
+    mix = np.zeros(220 * SR, np.float32)
+    for k, (t0, t1) in {"a": (0, 130), "b": (40, 90), "c": (85, 215)}.items():
+        mix[t0 * SR: t1 * SR] += srcs[k][: (t1 - t0) * SR]
+    paths = {}
+    for k in srcs:
+        (tmp_path / f"{k}.flac").write_bytes(b"")
+        paths[k] = str(tmp_path / f"{k}.flac")
+    tracks = [{"n": n + 1, "start": sa.clock(s), "artist": f"Artist {k.upper()}", "title": f"Song {k.upper()}",
+               "judged_on": w, "bpm": BPM, "played_bpm": BPM, "path": paths[k]}
+              for n, (k, s, w) in enumerate((("a", 0, "0:05-0:45"), ("b", 40, "0:42-1:28"), ("c", 85, "2:11-3:30")))]
+    by_path = {paths[k]: srcs[k] for k in srcs}
+    return {"tracklist": {"tracks": tracks}}, mix, lambda p: by_path[p]
+
+
+@pytest.mark.parametrize("multi", [True, False])
+def test_overlap_of_tracks_around_a_change(tmp_path, multi):
+    result, mix, load = setup_three(tmp_path)
+    out = sa.find(result, mix, load=load, load_stems=lambda p: None, say=lambda m: None, multi=multi)
+    c = out["changes"][1]  # B into C, with A still up
+    assert c["status"] == "measured"
+    if multi:
+        assert c["others"] == [1] and c["with"] == [1] and c["qualifies"], c["run"]
+        assert c["names"] == [1, 2, 3] and c["title"].startswith("Artist A vs Artist B vs Artist C – ")
+        assert len(c["bars"][0]) == 4
+        assert np.median([r[1] if r[1] is not None else -99 for r in c["bars"] if 95 <= r[0] < 125]) < -sa.NEAR_DB
+    else:  # A unfitted: its sound is taken for B's after B ends, a run that isn't there
+        assert len(c["bars"][0]) == 3
+        assert np.median([r[1] if r[1] is not None else -99 for r in c["bars"] if 95 <= r[0] < 125]) > -sa.NEAR_DB
+
+
+def high_cut(x: np.ndarray, hz: float = 3000, db: float = -30) -> np.ndarray:
+    X = np.fft.rfft(x)
+    X[np.fft.rfftfreq(len(x), 1 / SR) > hz] *= 10 ** (db / 20)
+    return np.fft.irfft(X, len(x)).astype(np.float32)
+
+
+@pytest.mark.parametrize("eq", [False, True])
+def test_solo_rework_is_a_track_alone_played_changed(tmp_path, eq):
+    """B plays on alone after a quick handover: as the original it is no piece; with a deep high cut through
+    it, it is a solo rework (EQ in most of its bars)."""
+    result, mix, load, stems = setup(tmp_path, overlap=8)
+    if eq:
+        b_in = int(82 * SR)
+        mix = mix.copy()
+        mix[b_in:] = mix[b_in:] - load(result["tracklist"]["tracks"][1]["path"])[: len(mix) - b_in] \
+            + high_cut(load(result["tracklist"]["tracks"][1]["path"]))[: len(mix) - b_in]
+    out = sa.find(result, mix, load=load, load_stems=lambda p: None, grid=lambda p: None, say=lambda m: None)
+    solo_b = [c for c in out["solos"] if c["solo"] == 2]
+    assert solo_b and solo_b[0]["run"]["bars"] >= 32  # alone either way
+    t0 = sa.seconds(solo_b[0]["run"]["from"])
+    assert solo_b[0]["bars"][0][0] < t0 - 8  # bars before the track's stretch too, for the strip (never part of the run)
+    assert (solo_b[0]["at"] in out["solo_picks"]) == eq
+    assert (solo_b[0]["reworked"] >= sa.REWORK_SHARE) == eq
+    if eq:
+        assert "EQ" in solo_b[0]["why"] and solo_b[0]["title"].endswith("(Live Rework)")
+    assert not out["picks"]
+    off = sa.find(result, mix, load=load, load_stems=lambda p: None, grid=lambda p: None, say=lambda m: None, solo=False)
+    assert off["solos"] == [] and off["solo_picks"] == []

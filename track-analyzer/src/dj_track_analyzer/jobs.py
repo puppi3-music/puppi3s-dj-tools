@@ -96,6 +96,7 @@ def _analyze_mix(o: dict) -> list[str]:
     return ["analyze", str(p.resolve()), *(["--tracklist"] if tl else []), *(["--start", start] if tl and start else []),
             *(["--highlights"] if o.get("highlights", True) else []),
             *(["--no-standalone"] if tl and not o.get("standalone", True) else []),
+            *(["--no-solo-rework"] if tl and o.get("standalone", True) and not o.get("standalone_solo", True) else []),
             *(["--standalone-separate"] if tl and o.get("standalone", True) and o.get("standalone_separate") else []),
             "--json-only", "--out", str(out)]
 
