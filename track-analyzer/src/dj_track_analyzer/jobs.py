@@ -661,7 +661,9 @@ def setup_status(say=lambda part: None) -> dict:
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
     from . import mygenres
 
-    say("reticulating splines (your genre model)")  # the splines are a joke
+    say("reticulating splines")  # a joke: held just long enough to read
+    time.sleep(0.5)
+    say("your genre model")
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
     lib = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else st["traktor"].get("collection")
