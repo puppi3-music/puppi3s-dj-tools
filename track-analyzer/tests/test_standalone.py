@@ -29,16 +29,16 @@ def track(seed: int, seconds: float) -> np.ndarray:
     return x / np.abs(x).max() * 0.3
 
 
-def setup(tmp_path, overlap: float, wrong_b: bool = False, cut_a: bool = False):
-    """A plays 0-90 s, B comes in under it and plays on alone. A is 4 stems; cut_a: through the blend only its
-    quietest stem plays (about -15 dB of the whole track), as a live stem cut leaves it."""
+def setup(tmp_path, overlap: float, wrong_b: bool = False, cut_a: int = 0):
+    """A plays 0-90 s, B comes in under it and plays on alone. A is 4 stems (one quiet, three loud); cut_a: that
+    many loud stems cut through the blend, as a live stem cut leaves it (2: half the track, -5 dB)."""
     stems_a = [track(10 + i, 100) * (0.3 if i == 0 else 1) for i in range(4)]
     a, b = sum(stems_a), track(2, 120)
     b_in = 90 - overlap
     mix = np.zeros(int((b_in + 120) * SR), np.float32)
     mix[: 90 * SR] += a[: 90 * SR]
     if cut_a:
-        mix[int(b_in * SR): 90 * SR] -= sum(stems_a[1:])[int(b_in * SR): 90 * SR]
+        mix[int(b_in * SR): 90 * SR] -= sum(stems_a[1:1 + cut_a])[int(b_in * SR): 90 * SR]
     mix[int(b_in * SR): int(b_in * SR) + len(b)] += b
     files = {"a": a, "b": track(3, 120) if wrong_b else b}
     paths = {}
@@ -98,19 +98,21 @@ def test_wrong_file_cannot_be_measured(tmp_path):
 
 
 def test_stem_cut_still_counts_with_stems(tmp_path):
-    _result, whole = run(tmp_path, overlap=45, cut_a=True)
+    _result, whole = run(tmp_path, overlap=45, cut_a=2)
     (c,) = whole["changes"]
     assert c["measured_with"] == {"from": "whole", "to": "whole"} and not c["qualifies"]  # read as a fade
-    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=True)
+    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=2)
     (c,) = out["changes"]
     assert c["measured_with"] == {"from": "stems", "to": "whole"}
     assert c["qualifies"] and c["run"]["bars"] >= 40, c["run"]
     assert c["why"].endswith("; measured without stems: Song B")
     assert out["measured_with"] == {"1": "stems", "2": "whole"}
+    _result, out = run(tmp_path, stems_on=True, overlap=45, cut_a=3)  # only its quiet stem left: a fade, stems or not
+    assert not out["changes"][0]["qualifies"]
 
 
 def test_separation_only_when_asked(tmp_path):
-    result, mix, load, stems = setup(tmp_path, overlap=45, cut_a=True)
+    result, mix, load, stems = setup(tmp_path, overlap=45, cut_a=2)
     asked = []
 
     def split(path, t0, t1):

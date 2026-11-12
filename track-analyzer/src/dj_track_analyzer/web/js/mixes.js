@@ -79,7 +79,7 @@ async function mixDialog(file, again, was = {}) {
       <div id="mx-startrow" style="margin:2px 0 4px 22px"><label class="inline" style="white-space:normal;flex-wrap:wrap">Started at <input type="datetime-local" step="1" id="mx-start"> <span class="dim small">only for a recording whose name doesn't say (Traktor's do)</span></label></div>
       <div id="mx-sarow" style="margin:2px 0 4px 0"><label class="inline" style="white-space:normal"><input type="checkbox" id="mx-sa" checked> Find possible sub-mixes: long blends where both tracks play near full level, to post as their own track</label><br>
         <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sas"${was.separated ? " checked" : ""}> Separate tracks without a stem file <span class="dim small">(slow: a few minutes per track; without it they're measured whole)</span></label><br>
-        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sar" checked> Also solo reworks <span class="dim small">(one track alone, played changed: EQ, stems, re-arranged, another track faintly over it)</span></label></div>
+        <label class="inline" style="white-space:normal;margin-left:22px"><input type="checkbox" id="mx-sar" checked> Also solo reworks <span class="dim small">(one track alone, played changed: EQ, stems, re-arranged)</span></label></div>
       <label class="inline" style="white-space:normal"><input type="checkbox" id="mx-hl" checked> Suggest clips for social media: the 2 best 40-second stretches, where a drop lands after a build</label></div>
     <div class="note">Takes a minute or two per hour of music. It only reads the recordings; each result is added to your mixes when it's done${jobRunning() && JOB.job.action === "analyze_mix" ? ", after the mix being analysed now" : ""}.</div>
     <div class="filters" style="margin-top:12px"><button class="primary" id="mx-go">Analyse</button><button data-close>Close</button><span class="small" id="mx-msg"></span></div>`;
@@ -371,7 +371,7 @@ function saFill(card) {  // the chosen name and the full-set link, written into 
   });
 }
 const SA_FIT = "min-height:0;field-sizing:content";  // as tall as the text (rows= where field-sizing isn't supported)
-// Each change's per-bar levels as a strip: both tracks against their own level, the 12 dB line, the qualifying run
+// Each change's per-bar levels as a strip: both tracks against their own level, the near_db line, the qualifying run
 // shaded; click it to hear the mix recording from there (preview player below)
 const SA_TOP = 6, SA_LOW = -30;  // dB at the strip's top and bottom
 function saRunIdx(c) {  // [first bar, bars] of the run in c.bars (run.from is rounded to the second)
@@ -547,7 +547,7 @@ addEventListener("hashchange", () => { if (SAP.audio && !location.hash.startsWit
 function saRule(sa) {
   if (sa.near_db == null) return `<div class="small muted">${esc(sa.rule)}</div>`;  // analysed before the page worded it
   return `<div class="small muted" style="margin-bottom:4px">Picked when ${sa.multi ? "two or more tracks around a change" : "both tracks"} stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
-    below how loud it is on its own (with a stem file, one of its stems is enough)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
+    below how loud it is on its own (with a stem file: its stems that play there, weighted by how loud each is, so a stem cut isn't read as a fade)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
 }
 function standalonePanel(d) {
   const sa = d.standalone; if (!sa) return "";
@@ -576,7 +576,7 @@ function standalonePanel(d) {
   return `<div class="card" id="sa"><h3>Possible sub-mixes <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
     ${SA_SHOWN.length ? (picks.length ? picks.map(card).join("") : `<div class="small muted">No blend long enough to release as a track.</div>`)
       + (shorts.length ? `<h4 style="margin:12px 0 4px">Short edits <span class="dim small">a moment from the set, too short to be a track of its own</span></h4>` + shorts.map((c, i) => card(c, picks.length + i)).join("") : "")
-      + (solos.length ? `<h4 style="margin:12px 0 4px">Solo reworks <span class="dim small">one track alone, played changed in ${Math.round((sa.rework_share ?? 0.5) * 100)}%+ of its bars: EQ, stems, re-arranged, or another track faintly over it</span></h4>` + solos.map((c, i) => card(c, picks.length + shorts.length + i)).join("") : "")
+      + (solos.length ? `<h4 style="margin:12px 0 4px">Solo reworks <span class="dim small">one track alone, played changed in ${Math.round((sa.rework_share ?? 0.5) * 100)}%+ of its bars: EQ, stems or re-arranged</span></h4>` + solos.map((c, i) => card(c, picks.length + shorts.length + i)).join("") : "")
       + `<div class="filters" style="border-top:1px solid var(--line);padding-top:10px;margin-top:8px"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label>
         <span class="dim small">goes into each piece's credits above</span></div>`
       : `<div>Nothing qualifies in this mix, not even as a short edit.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>

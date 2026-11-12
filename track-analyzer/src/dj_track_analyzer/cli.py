@@ -110,8 +110,8 @@ def main() -> None:
                    help="with --tracklist: measure only the two tracks of each change, not also the track before and "
                         "after (then a run of 3+ tracks, or two that aren't neighbours, isn't seen)")
     a.add_argument("--no-solo-rework", action="store_true",
-                   help="with --tracklist: don't look for solo reworks (one track alone, played changed: EQ, stems, "
-                        "re-arranged, or another track faintly over it)")
+                   help="with --tracklist: don't look for solo reworks (one track alone, played changed: EQ, stems "
+                        "or re-arranged)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
     cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")

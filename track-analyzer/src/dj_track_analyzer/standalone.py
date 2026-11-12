@@ -25,7 +25,8 @@ NFFT = 4096
 FPS = SR / HOP
 EDGES = np.geomspace(40, 16000, 97)  # 96 log bands
 
-NEAR_DB = 12.0  # both tracks within this of their solo level ...
+NEAR_DB = 6.0  # both tracks within this of their solo level ... (null test: a track that isn't playing reads
+# within it in 32% of bars; one playing at 0 dB in 100%, at -6 dB in 91%, drums only in 73%)
 MIN_SECONDS = 150.0  # ... for this long (the run itself, not phrase padding): long enough to release as a track ...
 MIN_BARS = 64  # ... or, as a short edit (a moment from the set), this many bars once widened to whole phrases
 GAP = 1  # ... where a run may hold single off bars (a fill, a filter sweep, a misfit)
@@ -49,8 +50,9 @@ REWORK_STEM = 20.0  # a stem this far from its own level (muted or pushed)...
 REWORK_STEM2 = 6.5  # ... or a second stem this far: the stems rebalanced
 STEM_HEARD = 0.25  # a stem counts there when its original plays at 25%+ of its usual level (under 10%: 23% of bars read 20 dB+ off by noise)
 REWORK_OFF = 1.0  # seconds the mix sits off the original's position: looped, cut or re-arranged
-FAINT_DB = -16.0  # another track above this (but more than NEAR_DB under its level) is layered faintly over it;
-# a track that isn't playing reads in that band in 10% of bars (leakage: 25% from -30 dB)
+# No "another track faintly over it": the fit reads a track that isn't playing at about -8 dB (a spectral floor),
+# so a faint layer can't be told from none.
+LEVEL_HEARD = 0.05  # a part counts in a bar's level when its original there is 5%+ of the track's loudest part
 
 
 def seconds(text: str) -> float:
@@ -288,7 +290,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
     grids). The bars are counted on the incoming track's grid, so a piece starts and ends on its downbeats.
     multi: also unmix the track before the outgoing one and the one after the incoming one, so a run of 3+
     tracks is seen; a bar counts when any 2+ tracks are near their own level.
-    solo: also look for solo reworks, one track alone and played changed (EQ, stems, re-arranged, layered faintly)."""
+    solo: also look for solo reworks, one track alone and played changed (EQ, stems or re-arranged)."""
     report = result.get("tracklist")
     if not report or len(report.get("tracks", [])) < 2:
         return None
@@ -481,14 +483,16 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         return w, live
 
     def level(p: dict, g: np.ndarray, lv: list[float]) -> float | None:
-        """A track's level in one bar, in dB against its own: the part closest to its own level, among the parts
-        that sound in the original there (5%+ of the track's loudest part) and have a level of their own."""
+        """A track's level in one bar, in dB against its own: the gain of the parts that sound in the original
+        there (LEVEL_HEARD of the track's loudest part) and have a level of their own, weighted by how loud each
+        is: sum(g * lv) / sum(ref * lv). A cut stem lowers it by its share of the sound, not to silence."""
         top = max(lv)
         if top <= 0:  # its original has no sound here (not started, or over)
             return None
-        dbs = [_db(gj, r) for gj, r, l in zip(g, p["ref"], lv)
-               if r > 0 and (len(lv) == 1 or l >= 0.05 * top)]
-        return round(min(dbs, key=abs), 1) if dbs else None
+        on = [(gj, r, l) for gj, r, l in zip(g, p["ref"], lv) if r > 0 and (len(lv) == 1 or l >= LEVEL_HEARD * top)]
+        if not on:
+            return None
+        return round(_db(sum(gj * l for gj, _, l in on), sum(r * l for _, r, l in on)), 1)
 
     def change(i: int) -> dict:
         t_start = time.monotonic()
@@ -571,11 +575,9 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             f"({time.monotonic() - t_start:.0f} s)")
         return c
 
-    def changed(p: dict, x0: float, x1: float, g: np.ndarray, lv: list[float], faint: bool) -> list[str]:
+    def changed(p: dict, x0: float, x1: float, g: np.ndarray, lv: list[float]) -> list[str]:
         """Why track p is played changed in bar x0..x1 (empty: as the original). g, lv: its parts' fit."""
         why = []
-        if faint:
-            why.append("another track faintly over it")
         Mb = mix.M[int(x0 * FPS):int(x1 * FPS)]
         Ob = mix._frames(p["S"], p["offset"], x0, x1)[:len(Mb)]
         if len(Mb) and Ob.sum() > 0:
@@ -625,8 +627,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
                 others.append(level(q, g[k:k + len(q["parts"])], lv[k:k + len(q["parts"])]))
                 k += len(q["parts"])
             ok = own is not None and abs(own) <= NEAR_DB and all(o is None or o < -NEAR_DB for o in others)
-            w = changed(p, x, x + L, g[:m], lv[:m], any(o is not None and FAINT_DB < o < -NEAR_DB for o in others)) \
-                if ok else []
+            w = changed(p, x, x + L, g[:m], lv[:m]) if ok else []
             if ok and abs(off - p["offset"]) >= REWORK_OFF:
                 w.append("re-arranged")
             rows.append((round(float(x), 2), own, *others))
@@ -673,7 +674,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
     measured = [c for c in changes if c["status"] == "measured"]
     picks = [c for c in measured if c["qualifies"]]
     shorts = [c for c in measured if c.get("short")]
-    out = {"multi": multi, "rule": ("2 or more of the tracks around a change" if multi else "both tracks") + f" within {NEAR_DB:g} dB of their own level (with a stem file: any of its stems) "
+    out = {"multi": multi, "rule": ("2 or more of the tracks around a change" if multi else "both tracks") + f" within {NEAR_DB:g} dB of their own level (with a stem file: its stems that play there, by loudness) "
                    f"for {clock(MIN_SECONDS)}+ (short edits: {MIN_BARS}+ bars in whole phrases)"
                    + (", single off bars allowed" if GAP == 1 else f", up to {GAP} off bars in a row allowed" if GAP else ""),
            "near_db": NEAR_DB, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these
