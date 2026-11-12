@@ -44,6 +44,7 @@ UUID_NS = uuid.UUID("6f1c0a52-2d0e-4b4e-9a51-7a3c6f0d9e11")
 
 
 _offsets: dict[str, int] = {}  # path -> audio_offset
+_offset_disk: dict[str, tuple[int, int, int]] | None = None  # path -> (size, mtime_ns, offset), cache.db's audio_offset table
 
 
 def _mp3_info_frame(path: Path) -> bool:
@@ -67,6 +68,11 @@ def audio_offset(path: Path) -> int:
     Traktor's grid (right by eye in Traktor) both read 23.2 ms off with 0 and on with -1024. Other formats: 0."""
     k = str(path)
     if k not in _offsets:
+        stamp = _stamp(path)
+        disk = _offset_table()
+        if stamp and k in disk and disk[k][:2] == stamp:  # probed before and the file is unchanged
+            _offsets[k] = disk[k][2]
+            return _offsets[k]
         n = 0
         if path.suffix.lower() in (".m4a", ".mp4"):
             from .analysis import find_tool
@@ -90,7 +96,67 @@ def audio_offset(path: Path) -> int:
                 sr, st = 44100, 0.0
             n = round(st * sr) + (1152 if _mp3_info_frame(path) else 0)
         _offsets[k] = n
+        if stamp:
+            _offset_save(k, stamp, n)
     return _offsets[k]
+
+
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return st.st_size, st.st_mtime_ns
+
+
+def _offset_db():
+    """cache.db's audio_offset table: an ffprobe per MP3/m4a costs ~60 ms, so each one is kept until the file changes."""
+    import sqlite3
+
+    from .analysis import HOME
+
+    HOME.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(HOME / "cache.db", timeout=60)
+    con.execute("CREATE TABLE IF NOT EXISTS audio_offset (path TEXT PRIMARY KEY, size INTEGER, mtime_ns INTEGER, offset INTEGER)")
+    return con
+
+
+def _offset_table() -> dict[str, tuple[int, int, int]]:
+    global _offset_disk
+    if _offset_disk is None:
+        try:
+            con = _offset_db()
+            try:
+                _offset_disk = {r[0]: (r[1], r[2], r[3]) for r in con.execute("SELECT path, size, mtime_ns, offset FROM audio_offset")}
+            finally:
+                con.close()
+        except Exception:  # an unreadable cache only costs the probes
+            _offset_disk = {}
+    return _offset_disk
+
+
+def _offset_save(k: str, stamp: tuple[int, int], n: int) -> None:
+    _offset_table()[k] = (*stamp, n)
+    try:
+        con = _offset_db()
+        try:
+            with con:
+                con.execute("INSERT OR REPLACE INTO audio_offset VALUES (?,?,?,?)", (k, *stamp, n))
+        finally:
+            con.close()
+    except Exception:  # e.g. the db busy past the timeout: probed again next start
+        pass
+
+
+def warm_offsets(paths) -> None:
+    """Probe the files not yet known in parallel (the first gridfix.results after many new tracks)."""
+    todo = [Path(p) for p in paths if str(p) not in _offsets and Path(p).suffix.lower() in (".mp3", ".m4a", ".mp4")]
+    if len(todo) > 1:
+        _offset_table()  # loaded once before the threads share it
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 4)) as ex:
+            list(ex.map(audio_offset, todo))
 
 
 def offset_key(path: Path) -> str:

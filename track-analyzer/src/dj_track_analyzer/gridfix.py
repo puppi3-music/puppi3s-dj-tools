@@ -318,7 +318,9 @@ def results(nml: str | None = None, g: dict | None = None) -> dict[str, dict]:
         out = {}
         if len(_classified) > 5000:
             _classified.clear()
-        for p, d in cues._one_path_each(g if g is not None else cues.grids(nml)):
+        each = cues._one_path_each(g if g is not None else cues.grids(nml))
+        traktor.warm_offsets(p for p, _ in each)
+        for p, d in each:
             k = _key(p, d["bpm"], d["grid_ms"])
             row = con.execute("SELECT data FROM gridcheck WHERE k=?", (k,)).fetchone()
             if row:
