@@ -155,4 +155,4 @@ def test_lexicon_missing(tmp_path):
     con.execute("INSERT INTO Track VALUES ('/Volumes/Macintosh HD/Users/me/Have.mp3')")
     con.commit(); con.close()
     files = [Path("/Users/me/Have.mp3"), Path("/Users/me/Freestyler.m4a")]
-    assert lexicon.missing(files, db) == ["/Users/me/Freestyler.m4a"]
+    assert lexicon.missing(files, db) == [str(files[1])]  # Windows: backslashes
