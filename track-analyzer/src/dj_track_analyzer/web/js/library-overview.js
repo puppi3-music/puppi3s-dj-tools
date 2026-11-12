@@ -9,6 +9,17 @@ async function loadLibs() {
   sel.value = S.lib;
   sel.onchange = () => { S.lib = sel.value; try { localStorage.setItem("ta-lib", S.lib); } catch (e) {} route(); };
   libNote();
+  lexNote();
+}
+async function lexNote() {  // tracks in Traktor that Lexicon hasn't imported: its "Sync to Traktor" only goes the other way
+  const n = $("#lexnote");
+  if (SNAP || !S.libs.lexicon || DJ() !== "Traktor") { n.hidden = true; return; }
+  let d; try { d = await api("lexicon/missing"); } catch (e) { return; }
+  n.hidden = !d.count;
+  if (!d.count) return;
+  const names = d.missing.map(esc).join(", ") + (d.count > d.missing.length ? ", …" : "");
+  n.innerHTML = `<b>${d.count} track${d.count > 1 ? "s" : ""} in Traktor ${d.count > 1 ? "aren't" : "isn't"} in Lexicon yet</b> (${names}). In Lexicon, choose <b>Import → Traktor</b>: its <i>Sync to Traktor</i> only sends tracks the other way.`
+    + (d.lexicon_view ? ` Lexicon has the ${esc(d.lexicon_view)} BPM tempo view loaded: switch it back on the Tempo view tab first.` : "");
 }
 function libNote() {
   const n = $("#libnote"), v = S.libs.loaded_view, usesLib = ["overview", "tracks", "hype"].includes(S.page);

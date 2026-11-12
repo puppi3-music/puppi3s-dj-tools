@@ -143,3 +143,16 @@ def test_lexicon_locations():
         "C:\\Users\\me\\Music\\Traktor\\Tracks\\Café - Été.mp3"]
     assert lexicon._paths("/Volumes/Macintosh HD/Users/me/x.mp3") == ["/Volumes/Macintosh HD/Users/me/x.mp3",
                                                                       "/Users/me/x.mp3"]
+
+
+def test_lexicon_missing(tmp_path):
+    import sqlite3
+    from pathlib import Path
+    from dj_track_analyzer import lexicon
+    db = tmp_path / "main.db"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE Track (location TEXT)")
+    con.execute("INSERT INTO Track VALUES ('/Volumes/Macintosh HD/Users/me/Have.mp3')")
+    con.commit(); con.close()
+    files = [Path("/Users/me/Have.mp3"), Path("/Users/me/Freestyler.m4a")]
+    assert lexicon.missing(files, db) == ["/Users/me/Freestyler.m4a"]
