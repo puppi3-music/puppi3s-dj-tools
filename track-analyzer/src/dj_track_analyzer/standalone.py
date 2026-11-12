@@ -40,6 +40,17 @@ SPEED_STEPS = 13
 SOLO = 20.0  # solo level: the first seconds of the track's judged-on window
 BLOCKS = 8  # blocks per bar in the fit: smearing from the stretch averages out
 NAMES = ["Live Mashup", "Live Rework", "Live Edit", "Bootleg", "Remix"]
+# Solo reworks: one track alone (no other within NEAR_DB) for MIN_SECONDS / MIN_BARS, played changed in at least
+# REWORK_SHARE of its bars. Cut-offs from 22.8k measured bars of 11 real mixes and an ear check.
+REWORK_SHARE = 0.5
+REWORK_EQ = 15.0  # a coarse band (of EQ_BANDS) this far from the others, against the original: EQ'd or filtered
+EQ_BANDS = 8
+REWORK_STEM = 20.0  # a stem this far from its own level (muted or pushed)...
+REWORK_STEM2 = 6.5  # ... or a second stem this far: the stems rebalanced
+STEM_HEARD = 0.25  # a stem counts there when its original plays at 25%+ of its usual level (under 10%: 23% of bars read 20 dB+ off by noise)
+REWORK_OFF = 1.0  # seconds the mix sits off the original's position: looped, cut or re-arranged
+FAINT_DB = -16.0  # another track above this (but more than NEAR_DB under its level) is layered faintly over it;
+# a track that isn't playing reads in that band in 10% of bars (leakage: 25% from -30 dB)
 
 
 def seconds(text: str) -> float:
@@ -266,7 +277,8 @@ HOW = {"stems": "its stem file", "separated": "stems separated here", "whole": "
 
 
 def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=None, separate_missing: bool = False,
-         grid=None, say=print, workers: int | None = None, multi: bool = True) -> dict | None:
+         grid=None, say=print, workers: int | None = None, multi: bool = True,
+         solo: bool = True) -> dict | None:
     """Standalone pieces of a mix whose tracklist has been checked (`result["tracklist"]`).
     load(path) -> mono 44.1 kHz audio of an original (default: decoded like any track).
     load_stems(path) -> its 4 stems from a stem file, or None (default: the Traktor/NUO stem file, by tags).
@@ -275,7 +287,8 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
     grid(path) -> (bpm, first downbeat ms) of the original's beat grid in the DJ app, or None (default: the DJ app's
     grids). The bars are counted on the incoming track's grid, so a piece starts and ends on its downbeats.
     multi: also unmix the track before the outgoing one and the one after the incoming one, so a run of 3+
-    tracks is seen; a bar counts when any 2+ tracks are near their own level."""
+    tracks is seen; a bar counts when any 2+ tracks are near their own level.
+    solo: also look for solo reworks, one track alone and played changed (EQ, stems, re-arranged, layered faintly)."""
     report = result.get("tracklist")
     if not report or len(report.get("tracks", [])) < 2:
         return None
@@ -367,6 +380,9 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             heard = Lv[:, j][Lv[:, j] > 0] if len(Lv) else Lv
             on = Lv[:, j] > 0.05 * np.median(heard) if len(heard) else np.zeros(len(Lv), bool)
             ref.append(float(np.median(G[on, j])) if on.any() else 0.0)
+        # how loud each part's original usually is: a part far under that plays only a tail (a breakdown)
+        p["usual"] = [float(np.median(Lv[:, j][Lv[:, j] > 0])) if len(Lv) and (Lv[:, j] > 0).any() else 0.0
+                      for j in range(len(p["parts"]))]
         return ref
 
     import threading
@@ -555,12 +571,101 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             f"({time.monotonic() - t_start:.0f} s)")
         return c
 
+    def changed(p: dict, x0: float, x1: float, g: np.ndarray, lv: list[float], faint: bool) -> list[str]:
+        """Why track p is played changed in bar x0..x1 (empty: as the original). g, lv: its parts' fit."""
+        why = []
+        if faint:
+            why.append("another track faintly over it")
+        Mb = mix.M[int(x0 * FPS):int(x1 * FPS)]
+        Ob = mix._frames(p["S"], p["offset"], x0, x1)[:len(Mb)]
+        if len(Mb) and Ob.sum() > 0:
+            gb = []
+            for gr in np.array_split(np.arange(Mb.shape[1]), EQ_BANDS):
+                o = Ob[:, gr].sum()
+                gb.append(10 * np.log10(max(Mb[:, gr].sum(), 1e-12) / o) if o > 0 else np.nan)
+            gb = np.array(gb)
+            if np.isfinite(gb).sum() >= EQ_BANDS * 3 // 4 and np.nanmax(np.abs(gb - np.nanmedian(gb))) > REWORK_EQ:
+                why.append("EQ")
+        if p["how"] != "whole":
+            top = max(max(lv), 1e-12)
+            st = sorted((abs(_db(gj, r)) for gj, r, l, u in zip(g, p["ref"], lv, p["usual"])
+                         if r > 0 and l >= 0.05 * top and l >= STEM_HEARD * u), reverse=True)
+            if st and (st[0] > REWORK_STEM or (len(st) > 1 and st[1] > REWORK_STEM2)):
+                why.append("stems")
+        return why
+
+    def solo_run(i: int) -> dict | None:
+        """Track i alone (no other track within NEAR_DB) through its stretch of the mix, and how much of that is
+        played changed: a solo rework when it is long enough and changed in REWORK_SHARE of its bars."""
+        t, p = tracks[i], placed.get(tracks[i]["n"])
+        if not p or not p["ok"]:
+            return None
+        nb = [placed[tracks[j]["n"]] for j in (i - 1, i + 1) if 0 <= j < len(tracks)
+              and placed.get(tracks[j]["n"], {}).get("ok")]
+        a = seconds(t["start"])
+        b = seconds(tracks[i + 1]["start"]) if i + 1 < len(tracks) else len(mix.M) / FPS
+        b = min(b, len(p["S"]) / FPS - p["offset"], len(mix.M) / FPS)
+        L, phase = bar(t), None
+        gt = grid(t["path"])
+        if gt:
+            L = 240 / (gt[0] * p["speed"])
+            phase = gt[1] / 1000 / p["speed"] - p["offset"]
+            a = phase + np.ceil((a - phase) / L) * L
+        starts = list(np.arange(a, b - L, L))
+        if not starts:
+            return None
+        pos = mix.locate(p["S"], [max(0.0, x - PROBE / 2 + L / 2) for x in starts])
+        rows, alone, why = [], [], []
+        for x, (off, _) in zip(starts, pos):
+            ps = [p] + nb
+            g, lv = fit(x, x + L, ps)
+            m = len(p["parts"])
+            own, others, k = level(p, g[:m], lv[:m]), [], m
+            for q in nb:
+                others.append(level(q, g[k:k + len(q["parts"])], lv[k:k + len(q["parts"])]))
+                k += len(q["parts"])
+            ok = own is not None and abs(own) <= NEAR_DB and all(o is None or o < -NEAR_DB for o in others)
+            w = changed(p, x, x + L, g[:m], lv[:m], any(o is not None and FAINT_DB < o < -NEAR_DB for o in others)) \
+                if ok else []
+            if ok and abs(off - p["offset"]) >= REWORK_OFF:
+                w.append("re-arranged")
+            rows.append((round(float(x), 2), own, *others))
+            alone.append(ok)
+            why.append(w)
+        i0, n = _longest(alone)
+        if not n:
+            return None
+        hit = [w for w, ok in zip(why[i0:i0 + n], alone[i0:i0 + n]) if ok and w]
+        t0 = rows[i0][0]
+        run = {"bars": n, "from": clock(t0), "to": clock(t0 + n * L)}
+        if gt:
+            k0 = int(round((t0 - phase) / L))
+            run["lead"], run["tail"] = k0 % PHRASE, -(k0 + n) % PHRASE
+        share = len(hit) / n
+        c = {"at": f"{t['start']} solo", "solo": t["n"], "from": t["n"], "to": t["n"], "status": "measured",
+             "others": [tracks[j]["n"] for j in (i - 1, i + 1) if 0 <= j < len(tracks)
+                        and placed.get(tracks[j]["n"], {}).get("ok")],
+             "bars": rows, "bar": round(L, 4), "run": run, "reworked": round(share, 2),
+             "reworked_bars": [rows[i0 + q][0] for q in range(n) if alone[i0 + q] and why[i0 + q]]}
+        c["qualifies"] = share >= REWORK_SHARE and n * L >= MIN_SECONDS
+        c["short"] = share >= REWORK_SHARE and not c["qualifies"] and n + run.get("lead", 0) + run.get("tail", 0) >= MIN_BARS
+        kinds = sorted({k for w in hit for k in w})
+        name = "Live Rework"
+        c["title"] = f"{(t.get('artist') or '?').strip()} – {_plain(t.get('title'))} ({name})"
+        c["why"] = (f"{n} bars ({run['from']}–{run['to']}) with {_plain(t.get('title'))} alone, played changed in "
+                    f"{share:.0%} of them" + (f" ({', '.join(kinds)})" if kinds else ""))
+        when = _date(report)
+        c["credits"] = "\n".join(["Original:", f"• {_credit(t)}", "",
+                                  f"Recorded live{' ' + when if when else ''} · full set: <link>"])
+        return c
+
     from concurrent.futures import ThreadPoolExecutor as Pool
 
     pool = Pool(max(1, workers or min(5, (os.cpu_count() or 4) // 2)))
     try:
         futures = [pool.submit(change, i) for i in range(len(tracks) - 1)]
         changes = [f.result() for f in futures]  # in order; an error or a stop re-raises here
+        solos = [c for c in pool.map(solo_run, range(len(tracks))) if c] if solo else []
     finally:  # an error or a stop from the page: drop the reads and changes not started yet
         pool.shutdown(wait=False, cancel_futures=True)
         readers.shutdown(wait=False, cancel_futures=True)
@@ -574,10 +679,13 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
            "near_db": NEAR_DB, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these
            "names": NAMES, "changes": changes, "picks": [c["at"] for c in picks],
            "shorts": [c["at"] for c in shorts],
+           "solo": solo, "solos": solos, "rework_share": REWORK_SHARE,
+           "solo_picks": [c["at"] for c in solos if c["qualifies"]], "solo_shorts": [c["at"] for c in solos if c["short"]],
            "measured_with": {str(t["n"]): placed[t["n"]]["how"] for t in tracks if placed.get(t["n"], {}).get("ok")}}
     say(f"standalone pieces: done, {len(picks)} of {len(measured)} measured changes qualify as tracks, "
         f"{len(shorts)} as short edits"
-        + (f" ({len(changes) - len(measured)} couldn't be measured)" if len(changes) > len(measured) else ""))
+        + (f" ({len(changes) - len(measured)} couldn't be measured)" if len(changes) > len(measured) else "")
+        + (f"; {len(out['solo_picks'])} solo reworks, {len(out['solo_shorts'])} short" if solo else ""))
     if not picks and not shorts and measured:
         miss = max(measured, key=lambda c: c["run"]["bars"])
         if miss["run"]["bars"]:
@@ -592,7 +700,7 @@ def summary_lines(result: dict, chapters: list[str] | None = None) -> list[str]:
     by_at = {c["at"]: c for c in sa["changes"]}
     names = {t["n"]: t for t in result["tracklist"]["tracks"]}
     lines = ["", f"  Standalone pieces ({sa['rule']})"]
-    if not sa["picks"] and not sa.get("shorts"):
+    if not sa["picks"] and not sa.get("shorts") and not sa.get("solo_picks") and not sa.get("solo_shorts"):
         lines.append("    Nothing qualifies.")
         if sa.get("closest_miss"):
             c = by_at[sa["closest_miss"]]
@@ -602,6 +710,12 @@ def summary_lines(result: dict, chapters: list[str] | None = None) -> list[str]:
         short = " (short edit)" if at in sa.get("shorts", []) else ""
         lines += ["", f"    {c['title']}{short}", f"      Why: {c['why']}",
                   "      Name: " + " / ".join(sa["names"]) + " (your call)", "      Credits:"]
+        lines += [f"        {x}" for x in c["credits"].splitlines()]
+    by_solo = {c["at"]: c for c in sa.get("solos", [])}
+    for at in sa.get("solo_picks", []) + sa.get("solo_shorts", []):
+        c = by_solo[at]
+        short = " (short edit)" if at in sa.get("solo_shorts", []) else ""
+        lines += ["", f"    {c['title']} (solo rework){short}", f"      Why: {c['why']}", "      Credits:"]
         lines += [f"        {x}" for x in c["credits"].splitlines()]
     without = [names[int(n)].get("title", "") for n, how in sa.get("measured_with", {}).items() if how == "whole"]
     if without and len(without) < len(sa.get("measured_with", {})):

@@ -320,3 +320,31 @@ def test_overlap_of_tracks_around_a_change(tmp_path, multi):
     else:  # A unfitted: its sound is taken for B's after B ends, a run that isn't there
         assert len(c["bars"][0]) == 3
         assert np.median([r[1] if r[1] is not None else -99 for r in c["bars"] if 95 <= r[0] < 125]) > -sa.NEAR_DB
+
+
+def high_cut(x: np.ndarray, hz: float = 3000, db: float = -30) -> np.ndarray:
+    X = np.fft.rfft(x)
+    X[np.fft.rfftfreq(len(x), 1 / SR) > hz] *= 10 ** (db / 20)
+    return np.fft.irfft(X, len(x)).astype(np.float32)
+
+
+@pytest.mark.parametrize("eq", [False, True])
+def test_solo_rework_is_a_track_alone_played_changed(tmp_path, eq):
+    """B plays on alone after a quick handover: as the original it is no piece; with a deep high cut through
+    it, it is a solo rework (EQ in most of its bars)."""
+    result, mix, load, stems = setup(tmp_path, overlap=8)
+    if eq:
+        b_in = int(82 * SR)
+        mix = mix.copy()
+        mix[b_in:] = mix[b_in:] - load(result["tracklist"]["tracks"][1]["path"])[: len(mix) - b_in] \
+            + high_cut(load(result["tracklist"]["tracks"][1]["path"]))[: len(mix) - b_in]
+    out = sa.find(result, mix, load=load, load_stems=lambda p: None, grid=lambda p: None, say=lambda m: None)
+    solo_b = [c for c in out["solos"] if c["solo"] == 2]
+    assert solo_b and solo_b[0]["run"]["bars"] >= 32  # alone either way
+    assert (solo_b[0]["at"] in out["solo_picks"]) == eq
+    assert (solo_b[0]["reworked"] >= sa.REWORK_SHARE) == eq
+    if eq:
+        assert "EQ" in solo_b[0]["why"] and solo_b[0]["title"].endswith("(Live Rework)")
+    assert not out["picks"]
+    off = sa.find(result, mix, load=load, load_stems=lambda p: None, grid=lambda p: None, say=lambda m: None, solo=False)
+    assert off["solos"] == [] and off["solo_picks"] == []

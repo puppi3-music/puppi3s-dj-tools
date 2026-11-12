@@ -109,6 +109,9 @@ def main() -> None:
     a.add_argument("--standalone-pairs-only", action="store_true",
                    help="with --tracklist: measure only the two tracks of each change, not also the track before and "
                         "after (then a run of 3+ tracks, or two that aren't neighbours, isn't seen)")
+    a.add_argument("--no-solo-rework", action="store_true",
+                   help="with --tracklist: don't look for solo reworks (one track alone, played changed: EQ, stems, "
+                        "re-arranged, or another track faintly over it)")
     a.add_argument("--start", default=None, metavar="HH:MM:SS",
                    help="with --tracklist: when the recording started (read from Traktor's recording name if left out)")
     cl = sub.add_parser("clips", help="previews of a mix's clip suggestions from the finished video, then the chosen clips")
@@ -414,7 +417,8 @@ def main() -> None:
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
                               highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood,
                               standalone=not args.no_standalone, standalone_separate=args.standalone_separate,
-                              standalone_multi=not args.standalone_pairs_only)
+                              standalone_multi=not args.standalone_pairs_only,
+                              standalone_solo=not args.no_solo_rework)
         if skipped and result.get("type") == "dj_mix":
             result.update(skipped)
         if result.get("type") == "dj_mix":

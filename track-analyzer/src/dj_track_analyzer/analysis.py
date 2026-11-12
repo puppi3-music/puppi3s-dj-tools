@@ -1624,7 +1624,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
                  progress: bool = False, tracklist: tuple | None = None, highlights: int = 0,
                  clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0,
                  standalone: bool = True, standalone_separate: bool = False,
-                 standalone_multi: bool = True) -> dict:
+                 standalone_multi: bool = True, standalone_solo: bool = True) -> dict:
     """tracklist: (plays, history path, recording start) from tracklist.py, for a mix: adds a per-track
     report and judges genres at the tracks' own BPMs. genre_bpm: a BPM to judge the genre rules by instead of the measured one (scan passes
     Traktor's, which the user may have corrected by hand). tempo: (track's BPM, BPM to play it at)
@@ -1766,8 +1766,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         from . import standalone as sa
 
         result["standalone"] = sa.find(result, mono44, separate_missing=standalone_separate, say=say,
-                                      multi=standalone_multi)
-        if result["standalone"]["picks"] or result["standalone"]["shorts"]:  # SoundCloud timestamps for the full set the pieces link to
+                                      multi=standalone_multi, solo=standalone_solo)
+        if any(result["standalone"].get(k) for k in ("picks", "shorts", "solo_picks", "solo_shorts")):  # SoundCloud timestamps for the full set the pieces link to
             from . import tracklist as tl
 
             result["standalone"]["timestamps"] = tl.chapters(result, 0)
