@@ -610,9 +610,7 @@ def setup_status(say=lambda part: None) -> dict:
     def say(part: str) -> None:  # noqa: F811  (counts steps, so the joke below never covers a later one)
         steps[0] += 1
         real(part)
-    say("reticulating splines")  # a joke over real work: the true label takes over after 1.5 s (the page asks every 0.7 s)
-    joke = steps[0]
-    threading.Timer(1.5, lambda: steps[0] == joke and real("reading Traktor's collection")).start()
+    say("reading Traktor's collection")
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
@@ -680,7 +678,9 @@ def setup_status(say=lambda part: None) -> dict:
             st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(lib))
         except (SystemExit, OSError) as e:  # e.g. a tempo view is loaded: its colours aren't yours
             log(f"New-labels count skipped: {e}")
-        say("checking the beat grids")
+        say("reticulating splines")  # a joke over the slowest real step: its true label takes over after 1.5 s
+        joke = steps[0]  # (the page asks every 0.7 s); a step said by then keeps its own label
+        threading.Timer(1.5, lambda: steps[0] == joke and real("checking the beat grids")).start()
         try:
             g = cues.grids()
             res = gridfix.results(g=g)
@@ -690,6 +690,7 @@ def setup_status(say=lambda part: None) -> dict:
                            "approved": len(gridfix.plans()) if collection.NATIVE_DB.exists() else 0}
         except Exception as e:  # also a master.db read while another job writes it: skip this poll, not the tab
             log(f"Beat grid check status skipped: {e}")
+    say("finishing up")
     st["tags"] = {"tagged_files": tagged}
     backups = []
     if library.app() == "rekordbox":
