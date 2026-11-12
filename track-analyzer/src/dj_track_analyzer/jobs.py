@@ -369,6 +369,11 @@ def _wait(job: dict, proc: subprocess.Popen, out: list[str], readers: list[threa
     rc = proc.wait()
     for t in readers:
         t.join(timeout=5)
+    for pipe in (proc.stdout, proc.stderr):  # else a ResourceWarning per pipe when the server quits
+        try:
+            pipe.close()
+        except OSError:
+            pass
     text = "".join(out)
     i = text.find("{")
     if i >= 0:
@@ -514,13 +519,19 @@ def _new_labels(nml: Path) -> tuple:
     return _new_cache["data"]
 
 
+def _skip_log(e: BaseException) -> None:
+    """Why the new-labels count was skipped, except for a loaded tempo view: an expected state the page shows."""
+    if "BPM view is loaded" not in str(e):
+        log(f"New-labels count skipped: {e}")
+
+
 def to_learn() -> dict:
     """What retraining your colour and cue models would learn that they haven't (the Colours and Tracks tabs offer it):
     {colours, cues}, each {added, changed, removed}, or None (no Traktor, a starter or an older model, a tempo view loaded)."""
     try:
         return dict(zip(("colours", "cues"), _new_labels(Path(library.find_collection(None)))))
     except (SystemExit, OSError, ValueError) as e:
-        log(f"New-labels count skipped: {e}")
+        _skip_log(e)
         return {"colours": None, "cues": None}
 
 
@@ -677,7 +688,7 @@ def setup_status(say=lambda part: None) -> dict:
         try:
             st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(lib))
         except (SystemExit, OSError) as e:  # e.g. a tempo view is loaded: its colours aren't yours
-            log(f"New-labels count skipped: {e}")
+            _skip_log(e)
         say("reticulating splines")  # a joke over the slowest real step: its true label takes over after 1.5 s
         joke = steps[0]  # (the page asks every 0.7 s); a step said by then keeps its own label
         threading.Timer(1.5, lambda: steps[0] == joke and real("checking the beat grids")).start()
