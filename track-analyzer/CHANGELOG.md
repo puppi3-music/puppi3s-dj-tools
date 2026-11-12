@@ -8,6 +8,11 @@ module's builds, which installs download by themselves.
 **Added**
 - Web page: a notice when Traktor has tracks Lexicon doesn't, saying to use Import → Traktor in Lexicon (its Sync to Traktor only goes the other way).
 
+**Changed**
+- Tempo views: tracks are stretched with Rubber Band's R2 engine for analysis instead of R3. R3 changed the sound for
+  the style models far more than the tempo change itself (it could flip a track's genre at +0.6 %). The page's
+  player still plays with R3. The 135/145/165 views need a rescan.
+
 ## 1.4.3 (2026-11-12)
 
 **Changed**

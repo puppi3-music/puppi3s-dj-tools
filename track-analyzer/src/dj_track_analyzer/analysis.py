@@ -1155,11 +1155,19 @@ def check_cancel(cancel: threading.Event | None) -> None:
         raise Cancelled()
 
 
+STRETCH_ANALYSIS = ["-2", "-c", "6", "--centre-focus"]  # R2: changes the sound for the models far less than R3
+STRETCH_LISTEN = ["-3"]  # R3: sounds best to the ear
+
+
 def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float,
-            cancel: threading.Event | None = None) -> np.ndarray:
-    """Change the tempo from src_bpm to target_bpm keeping the pitch (like Traktor's key lock), with
-    Rubber Band's R3 engine. Traktor uses its own stretcher (élastique), so this sounds close, not identical.
-    At the track's own BPM the audio comes back as it is: R3 at ratio 1 isn't a passthrough (up to -55 dBFS off).
+            cancel: threading.Event | None = None, listen: bool = False) -> np.ndarray:
+    """Change the tempo from src_bpm to target_bpm keeping the pitch (like Traktor's key lock), with Rubber Band.
+    For analysis (the tempo view's scan) its R2 engine with `-c 6 --centre-focus`: measured 2026-11-12, R3 changed
+    the style scores far more than the tempo change itself (+0.6 %: 0.52-0.68 against 0.16-0.22 for a plain
+    resample, flipping genres), R2 so 0.20-0.26, and at the views' real tempos it was a bit closer too.
+    listen=True (the web page's player): R3, which sounds best. Traktor uses its own stretcher (élastique), so
+    either sounds close, not identical. At the track's own BPM the audio comes back as it is (neither engine is a
+    passthrough at ratio 1: R3 up to -55 dBFS off).
     cancel: once set, Rubber Band is stopped and Cancelled raised (the web page's player, for a track you've left)."""
     import subprocess
     import tempfile
@@ -1170,7 +1178,7 @@ def stretch(stereo: np.ndarray, sr: float, src_bpm: float, target_bpm: float,
     with tempfile.TemporaryDirectory(prefix="track-analyzer-") as tmp:
         src, out = Path(tmp) / "in.wav", Path(tmp) / "out.wav"
         _write_float_wav(src, stereo, int(sr))  # float in, float out: Rubber Band keeps the input's format
-        cmd = [exe, "-3", "-q", "--tempo", f"{src_bpm:.4f}:{target_bpm:.4f}", str(src), str(out)]
+        cmd = [exe, *(STRETCH_LISTEN if listen else STRETCH_ANALYSIS), "-q", "--tempo", f"{src_bpm:.4f}:{target_bpm:.4f}", str(src), str(out)]
         if cancel is None:
             subprocess.run(cmd, check=True, capture_output=True)
         else:
