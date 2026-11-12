@@ -12,8 +12,8 @@ With that, each track gets its stretch of the mix analysed on its own:
   have with key lock off (pitch moved with the tempo) are tried too, and the better fit is reported.
 - tempo: the track's own BPM against the BPM it was played at.
 - genre: how the mix sounds as played, at the BPM played: the speed-up and the mixing (stems, layers,
-  effects) both really change a track. Only the models' habit of hearing psytrance in almost any sped-up
-  four-on-the-floor is held back, as in the tempo view: psy counts up to 1.5x the track's own-tempo level.
+  effects) both really change a track. Only the models' habit of hearing psytrance (and, near 160, juke/footwork)
+  in almost any sped-up four-on-the-floor is held back: psy and juke count up to 1.5x the track's own-tempo level.
   With a `tempo scan` view, `mixing` lists the styles the mixing pushed up or down against the track
   alone at that tempo. The uncorrected label and the library genre are kept next to it.
 
@@ -477,18 +477,23 @@ def _sound_references(placed: list[dict]) -> None:
 def corrected(heard: np.ndarray, p: dict) -> tuple[np.ndarray, str]:
     """The mix as heard, with only the models' tempo shortcut held back: sped up, they hear psytrance
     in almost any four-on-the-floor. As in the tempo view (tempo.PSY_GATE), psy counts only up to 1.5x
-    what the track had at its own tempo. Everything else the speed-up and the mixing (stems, layers,
+    what the track had at its own tempo. Juke/Footwork gets the same hold: house sped up to ~160 sounds
+    like juke to the models (house played at 163 came out Footwork on Juke 0.12). Everything else the speed-up and the mixing (stems, layers,
     effects) changed is kept: a house track pushed to 145 really does move toward trance."""
     if p.get("native_acts") is None:
         return heard, "as heard; scan the track to hold back the models' psy-at-speed habit"
-    from .tempo import PSY_GATE, PSY_STYLES
+    from .tempo import JUKE_STYLES, PSY_GATE, PSY_STYLES
 
     names = analysis.style_classes()
     out = heard.copy()
-    cap = PSY_GATE * max(p["native_acts"][names.index(k)] for k in PSY_STYLES)
-    for k in PSY_STYLES:
-        out[names.index(k)] = min(out[names.index(k)], cap)
-    return out, "as heard, psy held to 1.5x the track's own-tempo level"
+    for group in (PSY_STYLES, JUKE_STYLES):
+        group = [k for k in group if k in names]
+        if not group:
+            continue
+        cap = PSY_GATE * max(p["native_acts"][names.index(k)] for k in group)
+        for k in group:
+            out[names.index(k)] = min(out[names.index(k)], cap)
+    return out, "as heard, psy and juke held to 1.5x the track's own-tempo level"
 
 
 def mixing_effect(diff: np.ndarray, n: int = 3, min_change: float = 0.05) -> dict:
@@ -529,7 +534,7 @@ def _rejudge_genres(result: dict, placed: list[dict], acts, scores: dict | None,
     result["dj_genre"] = dj_genre(label_scores(np.average(fixed, axis=0, weights=weights)), played_bpm)
     gated = scanned / sum(weights)
     result["genre_basis"] = {**result.get("genre_basis", {}),
-                             "dj_genre": f"the mix as heard at {played_bpm} BPM, psy held to 1.5x each track's "
+                             "dj_genre": f"the mix as heard at {played_bpm} BPM, psy and juke held to 1.5x each track's "
                                          f"own-tempo level ({gated:.0%} of the mix; the rest has no scan)"}
     if diffs:
         # averaged over the mix, the pushes partly cancel, so smaller changes count

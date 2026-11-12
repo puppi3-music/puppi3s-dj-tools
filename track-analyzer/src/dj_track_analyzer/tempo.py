@@ -60,6 +60,8 @@ VIEW_EXTRA = [("source_bpm", "REAL"), ("native_color_position", "REAL")]
 # Tested on 29 tracks 2026-10-21: Psytrance top genre 17 → 1 (with Progressive Trance as its own genre).
 PSY_STYLES = ["Electronic---Psy-Trance", "Electronic---Goa Trance"]
 PSY_GATE = 1.5
+# The mix tracklist holds Juke/Footwork the same way: house sped up to ~160 sounds like juke to the models.
+JUKE_STYLES = ["Electronic---Juke", "Electronic---Footwork"]
 
 
 def view_genres(path: str, bpm: float) -> list[dict] | None:
