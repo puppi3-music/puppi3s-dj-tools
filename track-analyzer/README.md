@@ -907,6 +907,8 @@ It also adds a "Genres @145 (Track Analyzer)" smartlist folder. Its smartlists m
 
 While Lexicon has the view, **don't sync Lexicon → Traktor or import from Traktor into Lexicon**. Syncing to a USB is fine; sync again after `native`.
 
+**New tracks in Traktor.** Lexicon's *Sync to Traktor* only sends Lexicon's tracks to Traktor; it never brings in tracks added in Traktor. For those, choose **Import → Traktor** in Lexicon. When Traktor has tracks Lexicon lacks (your mix recordings aside), the web page says so in a notice at the top.
+
 **Backup.** Before every real `load --lexicon` / `native --lexicon`, Lexicon's library is copied to `data/lexicon-backups/` (newest 10). Last resort only, since it also undoes everything else changed in Lexicon since: quit Lexicon, copy the backup over `~/Library/Application Support/lexicon/main.db`, delete `main.db-wal` and `main.db-shm`.
 
 > **Tested:** a real `load --lexicon` on about 480 tracks, with every smartlist holding exactly the expected tracks. `native --lexicon` has so far only been tested against a stand-in API.

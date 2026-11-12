@@ -291,6 +291,23 @@ def unload(dry_run: bool = False) -> dict:
     return stats
 
 
+def known_paths(db: Path = LIBRARY) -> set[str]:
+    """Every file Lexicon's library holds (archived too), as our databases write paths. Read-only: works
+    without the Local API and while Lexicon runs."""
+    con = sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True)
+    try:
+        return {p for (loc,) in con.execute("SELECT location FROM Track") for p in _paths(loc)}
+    finally:
+        con.close()
+
+
+def missing(traktor_files: list, db: Path = LIBRARY) -> list[str]:
+    """Traktor's files Lexicon doesn't have yet. Lexicon's "Sync to Traktor" only sends tracks the other way;
+    these need Import → Traktor in Lexicon."""
+    known = known_paths(db)
+    return [str(f) for f in traktor_files if unicodedata.normalize("NFC", str(f)) not in known]
+
+
 def status() -> str:
     st = loaded()
     return (f"{st['bpm']:g} BPM view since {st['loaded_at']} ({len(st['tracks'])} tracks changed)"

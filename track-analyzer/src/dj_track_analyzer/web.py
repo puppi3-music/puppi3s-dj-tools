@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import re
+import sqlite3
 import sys
 import threading
 import time
@@ -102,6 +103,24 @@ def libraries() -> dict:
             "lexicon": lx is not None or lexicon.LIBRARY.exists(), "lexicon_view": lx["bpm"] if lx else None,
             "loaded_app": dj.APPS.get(st.get("app", "traktor"), "Traktor") if st else None,  # the app holding it
             "home": str(HOME), "colours": COLOR_NAMES, "app": dj.app(), "app_name": dj.app_name()}
+
+
+def lexicon_missing() -> dict:
+    """Tracks in Traktor's collection that Lexicon's library lacks (for the page's notice). Empty when you don't
+    use Lexicon or Traktor."""
+    from . import lexicon, traktor
+    from . import library as dj
+
+    if dj.app() != "traktor" or not lexicon.LIBRARY.exists():
+        return {"missing": [], "count": 0}
+    try:
+        rec = tuple(os.path.join(d, "") for d in traktor.recording_dirs())  # your mix recordings don't belong in Lexicon
+        files = [f for f in traktor.collection_tracks()[1] if not str(f).startswith(rec or ("\0",))]
+        miss = lexicon.missing(files)
+    except (SystemExit, OSError, sqlite3.Error):
+        return {"missing": [], "count": 0}
+    return {"missing": [os.path.basename(m) for m in miss[:5]], "count": len(miss),
+            "lexicon_view": (lexicon.loaded() or {}).get("bpm")}
 
 
 @contextmanager
@@ -1932,6 +1951,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/", page),
         Route("/api/doing", now_doing),  # not in the thread pool: it answers while the pool's threads are busy
         Route("/api/libraries", respond(lambda q: libraries())),
+        Route("/api/lexicon/missing", respond(lambda q: lexicon_missing())),
         Route("/api/stats", respond(lambda q: stats(q_lib(q)))),
         Route("/api/tracks", respond(lambda q: tracks(q_lib(q)))),
         Route("/api/suggest", respond(lambda q: suggest(q_lib(q), q["path"], num(q, "tolerance", 4.0),
