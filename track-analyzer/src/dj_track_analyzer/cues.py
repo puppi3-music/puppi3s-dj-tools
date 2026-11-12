@@ -364,9 +364,8 @@ def measure(jobs: list[tuple[str, float, float]], workers: int | None = None, pr
             done += 1
             if err:
                 errors.append(f"{Path(path).name}: {err}")
-            if done % max(1, min(25, len(todo) // 20)) == 0 or done == len(todo):  # ~every 5%, so few tracks still move the bar
-                rate = done / max(time.time() - t0, 1e-6)
-                progress(f"  [{done}/{len(todo)}  ~{analysis.fmt_time((len(todo) - done) / rate)} left]")
+            rate = done / max(time.time() - t0, 1e-6)  # every track, named: the web page's top bar shows it
+            progress(f"  [{done}/{len(todo)}  ~{analysis.fmt_time((len(todo) - done) / rate)} left] listening: {Path(path).name}")
     finally:
         if pool:
             pool.close()
