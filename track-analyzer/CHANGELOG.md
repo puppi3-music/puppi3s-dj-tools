@@ -3,6 +3,15 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.4.2 (2026-11-12)
+
+**Changed**
+- Every "Loading…" line now names what the server is working on (reading cues, grids and colours from the DJ app,
+  counting cue corrections, with progress).
+
+**Fixed**
+- Cues: the kick check no longer crashes on tracks shorter than 3 bars.
+
 ## 1.4.1 (2026-11-12)
 
 **Changed**
