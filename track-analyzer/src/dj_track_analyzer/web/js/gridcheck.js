@@ -41,7 +41,7 @@ function renderGrid(g) {
   if (g.state === "on" && !appr) return `<div class="small"><span class="chip good">on the kicks</span> <span class="muted">the kick lands ${ms(g.offset_ms)} from the grid lines (${n} stretches measured).</span></div>`;
   const stem = g.stem;
   const stemNote = !stem ? "" : stem.matches === false
-    ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first (NUO Stems 4.1 or later lined up in testing), then come back. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
+    ? `<div class="warnbox small" style="margin:6px 0"><b>Its stem file is ${ms(stem.shift_ms)} off the track.</b> Traktor uses one grid for both, so they can't both be right: remake the stem first, then close and reopen this track to check again. <span class="mono dim">${esc(stem.stem.split(/[\\/]/).slice(-2).join("/"))}</span></div>`
     : stem.matches ? `<div class="small muted">Its stem file lines up with the track, so the moved grid fits both.</div>`
     : `<div class="small dim">Stem file: ${esc(stem.why || "not compared")}.</div>`;
   const val = g.approved ?? g.suggested_ms;

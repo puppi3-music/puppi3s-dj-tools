@@ -22,6 +22,7 @@ import contextlib
 import contextvars
 import glob
 import html
+import json
 import ntpath
 import os
 import re
@@ -61,11 +62,24 @@ def audio_offset(path: Path) -> int:
     Traktor time = decoded time + this. ffmpeg skips an MP3's Xing/Info frame and the encoder/decoder delay its LAME tag
     gives (ffmpeg's start_time); Traktor plays both. Checked to the sample against Traktor 4 Remix Deck captures for
     each kind of MP3 in a test library: 2257 (Info frame + 1105 delay), 1152 (Info frame, no delay), 1681 (Info frame +
-    529), 0 (neither). Other formats: 0."""
+    529), 0 (neither). An m4a with an edit list (AAC priming, e.g. 1024 for an ffmpeg-made file): minus its length,
+    Traktor plays it that much earlier than ffmpeg (which trims it). Seen on one ffmpeg-made AAC m4a: its NUO stem and
+    Traktor's grid (right by eye in Traktor) both read 23.2 ms off with 0 and on with -1024. Other formats: 0."""
     k = str(path)
     if k not in _offsets:
         n = 0
-        if path.suffix.lower() == ".mp3":
+        if path.suffix.lower() in (".m4a", ".mp4"):
+            from .analysis import find_tool
+
+            out = subprocess.run([find_tool("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "a:0", "-read_intervals", "%+#1",
+                                  "-show_entries", "packet=pts_time:stream=sample_rate", "-of", "json", k],
+                                 capture_output=True, text=True, timeout=30).stdout
+            try:  # the first packet starts at minus the edit list's priming (0 without one, e.g. ALAC)
+                j = json.loads(out)
+                n = min(0, round(float(j["packets"][0]["pts_time"]) * int(j["streams"][0]["sample_rate"])))
+            except (ValueError, KeyError, IndexError, TypeError):
+                n = 0
+        elif path.suffix.lower() == ".mp3":
             from .analysis import find_tool
 
             out = subprocess.run([find_tool("ffprobe") or "ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=start_time,sample_rate",
@@ -77,6 +91,13 @@ def audio_offset(path: Path) -> int:
             n = round(st * sr) + (1152 if _mp3_info_frame(path) else 0)
         _offsets[k] = n
     return _offsets[k]
+
+
+def offset_key(path: Path) -> str:
+    """For cache keys of anything measured on Traktor's timeline: "" for the offsets every cache was made with, so
+    those entries stay valid, and the offset when it's negative (an m4a's priming, added later), so those remeasure."""
+    n = audio_offset(path)
+    return f"|off{n}" if n < 0 else ""
 
 
 # ----------------------------------------------------------------------------

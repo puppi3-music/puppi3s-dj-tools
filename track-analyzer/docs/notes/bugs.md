@@ -41,7 +41,11 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   sample) + 1152 if the MP3 has a Xing/Info frame (`_mp3_info_frame`) + round(ffmpeg start_time × sr) (the LAME delay
   ffmpeg skips). Verified to the sample with quantized Remix Deck captures (16-bit, edge fades, clipped at 1.0, else
   identical to the decode) of one track per kind: 2257 (413 MP3s, LAME 3.100 and Lavc/Lavf), 1152 (31), 1681 (5),
-  0 (19, and FLAC). Onset matching against Traktor's Transients files (version byte, uint32 count, records <f8 time s,
+  0 (19, and FLAC). m4a with an edit list (AAC priming; ffmpeg trims it): minus its length (-1024 for an ffmpeg-made
+  AAC), Traktor plays it that much earlier. Seen on one track only: its grid (right by eye in Traktor) read +18 ms and
+  its NUO 4.1.4 stem -23.2 ms with 0, both on (-5 ms, 0) with -1024. Negative offsets cut from the front instead of
+  padding; `traktor.offset_key` adds them to the bars/wave/gridcheck cache keys (old MP3/FLAC keys unchanged).
+  Onset matching against Traktor's Transients files (version byte, uint32 count, records <f8 time s,
   <f4, <f4>) agreed only on average: periodic onsets make single tracks ambiguous; don't use it per track.
   Used everywhere audio meets Traktor's grid: loop cuts (`_render_loop`, `saved_sample.format` 3), cue bars and
   waveform (`cues._on_traktor_time`, BARS_VERSION bars-2 / wave-2), the page's player (`web.deck_audio`: MP3s with an
