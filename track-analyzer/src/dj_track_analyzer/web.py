@@ -1329,7 +1329,8 @@ def update_status(force: bool = False, auto: bool = False) -> dict:
     from . import update
 
     on = analysis.app_setting("update_check", True) is not False
-    st: dict = {"installed": update.installed_version(), "kind": update.install_kind(), "auto": on,
+    st: dict = {"installed": update.installed_version(), "commit": update.installed_commit(),
+                "channel": update.channel(), "kind": update.install_kind(), "auto": on,
                 "pending": update.pending_steps(), "restart": can_restart(), "page": update.RELEASES_PAGE}
     found = update.last_backup()
     if found and found[1].get("to") == st["installed"]:
@@ -1337,7 +1338,7 @@ def update_status(force: bool = False, auto: bool = False) -> dict:
     if auto and not on and not force:
         return st
     if force or not _update_cache["data"] or time.time() - _update_cache["at"] > UPDATE_EVERY \
-            or _update_cache["data"].get("installed") != st["installed"]:
+            or any(_update_cache["data"].get(k) != st[k] for k in ("installed", "commit", "channel")):
         try:
             _update_cache["data"] = update.check()
         except (OSError, ValueError, SystemExit) as e:
@@ -1354,6 +1355,9 @@ def update_settings(b: dict) -> dict:
         analysis.save_app_setting("update_check", None if b["auto"] else False)
     if b.get("seen"):
         update.mark_seen()
+    if "channel" in b:
+        update.set_channel(str(b["channel"]))  # the next status asks GitHub again: the cache was for the other one
+        return update_status(force=True)
     return update_status(auto=True)
 
 

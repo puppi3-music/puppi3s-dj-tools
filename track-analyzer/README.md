@@ -73,7 +73,9 @@ Keep the Terminal window open while you use the page; close it to stop. Double-c
 - The app's own files are backed up first, and **Go back to …** on the same card returns to the version you had.
 - If a release needs a step afterwards (genres again, a rescan, new models), the card offers it as a button.
 
-To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent. Untick **check when the page opens** to turn that off (**Check now** still works). Other ways to update:
+To check, the page asks GitHub for the newest release at most every 6 hours, and nothing else is sent. Untick **check when the page opens** to turn that off (**Check now** still works).
+
+**Stable or Dev.** The same card has an **Updates: Stable / Dev** switch. Stable (the default) installs only finished releases. Dev installs the newest work in progress, rebuilt after every change to the app: new things arrive first, but may have bugs. Switching back to Stable never goes back a version: you keep the dev build until the next release is out. (A git clone follows `main` anyway; Docker is rebuilt.) Other ways to update:
 
 - In a terminal: `uv run dj-track-analyzer update` (`--check`, `--dry-run`, `--undo`), then start the launcher again.
 - A clone: `git pull` (only on `main` without local changes of your own). If a pull moves the app from `track-analyzer/` to the top of the folder, the update moves `data/`, `logs/` and your own untracked files after it; start the app again from there.

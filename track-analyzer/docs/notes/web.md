@@ -49,7 +49,7 @@ browser (and Export snapshot) still gets one document with one script scope. Edi
   `saved_files` doesn't read); `write_cues`/`undo_write` refuse while a job runs. `Start Puppi3's Track Analyzer.command` (repo folder):
   installs uv if missing, then loops `uv sync --inexact` (keeps the opt-in extras) + `uv run dj-track-analyzer web` while it exits 75 (restart after an update, `update.py`); opens the page if 8766 already answers. `Start Puppi3's Track Analyzer.bat` is its Windows twin (CRLF via `.gitattributes`; also `PYTHONUTF8=1`, x64 Python on Arm). Setup's Update training / Update beat-grids buttons are disabled when `learnNew().none` / every grid is checked; a real `cues_train` job recounts the proposed corrections in the background (`web._after_job`).
 - `update.py`: `update [--check|--dry-run|--undo]` + the Setup tab's update card (/api/update: `web.update_status`,
-  GitHub's releases API cached `UPDATE_EVERY` 6 h, `update_check` setting = "check when the page opens"; jobs
+  GitHub's releases API cached `UPDATE_EVERY` 6 h, `update_check` setting = "check when the page opens"; `update_channel` (stable/dev, `update.pick`): Dev offers the rolling `dev` prerelease when its commit ≠ the app's COMMIT file, never one based on an older version; a release zip removes COMMIT; jobs
   `update` / `update_undo`, previewed in writeDialog). Zip installs: the newest `v…` release's zip (SHA-256 from the
   API's asset `digest`), only the app's files (`PROTECTED` data/, logs/, .venv, .git never), each written via a temp
   file + rename, files gone from src/ removed (nothing deleted elsewhere); old copies + update.json in
