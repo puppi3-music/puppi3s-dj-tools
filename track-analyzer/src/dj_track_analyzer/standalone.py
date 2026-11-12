@@ -553,13 +553,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         def is_near(*dbs):  # while measuring, to know when the run is over: the plain test (steadiness needs bars ahead)
             return sum(d is not None and abs(d) <= NEAR_DB for d in dbs) >= 2
 
-        x = lo
-        while x + L <= limit:
-            if x + L > hi:  # past the usual end: on while the run lasts, then CONTEXT bars more
-                alive = any(near[-(GAP + 1):]) and after == 0
-                after = 0 if alive else after + 1
-                if after > CONTEXT:
-                    break
+        def row_at(x):  # (mix seconds, A dB, B dB, dB of each of extra) of the bar at x
             ps = ([] if x + L > a_end else [pa]) + [pb] + [p for _, p in extra]  # A over: counts as silent
             g, lv = fit(x, x + L, ps)
             row, k = [], 0
@@ -569,10 +563,22 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
                 k += m
             if x + L > a_end:
                 row.insert(0, None)
-            levels.append((round(float(x), 2), *row))
+            return (round(float(x), 2), *row)
+
+        x = lo
+        while x + L <= limit:
+            if x + L > hi:  # past the usual end: on while the run lasts, then CONTEXT bars more
+                alive = any(near[-(GAP + 1):]) and after == 0
+                after = 0 if alive else after + 1
+                if after > CONTEXT:
+                    break
+            levels.append(row_at(x))
             near.append(is_near(*levels[-1][1:]))
             x += L
-        c["bars"] = levels  # [mix seconds, A dB, B dB, dB of each of c["others"]] vs each track's own level (None: no part sounds)
+        # CONTEXT bars before the measured stretch, for the page's strip only (a run widened to whole phrases can
+        # start there); not part of finding the run, so the run is the same with or without them
+        pre = [row_at(lo - q * L) for q in range(CONTEXT, 0, -1) if lo - q * L >= 0]
+        c["bars"] = pre + levels  # [mix seconds, A dB, B dB, dB of each of c["others"]] vs each track's own level (None: no part sounds)
         c["bar"] = round(L, 4)  # bar length in mix seconds
         c["measured_with"] = {"from": pa["how"], "to": pb["how"]}
         per = _near_bars(levels)  # [track][bar]: near or lower but steady
@@ -643,9 +649,16 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         starts = list(np.arange(a, b - L, L))
         if not starts:
             return None
+        # CONTEXT bars before and after the track's stretch, for the page's strip only (a run widened to whole
+        # phrases can reach into them): measured, never counted as alone, so the run is the same without them
+        end = min(len(p["S"]) / FPS - p["offset"], len(mix.M) / FPS)
+        before = [a - q * L for q in range(CONTEXT, 0, -1) if a - q * L >= 0]
+        after = [x for x in (starts[-1] + q * L for q in range(1, CONTEXT + 1)) if x + L <= end]
+        inside = set(range(len(before), len(before) + len(starts)))
+        starts = before + starts + after
         pos = mix.locate(p["S"], [max(0.0, x - PROBE / 2 + L / 2) for x in starts])
         rows, alone, why = [], [], []
-        for x, (off, _) in zip(starts, pos):
+        for j, (x, (off, _)) in enumerate(zip(starts, pos)):
             ps = [p] + nb
             g, lv = fit(x, x + L, ps)
             m = len(p["parts"])
@@ -653,7 +666,8 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             for q in nb:
                 others.append(level(q, g[k:k + len(q["parts"])], lv[k:k + len(q["parts"])]))
                 k += len(q["parts"])
-            ok = own is not None and abs(own) <= NEAR_DB and all(o is None or o < -NEAR_DB for o in others)
+            ok = (j in inside and own is not None and abs(own) <= NEAR_DB
+                  and all(o is None or o < -NEAR_DB for o in others))
             w = changed(p, x, x + L, g[:m], lv[:m]) if ok else []
             if ok and abs(off - p["offset"]) >= REWORK_OFF:
                 w.append("re-arranged")

@@ -392,10 +392,12 @@ function saSpan(c) {  // [start, end] mix seconds of the strip
 const SA_MORE = ["var(--good)", "var(--text-2)"];  // lines of the other tracks around a change
 function saStrip(c, nameA, nameB, near, others = []) {  // others: titles of c.others (bars columns 3+)
   if (!c.bars?.length) return "";
-  const [t0, t1, L] = saSpan(c), W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
+  const [a, n] = saRun(c), [s0, s1, L] = saSpan(c);
+  const t0 = n ? Math.min(s0, a) : s0, t1 = n ? Math.max(s1, a + n * L) : s1;  // the piece always fits, past the measured bars too
+  const W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
   const y = db => ((SA_TOP - Math.max(SA_LOW, Math.min(SA_TOP, db ?? SA_LOW))) / (SA_TOP - SA_LOW) * H).toFixed(1);
   const line = k => c.bars.map((b, i) => `${i ? "L" : "M"}${x(b[0] + L / 2)} ${y(b[k])}`).join("");
-  const [a, n] = saRun(c), run = n ? `<rect x="${x(a)}" width="${x(a + n * L) - x(a)}" y="0" height="${H}" fill="var(--accent-soft)"/>` : "";
+  const run = n ? `<rect x="${x(a)}" width="${x(a + n * L) - x(a)}" y="0" height="${H}" fill="var(--accent-soft)"/>` : "";
   return `<div class="sa-strip" data-sa-strip="${esc(c.at)}" data-t0="${t0}" data-t1="${t1}" data-tip="Click to hear the mix from there">
     <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Level of both tracks per bar">${run}
       <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" stroke="var(--line-strong)" vector-effect="non-scaling-stroke"/>

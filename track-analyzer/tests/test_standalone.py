@@ -257,6 +257,7 @@ def test_run_is_measured_until_it_ends_on_the_incoming_grid(tmp_path):
     k0 = round(t0 - 60.3) - c["run"]["lead"]
     assert k0 % 16 == 0 and (k0 + c["run"]["lead"] + c["run"]["bars"] + c["run"]["tail"]) % 16 == 0
     assert c["bar"] == 1.0
+    assert c["bars"][0][0] <= t0 - c["run"]["lead"]  # the strip shows the whole widened piece, its start too
 
 
 def test_no_grid_still_measures_to_the_end(tmp_path):
@@ -357,6 +358,8 @@ def test_solo_rework_is_a_track_alone_played_changed(tmp_path, eq):
     out = sa.find(result, mix, load=load, load_stems=lambda p: None, grid=lambda p: None, say=lambda m: None)
     solo_b = [c for c in out["solos"] if c["solo"] == 2]
     assert solo_b and solo_b[0]["run"]["bars"] >= 32  # alone either way
+    t0 = sa.seconds(solo_b[0]["run"]["from"])
+    assert solo_b[0]["bars"][0][0] < t0 - 8  # bars before the track's stretch too, for the strip (never part of the run)
     assert (solo_b[0]["at"] in out["solo_picks"]) == eq
     assert (solo_b[0]["reworked"] >= sa.REWORK_SHARE) == eq
     if eq:
