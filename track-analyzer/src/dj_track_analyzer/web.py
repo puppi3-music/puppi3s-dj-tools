@@ -35,6 +35,45 @@ def page_html() -> str:
 LOGS = Path(__file__).resolve().parents[2] / "logs"  # where the docs suggest saving run output
 # collection.DB, the cache and the tempo-view state are module globals: one request at a time swaps them
 _lock = threading.RLock()
+
+# What the server is working on now, for the page's "Loading…" line: {id: text}, oldest first
+_doing: dict[int, str] = {}
+_doing_ids = iter(range(1, 1 << 62))
+
+
+@contextmanager
+def doing(text: str):
+    """Name a step for the page while it runs; the yielded function renames it (progress: "120 of 470")."""
+    i = next(_doing_ids)
+    _doing[i] = text
+
+    def say(new: str) -> None:
+        _doing[i] = new
+    try:
+        yield say
+    finally:
+        _doing.pop(i, None)
+
+
+def doing_now() -> list[str]:
+    """The steps running now, each once (two requests can wait on the same step)."""
+    return list(dict.fromkeys(_doing.copy().values()))
+
+
+# the slower answers the page waits for, named on its "Loading…" line as "Getting …"
+ASKED = {"/api/libraries": "the library list", "/api/stats": "the overview numbers", "/api/tracks": "the track list",
+         "/api/hype": "the hype list", "/api/colours/review": "the colour review", "/api/colours/explain": "your colour profile",
+         "/api/mixes-report": "the mixes report", "/api/setup": "the Setup checks", "/api/update": "the update check"}
+
+
+def colour_sync() -> None:
+    """colors.sync_traktor_colours(), named for the page (it reads the DJ app's library file when that changed)."""
+    from . import colors
+
+    with doing(f"Reading your colours from {jobs.library.app_name()}"):
+        colors.sync_traktor_colours()
+
+
 TRACK_COLS = ["path", "artist", "title", "filename", "album", "folder", "type", "duration_sec", "bpm", "traktor_bpm",
               "key", "camelot", "cnn_key", "cnn_camelot", "traktor_camelot", "lufs", "loudness_range", "genre", "genre_score", "genre_2",
               "genre_2_score", "genre_3", "genre_3_score", "my_genre", "my_genre_confidence", "trained_genre",
@@ -93,7 +132,7 @@ def colours(lib: str) -> dict[str, str]:
 def tracks(lib: str = "native") -> dict:
     from . import colors
 
-    colors.sync_traktor_colours()  # a recolour, an undo or a colour set in Traktor since
+    colour_sync()  # a recolour, an undo or a colour set in Traktor since
     with library(lib):
         con = collection.db()
         have = {r[1] for r in con.execute("PRAGMA table_info(tracks)")}
@@ -180,9 +219,7 @@ def _unbiased_colours(rows: list[dict]) -> None:
 
 
 def stats(lib: str = "native") -> dict:
-    from . import colors
-
-    colors.sync_traktor_colours()
+    colour_sync()
     with library(lib):
         out = collection.summary()
         if lib and lib != "native":  # count the view's colours (yours shifted, else predicted), as the Tracks tab shows them
@@ -315,7 +352,8 @@ def cue_grids() -> dict:
     f = dj_app.find_collection(None)
     m = (dj_app.app(), str(f), dj_app.changed_at(f))  # also another file chosen with the same time
     if _grids["mtime"] != m:
-        _grids.update(mtime=m, data=cues.grids())
+        with doing(f"Reading your cues and beat grids from {dj_app.app_name()}"):
+            _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
 
 
@@ -411,22 +449,25 @@ def _count_changed(key: tuple, g: dict) -> dict[str, int] | None:
 
     if len(todo) <= FIXES_SYNC:
         fresh = {}
-        for p in todo:
-            try:
-                fresh[p] = _count_one(p, each[p])
-            except Exception as e:  # one track's problem (a file gone, unreadable audio): count the rest
-                log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
+        with doing("Counting proposed corrections of your cues"):
+            for p in todo:
+                try:
+                    fresh[p] = _count_one(p, each[p])
+                except Exception as e:  # one track's problem (a file gone, unreadable audio): count the rest
+                    log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
         finish(fresh)
         return _fixes["counts"]
 
     def work():
         fresh = {}
         try:
-            for p in todo:
-                try:
-                    fresh[p] = _count_one(p, each[p])
-                except Exception as e:
-                    log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
+            with doing("Counting proposed corrections of your cues") as say:
+                for i, p in enumerate(todo):
+                    say(f"Counting proposed corrections of your cues: {i} of {len(todo)} tracks")
+                    try:
+                        fresh[p] = _count_one(p, each[p])
+                    except Exception as e:
+                        log(f"Counting cue corrections skipped {Path(p).name}: {type(e).__name__}: {e}")
         except Exception as e:  # keep what's counted: otherwise every /api/tracks starts again, and the page polls forever
             log(f"Counting cue corrections stopped: {type(e).__name__}: {e}")
         finally:
@@ -1556,9 +1597,7 @@ def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
-        from . import colors
-
-        colors.sync_traktor_colours()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
+        colour_sync()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
         data["library"] = played_tracks(data["tracklist"]["tracks"])
     return data
 
@@ -1745,11 +1784,21 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
 
     def respond(fn):
         async def endpoint(request: Request):
+            what = ASKED.get(request.url.path)
+
+            def run():
+                if not what:
+                    return fn(request.query_params)
+                with doing(f"Getting {what}"):
+                    return fn(request.query_params)
             try:
-                return JSONResponse(await run_in_threadpool(fn, request.query_params))
+                return JSONResponse(await run_in_threadpool(run))
             except (Exception, SystemExit) as e:
                 return failed(e)
         return endpoint
+
+    async def now_doing(request: Request):
+        return JSONResponse({"doing": doing_now()})
 
     def num(q, k, default=None):
         return float(q[k]) if q.get(k) not in (None, "") else default
@@ -1880,6 +1929,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
     q_lib = lambda q: q.get("lib", "native")  # noqa: E731
     routes = [
         Route("/", page),
+        Route("/api/doing", now_doing),  # not in the thread pool: it answers while the pool's threads are busy
         Route("/api/libraries", respond(lambda q: libraries())),
         Route("/api/stats", respond(lambda q: stats(q_lib(q)))),
         Route("/api/tracks", respond(lambda q: tracks(q_lib(q)))),

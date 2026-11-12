@@ -114,6 +114,20 @@ async function api(path, params = {}, { signal } = {}) {
   if (!r.ok) throw new Error(d?.error || `The server answered ${r.status} ${r.statusText}`);
   return d;
 }
+// Under each "Loading…": what the server is working on (a first start reads the DJ app's collection, counts cue
+// corrections…). Asked only while one shows; /api/doing answers outside the busy worker threads.
+let doingAsked = false;
+setInterval(async () => {
+  if (SNAP || doingAsked || document.hidden || !document.querySelector(".loading")) return;
+  doingAsked = true;
+  let text = "";
+  try { text = ((await (await fetch("/api/doing")).json()).doing || []).join(" · "); } catch (e) {} finally { doingAsked = false; }
+  for (const box of document.querySelectorAll(".loading")) {
+    let el = box.querySelector(":scope > .doing");
+    if (!el && text) { el = document.createElement("div"); el.className = "doing"; box.append(el); }
+    if (el) el.textContent = text;
+  }
+}, 700);
 const errBox = e => `<div class="err">${esc(e.message || e)}${SNAP ? "" : ` <button style="margin-left:8px" onclick="route()">Retry</button>`}</div>`;
 // a friendly "nothing here yet": what it is, what to do, and (live only) a link to do it
 const empty = (title, body, action = "", card = true) => `<div class="${card ? "card " : ""}empty"><div class="et">${title}</div><div class="eb small">${body}</div>${action ? `<div class="ea">${action}</div>` : ""}</div>`;
