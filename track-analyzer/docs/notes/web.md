@@ -65,3 +65,8 @@ browser (and Export snapshot) still gets one document with one script scope. Edi
   `uv run dj-track-analyzer web`, Windows asks for a manual restart. The .bat must stay under 1800 bytes: cmd.exe
   re-reads a running batch file by byte offset, and 1.0.1's launcher reads on at byte 1817 after an update replaced
   it (past the end it just stops; `tests/test_update.py`); its own loop is one parenthesized block, parsed whole.
+- "Loading…" line: `web.doing(text)` names a step while it runs (the yielded `say` renames it for progress), and
+  `respond()` names the requests in `ASKED` as "Getting …". `/api/doing` is a plain async route (not the thread
+  pool), so it answers while the pool's threads are busy; `core.js` asks it every 700 ms only while a `.loading`
+  box shows, and writes the steps into a `.doing` line inside each one. A new slow step or endpoint: wrap it in
+  `doing()` or add it to `ASKED`. Every `.loading` box must drop its class before it's refilled (all do).
