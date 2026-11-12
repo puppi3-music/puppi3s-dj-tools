@@ -3,6 +3,13 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.4.3 (2026-11-12)
+
+**Changed**
+- Setup tab: the beat grid check on startup takes well under a second instead of ~30 s. Each MP3/m4a's audio offset
+  is kept until the file changes, rather than read again with ffprobe on every start.
+- The Setup tab's "Loading…" line named in 1.4.2 actually ships now, with each part labelled as it runs.
+
 ## 1.4.2 (2026-11-12)
 
 **Changed**
