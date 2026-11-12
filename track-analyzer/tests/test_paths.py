@@ -152,7 +152,10 @@ def test_lexicon_missing(tmp_path):
     db = tmp_path / "main.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE Track (location TEXT)")
-    con.execute("INSERT INTO Track VALUES ('/Volumes/Macintosh HD/Users/me/Have.mp3')")
+    win = sys.platform == "win32"  # each in the form Lexicon really writes there
+    con.execute("INSERT INTO Track VALUES (?)",
+                ("C:/Users/me/Have.mp3" if win else "/Volumes/Macintosh HD/Users/me/Have.mp3",))
     con.commit(); con.close()
-    files = [Path("/Users/me/Have.mp3"), Path("/Users/me/Freestyler.m4a")]
-    assert lexicon.missing(files, db) == [str(files[1])]  # Windows: backslashes
+    root = "C:/Users/me" if win else "/Users/me"
+    files = [Path(f"{root}/Have.mp3"), Path(f"{root}/Freestyler.m4a")]
+    assert lexicon.missing(files, db) == [str(files[1])]
