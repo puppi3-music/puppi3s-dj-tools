@@ -622,7 +622,7 @@ def _prune_deck_audio() -> None:
 
 def deck_audio(path: str) -> Path:
     """The file the page's player plays: the track itself, or for an MP3 that Traktor times differently than decoders
-    do (traktor.audio_offset), a lossless copy with that offset in front, so the player's time is Traktor's time
+    do (traktor.audio_offset), a lossless copy with that offset in front (cut from the front when negative), so the player's time is Traktor's time
     whatever the browser's MP3 decoder does. Made once (≈5 s) and kept for the last DECK_KEEP tracks."""
     import hashlib
     import subprocess
@@ -637,7 +637,7 @@ def deck_audio(path: str) -> Path:
         if not out.exists():
             DECK_AUDIO.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(".tmp.flac")
-            res = subprocess.run([_ffmpeg(), "-v", "error", "-y", "-i", str(p), "-map", "0:a:0", "-af", f"adelay=delays={off}S:all=1",
+            res = subprocess.run([_ffmpeg(), "-v", "error", "-y", "-i", str(p), "-map", "0:a:0", "-af", f"adelay=delays={off}S:all=1" if off > 0 else f"atrim=start_sample={-off},asetpts=PTS-STARTPTS",
                                   "-c:a", "flac", "-compression_level", "0", "-sample_fmt", "s32", str(tmp)], capture_output=True, timeout=300)
             if res.returncode or not tmp.exists():
                 raise ValueError(f"ffmpeg couldn't prepare the audio: {res.stderr.decode(errors='replace')[:200]}")
@@ -737,8 +737,10 @@ def deck_stretched(path: str, bpm: float, cancel: threading.Event | None = None)
             analysis.check_cancel(cancel)  # given up while another request was making it
             stereo, sr, _nch = analysis.decode(p)
             y = stretch_parallel(stereo, sr, src, bpm, cancel)
-            if off:
+            if off > 0:
                 y = np.concatenate([np.zeros((round(off * ratio), y.shape[1]), np.float32), y])
+            elif off < 0:  # Traktor plays from later in the file (an m4a's priming)
+                y = y[round(-off * ratio):]
             DECK_AUDIO.mkdir(parents=True, exist_ok=True)
             tmp = out.with_suffix(".tmp.flac")
             res = subprocess.run([_ffmpeg(), "-v", "error", "-y", "-f", "f32le", "-ar", str(int(sr)), "-ac", str(y.shape[1]),

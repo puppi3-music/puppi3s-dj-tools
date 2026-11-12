@@ -212,7 +212,7 @@ def _cache():
 
 
 def _key(p, bpm: float, grid_ms: float) -> str:
-    return hashlib.sha1(f"{p}|{bpm:.4f}|{grid_ms:.3f}|{VERSION}".encode()).hexdigest()
+    return hashlib.sha1(f"{p}|{bpm:.4f}|{grid_ms:.3f}|{VERSION}{traktor.offset_key(Path(p))}".encode()).hexdigest()
 
 
 def cached(p: Path, bpm: float, grid_ms: float, check_length: bool = True) -> dict | None:

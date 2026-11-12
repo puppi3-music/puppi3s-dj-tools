@@ -128,7 +128,7 @@ def _on_traktor_time(p: Path, x: np.ndarray, sr: int) -> np.ndarray:
     """The decoded audio (at SR) shifted onto Traktor's timeline, so that time t here is time t on Traktor's beat grid:
     for most MP3s Traktor plays a header frame and encoder delay that decoders skip (51 ms; traktor.audio_offset)."""
     n = round(traktor.audio_offset(p) * SR / sr)
-    return np.concatenate([np.zeros(n, np.float32), x]) if n else x
+    return np.concatenate([np.zeros(n, np.float32), x]) if n > 0 else x[-n:] if n < 0 else x  # < 0: an m4a's priming
 
 
 def _spectra(p: Path) -> tuple[np.ndarray, np.ndarray, float, np.ndarray]:
@@ -229,7 +229,7 @@ def _bars_db():
 def bars_get(p: Path, bpm: float, grid_ms: float):
     """Cached (bar starts, per-bar features) for this file and grid, or None. A tag edit doesn't lose it: the
     entry is matched by path and grid, and kept while the audio length is unchanged."""
-    k = hashlib.sha1(f"{p}|{_grid_key(bpm, grid_ms)}".encode()).hexdigest()
+    k = hashlib.sha1(f"{p}|{_grid_key(bpm, grid_ms)}{traktor.offset_key(p)}".encode()).hexdigest()
     with _bars_db() as con:
         row = con.execute("SELECT duration, starts, feats FROM bars WHERE k=?", (k,)).fetchone()
     if not row:
@@ -302,7 +302,7 @@ class WaveSource:
 
 def wave_get(p: Path) -> tuple[np.ndarray, float] | None:
     """Cached waveform overview (slices x [peak, rms, low, mid, high], uint8) and the length in seconds."""
-    k = hashlib.sha1(f"{p}|{WAVE_VERSION}".encode()).hexdigest()
+    k = hashlib.sha1(f"{p}|{WAVE_VERSION}{traktor.offset_key(p)}".encode()).hexdigest()
     with _bars_db() as con:
         row = con.execute("SELECT duration, data FROM wave WHERE k=?", (k,)).fetchone()
     if not row:
@@ -320,12 +320,12 @@ def bars(p: Path, bpm: float, grid_ms: float):
         return hit
     bands, mels, dur, wave = _spectra(p)
     starts, F = _bars_from_spectra(bands, mels, dur, bpm, grid_ms)
-    k = hashlib.sha1(f"{p}|{_grid_key(bpm, grid_ms)}".encode()).hexdigest()
+    k = hashlib.sha1(f"{p}|{_grid_key(bpm, grid_ms)}{traktor.offset_key(p)}".encode()).hexdigest()
     with _bars_db() as con:
         con.execute("INSERT OR REPLACE INTO bars VALUES (?,?,?,?,?,?)",
                     (k, str(p), _grid_key(bpm, grid_ms), dur, starts.astype(np.float64).tobytes(), F.tobytes()))
         con.execute("INSERT OR REPLACE INTO wave VALUES (?,?,?,?)",
-                    (hashlib.sha1(f"{p}|{WAVE_VERSION}".encode()).hexdigest(), str(p), dur, wave.tobytes()))
+                    (hashlib.sha1(f"{p}|{WAVE_VERSION}{traktor.offset_key(p)}".encode()).hexdigest(), str(p), dur, wave.tobytes()))
     return starts, F
 
 
