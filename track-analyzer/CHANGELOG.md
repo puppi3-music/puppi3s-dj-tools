@@ -3,6 +3,13 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**Changed**
+- Tempo views: tracks are stretched with Rubber Band's R2 engine for analysis instead of R3. R3 changed the sound for
+  the style models far more than the tempo change itself (it could flip a track's genre at +0.6 %). The page's
+  player still plays with R3. The 135/145/165 views need a rescan.
+
 ## 1.4.3 (2026-11-12)
 
 **Changed**

@@ -145,7 +145,7 @@ def timing() -> None:
     t("maest", lambda: analysis.run_maest(m16))
     b = collection.mix_bpm(collection.db().execute("SELECT * FROM tracks WHERE path=?", (str(p),)).fetchone())
     if b:
-        t("stretch", lambda: analysis.stretch(st, sr, b, 145.0))  # tempo view, Rubber Band R3
+        t("stretch", lambda: analysis.stretch(st, sr, b, 145.0))  # tempo view, Rubber Band R2
 
 
 CHECKS = {"rules": rules, "heads": heads, "calibration": calibration, "bpm": bpm, "cache": cache, "timing": timing}

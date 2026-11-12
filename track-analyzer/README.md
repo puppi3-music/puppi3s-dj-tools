@@ -396,7 +396,7 @@ Click the waveform to move the playhead (it plays on only if it was already play
 
 Everything in the page runs on Traktor's timeline. Most MP3s start with a header frame and encoder padding (about 51 ms) that other decoders skip and Traktor plays. So the player, the waveform and the cue measurements shift those files to match Traktor's beat grid exactly (checked against Traktor's own captures). The first play of such a track takes a few seconds while a matching copy is prepared.
 
-**at 145 BPM** (shown once you've scanned a tempo view; on by default while you browse one) plays the track as the view hears it. It's stretched with key lock by Rubber Band's R3 engine, from the tempo the view's scan stretched from. It sounds like the scan's whole-track stretch, though the samples differ. Cue pads, loops, the waveform and bar/beat stay on the track's own timeline, so switching mid-play carries on from the same beat. Saved samples stay at the track's own tempo.
+**at 145 BPM** (shown once you've scanned a tempo view; on by default while you browse one) plays the track as the view hears it. It's stretched with key lock by Rubber Band's R3 engine (it sounds best to the ear; the scan uses R2, which the models hear more truly), from the tempo the view's scan stretched from. It sounds like the scan's whole-track stretch, though the samples differ. Cue pads, loops, the waveform and bar/beat stay on the track's own timeline, so switching mid-play carries on from the same beat. Saved samples stay at the track's own tempo.
 
 One Rubber Band uses one core (≈30 s for a track), so the player stretches 15 s pieces 8 at a time. Each piece starts 4 s early so the stretcher has settled, and the pieces are joined with a 30 ms crossfade. That takes ≈6 s for a 4-minute track; it starts when you open the track, and the last few tracks are kept.
 
@@ -824,7 +824,7 @@ Approachability is a model's guess at how easy a track is to get into; it runs w
 
 ## 6. Your catalogue at your play tempo (tempo view)
 
-If you play a set at one tempo with key lock, `tempo` stretches every scanned track to that tempo with [Rubber Band](https://breakfastquay.com/rubberband/) (pitch kept, like key lock). Then it analyses it again: genre, moods, colour and hype. Your normal results are never touched.
+If you play a set at one tempo with key lock, `tempo` stretches every scanned track to that tempo with [Rubber Band](https://breakfastquay.com/rubberband/) (pitch kept, like key lock; its R2 engine, which changes the sound for the models far less than R3 does). Then it analyses it again: genre, moods, colour and hype. Your normal results are never touched.
 
 **Pick any tempo.** The default is 145; add `--bpm 140` (or any tempo) to `scan`, `report`, `export`, `nml`, `refresh` and `load`. Each tempo is a separate view with its own data in `data/at-<bpm>/`, so several can exist side by side. Only one can be loaded at a time, and `native` switches back whichever one is. The examples below use the default.
 

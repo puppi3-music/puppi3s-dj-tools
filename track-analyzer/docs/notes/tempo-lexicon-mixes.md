@@ -48,9 +48,9 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   `saTimelineRow`.
 
 ### Tempo view (`tempo.py`)
-- `analysis.stretch()` = Rubber Band CLI R3 (`brew install rubberband`, 4.0); `analyze_file(tempo=(src, target),
+- `analysis.stretch()` = Rubber Band CLI R2 `-c 6 --centre-focus` for the scan (`brew install rubberband`, 4.0; R3 only for the player, `listen=True`). R3 moved style scores 0.52-0.68 at +0.6 % vs 0.16-0.22 for a plain resample (flipped genres), R2 0.20-0.26 (2026-11-12); `tempo.VIEW_STRETCH` in the view cache version; `analyze_file(tempo=(src, target),
   genre_bpm=target)`. Source BPM = Traktor's, else ours. BPM is set to the target, not measured on stretched audio.
-  A track already at the view's BPM isn't stretched (`stretch` returns the audio as is; R3 at ratio 1 is up to
+  A track already at the view's BPM isn't stretched (`stretch` returns the audio as is; neither engine is a passthrough at ratio 1: R3 is up to
   -55 dBFS off), so its view analysis equals its own (11 tracks over the 135/145 views, colour shift 0.0).
   The colour model gets OUR BPM measured at the track's own tempo (`analyze_file(own_bpm=…)`, `refresh_predictions(own_bpm=…)`),
   as the native position does, so the shift is the tempo's alone (with Traktor's BPM, tracks 1-2 BPM apart shifted ~+0.13 extra on a test collection).

@@ -722,7 +722,7 @@ def stretch_parallel(stereo, sr: float, src: float, bpm: float, cancel: threadin
     """analysis.stretch in STRETCH_CHUNK pieces, STRETCH_WORKERS at once, for listening: ≈6 s for a 4-min track instead of
     ≈30 (one Rubber Band can't use more cores). Each piece starts STRETCH_PRE early, so the stretcher has settled by its
     own start (as Mixxx's real-time stretching does after a jump), and runs STRETCH_POST past its end for a STRETCH_FADE
-    crossfade into the next. Sounds like the whole-track stretch the view's scan uses; the samples differ, as two runs
+    crossfade into the next. Rubber Band R3 (listen=True); the view's scan uses R2, which the models hear more truly. Pieces and a whole-track run differ in samples, as two runs
     of a phase vocoder from different starting points do. cancel: stops every piece (analysis.Cancelled)."""
     import os
     from concurrent.futures import ThreadPoolExecutor
@@ -738,7 +738,7 @@ def stretch_parallel(stereo, sr: float, src: float, bpm: float, cancel: threadin
     def piece(s):
         analysis.check_cancel(cancel)  # the pieces not started yet
         a = max(0, s - pre)
-        return analysis.stretch(stereo[a:min(n, s + step + post)], sr, src, bpm, cancel)[round((s - a) * k):]
+        return analysis.stretch(stereo[a:min(n, s + step + post)], sr, src, bpm, cancel, listen=True)[round((s - a) * k):]
 
     with ThreadPoolExecutor(workers) as ex:  # threads: each waits on its own Rubber Band process
         parts = list(ex.map(piece, starts))

@@ -30,7 +30,7 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
 - `scan` recomputes hype after analysing anything (it's a rank within the collection), and on any scan (even with nothing new: the early return too) while no track has hype yet (a first scan used to leave the column empty until `hype` ran); `hype` is also kept on rescan.
 - `refresh_predictions` clears a track's prediction when the current model can't place it (no stale colours).
 - `stretch` writes 32-bit float WAV for Rubber Band (16-bit input clipped peaks above full scale; R3 output then
-  differs in phase only: style scores ±0.004, same key, LUFS ±0.001). R3 stays: accuracy over speed.
+  differs in phase only: style scores ±0.004, same key, LUFS ±0.001). (Measured with R3; the scan uses R2 since 2026-11-12, the player still R3.)
 - Edge fades (`web.EDGE_FADE` = 64 samples, gain √(n/64) in, mirrored out; pads and saved samples): copied from a
   Traktor 4 Remix Deck capture (drag the track's title from a deck with an active loop onto a cell → 16-bit WAV in
   Browser.Dir.Loops, exact loop length, no tail, NML LOOPINFO ORIGINAL_LOOP_SIZE). Ours then matches that capture

@@ -48,6 +48,7 @@ from .analysis import COLOR_NAMES, HOME, log
 DEFAULT_BPM = 145.0
 BASE_CACHE_DB = analysis.CACHE_DB
 BASE_CACHE_VERSION = analysis.CACHE_VERSION
+VIEW_STRETCH = "r2c6cf"  # in the view caches' version: R3 → R2 (2026-11-12) rescans the views
 BASE_DB = collection.DB
 STATE = HOME / traktor.TEMPO_STATE
 BACKUP_PREFIX = "collection.nml.before-tempo-view-"
@@ -102,7 +103,7 @@ def use_view(bpm: float) -> None:
     vh = view_home(bpm)
     vh.mkdir(parents=True, exist_ok=True)
     analysis.CACHE_DB = vh / "cache.db"
-    analysis.CACHE_VERSION = f"{BASE_CACHE_VERSION}|tempo-{bpm:g}"
+    analysis.CACHE_VERSION = f"{BASE_CACHE_VERSION}|tempo-{bpm:g}|{VIEW_STRETCH}"
     collection.DB = vh / "collection.db"
     collection.DEFAULT_CSV = vh / "collection.csv"
 
