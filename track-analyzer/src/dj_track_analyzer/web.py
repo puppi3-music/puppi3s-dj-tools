@@ -48,7 +48,8 @@ def doing(text: str):
     _doing[i] = text
 
     def say(new: str) -> None:
-        _doing[i] = new
+        if i in _doing:  # a late rename (a timer) doesn't bring back a finished step
+            _doing[i] = new
     try:
         yield say
     finally:

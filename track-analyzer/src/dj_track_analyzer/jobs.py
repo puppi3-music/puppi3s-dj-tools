@@ -605,7 +605,14 @@ def setup_status(say=lambda part: None) -> dict:
     st["container"] = traktor.CONTAINER  # the page says Docker is experimental
     st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no install button
     st["install"] = {t: _installer(t) for t in st["tools"]}
-    say("reading Traktor's collection")
+    real, steps = say, [0]
+
+    def say(part: str) -> None:  # noqa: F811  (counts steps, so the joke below never covers a later one)
+        steps[0] += 1
+        real(part)
+    say("reticulating splines")  # a joke over real work: the true label takes over after 1.5 s (the page asks every 0.7 s)
+    joke = steps[0]
+    threading.Timer(1.5, lambda: steps[0] == joke and real("reading Traktor's collection")).start()
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
@@ -661,8 +668,6 @@ def setup_status(say=lambda part: None) -> dict:
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
     from . import mygenres
 
-    say("reticulating splines")  # a joke: held just long enough to read
-    time.sleep(1.5)  # the page asks every 0.7 s: long enough to be seen
     say("your genre model")
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
