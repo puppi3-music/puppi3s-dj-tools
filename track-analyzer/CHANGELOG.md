@@ -3,6 +3,11 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## Unreleased
+
+**Added**
+- Web page: a notice when Traktor has tracks Lexicon doesn't, saying to use Import → Traktor in Lexicon (its Sync to Traktor only goes the other way).
+
 ## 1.4.3 (2026-11-12)
 
 **Changed**
