@@ -3,6 +3,24 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.4.0 (2026-11-12)
+
+**New**
+- Mixes: **Standalone pieces** also finds solo reworks: one track alone, played changed in half its bars or more
+  (EQ, stems, re-arranged), which can work as its own piece too.
+
+**Changed**
+- Mixes: standalone pieces measure each track's level by its loudness across the stems you hear, and a track
+  counts as near its own level within 6 dB (was the closest stem, within 12 dB). A track that is lower but steady
+  (down to -16 dB) counts too, so more real blends are found without false ones. The tracks before and after
+  each change are unmixed first, and a bar counts when 2 or more tracks are near their own level.
+- Mixes: a piece's level strip shows the 16 bars before each change and the whole piece, so a piece widened to
+  whole phrases no longer reaches past the strip.
+- Mixes: a mix's genre holds juke/footwork back the way it already did psytrance: house sped up to about 160 no
+  longer comes out as footwork.
+
+Analyse a mix again to get these results.
+
 ## 1.3.0 (2026-11-11)
 
 **New**
