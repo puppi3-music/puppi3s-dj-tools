@@ -4,7 +4,8 @@ Each track's original file is lined up with the recording (speed and position), 
 change is unmixed into the two originals (non-negative least squares on a band spectrogram). A track with a stem
 file is unmixed per stem, so a live stem cut or bass swap doesn't read as a fade: it plays in a bar when any of
 its stems is near that stem's own level. A track without one is fit whole (or, as an option, separated by Demucs
-over the stretch where it plays). A change qualifies when both tracks stay near their own level for a long run
+over the stretch where it plays). A change qualifies when both tracks stay near their own level (or lower but
+steady, see STEADY_DB) for a long run
 of bars: 2:30 of run makes a track candidate, 64 bars (with phrase padding) a short edit. These are recommendations with a fixed
 bar, never a quota: no qualifying change is a valid answer, and then the closest miss is shown.
 """
@@ -30,6 +31,14 @@ NEAR_DB = 6.0  # both tracks within this of their solo level ... (null test: a t
 MIN_SECONDS = 150.0  # ... for this long (the run itself, not phrase padding): long enough to release as a track ...
 MIN_BARS = 64  # ... or, as a short edit (a moment from the set), this many bars once widened to whole phrases
 GAP = 1  # ... where a run may hold single off bars (a fill, a filter sweep, a misfit)
+# A track also counts as near when it sits lower but steady: at STEADY_DB or more, and its level changes by at most
+# STEADY dB from bar to bar (median over the bar and 2 on each side, STEADY_READINGS+ of them measured). A track
+# played bass-down or filtered holds a level; a track that isn't playing jumps around its -8 dB floor. Null test
+# (4058 bars, 3 mixes): runs of 32+ bars for a track that isn't playing stay at 1%; a track at -6 dB gets them in
+# 76% of stretches (64% without). GAP 2 would raise the fake runs to 6%.
+STEADY_DB = -16.0
+STEADY = 1.0
+STEADY_READINGS = 4
 PHRASE = 16  # a piece is widened to whole phrases of this many bars of the incoming track's grid
 CONTEXT = 16  # bars measured after a run ends, so the page's strip shows how it ends
 PROBE = 24.0  # seconds of the mix matched against the original at each lineup point
@@ -187,6 +196,24 @@ def _longest(flags: list[bool], gap: int = GAP) -> tuple[int, int]:
             if last - start + 1 > best[1]:
                 best = (start, last - start + 1)
     return best
+
+
+def _near(col: list[float | None]) -> list[bool]:
+    """Per bar of one track's levels (dB vs its own level, None: no part sounds): near its own level, or lower
+    but steady (see STEADY_DB)."""
+    out = []
+    for i, v in enumerate(col):
+        ok = v is not None and abs(v) <= NEAR_DB
+        if not ok and v is not None and v >= STEADY_DB:
+            w = [x for x in col[max(0, i - 2):i + 3] if x is not None]
+            ok = len(w) >= STEADY_READINGS and float(np.median(np.abs(np.diff(w)))) <= STEADY
+        out.append(ok)
+    return out
+
+
+def _near_bars(levels: list[tuple]) -> list[list[bool]]:
+    """_near for each track's column of `levels` rows (mix seconds, dB, dB, ...): [track][bar]."""
+    return [_near([r[1 + q] for r in levels]) for q in range(len(levels[0]) - 1)] if levels else []
 
 
 def _plain(title: str) -> str:
@@ -523,7 +550,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
             f"{'' if gb else ' (no beat grid for ' + _plain(B.get('title')) + ')'}")
         levels, near, after = [], [], 0
 
-        def is_near(*dbs):
+        def is_near(*dbs):  # while measuring, to know when the run is over: the plain test (steadiness needs bars ahead)
             return sum(d is not None and abs(d) <= NEAR_DB for d in dbs) >= 2
 
         x = lo
@@ -548,6 +575,8 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         c["bars"] = levels  # [mix seconds, A dB, B dB, dB of each of c["others"]] vs each track's own level (None: no part sounds)
         c["bar"] = round(L, 4)  # bar length in mix seconds
         c["measured_with"] = {"from": pa["how"], "to": pb["how"]}
+        per = _near_bars(levels)  # [track][bar]: near or lower but steady
+        near = [sum(col[j] for col in per) >= 2 for j in range(len(levels))]
         i0, n = _longest(near)
         c["status"] = "measured"
         t0 = levels[i0][0] if n else 0.0
@@ -559,10 +588,8 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         c["qualifies"] = n * L >= MIN_SECONDS  # a track of its own
         c["short"] = not c["qualifies"] and n + c["run"].get("lead", 0) + c["run"].get("tail", 0) >= MIN_BARS
         if n:  # a track is named when it is up in at least a quarter of the run
-            seg = levels[i0:i0 + n]
             who = [A, B] + [tracks[j] for j, _ in extra]
-            up = [t for q, t in enumerate(who) if sum(r[1 + q] is not None and abs(r[1 + q]) <= NEAR_DB
-                                                      for r in seg) >= n / 4]
+            up = [t for q, t in enumerate(who) if sum(per[q][i0:i0 + n]) >= n / 4]
             c["with"] = [t["n"] for t in who[2:] if t in up]
             c["names"] = [t["n"] for t in sorted(up if len(up) >= 2 else who[:2], key=lambda t: t["n"])]
             ts = [t for t in tracks if t["n"] in c["names"]]
@@ -675,9 +702,10 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
     picks = [c for c in measured if c["qualifies"]]
     shorts = [c for c in measured if c.get("short")]
     out = {"multi": multi, "rule": ("2 or more of the tracks around a change" if multi else "both tracks") + f" within {NEAR_DB:g} dB of their own level (with a stem file: its stems that play there, by loudness) "
+                   f"or lower down to {STEADY_DB:g} dB but steady (bar to bar within {STEADY:g} dB) "
                    f"for {clock(MIN_SECONDS)}+ (short edits: {MIN_BARS}+ bars in whole phrases)"
                    + (", single off bars allowed" if GAP == 1 else f", up to {GAP} off bars in a row allowed" if GAP else ""),
-           "near_db": NEAR_DB, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these
+           "near_db": NEAR_DB, "steady_db": STEADY_DB, "steady": STEADY, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these
            "names": NAMES, "changes": changes, "picks": [c["at"] for c in picks],
            "shorts": [c["at"] for c in shorts],
            "solo": solo, "solos": solos, "rework_share": REWORK_SHARE,

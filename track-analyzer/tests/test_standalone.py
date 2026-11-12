@@ -138,6 +138,20 @@ def test_longest_run_allows_single_off_bars():
     assert sa._longest([F, F]) == (0, 0)
 
 
+def test_lower_but_steady_counts_as_near():
+    N = None
+    assert sa._near([0.0, -3.0, -6.0, -7.0]) == [True, True, True, False]  # -7 alone, jumping from -6: off
+    # bass-down: steady (the first and last bar measured have only 3 readings around them)
+    assert sa._near([-10.0, -10.5, -10.0, -10.4, -10.2]) == [False, True, True, True, False]
+    assert sa._near([-8.0, -12.0, -7.0, -11.0, -9.0]) == [False] * 5  # a track that isn't playing: jumpy floor
+    assert sa._near([-17.0, -17.0, -17.0, -17.0]) == [False] * 4  # too far down, however steady
+    assert sa._near([-10.0, N, N, -10.0]) == [False, False, False, False]  # too few readings
+    run = [-10.0] * 40  # a blend with one track steady at -10 dB qualifies on the 2-near count
+    rows = [(i * 2.0, 0.0, v) for i, v in enumerate(run)]
+    a, b = sa._near_bars(rows)
+    assert all(a) and all(b[1:-1]) and sa._longest([x and y for x, y in zip(a, b)]) == (1, 38)
+
+
 def test_mix_job_passes_the_standalone_ticks(tmp_path):
     from dj_track_analyzer import jobs
 

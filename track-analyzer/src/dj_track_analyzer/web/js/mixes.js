@@ -547,7 +547,7 @@ addEventListener("hashchange", () => { if (SAP.audio && !location.hash.startsWit
 function saRule(sa) {
   if (sa.near_db == null) return `<div class="small muted">${esc(sa.rule)}</div>`;  // analysed before the page worded it
   return `<div class="small muted" style="margin-bottom:4px">Picked when ${sa.multi ? "two or more tracks around a change" : "both tracks"} stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
-    below how loud it is on its own (with a stem file: its stems that play there, weighted by how loud each is, so a stem cut isn't read as a fade)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
+    below how loud it is on its own (with a stem file: its stems that play there, weighted by how loud each is, so a stem cut isn't read as a fade)${sa.steady_db != null ? `, or lower (down to ${-sa.steady_db} dB below) but steady, its level changing by ${sa.steady} dB or less from bar to bar, as when it plays bass-down or filtered` : ""}${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
 }
 function standalonePanel(d) {
   const sa = d.standalone; if (!sa) return "";
