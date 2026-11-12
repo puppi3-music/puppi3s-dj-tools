@@ -736,7 +736,7 @@ def tag_writing_on(collection: Path) -> bool:
 
 def entry_stamp(entry: str) -> str | None:
     """'DATE TIME' of an ENTRY, e.g. '2026/10/22 38471'."""
-    m = re.match(r"<ENTRY\b[^>]*>", entry)
+    m = re.match(r"<ENTRY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     a = attrs(m.group(0)) if m else {}
     if "MODIFIED_DATE" not in a or "MODIFIED_TIME" not in a:
         return None
@@ -754,7 +754,7 @@ def file_stamp(path: str) -> str | None:
 
 def set_entry_stamp(entry: str, stamp: str | None) -> str:
     """Set (or, for None, remove) MODIFIED_DATE / MODIFIED_TIME on an ENTRY."""
-    m = re.match(r"<ENTRY\b[^>]*>", entry)
+    m = re.match(r"<ENTRY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     if not m:
         return entry
     tag = m.group(0)
@@ -812,10 +812,10 @@ def tags_match(entry: str, path: str) -> bool:
     tags = file_tags(path)
     if tags is None:
         return True  # unreadable: nothing for Traktor to pick up either
-    m = re.match(r"<ENTRY\b[^>]*>", entry)
+    m = re.match(r"<ENTRY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     e = attrs(m.group(0)) if m else {}
-    album_m = re.search(r"<ALBUM\b[^>]*>", entry)
-    info_m = re.search(r"<INFO\b[^>]*>", entry)
+    album_m = re.search(r"<ALBUM\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
+    info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     ours = {"title": e.get("TITLE"), "artist": e.get("ARTIST"),
             "album": attrs(album_m.group(0)).get("TITLE") if album_m else None,
             "comment": attrs(info_m.group(0)).get("COMMENT") if info_m else None}
@@ -848,7 +848,7 @@ def collection_tracks(nml: str | None = None) -> tuple[Path, list[Path], int]:
     text = path.read_text(encoding="utf-8")
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     files, missing, seen = [], 0, set()
-    for loc in re.findall(r"<LOCATION\b[^>]*>", text[c0:c1]):
+    for loc in re.findall(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", text[c0:c1]):
         cands = location_paths(attrs(loc))
         if any("/TraktorContent/" in c for c in cands):
             continue  # Traktor's bundled loops and samples, not your tracks
@@ -872,11 +872,11 @@ def track_info(nml: str | None = None) -> dict[str, tuple[float | None, str | No
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     out = {}
     for entry in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
-        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc:
             continue
-        tempo = re.search(r"<TEMPO\b[^>]*>", entry)
-        key = re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+        tempo = re.search(r"<TEMPO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
+        key = re.search(r"<MUSICAL_KEY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         bpm = attrs(tempo.group(0)).get("BPM") if tempo else None
         kv = attrs(key.group(0)).get("VALUE") if key else None
         try:
@@ -970,11 +970,11 @@ def file_genre(path: str) -> str | None:
 
 def _set_info_attr(entry: str, name: str, value: str) -> tuple[str, str | None]:
     """Set one attribute on the entry's <INFO> element (creating it if needed). Returns (entry, old value)."""
-    info_m = re.search(r"<INFO\b[^>]*>", entry)
+    info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     if info_m:
         old = attrs(info_m.group(0)).get(name)
         return entry[:info_m.start()] + set_attr(info_m.group(0), name, value) + entry[info_m.end():], old
-    loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+    loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     loc_end = entry.find("</LOCATION>", loc_m.end())
     at = loc_end + len("</LOCATION>") if loc_end != -1 else loc_m.end()
     return entry[:at] + f'\n<INFO {name}="{esc(value)}"></INFO>' + entry[at:], None
@@ -1024,7 +1024,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
         stats["traktor_tracks"] += 1
-        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc_m:
             return entry
         p = next((c for c in location_paths(attrs(loc_m.group(0))) if c in scanned), None)
@@ -1033,7 +1033,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
         stats["matched_scanned_tracks"] += 1
         if update_genres and p in genre_held:
             stats["genre_held"] = stats.get("genre_held", 0) + 1  # Traktor's genre stays as it is
-            info_m = re.search(r"<INFO\b[^>]*>", entry)
+            info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
             g = attrs(info_m.group(0)).get("GENRE") if info_m else None
             if g:  # still gets its Smartlist
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
@@ -1043,7 +1043,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
                 stats["no_genre_from_analysis" if genres_from_analysis else "no_genre_tag_in_file"] += 1
             else:
                 genres_seen.update(x.strip() for x in g.split(";") if x.strip())
-                info_m = re.search(r"<INFO\b[^>]*>", entry)
+                info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
                 if info_m and attrs(info_m.group(0)).get("GENRE") == g:
                     stats["already_up_to_date"] += 1
                 else:
@@ -1052,7 +1052,7 @@ def sync(nml: str | None = None, dry_run: bool = False, update_genres: bool = Tr
                     if len(examples) < 15:
                         examples.append(f"{Path(p).name}: {old or '(empty)'} → {g}")
         if colors:
-            info_m = re.search(r"<INFO\b[^>]*>", entry)
+            info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
             cur = attrs(info_m.group(0)).get("COLOR") if info_m else None
             has = bool(cur and cur.isdigit() and 1 <= int(cur) <= len(analysis.COLOR_NAMES))
             if has:
@@ -1157,7 +1157,7 @@ def _set_or_drop_info(entry: str, name: str, value: str) -> str:
     """Set an INFO attribute, or drop it when value is empty instead of leaving NAME=""."""
     if value:
         return _set_info_attr(entry, name, value)[0]
-    info_m = re.search(r"<INFO\b[^>]*>", entry)
+    info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     if not info_m:
         return entry
     return entry[:info_m.start()] + re.sub(rf'\s{name}="[^"]*"', "", info_m.group(0)) + entry[info_m.end():]
@@ -1184,7 +1184,7 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc_m:
             return entry
         paths = location_paths(attrs(loc_m.group(0)))
@@ -1192,7 +1192,7 @@ def write_hype(hype: dict[str, int], nml: str | None = None, dry_run: bool = Fal
             want_hype = None
         else:
             want_hype = next((hype[p] for p in paths if p in hype), None)
-        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         info = attrs(info_m.group(0)) if info_m else {}
         old2 = info.get("RATING")
         if old2 and HYPE_RE.search(old2):  # left over from when hype went into Comment 2
@@ -1253,7 +1253,7 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc_m:
             return entry
         p = next((c for c in location_paths(attrs(loc_m.group(0))) if c in changes), None)
@@ -1261,7 +1261,7 @@ def set_colors(changes: dict[str, tuple[int, int]], nml: str | None = None, dry_
             return entry
         expect, want = changes[p]
         done.add(p)
-        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         cur = attrs(info_m.group(0)).get("COLOR") if info_m else None
         if (cur if cur not in ("", "0") else None) != (str(expect) if expect else None):  # expect None: uncoloured
             stats["skipped_changed_since"] += 1
@@ -1297,7 +1297,7 @@ def set_genres(changes: dict[str, tuple[str | None, str]], nml: str | None = Non
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc_m:
             return entry
         p = next((c for c in location_paths(attrs(loc_m.group(0))) if c in changes), None)
@@ -1305,7 +1305,7 @@ def set_genres(changes: dict[str, tuple[str | None, str]], nml: str | None = Non
             return entry
         expect, want = changes[p]
         done.add(p)
-        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         cur = (attrs(info_m.group(0)).get("GENRE") or "").strip() or None if info_m else None
         if cur != expect:
             stats["skipped_changed_since"] += 1
@@ -1344,10 +1344,10 @@ def read_track(path: str, nml: str | None = None) -> dict | None:
     text = find_collection(nml).read_text(encoding="utf-8")
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     for entry in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
-        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc or path not in location_paths(attrs(loc.group(0))):
             continue
-        info_m, key_m = re.search(r"<INFO\b[^>]*>", entry), re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+        info_m, key_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry), re.search(r"<MUSICAL_KEY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         info = attrs(info_m.group(0)) if info_m else {}
         kv = attrs(key_m.group(0)).get("VALUE", "") if key_m else ""
         cam = None
@@ -1376,11 +1376,11 @@ def set_track(path: str, colour: int | None = None, camelot: str | None = None, 
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not loc_m or path not in (paths := location_paths(attrs(loc_m.group(0)))):
             return entry
         found.append(1)
-        info_m = re.search(r"<INFO\b[^>]*>", entry)
+        info_m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         info = attrs(info_m.group(0)) if info_m else {}
         if colour is not None and info.get("COLOR") != str(colour):
             entry = _set_info_attr(entry, "COLOR", str(colour))[0]
@@ -1390,12 +1390,12 @@ def set_track(path: str, colour: int | None = None, camelot: str | None = None, 
             stats["changed_fields"].append("genre")
         if camelot is not None:
             v = str(camelot_value(camelot))
-            key_m = re.search(r"<MUSICAL_KEY\b[^>]*>", entry)
+            key_m = re.search(r"<MUSICAL_KEY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
             if not key_m or attrs(key_m.group(0)).get("VALUE") != v:
                 if key_m:
                     entry = entry[:key_m.start()] + set_attr(key_m.group(0), "VALUE", v) + entry[key_m.end():]
                 else:  # where Traktor puts it: after LOUDNESS, else TEMPO, else INFO
-                    after = next((x for x in (re.search(rf"<{t}\b[^>]*>.*?</{t}>", entry, re.S)
+                    after = next((x for x in (re.search(rf"<{t}\b(?:[^>\x22]|\x22[^\x22]*\x22)*>.*?</{t}>", entry, re.S)
                                               for t in ("LOUDNESS", "TEMPO", "INFO")) if x), None)
                     at = after.end() if after else entry.rfind("</ENTRY>")
                     entry = entry[:at] + f'\n<MUSICAL_KEY VALUE="{v}"></MUSICAL_KEY>' + entry[at:]
@@ -1513,7 +1513,7 @@ def sync_tracks(nml: str | None = None, dry_run: bool = False, tracks: list[dict
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     present, missing, vols = set(), [], {}
     for m in re.finditer(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
-        loc_m = re.search(r"<LOCATION\b[^>]*>", m.group(0))
+        loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", m.group(0))
         if not loc_m:
             continue
         loc = attrs(loc_m.group(0))
@@ -1527,7 +1527,7 @@ def sync_tracks(nml: str | None = None, dry_run: bool = False, tracks: list[dict
             key = v if WINDOWS_DRIVE.fullmatch(v) else (v if found.startswith("/Volumes/") else "")
             vols.setdefault(key, f"{v}\0{loc.get('VOLUMEID', '')}")
         elif loc.get("FILE"):
-            info = re.search(r"<INFO\b[^>]*>", m.group(0))
+            info = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", m.group(0))
             kb = attrs(info.group(0)).get("FILESIZE") if info else None
             missing.append((loc_m.group(0), loc["FILE"], int(kb) * 1024 if kb and kb.isdigit() else None))
     p = trackfiles.plan(present, missing if relink else [], tracks)

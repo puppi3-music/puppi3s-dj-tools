@@ -162,3 +162,13 @@ def test_first_scan_scores_hype(library, fake_analysis, monkeypatch):
     collection.db().execute("UPDATE tracks SET hype = NULL").connection.commit()
     scan(library)  # nothing new, but no hype yet: scored
     assert len(calls) == 2
+
+
+def test_info_attr_with_raw_gt_in_comment():
+    """A '>' inside an attribute value is legal XML; it must not cut the <INFO> tag short (duplicate GENRE)."""
+    import xml.etree.ElementTree as ET
+    from dj_track_analyzer.traktor import _set_info_attr
+    entry = '<ENTRY><INFO COMMENT="&lt;p>text&lt;/p>" GENRE="Old"></INFO></ENTRY>'
+    new, old = _set_info_attr(entry, "GENRE", "House")
+    assert old == "Old"
+    assert ET.fromstring(new).find("INFO").get("GENRE") == "House"

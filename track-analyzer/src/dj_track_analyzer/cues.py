@@ -66,10 +66,10 @@ def grids(nml: str | None = None, ungridded: bool = False) -> dict[str, dict]:
     c0, c1 = text.find("<COLLECTION"), text.find("</COLLECTION>")
     out = {}
     for e in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
-        loc, tm = re.search(r"<LOCATION\b[^>]*>", e), re.search(r"<TEMPO\b[^>]*>", e)
+        loc, tm = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", e), re.search(r"<TEMPO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", e)
         if not (loc and tm):
             continue
-        cues = [traktor.attrs(c) for c in re.findall(r"<CUE_V2\b[^>]*>", e)]
+        cues = [traktor.attrs(c) for c in re.findall(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", e)]
         g = [c for c in cues if c.get("TYPE") == "4"]
         try:
             bpm = float(traktor.attrs(tm.group(0)).get("BPM") or 0)
@@ -1556,13 +1556,13 @@ def apply(nml: str | None = None, dry_run: bool = False, restore: bool = False, 
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         p = next((c for c in traktor.location_paths(traktor.attrs(loc.group(0))) if c in todo), None) if loc else None
         if not p:
             return entry
         plan, name = todo[p], Path(p).name
-        tm = re.search(r"<TEMPO\b[^>]*>", entry)
-        cue_tags = list(re.finditer(r"<CUE_V2\b[^>]*>", entry))
+        tm = re.search(r"<TEMPO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
+        cue_tags = list(re.finditer(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry))
         grid = [traktor.attrs(c.group(0)) for c in cue_tags if traktor.attrs(c.group(0)).get("TYPE") == "4"]
         bpm = float(traktor.attrs(tm.group(0)).get("BPM") or 0) if tm else 0
         quiet = todo[p].get("restore")  # restoring: a cue still there or a regridded track isn't news
@@ -1579,7 +1579,7 @@ def apply(nml: str | None = None, dry_run: bool = False, restore: bool = False, 
         stats["skipped"] += [] if quiet else [f"{name}: {why}" for why in skipped]
         code = {v: k for k, v in CUE_TYPES.items()}
         for r in removes:  # first: a renumbered cue may take the slot it frees
-            hit = next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)
+            hit = next(c for c in re.finditer(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
                        if traktor.attrs(c.group(0)).get("HOTCUE", "-1") == str(r["hotcue"])
                        and traktor.attrs(c.group(0)).get("TYPE") == code[r["type"]]
                        and abs(float(traktor.attrs(c.group(0)).get("START", -1e9)) - r["ms"]) < 1)
@@ -1588,13 +1588,13 @@ def apply(nml: str | None = None, dry_run: bool = False, restore: bool = False, 
             what = f"cue {r['hotcue'] + 1}" if r["hotcue"] >= 0 else r["type"]
             examples.append(f"{name}: − {what}{' ' + r['name'] if r['name'] else ''} at {_clock(r['ms'] / 1000)} deleted")
         for mv in moves:
-            hit = next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)
+            hit = next(c for c in re.finditer(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
                        if traktor.attrs(c.group(0)).get("HOTCUE") == str(mv["hotcue"])
                        and abs(float(traktor.attrs(c.group(0)).get("START", -1e9)) - mv["from_ms"]) < 1)
             entry = entry[:hit.start()] + traktor.set_attr(hit.group(0), "START", f"{mv['to_ms']:.6f}") + entry[hit.end():]
             stats["cues_moved"] += 1
             examples.append(f"{name}: cue {mv['hotcue'] + 1} {_clock(mv['from_ms'] / 1000)} → {_clock(mv['to_ms'] / 1000)}")
-        hits = [(r, next(c for c in re.finditer(r"<CUE_V2\b[^>]*>", entry)  # found all first: the slots swap among themselves
+        hits = [(r, next(c for c in re.finditer(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)  # found all first: the slots swap among themselves
                          if traktor.attrs(c.group(0)).get("HOTCUE") == str(r["hotcue"])
                          and abs(float(traktor.attrs(c.group(0)).get("START", -1e9)) - r["ms"]) < 1)) for r in renum]
         for r, hit in sorted(hits, key=lambda x: -x[1].start()):  # from the end, so earlier offsets still hold

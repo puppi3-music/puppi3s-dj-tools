@@ -47,8 +47,8 @@ def read_traktor_colors(nml: str | None = None) -> tuple[Path, dict[str, int], i
     out: dict[str, int] = {}
     n = 0
     for entry in re.findall(r"<ENTRY\b.*?</ENTRY>", text[c0:c1], flags=re.S):
-        loc = re.search(r"<LOCATION\b[^>]*>", entry)
-        info = re.search(r"<INFO\b[^>]*>", entry)
+        loc = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
+        info = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         if not (loc and info):
             continue
         color = traktor.attrs(info.group(0)).get("COLOR")

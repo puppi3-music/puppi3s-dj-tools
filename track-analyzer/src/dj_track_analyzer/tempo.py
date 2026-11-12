@@ -526,7 +526,7 @@ def report_text(d: dict) -> str:
 
 
 def _loc_key(entry: str) -> tuple[str | None, list[str]]:
-    loc_m = re.search(r"<LOCATION\b[^>]*>", entry)
+    loc_m = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     if not loc_m:
         return None, []
     a = traktor.attrs(loc_m.group(0))
@@ -534,14 +534,14 @@ def _loc_key(entry: str) -> tuple[str | None, list[str]]:
 
 
 def _info(entry: str) -> dict:
-    m = re.search(r"<INFO\b[^>]*>", entry)
+    m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     return traktor.attrs(m.group(0)) if m else {}
 
 
 def _set_or_drop(entry: str, name: str, value: str | None) -> str:
     if value is not None:
         return traktor._set_info_attr(entry, name, value)[0]
-    m = re.search(r"<INFO\b[^>]*>", entry)
+    m = re.search(r"<INFO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
     if not m:
         return entry
     return entry[:m.start()] + re.sub(rf'\s{name}="[^"]*"', "", m.group(0)) + entry[m.end():]

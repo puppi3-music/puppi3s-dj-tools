@@ -502,13 +502,13 @@ def apply(nml: str | None = None, dry_run: bool = False) -> dict:
 
     def fix_entry(m: re.Match) -> str:
         entry = m.group(0)
-        loc = re.search(r"<LOCATION\b[^>]*>", entry)
+        loc = re.search(r"<LOCATION\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
         p = next((c for c in traktor.location_paths(traktor.attrs(loc.group(0))) if c in todo), None) if loc else None
         if not p:
             return entry
         plan, name = todo[p], Path(p).name
-        tm = re.search(r"<TEMPO\b[^>]*>", entry)
-        tags = list(re.finditer(r"<CUE_V2\b[^>]*>", entry))
+        tm = re.search(r"<TEMPO\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
+        tags = list(re.finditer(r"<CUE_V2\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry))
         grid = [traktor.attrs(c.group(0)) for c in tags if traktor.attrs(c.group(0)).get("TYPE") == "4"]
         bpm = float(traktor.attrs(tm.group(0)).get("BPM") or 0) if tm else 0
         if not grid or not bpm or not same(plan, bpm, float(grid[0]["START"])):
