@@ -63,7 +63,7 @@ def doing_now() -> list[str]:
 # the slower answers the page waits for, named on its "Loading…" line as "Getting …"
 ASKED = {"/api/libraries": "the library list", "/api/stats": "the overview numbers", "/api/tracks": "the track list",
          "/api/hype": "the hype list", "/api/colours/review": "the colour review", "/api/colours/explain": "your colour profile",
-         "/api/mixes-report": "the mixes report", "/api/setup": "the Setup checks", "/api/update": "the update check"}
+         "/api/mixes-report": "the mixes report", "/api/update": "the update check"}
 
 
 def colour_sync() -> None:
@@ -1350,8 +1350,8 @@ def undo_grids() -> dict:
 
 
 def setup_status() -> dict:
-    with library("native"):
-        st = jobs.setup_status()
+    with library("native"), doing("Getting the Setup checks") as say:  # each slow part names itself on the line
+        st = jobs.setup_status(say=lambda part: say(f"Setup checks: {part}"))
     st["traktor"]["can_browse"] = can_browse()  # else the page offers only the paste field
     return st
 

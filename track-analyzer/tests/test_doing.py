@@ -37,3 +37,19 @@ def test_a_failed_step_is_cleared():
     except OSError:
         pass
     assert web.doing_now() == []
+
+
+def test_the_setup_checks_name_each_part(monkeypatch):
+    from dj_track_analyzer import jobs
+
+    seen = []
+
+    def fake(say):
+        say("checking the beat grids")
+        seen.append(web.doing_now())
+        return {"traktor": {}}
+    monkeypatch.setattr(jobs, "setup_status", fake)
+    monkeypatch.setattr(web, "can_browse", lambda: False)
+    client().get("/api/setup")
+    assert seen == [["Setup checks: checking the beat grids"]]
+    assert web.doing_now() == []
