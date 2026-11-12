@@ -3,6 +3,17 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.4.1 (2026-11-12)
+
+**Changed**
+- Genres: the model's top style now leads, and tempo only picks its form (fast breakbeat is Drum & Bass, fast
+  techno is Hard Techno; wider Tech Trance and House ranges). Updating re-genres your collection once by itself.
+- Track panel: colour review marks.
+- Bar measuring shows progress for every track.
+
+**Fixed**
+- m4a files: timing now allows for the AAC priming offset, so beats and cues line up.
+
 ## 1.4.0 (2026-11-12)
 
 **New**
