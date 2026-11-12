@@ -588,8 +588,9 @@ def _sync_undoable(copy: bool = False) -> bool:
         return False
 
 
-def setup_status() -> dict:
-    """Each step from a fresh install to everything in Traktor: done or not, and what it needs."""
+def setup_status(say=lambda part: None) -> dict:
+    """Each step from a fresh install to everything in Traktor: done or not, and what it needs. `say` names the
+    part being worked on, for the page's "Loading…" line."""
     import sqlite3
 
     from . import cues, tempo
@@ -604,6 +605,12 @@ def setup_status() -> dict:
     st["container"] = traktor.CONTAINER  # the page says Docker is experimental
     st["install_hint"] = {t: analysis.install_hint(t) for t in st["tools"]}  # shown when there's no install button
     st["install"] = {t: _installer(t) for t in st["tools"]}
+    real, steps = say, [0]
+
+    def say(part: str) -> None:  # noqa: F811  (counts steps, so the joke below never covers a later one)
+        steps[0] += 1
+        real(part)
+    say("reading Traktor's collection")
     try:
         nml = traktor.find_collection(None)
         st["traktor"] = {"collection": str(nml), **{k: v for k, v in _traktor_side(nml).items() if k != "files"}}
@@ -623,9 +630,11 @@ def setup_status() -> dict:
         tk_files = set()
     chosen = traktor.chosen_collection()
     st["traktor"]["chosen"] = str(chosen) if chosen else None  # picked on this tab; None = found automatically
+    say("looking for your DJ apps")
     st["dj_app"] = dj_app_status()
     scanned, hyped, errors, tagged, predicted, changed = set(), 0, 0, 0, 0, 0
     if collection.NATIVE_DB.exists():
+        say("checking which tracks changed since their scan")
         with sqlite3.connect(collection.NATIVE_DB) as con:
             have = {r[1] for r in con.execute("PRAGMA table_info(tracks)")}
             if "path" in have:
@@ -640,6 +649,7 @@ def setup_status() -> dict:
     app_files = tk_files
     rb_db = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else None
     if rb_db:
+        say("counting Rekordbox's tracks")
         try:
             app_files = _rekordbox_files(Path(rb_db))
         except Exception as e:  # e.g. master.db locked by a write: skip this poll's count
@@ -656,16 +666,21 @@ def setup_status() -> dict:
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
     from . import mygenres
 
+    say("your genre model")
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
     lib = st["dj_app"].get("rekordbox", {}).get("database") if library.app() == "rekordbox" else st["traktor"].get("collection")
     if lib:  # the chosen DJ app's library (cues.grids and the label counts read that one)
         from . import cues, gridfix
 
+        say("counting your new colours and cues")
         try:
             st["colours"]["new"], st["cues"]["new"] = _new_labels(Path(lib))
         except (SystemExit, OSError) as e:  # e.g. a tempo view is loaded: its colours aren't yours
             log(f"New-labels count skipped: {e}")
+        say("reticulating splines")  # a joke over the slowest real step: its true label takes over after 1.5 s
+        joke = steps[0]  # (the page asks every 0.7 s); a step said by then keeps its own label
+        threading.Timer(1.5, lambda: steps[0] == joke and real("checking the beat grids")).start()
         try:
             g = cues.grids()
             res = gridfix.results(g=g)
@@ -675,6 +690,7 @@ def setup_status() -> dict:
                            "approved": len(gridfix.plans()) if collection.NATIVE_DB.exists() else 0}
         except Exception as e:  # also a master.db read while another job writes it: skip this poll, not the tab
             log(f"Beat grid check status skipped: {e}")
+    say("finishing up")
     st["tags"] = {"tagged_files": tagged}
     backups = []
     if library.app() == "rekordbox":
