@@ -286,3 +286,37 @@ def test_long_blend_short_of_a_track_is_a_short_edit(tmp_path, monkeypatch):
     assert out["picks"] == [] and out["shorts"] == [c["at"]] and "closest_miss" not in out
     result["standalone"] = out
     assert "(short edit)" in "\n".join(sa.summary_lines(result))
+
+
+def setup_three(tmp_path):
+    """A plays 0-130 s; B is an insert 40-90 s; C comes in at 85 s under A: A and C overlap 45 s, around the
+    change from B into C, where B and C overlap only 5 s."""
+    srcs = {k: track(s, 200) for k, s in (("a", 21), ("b", 22), ("c", 23))}
+    mix = np.zeros(220 * SR, np.float32)
+    for k, (t0, t1) in {"a": (0, 130), "b": (40, 90), "c": (85, 215)}.items():
+        mix[t0 * SR: t1 * SR] += srcs[k][: (t1 - t0) * SR]
+    paths = {}
+    for k in srcs:
+        (tmp_path / f"{k}.flac").write_bytes(b"")
+        paths[k] = str(tmp_path / f"{k}.flac")
+    tracks = [{"n": n + 1, "start": sa.clock(s), "artist": f"Artist {k.upper()}", "title": f"Song {k.upper()}",
+               "judged_on": w, "bpm": BPM, "played_bpm": BPM, "path": paths[k]}
+              for n, (k, s, w) in enumerate((("a", 0, "0:05-0:45"), ("b", 40, "0:42-1:28"), ("c", 85, "2:11-3:30")))]
+    by_path = {paths[k]: srcs[k] for k in srcs}
+    return {"tracklist": {"tracks": tracks}}, mix, lambda p: by_path[p]
+
+
+@pytest.mark.parametrize("multi", [True, False])
+def test_overlap_of_tracks_around_a_change(tmp_path, multi):
+    result, mix, load = setup_three(tmp_path)
+    out = sa.find(result, mix, load=load, load_stems=lambda p: None, say=lambda m: None, multi=multi)
+    c = out["changes"][1]  # B into C, with A still up
+    assert c["status"] == "measured"
+    if multi:
+        assert c["others"] == [1] and c["with"] == [1] and c["qualifies"], c["run"]
+        assert c["names"] == [1, 2, 3] and c["title"].startswith("Artist A vs Artist B vs Artist C – ")
+        assert len(c["bars"][0]) == 4
+        assert np.median([r[1] if r[1] is not None else -99 for r in c["bars"] if 95 <= r[0] < 125]) < -sa.NEAR_DB
+    else:  # A unfitted: its sound is taken for B's after B ends, a run that isn't there
+        assert len(c["bars"][0]) == 3
+        assert np.median([r[1] if r[1] is not None else -99 for r in c["bars"] if 95 <= r[0] < 125]) > -sa.NEAR_DB

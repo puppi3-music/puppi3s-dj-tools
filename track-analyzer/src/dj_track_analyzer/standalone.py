@@ -193,18 +193,21 @@ def _date(report: dict) -> str:
         return ""
 
 
-def piece(A: dict, B: dict, run: dict, report: dict, name: str = NAMES[0], link: str = "<link>") -> dict:
-    """Title, one-line Why and credits for one change."""
-    title = f"{(A.get('artist') or '?').strip()} vs {(B.get('artist') or '?').strip()} – " \
-            f"{_plain(A.get('title'))} x {_plain(B.get('title'))} ({name})"
-    why = f"{run['bars']} bars ({run['from']}–{run['to']}) with both tracks near full level"
+def piece(A: dict, B: dict, run: dict, report: dict, name: str = NAMES[0], link: str = "<link>",
+          more: list[dict] | None = None) -> dict:
+    """Title, one-line Why and credits for one change (more: other tracks up in the run, in set order)."""
+    ts = sorted([A, B] + list(more or []), key=lambda t: t.get("n", 0))
+    title = " vs ".join((t.get('artist') or '?').strip() for t in ts) + " – " + \
+        " x ".join(_plain(t.get('title')) for t in ts) + f" ({name})"
+    why = f"{run['bars']} bars ({run['from']}–{run['to']}) with " + \
+        ("both tracks" if len(ts) == 2 else "2 or more tracks at a time") + " near full level"
     if B.get("transition") == "clash":
         why += f"; keys clash ({A.get('heard_camelot') or A.get('camelot')} into " \
                f"{B.get('heard_camelot') or B.get('camelot')})"
     elif B.get("transition"):
         why += f"; keys: {B['transition']}"
     when = _date(report)
-    credits = "\n".join(["Originals:", f"• {_credit(A)}", f"• {_credit(B)}", "",
+    credits = "\n".join(["Originals:", *(f"• {_credit(t)}" for t in ts), "",
                          f"Recorded live{' ' + when if when else ''} · full set: {link}"])
     return {"title": title, "why": why, "credits": credits}
 
@@ -263,14 +266,16 @@ HOW = {"stems": "its stem file", "separated": "stems separated here", "whole": "
 
 
 def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=None, separate_missing: bool = False,
-         grid=None, say=print, workers: int | None = None) -> dict | None:
+         grid=None, say=print, workers: int | None = None, multi: bool = True) -> dict | None:
     """Standalone pieces of a mix whose tracklist has been checked (`result["tracklist"]`).
     load(path) -> mono 44.1 kHz audio of an original (default: decoded like any track).
     load_stems(path) -> its 4 stems from a stem file, or None (default: the Traktor/NUO stem file, by tags).
     split(path, t0, t1) -> 4 stems of the original's seconds t0..t1 (default: Demucs), used only for a track
     without a stem file and only when separate_missing is on.
     grid(path) -> (bpm, first downbeat ms) of the original's beat grid in the DJ app, or None (default: the DJ app's
-    grids). The bars are counted on the incoming track's grid, so a piece starts and ends on its downbeats."""
+    grids). The bars are counted on the incoming track's grid, so a piece starts and ends on its downbeats.
+    multi: also unmix the track before the outgoing one and the one after the incoming one, so a run of 3+
+    tracks is seen; a bar counts when any 2+ tracks are near their own level."""
     report = result.get("tracklist")
     if not report or len(report.get("tracks", [])) < 2:
         return None
@@ -463,6 +468,8 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         """A track's level in one bar, in dB against its own: the part closest to its own level, among the parts
         that sound in the original there (5%+ of the track's loudest part) and have a level of their own."""
         top = max(lv)
+        if top <= 0:  # its original has no sound here (not started, or over)
+            return None
         dbs = [_db(gj, r) for gj, r, l in zip(g, p["ref"], lv)
                if r > 0 and (len(lv) == 1 or l >= 0.05 * top)]
         return round(min(dbs, key=abs), 1) if dbs else None
@@ -472,10 +479,13 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         A, B = tracks[i], tracks[i + 1]
         c = {"from": A["n"], "to": B["n"], "at": B["start"]}
         pa, pb = place(i), place(i + 1)
+        extra = [j for j in ((i - 1, i + 2) if multi else ()) if 0 <= j < len(tracks)]
         if not (pa["ok"] and pb["ok"]):
             bad = [(t, p) for t, p in ((A, pa), (B, pb)) if not p["ok"]]
             c["status"] = "couldn't measure: " + "; ".join(f"{_plain(t.get('title'))}: {p['why']}" for t, p in bad)
             return c
+        extra = [(j, p) for j in extra for p in [place(j)] if p["ok"]]
+        c["others"] = [tracks[j]["n"] for j, _ in extra]  # bars rows carry their levels after A and B
         lo, hi = win(A)[0] + SOLO, win(B)[0] + SOLO
         # measured on until B's window ends, as long as the run lasts (then CONTEXT bars more); once A's original
         # has run out it counts as silent, so the page's strip shows the run end instead of stopping at it
@@ -491,11 +501,10 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         say(f"standalone pieces: change {i + 1}/{len(tracks) - 1} at {B['start']}: measuring "
             f"{max(0, int((hi - lo) / L))} bars"
             f"{'' if gb else ' (no beat grid for ' + _plain(B.get('title')) + ')'}")
-        na = len(pa["parts"])
         levels, near, after = [], [], 0
 
-        def is_near(da, db):
-            return da is not None and db is not None and abs(da) <= NEAR_DB and abs(db) <= NEAR_DB
+        def is_near(*dbs):
+            return sum(d is not None and abs(d) <= NEAR_DB for d in dbs) >= 2
 
         x = lo
         while x + L <= limit:
@@ -504,15 +513,19 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
                 after = 0 if alive else after + 1
                 if after > CONTEXT:
                     break
-            if x + L > a_end:  # A's original is over: only B sounds
-                g, lv = fit(x, x + L, [pb])
-                levels.append((round(float(x), 2), None, level(pb, g, lv)))
-            else:
-                g, lv = fit(x, x + L, [pa, pb])
-                levels.append((round(float(x), 2), level(pa, g[:na], lv[:na]), level(pb, g[na:], lv[na:])))
+            ps = ([] if x + L > a_end else [pa]) + [pb] + [p for _, p in extra]  # A over: counts as silent
+            g, lv = fit(x, x + L, ps)
+            row, k = [], 0
+            for p in ps:
+                m = len(p["parts"])
+                row.append(level(p, g[k:k + m], lv[k:k + m]))
+                k += m
+            if x + L > a_end:
+                row.insert(0, None)
+            levels.append((round(float(x), 2), *row))
             near.append(is_near(*levels[-1][1:]))
             x += L
-        c["bars"] = levels  # [mix seconds, A dB, B dB] vs each track's own level (None: no part sounds)
+        c["bars"] = levels  # [mix seconds, A dB, B dB, dB of each of c["others"]] vs each track's own level (None: no part sounds)
         c["bar"] = round(L, 4)  # bar length in mix seconds
         c["measured_with"] = {"from": pa["how"], "to": pb["how"]}
         i0, n = _longest(near)
@@ -525,8 +538,15 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
         # long enough as a piece once widened to whole phrases (64 bars: about 1:46 at 145 BPM)
         c["qualifies"] = n * L >= MIN_SECONDS  # a track of its own
         c["short"] = not c["qualifies"] and n + c["run"].get("lead", 0) + c["run"].get("tail", 0) >= MIN_BARS
-        if n:
-            c.update(piece(A, B, c["run"], report))
+        if n:  # a track is named when it is up in at least a quarter of the run
+            seg = levels[i0:i0 + n]
+            who = [A, B] + [tracks[j] for j, _ in extra]
+            up = [t for q, t in enumerate(who) if sum(r[1 + q] is not None and abs(r[1 + q]) <= NEAR_DB
+                                                      for r in seg) >= n / 4]
+            c["with"] = [t["n"] for t in who[2:] if t in up]
+            c["names"] = [t["n"] for t in sorted(up if len(up) >= 2 else who[:2], key=lambda t: t["n"])]
+            ts = [t for t in tracks if t["n"] in c["names"]]
+            c.update(piece(ts[0], ts[1], c["run"], report, more=ts[2:]))
             for how, words in (("whole", "measured without stems"), ("separated", "stems separated here")):
                 ts = [_plain(t.get("title")) for t, p in ((A, pa), (B, pb)) if p["how"] == how]
                 if ts:
@@ -548,7 +568,7 @@ def find(result: dict, mono44: np.ndarray, load=None, load_stems=None, split=Non
     measured = [c for c in changes if c["status"] == "measured"]
     picks = [c for c in measured if c["qualifies"]]
     shorts = [c for c in measured if c.get("short")]
-    out = {"rule": f"both tracks within {NEAR_DB:g} dB of their own level (with a stem file: any of its stems) "
+    out = {"multi": multi, "rule": ("2 or more of the tracks around a change" if multi else "both tracks") + f" within {NEAR_DB:g} dB of their own level (with a stem file: any of its stems) "
                    f"for {clock(MIN_SECONDS)}+ (short edits: {MIN_BARS}+ bars in whole phrases)"
                    + (", single off bars allowed" if GAP == 1 else f", up to {GAP} off bars in a row allowed" if GAP else ""),
            "near_db": NEAR_DB, "min_bars": MIN_BARS, "min_seconds": MIN_SECONDS, "gap": GAP,  # the page words the rule from these

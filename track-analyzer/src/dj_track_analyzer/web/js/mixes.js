@@ -387,7 +387,8 @@ function saSpan(c) {  // [start, end] mix seconds of the strip
   const bars = c.bars, L = c.bar || (bars.length > 1 ? (bars[bars.length - 1][0] - bars[0][0]) / (bars.length - 1) : 2);
   return [bars[0][0], bars[bars.length - 1][0] + L, L];
 }
-function saStrip(c, nameA, nameB, near) {
+const SA_MORE = ["var(--good)", "var(--text-2)"];  // lines of the other tracks around a change
+function saStrip(c, nameA, nameB, near, others = []) {  // others: titles of c.others (bars columns 3+)
   if (!c.bars?.length) return "";
   const [t0, t1, L] = saSpan(c), W = 1000, H = 100, x = t => ((t - t0) / (t1 - t0) * W).toFixed(1);
   const y = db => ((SA_TOP - Math.max(SA_LOW, Math.min(SA_TOP, db ?? SA_LOW))) / (SA_TOP - SA_LOW) * H).toFixed(1);
@@ -399,9 +400,10 @@ function saStrip(c, nameA, nameB, near) {
       <line x1="0" x2="${W}" y1="${y(-near)}" y2="${y(-near)}" stroke="var(--text-3)" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>
       <path d="${line(1)}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
       <path d="${line(2)}" fill="none" stroke="var(--warn)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+      ${others.map((_, q) => `<path d="${line(3 + q)}" fill="none" stroke="${SA_MORE[q % SA_MORE.length]}" stroke-width="1.5" stroke-dasharray="6 3" vector-effect="non-scaling-stroke"/>`).join("")}
       <line class="sa-head" x1="-10" x2="-10" y1="0" y2="${H}" stroke="var(--text)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>
     <div class="sa-x"><span>${esc(clockS(t0))}</span><span>${esc(clockS(t1))}</span></div></div>
-    <div class="legend small"><span><i style="background:var(--accent)"></i>${nameA}</span><span><i style="background:var(--warn)"></i>${nameB}</span>
+    <div class="legend small"><span><i style="background:var(--accent)"></i>${nameA}</span><span><i style="background:var(--warn)"></i>${nameB}</span>${others.map((t, q) => `<span><i style="background:${SA_MORE[q % SA_MORE.length]}"></i>${t}</span>`).join("")}
       <span>dashed: ${near} dB below its own level · line above: its own level${n ? " · shaded: the run" : ""}</span></div>`;
 }
 const clockS = t => { t = Math.max(0, Math.round(t)); const h = Math.floor(t / 3600), m = Math.floor(t / 60) % 60, s = String(t % 60).padStart(2, "0"); return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`; };
@@ -438,7 +440,7 @@ function saAdjust(at, k, d) {
   j[k] += d;
   const el = document.querySelector(`[data-sa-at="${CSS.escape(at)}"]`), [a, n, L] = saRun(c), [title, near] = SA_NAMES;
   [el.querySelector("[data-sa-span]").textContent, el.querySelector("[data-sa-bars]").textContent] = saHead(c);
-  el.querySelector("[data-sa-view]").innerHTML = saPlayer(c) + saStrip(c, title(c.from), title(c.to), near);
+  el.querySelector("[data-sa-view]").innerHTML = saPlayer(c) + saStrip(c, title(c.from), title(c.to), near, (c.others || []).map(title));
   el.querySelector("[data-sa-out]").textContent = "";
   if (SAP.at === at && SAP.end != null) SAP.end = a + n * L;  // the preview playing now stops at the new end
   saUi();
@@ -541,7 +543,7 @@ function saUi() {
 addEventListener("hashchange", () => { if (SAP.audio && !location.hash.startsWith("#mixes/" + encodeURIComponent(SAP.id || ""))) SAP.audio.pause(); });
 function saRule(sa) {
   if (sa.near_db == null) return `<div class="small muted">${esc(sa.rule)}</div>`;  // analysed before the page worded it
-  return `<div class="small muted" style="margin-bottom:4px">Picked when both tracks stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
+  return `<div class="small muted" style="margin-bottom:4px">Picked when ${sa.multi ? "two or more tracks around a change" : "both tracks"} stay up together ${sa.min_seconds ? `for ${clockS(sa.min_seconds)} or more (long enough to release as a track; short edits: ${sa.min_bars} bars in whole phrases)` : `for ${sa.min_bars} bars or more (whole phrases)`}: each no more than ${sa.near_db} dB
     below how loud it is on its own (with a stem file, one of its stems is enough)${sa.gap ? `; ${sa.gap === 1 ? "a single bar" : `up to ${sa.gap} bars`} below doesn't break the run` : ""}. Nothing picked is a valid answer.</div>`;
 }
 function standalonePanel(d) {
@@ -554,22 +556,22 @@ function standalonePanel(d) {
   const skipped = sa.changes.filter(c => c.status !== "measured"), miss = sa.closest_miss && byAt[sa.closest_miss];
   SA_MISS = miss || null;
   const card = (c, i) => `<details class="sa-piece" open data-sa-at="${esc(c.at)}">
-        <summary><span class="sa-num">${i + 1}</span><b data-sa-span>${esc(saHead(c)[0])}</b> · ${title(c.from)} into ${title(c.to)} <span class="dim small" data-sa-bars>${esc(saHead(c)[1])}</span></summary>
+        <summary><span class="sa-num">${i + 1}</span><b data-sa-span>${esc(saHead(c)[0])}</b> · ${title(c.from)} into ${title(c.to)}${(c.with || []).map(n => ` with ${title(n)}`).join("")} <span class="dim small" data-sa-bars>${esc(saHead(c)[1])}</span></summary>
         <div class="sa-body"><div class="small muted" style="margin:0 0 6px">Why: ${esc(c.why)}</div>
-        <div data-sa-view>${saPlayer(c)}${saStrip(c, title(c.from), title(c.to), near)}</div>
+        <div data-sa-view>${saPlayer(c)}${saStrip(c, title(c.from), title(c.to), near, (c.others || []).map(title))}</div>
         ${saExportRow(c)}
         <div class="filters" style="flex-wrap:wrap;margin-top:8px"><label class="inline">Name <select data-sa-name>${sa.names.map(n => `<option>${esc(n)}</option>`).join("")}</select></label>
           <span class="dim small">your call: pick what fits how much you changed it</span></div>
         <div style="margin-top:6px">${copyBox(`<textarea class="sa-title" readonly rows="2" style="${SA_FIT};font:inherit;resize:none">${esc(c.title)}</textarea>`)}</div>
         <div style="margin-top:6px"><div class="small muted">Credits</div>${copyBox(`<textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea>`)}</div>
-        <div style="margin-top:6px"><div class="small muted">Genre, BPM, key and tags</div>${copyBox(`<textarea readonly rows="5" style="${SA_FIT}">${esc(scInfo([tracks[c.from], tracks[c.to]].filter(Boolean)))}</textarea>`)}</div></div></details>`;
+        <div style="margin-top:6px"><div class="small muted">Genre, BPM, key and tags</div>${copyBox(`<textarea readonly rows="5" style="${SA_FIT}">${esc(scInfo([c.from, c.to, ...(c.with || [])].map(n => tracks[n]).filter(Boolean)))}</textarea>`)}</div></div></details>`;
   return `<div class="card" id="sa"><h3>Possible sub-mixes <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
     ${SA_SHOWN.length ? (picks.length ? picks.map(card).join("") : `<div class="small muted">No blend long enough to release as a track.</div>`)
       + (shorts.length ? `<h4 style="margin:12px 0 4px">Short edits <span class="dim small">a moment from the set, too short to be a track of its own</span></h4>` + shorts.map(card).join("") : "")
       + `<div class="filters" style="border-top:1px solid var(--line);padding-top:10px;margin-top:8px"><label class="inline" style="flex:1 1 260px">Full set link <input id="sa-link" type="url" placeholder="https://soundcloud.com/…" style="flex:1;min-width:0"></label>
         <span class="dim small">goes into each piece's credits above</span></div>`
       : `<div>Nothing qualifies in this mix, not even as a short edit.${miss ? ` Closest miss: the change at ${esc(miss.at)} into ${title(miss.to)}, ${esc(miss.why)}.` : ""}</div>
-        ${miss ? `<div data-sa-at="${esc(miss.at)}" style="margin-top:6px">${saPlayer(miss)}${saStrip(miss, title(miss.from), title(miss.to), near)}</div>` : ""}`}
+        ${miss ? `<div data-sa-at="${esc(miss.at)}" style="margin-top:6px">${saPlayer(miss)}${saStrip(miss, title(miss.from), title(miss.to), near, (miss.others || []).map(title))}</div>` : ""}`}
     ${whole.length && whole.length < how.length ? `<div class="note">Measured without stems (no stem file): ${whole.join(", ")}. Tick "Separate tracks without a stem file" when you analyse it again to measure these by stem.</div>` : ""}
     ${skipped.length ? `<details style="margin-top:8px"><summary class="small muted">Couldn't measure ${skipped.length} ${skipped.length === 1 ? "change" : "changes"}</summary>
       <ul class="small">${skipped.map(c => `<li>${esc(c.at)} ${title(c.to)}: ${esc(c.status)}</li>`).join("")}</ul></details>` : ""}
