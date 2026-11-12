@@ -662,7 +662,7 @@ def setup_status(say=lambda part: None) -> dict:
     from . import mygenres
 
     say("reticulating splines")  # a joke: held just long enough to read
-    time.sleep(0.5)
+    time.sleep(1.5)  # the page asks every 0.7 s: long enough to be seen
     say("your genre model")
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
