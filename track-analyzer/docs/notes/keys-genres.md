@@ -51,3 +51,14 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
 - No Hyperpop either: Discogs has the style now, but neither model's class list (400 / 519, from the Discogs list
   at training time) has it; digicore/glitchcore neither: README §7 and GUIDE "Genres" say so plainly, as
   it's a scene trans and queer artists built, and point to ✎ Edit (a typed genre is held) or Learn your genres.
+
+### Model first, tempo picks the form (2026-11-12)
+Rule: the model's top style should lead; a genre's BPM range only picks which form of that style the track gets,
+it shouldn't hand the track to a weaker runner-up. Check on the test collection: 417 of 473 tracks already land in
+a genre holding their top style. Fixes where the top style fell through only on tempo:
+- Drum and Bass also takes Breakbeat/Breaks (160-180); Breaks widened to 120-150. A breakbeat track at 164 read
+  Breakbeat 0.25 / Happy Hardcore 0.20 / DnB 0.19 and came out Happy Hardcore.
+- Hard Techno also takes Techno (140-170): fast techno no longer falls to Trance.
+- Tech Trance 125-145 (modern tech trance sits at 128), Tech House 118-132, House 115-135 (house at 132-135 went UK Garage).
+Left alone on purpose: Neo Trance + Deep House stays Deep House (decision of 2026-11-11, test guards it); Psy-Trance
+at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top genres changed.

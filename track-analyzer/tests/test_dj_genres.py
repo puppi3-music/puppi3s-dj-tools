@@ -37,3 +37,14 @@ def test_psy_split_by_tempo():
     assert names(psy, 142)[0] == "Psytrance"
     assert names(psy, 158)[0] == "Darkpsy"
     assert names(psy, 175)[0] == "Hi-Tech"
+
+
+def test_fast_breakbeat_is_drum_and_bass():
+    # the model's top style leads; tempo picks its form: breakbeat at 164 is DnB, not the runner-up Happy Hardcore
+    assert names({"Breakbeat": 0.25, "Happy Hardcore": 0.20, "Drum n Bass": 0.19}, 164)[0] == "Drum and Bass"
+    assert names({"Breakbeat": 0.25, "Happy Hardcore": 0.20}, 135)[0] == "Breaks"
+
+
+def test_fast_techno_is_hard_techno():
+    assert names({"Techno": 0.4, "Trance": 0.3}, 150)[0] == "Hard Techno"
+    assert names({"Techno": 0.4, "Trance": 0.3}, 130)[0] == "Techno"

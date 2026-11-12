@@ -52,7 +52,7 @@ RESTART_CODE = 75  # the web page stopped to be started again (the launchers loo
 PROTECTED = {"data", "data-docker", "logs", ".venv", ".git"}
 # Steps a release needs after updating to it, for anyone coming from an older version: version → step keys (STEPS).
 # Add a line when a release changes the genre list, the analysis or the models.
-AFTER: dict[str, list[str]] = {"1.3.0": ["regenre"]}
+AFTER: dict[str, list[str]] = {"1.3.0": ["regenre"], "1.4.1": ["regenre"]}
 STEPS = {
     "models": "Download the new analysis models",
     "regenre": "Work out the genres again (the genre list changed; seconds)",
