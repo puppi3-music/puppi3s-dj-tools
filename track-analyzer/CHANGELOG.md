@@ -3,6 +3,18 @@
 Each release on GitHub (tags `v…`) takes its notes from its section here. The `dsp-v…` releases are the Rust
 module's builds, which installs download by themselves.
 
+## 1.4.0 (2026-11-12)
+
+**New**
+- Setup: an **Updates: Stable / Dev** switch on the update card. Stable (the default) installs only finished
+  releases. Dev installs the newest work in progress, rebuilt after every change: new things arrive first, but may
+  have bugs. Switching back to Stable never goes back a version: you keep the dev build until the next release.
+  Only for installs from a release zip; a git clone already follows main.
+
+**Changed**
+- Colours guessed or predicted by the app show a dashed swatch with a faint fill, so they're easy to tell from
+  your own; the ? beside them sits centred on the colour name.
+
 ## 1.3.1 (2026-11-12)
 
 **Changed**
