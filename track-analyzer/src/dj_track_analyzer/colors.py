@@ -676,6 +676,26 @@ def unbiased_positions(b: dict | None = None) -> dict[str, float]:
     return dict(zip(labels, cv["position"]))
 
 
+def review_marks(colour_now: dict[str, str | None]) -> dict[str, dict]:
+    """For the track panel: {path: {sounds_like, your_colour, confidence_exact, marked?}} for every track the
+    review lists and that can still be marked (not kept always, not recoloured since training). Empty without
+    a trained scale model. colour_now: {path: its colour in the DJ app now}."""
+    b = analysis.color_model()
+    if not b or b.get("starter") or b.get("kind") == "classes" or not b.get("cv"):
+        return {}
+    keep, plan, out = _kept_forever(), plans(), {}
+    for d in b["disagreements"]:
+        p = d["path"]
+        if p in keep or colour_now.get(p) not in (None, d["your_colour"]):
+            continue
+        r = {"sounds_like": d["sounds_like"], "your_colour": d["your_colour"],
+             "confidence_exact": analysis.color_confidence(b, d["position"], COLOR_NAMES.index(d["sounds_like"]) + 1)}
+        if p in plan:
+            r["marked"] = plan[p]["action"]
+        out[p] = r
+    return out
+
+
 def _plan_db() -> sqlite3.Connection:
     con = sqlite3.connect(collection.NATIVE_DB)
     con.execute("CREATE TABLE IF NOT EXISTS colour_plan (path TEXT PRIMARY KEY, action TEXT, at TEXT)")
