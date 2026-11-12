@@ -269,15 +269,23 @@ async function updateCard(force = false) {
         <div class="act"><button class="primary" data-after="${esc(x.key)}" ${b}>Run</button></div></div>`).join("")}</div>
       <div class="filters" style="margin-top:6px"><button id="up-seen">Done, hide this</button></div></div>` : "";
   const notes = (u.notes || []).map(n => `<details ${u.notes.length === 1 ? "open" : ""} style="margin-top:6px"><summary style="cursor:pointer"><b>What's new in ${esc(n.version)}</b></summary><div style="margin:4px 0 0 4px">${notesHtml(n.notes)}</div></details>`).join("");
-  const kind = u.kind === "git" ? " (a git clone: updates with git pull)" : u.kind === "container" ? " (Docker)" : "";
+  const kind = u.kind === "git" ? " (a git clone: updates with git pull)" : u.kind === "container" ? " (Docker)"
+    : u.commit ? ` (dev build ${u.commit.slice(0, 7)})` : "";
+  // Stable or Dev: only a release-zip install chooses (a clone follows main anyway, Docker is rebuilt)
+  const dev = u.channel === "dev";
+  const chan = u.kind !== "zip" ? "" : `<div class="filters" style="margin-top:8px"><span class="small">Updates:</span>
+      <div class="seg-toggle"><button data-chan="stable" class="${dev ? "" : "on"}">Stable</button><button data-chan="dev" class="${dev ? "on" : ""}">Dev</button></div>
+      <span class="small muted">${dev ? "Dev: the newest work in progress, rebuilt after every change. New things arrive first, but may have bugs. Go back to Stable any time: you stay on this build until the next release is out, nothing is undone."
+        : "Stable: only finished releases. Choose Dev to try new things before they're released (they may have bugs)."}</span></div>`;
   const state = u.error ? `<span class="err">${esc(u.error)}</span>`
+    : u.newer && u.target?.dev ? `<b>A newer dev build is out: ${esc(u.latest)}</b> <span class="muted">(based on ${esc(u.target.version)}${u.published ? `, ${esc(u.published)}` : ""})</span>.`
     : u.newer ? `<b>Version ${esc(u.latest)} is out</b>${u.published ? ` <span class="muted">(${esc(u.published)})</span>` : ""}.`
     : u.latest ? `Up to date${u.checked ? ` <span class="muted">(checked ${esc(u.checked)})</span>` : ""}.`
     : !u.auto ? `<span class="muted">Checking for updates when the page opens is off.</span>` : "";
   box.innerHTML = `<div class="card${u.newer ? " hl" : ""}"><div class="filters" style="margin-bottom:4px"><h3 style="margin:0">Puppi3's Track Analyzer ${esc(u.installed)}<span class="dim small">${esc(kind)}</span></h3><div class="spacer"></div>
       <label class="inline small" data-tip="Asks GitHub for the newest release at most every 6 hours; nothing else is sent"><input type="checkbox" id="up-auto" ${u.auto ? "checked" : ""}> check when the page opens</label>
       <button id="up-check">Check now</button></div>
-    <div>${state}</div>
+    <div>${state}</div>${chan}
     ${u.newer && u.can_update ? `<div class="filters" style="margin-top:8px"><button class="primary" id="up-go" ${b}>Update now…</button><span class="small muted">Shows what changes first. Your scans, models and training stay.</span></div>` : ""}
     ${u.newer && !u.can_update && u.why_not ? `<div class="note">${esc(u.why_not)} <a href="${esc(u.url || u.page)}" target="_blank" rel="noopener">The release on GitHub</a></div>` : ""}
     ${notes}${pending}
@@ -291,6 +299,11 @@ async function updateCard(force = false) {
     catch (err) { if (el.type === "checkbox") el.checked = !el.checked; el.closest(".card").insertAdjacentHTML("beforeend", `<div class="err small">${esc(err.message)}</div>`); }
   };
   on("up-seen", e => saved({ seen: true }, e.currentTarget));
+  box.querySelectorAll("[data-chan]").forEach(el => el.onclick = () => {
+    if (el.classList.contains("on")) return;
+    el.parentElement.querySelectorAll("button").forEach(x => x.disabled = true);
+    saved({ channel: el.dataset.chan }, el);
+  });
   $("#up-auto").onchange = e => saved({ auto: e.target.checked }, e.target);
   box.querySelectorAll("[data-after]").forEach(el => el.onclick = () => {
     const [action, opts] = AFTER_JOBS[el.dataset.after];
@@ -302,7 +315,7 @@ function updateDot() {
   const link = document.querySelector('#nav a[href="#setup"]'), u = UPD;
   if (!link || !u) return;
   link.querySelector(".dot")?.remove();  // drawn again from the latest check: gone once the update or its steps are done
-  const why = u.newer ? `Version ${u.latest} is out` : u.pending?.steps?.length ? "Steps left after the update" : "";
+  const why = u.newer ? (u.target?.dev ? `Dev build ${u.latest.replace("dev ", "")} is out` : `Version ${u.latest} is out`) : u.pending?.steps?.length ? "Steps left after the update" : "";
   if (why) link.insertAdjacentHTML("beforeend", `<span class="dot" data-tip="${esc(why)}"></span>`);
 }
 

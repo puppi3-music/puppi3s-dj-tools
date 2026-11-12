@@ -231,7 +231,7 @@ def test_every_after_step_has_a_label():
 
 def test_update_says_so_when_already_newest(monkeypatch):
     monkeypatch.setattr(update, "install_kind", lambda app=None: "zip")
-    monkeypatch.setattr(update, "releases", lambda: [{"version": update.installed_version(), "tag": "v0", "notes": "",
+    monkeypatch.setattr(update, "releases", lambda dev=False: [{"version": update.installed_version(), "tag": "v0", "notes": "",
                                                       "url": "", "published": "", "zip": None}])
     res = update.update()
     assert not res["changed"] and "Already the newest" in res["note"]
@@ -258,3 +258,91 @@ def test_windows_launcher_stays_short():
     line of itself."""
     assert len((APP_ROOT / "Start Puppi3's Track Analyzer.bat").read_bytes().replace(b"\r\n", b"\n")) < 1800
     assert len((APP_ROOT / "Start Puppi3's Track Analyzer.bat").read_bytes()) < 1800
+
+
+# ----------------------------------------------------------------------------
+# Stable / Dev channel
+# ----------------------------------------------------------------------------
+
+SHA, SHA2 = "a" * 40, "b" * 40
+
+
+def _gh(tag, prerelease=False, body="", target="main", asset="x.zip"):
+    return {"tag_name": tag, "prerelease": prerelease, "body": body, "target_commitish": target,
+            "assets": [{"name": asset, "browser_download_url": f"https://x/{asset}", "digest": "sha256:00"}]}
+
+
+def _rel(version, dev=False, commit=None):
+    r = {"version": version, "label": version, "tag": "v" + version, "notes": "", "url": "", "published": "",
+         "zip": {"name": "x.zip", "url": "", "size": 1, "sha256": None}}
+    return {**r, "tag": "dev", "dev": True, "commit": commit, "label": f"dev {commit[:7]}"} if dev else r
+
+
+def test_the_dev_build_is_read_only_on_the_dev_channel(monkeypatch):
+    dev = _gh("dev", True, f"Dev build from main.\n\nCommit: {SHA}\nBased on: v1.3.1 (changes since v1.3.1)\n", SHA,
+              "puppi3s-track-analyzer-dev.zip")
+    monkeypatch.setattr(update, "_get", lambda url: __import__("json").dumps(
+        [dev, _gh("v1.3.1"), _gh("v1.4.0-rc", True), _gh("dsp-v0.5.0")]).encode())
+    assert [r["version"] for r in update.releases()] == ["1.3.1"]
+    rel = update.releases(dev=True)
+    assert [r["tag"] for r in rel] == ["v1.3.1", "dev"]
+    assert {k: rel[1][k] for k in ("version", "commit", "dev", "label")} == {"version": "1.3.1", "commit": SHA, "dev": True, "label": "dev aaaaaaa"}
+    assert rel[1]["zip"]["name"] == "puppi3s-track-analyzer-dev.zip"
+
+
+def test_a_dev_build_without_a_commit_is_not_offered(monkeypatch):
+    monkeypatch.setattr(update, "_get", lambda url: __import__("json").dumps([_gh("dev", True, "no commit", "main")]).encode())
+    assert update.releases(dev=True) == []
+
+
+@pytest.mark.parametrize("now, commit, chan, rel, want", [
+    ("1.3.1", None, "stable", [_rel("1.3.1"), _rel("1.3.1", True, SHA)], None),          # stable ignores dev
+    ("1.3.1", None, "dev", [_rel("1.3.1"), _rel("1.3.1", True, SHA)], "dev"),            # stable install → dev
+    ("1.3.1", SHA, "dev", [_rel("1.3.1"), _rel("1.3.1", True, SHA)], None),              # already this build
+    ("1.3.1", SHA, "dev", [_rel("1.3.1"), _rel("1.3.1", True, SHA2)], "dev"),            # a newer build
+    ("1.3.1", SHA, "stable", [_rel("1.3.1"), _rel("1.3.1", True, SHA2)], None),          # back to stable: no downgrade
+    ("1.3.1", SHA, "stable", [_rel("1.3.2"), _rel("1.3.1")], "1.3.2"),                   # … until the next release
+    ("1.3.1", SHA, "dev", [_rel("1.3.2"), _rel("1.3.1", True, SHA2)], "1.3.2"),          # dev build older than a release
+    ("1.3.2", None, "dev", [_rel("1.3.2"), _rel("1.3.1", True, SHA2)], None),            # never an older dev build
+    ("1.3.1", None, "dev", [_rel("1.3.1")], None),                                       # no dev build out
+])
+def test_which_release_each_channel_installs(now, commit, chan, rel, want):
+    target, shown = update.pick(rel, now, commit, chan)
+    got = None if target is None else "dev" if target.get("dev") else target["version"]
+    assert got == want
+    assert (target in shown) if target else not shown
+
+
+def test_check_and_update_use_the_channel(monkeypatch, tmp_path):
+    app = make_app(tmp_path)
+    monkeypatch.setattr(update, "install_kind", lambda app=None: "zip")
+    rel = [_rel("1.0.1"), _rel("1.0.1", True, SHA)]
+    st = update.check(app, rel, "dev")
+    assert st["newer"] and st["target"]["dev"] and st["latest"] == "dev aaaaaaa" and st["channel"] == "dev"
+    assert not update.check(app, rel, "stable")["newer"]
+    assert update.version_key("dev") == (0, 0, 0) and update.version_key("1.3.1-dev-abc1234") == (1, 3, 1)
+
+
+def test_the_channel_setting(monkeypatch):
+    assert update.channel() == "stable"
+    try:
+        update.set_channel("dev")
+        assert update.channel() == "dev"
+        with pytest.raises(ValueError):
+            update.set_channel("nightly")
+    finally:
+        update.set_channel("stable")
+    assert update.channel() == "stable"
+
+
+def test_a_dev_zip_brings_its_commit_and_a_release_takes_it_away(tmp_path):
+    app, backups = make_app(tmp_path), tmp_path / "backups"
+    assert update.installed_commit(app) is None
+    update.install_zip(make_zip(tmp_path, {**NEW, "COMMIT": SHA + "\n"}), app, backups)
+    assert update.installed_commit(app) == SHA
+    newer = {**NEW, "pyproject.toml": 'name = "x"\nversion = "1.0.3"\n'}
+    assert "COMMIT" in update.plan(make_zip(tmp_path, newer), app)["removed"]
+    update.install_zip(make_zip(tmp_path, newer), app, backups)
+    assert update.installed_commit(app) is None and not (app / "COMMIT").exists()
+    update.undo(app=app, backups=backups)  # going back puts the dev build's commit back too
+    assert update.installed_commit(app) == SHA

@@ -7,6 +7,11 @@ replaces or removes is copied to data/app-backups/<from>-to-<to>-<time>/ first, 
 temporary file and a rename, so a launcher that is running keeps reading its old copy. In src/ (only the app's code
 lives there) files the new release no longer has are removed; elsewhere nothing is deleted.
 
+Two channels (Setup tab, app setting `update_channel`): Stable installs only v… releases; Dev also installs the
+rolling `dev` prerelease, rebuilt from main on every push, whose zip holds a file COMMIT with the commit it was built
+from (a stable install has none). Dev offers it whenever that commit isn't the installed one. Going back to Stable
+never downgrades: a dev build keeps the version of the release it's based on, so it waits for the next one.
+
 A git clone is updated with `git pull --ff-only` on main, only without local changes; undo goes back to the commit
 it was on. In Docker the image is rebuilt instead.
 
@@ -63,6 +68,32 @@ def version_key(v: str) -> tuple[int, ...]:
     return tuple(nums + [0] * (3 - len(nums)))
 
 
+CHANNELS = ("stable", "dev")
+DEV_TAG = "dev"
+
+
+def channel() -> str:
+    """'stable' (the default) or 'dev'."""
+    c = analysis.app_setting("update_channel", "stable")
+    return c if c in CHANNELS else "stable"
+
+
+def set_channel(c: str) -> str:
+    if c not in CHANNELS:
+        raise ValueError(f"Unknown update channel {c!r}: stable or dev.")
+    analysis.save_app_setting("update_channel", None if c == "stable" else c)
+    return c
+
+
+def installed_commit(app: Path = APP) -> str | None:
+    """The commit a dev build was made from (its COMMIT file); None on a release install."""
+    try:
+        sha = (app / "COMMIT").read_text(encoding="utf-8").strip().lower()
+    except OSError:
+        return None
+    return sha if re.fullmatch(r"[0-9a-f]{7,40}", sha) else None
+
+
 def installed_version(app: Path = APP) -> str:
     text = (app / "pyproject.toml").read_text(encoding="utf-8")
     m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.MULTILINE)
@@ -106,8 +137,29 @@ def _get(url: str, timeout: float = 15) -> bytes:
         return p.stdout
 
 
-def releases() -> list[dict]:
-    """The app's published releases (tags v…), newest first; the dsp-v… builds and drafts left out."""
+def _asset(r: dict) -> dict | None:
+    zips = [a for a in r.get("assets") or [] if a.get("name", "").endswith(".zip")]
+    return {"name": zips[0]["name"], "url": zips[0]["browser_download_url"], "size": zips[0].get("size"),
+            "sha256": (zips[0].get("digest") or "").removeprefix("sha256:") or None} if zips else None
+
+
+def _dev_entry(r: dict) -> dict | None:
+    """The `dev` prerelease as a release: version = the release it's based on (its notes' "Based on: v…" line),
+    commit = the one it was built from (its notes' "Commit: …" line, else the tag's target)."""
+    notes = r.get("body") or ""
+    m = re.search(r"^Commit:\s*([0-9a-f]{7,40})\s*$", notes, re.MULTILINE | re.IGNORECASE)
+    sha = (m.group(1) if m else r.get("target_commitish") or "").lower()
+    if not re.fullmatch(r"[0-9a-f]{7,40}", sha):
+        return None  # a target like "main" says nothing about what's in the zip
+    base = re.search(r"^Based on:\s*v(\d+(?:\.\d+)*)", notes, re.MULTILINE)
+    return {"version": base.group(1) if base else "0", "tag": DEV_TAG, "dev": True, "commit": sha,
+            "label": f"dev {sha[:7]}", "notes": notes, "url": r.get("html_url"),
+            "published": (r.get("published_at") or "")[:10], "zip": _asset(r)}
+
+
+def releases(dev: bool = False) -> list[dict]:
+    """The app's published releases (tags v…), newest first; the dsp-v… builds and drafts left out. `dev`: the dev
+    build (see the module's notes) is added at the end, marked "dev": True, when there is one."""
     global REPO, RELEASES_PAGE
     err: Exception | None = None
     for repo in REPOS:
@@ -122,32 +174,50 @@ def releases() -> list[dict]:
         break
     else:
         raise err  # type: ignore[misc]  # REPOS isn't empty
-    out = []
+    out, extra = [], []
     for r in data:
         tag = r.get("tag_name") or ""
-        if r.get("draft") or r.get("prerelease") or not re.fullmatch(r"v\d+(\.\d+)*", tag):
+        if r.get("draft"):
             continue
-        zips = [a for a in r.get("assets") or [] if a.get("name", "").endswith(".zip")]
-        out.append({"version": tag[1:], "tag": tag, "notes": r.get("body") or "", "url": r.get("html_url"),
-                    "published": (r.get("published_at") or "")[:10],
-                    "zip": {"name": zips[0]["name"], "url": zips[0]["browser_download_url"], "size": zips[0].get("size"),
-                            "sha256": (zips[0].get("digest") or "").removeprefix("sha256:") or None} if zips else None})
-    return sorted(out, key=lambda r: version_key(r["version"]), reverse=True)
+        if dev and tag == DEV_TAG and not extra:
+            extra = [e for e in [_dev_entry(r)] if e]
+        if r.get("prerelease") or not re.fullmatch(r"v\d+(\.\d+)*", tag):
+            continue
+        out.append({"version": tag[1:], "tag": tag, "label": tag[1:], "notes": r.get("body") or "",
+                    "url": r.get("html_url"), "published": (r.get("published_at") or "")[:10], "zip": _asset(r)})
+    return sorted(out, key=lambda r: version_key(r["version"]), reverse=True) + extra
 
 
-def check(app: Path = APP, rel: list[dict] | None = None) -> dict:
+def pick(rel: list[dict], now: str, commit: str | None, chan: str) -> tuple[dict | None, list[dict]]:
+    """(the release to install or None, the releases whose notes to show). Stable: the newest v… release, if its
+    version is above the installed one. Dev: the dev build when its commit isn't the installed one and it isn't
+    based on an older version, unless a v… release is newer than what it's based on (a dev build that failed)."""
+    stable = [r for r in rel if not r.get("dev")]
+    newer = [r for r in stable if version_key(r["version"]) > version_key(now)]
+    dev = next((r for r in rel if r.get("dev")), None) if chan == "dev" else None
+    if dev and dev["commit"] != (commit or "") and version_key(dev["version"]) >= version_key(now) \
+            and not (stable and version_key(stable[0]["version"]) > version_key(dev["version"])):
+        return dev, [dev]
+    return (newer[0] if newer else None), newer
+
+
+def check(app: Path = APP, rel: list[dict] | None = None, chan: str | None = None) -> dict:
     """What's installed, the newest release, whether it's newer, its notes (and those of any skipped in between),
-    and whether this install can update itself (or why not). `rel`: releases() already fetched."""
-    now = installed_version(app)
+    and whether this install can update itself (or why not). `rel`: releases() already fetched; `chan`: the channel
+    (default: the app setting). A git clone follows main whatever the channel."""
+    now, commit = installed_version(app), installed_commit(app)
     kind = install_kind(app)
-    st: dict = {"installed": now, "kind": kind, "checked": time.strftime("%Y-%m-%d %H:%M"), "page": RELEASES_PAGE}
-    rel = releases() if rel is None else rel
+    chan = chan or channel()
+    st: dict = {"installed": now, "commit": commit, "channel": chan, "kind": kind,
+                "checked": time.strftime("%Y-%m-%d %H:%M"), "page": RELEASES_PAGE}
+    rel = releases(chan == "dev") if rel is None else rel
     if not rel:
         return {**st, "latest": None, "newer": False}
-    newest = rel[0]
-    newer = [r for r in rel if version_key(r["version"]) > version_key(now)]
-    st.update(latest=newest["version"], newer=bool(newer), url=newest["url"], published=newest["published"],
-              notes=[{"version": r["version"], "notes": r["notes"], "url": r["url"]} for r in newer])
+    target, shown = pick(rel, now, commit, chan)
+    newest = target or rel[0]
+    st.update(latest=newest.get("label") or newest["version"], newer=bool(target), url=newest["url"],
+              published=newest["published"], target=target,
+              notes=[{"version": r.get("label") or r["version"], "notes": r["notes"], "url": r["url"]} for r in shown])
     st["can_update"], st["why_not"] = True, None
     if kind == "container":
         st["can_update"], st["why_not"] = False, "In Docker: build the image again (docker compose build) to update."
@@ -155,8 +225,8 @@ def check(app: Path = APP, rel: list[dict] | None = None) -> dict:
         why = _git_blocker(app)
         if why:
             st["can_update"], st["why_not"] = False, why
-    elif not newest["zip"]:
-        st["can_update"], st["why_not"] = False, f"Release {newest['tag']} has no zip to install."
+    elif target and not target["zip"]:
+        st["can_update"], st["why_not"] = False, f"Release {target['tag']} has no zip to install."
     return st
 
 
@@ -245,6 +315,8 @@ def plan(zip_path: Path, app: Path = APP) -> dict:
             elif dest.read_bytes() != zf.read(info):
                 changed.append(rel)
     removed = [r for r in _app_files(app, "src") if r not in files]
+    if (app / "COMMIT").is_file() and "COMMIT" not in files:  # a release over a dev build: it's no dev build now
+        removed.append("COMMIT")
     return {"from": installed_version(app), "to": new_version.group(1) if new_version else "?",
             "added": added, "changed": changed, "removed": removed}
 
@@ -453,14 +525,14 @@ def update(dry_run: bool = False, app: Path = APP) -> dict:
     if kind == "git":
         res = _git_update(app, dry_run)
     else:
-        rels = releases()  # asked once: GitHub allows 60 unauthenticated calls an hour
-        st = check(app, rels)
+        chan = channel()
+        st = check(app, releases(chan == "dev"), chan)  # asked once: GitHub allows 60 unauthenticated calls an hour
         if not st["newer"]:
             return {"from": st["installed"], "to": st["installed"], "changed": False, "dry_run": dry_run,
                     "note": f"Already the newest release ({st['installed']})."}
         if not st["can_update"]:
             raise SystemExit(st["why_not"])
-        z = _download(rels[0])
+        z = _download(st["target"])
         if dry_run:
             res = {**_counts(plan(z, app)), "dry_run": True, "changed": True}
         else:
