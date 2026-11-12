@@ -1,0 +1,65 @@
+# The dev build: every push to main (after the same tests as a release) rebuilds one rolling prerelease tagged `dev`.
+# Its zip is made exactly like a release's (the track-analyzer folder plus LICENSE) and also holds a file COMMIT with
+# the commit it was built from; the notes list the commits since the last v* release. The tag `dev` is moved to the
+# new commit and the zip replaced, so there is only ever one dev build. It never becomes "Latest".
+name: dev
+
+on:
+  push:
+    branches: [main]
+    paths: ["track-analyzer/**", "LICENSE", ".github/workflows/dev.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:  # a newer push replaces a build still running
+  group: dev-build
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  dev:
+    needs: tests
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ZIP: puppi3s-track-analyzer-dev.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the tags and history, for the notes
+      - name: Zip and notes
+        run: |
+          sha="$GITHUB_SHA"; short="${sha:0:7}"
+          v=$(sed -n 's/^version = "\(.*\)"$/\1/p' track-analyzer/pyproject.toml | head -1)
+          [ -n "$v" ] || { echo "No version in track-analyzer/pyproject.toml"; exit 1; }
+          printf '%s\n' "$sha" > COMMIT
+          # the track-analyzer folder as checked in (.bat with CRLF, launchers executable), the licence and COMMIT
+          git archive --format=zip --prefix="puppi3s-track-analyzer-$v-dev-$short/" --add-file=LICENSE \
+            --add-file=COMMIT -o "$ZIP" "HEAD:track-analyzer"
+          last=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null || true)
+          {
+            echo "Dev build from main: not a release, may have bugs. Newest commit first."
+            echo
+            echo "Commit: $sha"
+            echo "Based on: v$v${last:+ (changes since $last)}"
+            echo
+            git log --no-merges --format='- %s (%h)' ${last:+"$last..HEAD"} -- track-analyzer LICENSE | head -200
+          } > notes.md
+          echo "TITLE=dev $short · Puppi3's Track Analyzer" >> "$GITHUB_ENV"
+      - name: Publish the dev prerelease
+        run: |
+          if ! gh release view dev >/dev/null 2>&1; then
+            gh release create dev "$ZIP" --prerelease --latest=false --target "$GITHUB_SHA" \
+              --title "$TITLE" --notes-file notes.md
+            exit 0
+          fi
+          # zip first, then the tag, then the notes (which name the commit): an app that checks in between sees the
+          # old commit and simply offers the new build on its next check
+          gh release upload dev "$ZIP" --clobber
+          git tag -f dev "$GITHUB_SHA"
+          git push -f origin refs/tags/dev
+          gh release edit dev --prerelease --latest=false --target "$GITHUB_SHA" --title "$TITLE" --notes-file notes.md
