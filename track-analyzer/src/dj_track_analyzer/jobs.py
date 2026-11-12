@@ -661,6 +661,7 @@ def setup_status(say=lambda part: None) -> dict:
                   "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
     from . import mygenres
 
+    say("reticulating splines")  # a joke, not a step
     say("your genre model")
     st["genres"] = mygenres.status()
     st["grids"] = {"checked": 0, "off": 0, "drift": 0, "approved": 0}
