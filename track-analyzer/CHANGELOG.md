@@ -6,6 +6,9 @@ module's builds, which installs download by themselves.
 ## Unreleased
 
 **Added**
+- `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
+  found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
+  own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.
 - Web page: a notice when Traktor has tracks Lexicon doesn't, saying to use Import → Traktor in Lexicon (its Sync to Traktor only goes the other way).
 
 **Changed**

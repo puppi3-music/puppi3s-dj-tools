@@ -52,7 +52,8 @@ def surface(parser):
                     if isinstance(a, argparse._HelpAction):
                         continue
                     opts.append((a.option_strings or [a.dest], a.choices, a.default, a.help or ""))
-                out[name] = opts
+                # a hidden parser typed as two words (`clips describe` runs `clips-describe`): its prog says how
+                out[sp.prog.split(" ", 1)[1] if " " in sp.prog and "-" in name else name] = opts
     return out
 
 
