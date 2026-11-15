@@ -53,6 +53,7 @@ async function jobEnded(j) {
   await refreshSetupNote();
   rerenderSetup();
   S.refreshRetrain?.();  // a write or a training changes what there is to learn
+  if (j.action === "clips_describe" && !j.error && S.page === "mixes") route();  // show the clips on the mix
 }
 // Draw the Setup page again in place (no "Loading…", so it doesn't jump).
 function rerenderSetup() { if (S.page === "setup") pageSetup($("#main")).catch(e => { $("#main").innerHTML = errBox(e); }); }
