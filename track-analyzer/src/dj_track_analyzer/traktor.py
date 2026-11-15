@@ -346,15 +346,34 @@ TEMPO_STATE = "tempo-loaded.json"  # in data while a `tempo load` view is in Tra
 def refuse_if_tempo_view(path: Path) -> None:
     """The normal genre/colour/hype writers would mix their values into a loaded tempo view, and
     `tempo native` could then no longer tell your values from the view's."""
-    import json
+    st = tempo_view_in(path)
+    if st:
+        raise SystemExit(f"The {st['bpm']:g} BPM view is loaded in this Traktor collection. Switch back first "
+                         "(Switch Traktor back to normal on the page, or: uv run dj-track-analyzer tempo native)")
 
+
+def tempo_view_in(path: Path) -> dict | None:
+    """The loaded tempo view's record if the view is in this collection: the one it was loaded into, or, when that
+    file is gone (the collection was moved or copied elsewhere), a collection holding the view's folder."""
     from .analysis import HOME
 
     state = HOME / TEMPO_STATE
-    if state.exists() and json.loads(state.read_text(encoding="utf-8")).get("collection") == str(path):
-        bpm = json.loads(state.read_text(encoding="utf-8")).get("bpm")
-        raise SystemExit(f"The {bpm:g} BPM view is loaded in this Traktor collection. "
-                         "Switch back first: uv run dj-track-analyzer tempo native")
+    if not state.exists():
+        return None
+    st = json.loads(state.read_text(encoding="utf-8"))
+    if st.get("app", "traktor") != "traktor" or not st.get("collection"):
+        return None
+    if st["collection"] == str(path):
+        return st
+    if Path(st["collection"]).exists():
+        return None
+    from .tempo import folder_name
+
+    try:
+        return st if f'NAME="{esc(folder_name(st["bpm"]))}"' in path.read_text(encoding="utf-8", errors="replace") \
+            else None
+    except OSError:
+        return None
 
 
 def running_state() -> bool | None:

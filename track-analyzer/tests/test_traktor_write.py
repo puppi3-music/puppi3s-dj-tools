@@ -172,3 +172,31 @@ def test_info_attr_with_raw_gt_in_comment():
     new, old = _set_info_attr(entry, "GENRE", "House")
     assert old == "Old"
     assert ET.fromstring(new).find("INFO").get("GENRE") == "House"
+
+
+def test_switch_back_after_the_collection_moved(library, tmp_path):
+    """The tempo view loaded, then collection.nml moved (another computer, another folder): switching back finds it
+    through the collection chosen on the Setup tab, and the normal writers still see the view there."""
+    from dj_track_analyzer import analysis, tempo
+
+    folder = tempo.folder_name(165)
+    moved = tmp_path / "Traktor 4.4.2" / "collection.nml"
+    moved.parent.mkdir()
+    moved.write_text(traktor.insert_root_node(library["nml"].read_text(encoding="utf-8"),
+                                              f'<NODE TYPE="FOLDER" NAME="{folder}"><SUBNODES COUNT="0"></SUBNODES>'
+                                              '</NODE>\n'), encoding="utf-8")
+    st = {"bpm": 165.0, "collection": str(tmp_path / "gone" / "collection.nml"), "tracks": {}}
+    analysis.HOME.mkdir(parents=True, exist_ok=True)
+    (analysis.HOME / traktor.TEMPO_STATE).write_text(json.dumps(st), encoding="utf-8")
+
+    assert traktor.tempo_view_in(moved) == st
+    assert traktor.tempo_view_in(library["nml"]) is None  # no view folder in it
+    r = cli("tempo", "native", check=False)  # the found collection isn't the view's: says where to choose it
+    assert r.returncode and "Setup tab" in r.stdout + r.stderr
+
+    analysis.save_app_setting(traktor.COLLECTION_SETTING, str(moved))
+    r = cli("traktor", check=False)
+    assert r.returncode and "165 BPM view is loaded" in r.stdout + r.stderr
+    cli("tempo", "native")
+    assert folder not in moved.read_text(encoding="utf-8")
+    assert not (analysis.HOME / traktor.TEMPO_STATE).exists()

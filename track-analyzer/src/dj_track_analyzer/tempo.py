@@ -647,8 +647,8 @@ def loaded() -> dict | None:
 def write_nml(bpm: float = DEFAULT_BPM, nml: str | None = None, out: str | None = None) -> dict:
     """A standalone copy of your collection with the view's values. Traktor itself is not touched."""
     path = traktor.find_collection(nml)
-    st = loaded()
-    if st and st["collection"] == str(path):
+    st = traktor.tempo_view_in(path)
+    if st:
         raise SystemExit(f"The {st['bpm']:g} BPM view is loaded in Traktor right now; its collection.nml already "
                          "is the view.")
     new_text, _remembered, stats = build_view(path.read_text(encoding="utf-8"), bpm, path)
@@ -733,6 +733,22 @@ def load(bpm: float = DEFAULT_BPM, nml: str | None = None, dry_run: bool = False
     return stats
 
 
+def view_collection(st: dict, nml: str | None = None) -> Path:
+    """The collection the Traktor view is in: --nml, else the one it was loaded into, else (that one was moved or
+    copied elsewhere) the collection chosen now, if the view's folder is in it."""
+    if nml or Path(st["collection"]).exists():
+        return traktor.find_collection(nml or st["collection"])
+    try:
+        path = traktor.find_collection(None)
+    except SystemExit:
+        path = None
+    if path and traktor.tempo_view_in(path):
+        return path
+    raise SystemExit(f"The {st['bpm']:g} BPM view was loaded into {st['collection']}, which isn't there any more. "
+                     "If you moved that collection, choose its new place on the Setup tab (Traktor's collection → "
+                     "Change…) and switch back again.")
+
+
 def unload(nml: str | None = None, dry_run: bool = False) -> dict:
     st = loaded()
     if not st:
@@ -746,7 +762,7 @@ def unload(nml: str | None = None, dry_run: bool = False) -> dict:
             STATE.unlink()
             stats["now_loaded"] = "your normal genres, colours and hype"
         return stats
-    path = traktor.find_collection(nml or st["collection"])
+    path = view_collection(st, nml)
     traktor.check_closed(dry_run)
     bpm, tracks = st["bpm"], st["tracks"]
     text = path.read_text(encoding="utf-8")
@@ -787,6 +803,7 @@ def unload(nml: str | None = None, dry_run: bool = False) -> dict:
         new_text, _ = traktor.remove_root_folder(new_text, folder_name(bpm))
     stats["kept"] = kept
     if not dry_run:
+        view_home(bpm).mkdir(parents=True, exist_ok=True)  # gone if the data folder was copied without it
         (view_home(bpm) / "collection.nml").write_text(text, encoding="utf-8")  # the view as you left it
     stats = traktor._save(path, text, new_text, stats, dry_run, prefix=BACKUP_PREFIX)
     if st.get("clock"):  # always back to your clock, even if it was changed while the view was loaded
