@@ -1089,6 +1089,8 @@ Picking **Both** or **Mine only** first lists every track that would change. **S
 
 Add examples to weak genres and learn again; analysis is cached, so only new tracks are processed. Pick clear, typical examples, keep genres balanced, and aim for 20 (usable) to 50+ (better) per genre.
 
+**Check the groove rules.** A mix's genre is checked against its measured groove (bass gallop, offbeat hat, long breakdowns, rumble kick): rules for Psytrance, Goa Trance, Darkpsy, Hi-Tech, Tech Trance, Uplifting Trance, Progressive Trance, Hard Trance, Melodic Techno, Hard Techno and Techno. **Check the groove rules** in the same step tests those rules on your examples: pick a source as above, with sets named after one of those genres (`Psytrance`, `tech_trance`, `DJ / Hard Techno`; one set is enough, others are left out). Per genre it shows how many examples the rules label as their own genre, how much of the model's score for that genre the check would keep, the measured features (median and range), and each mislabelled example with the checks it failed. It only reports: it doesn't learn and leaves your genres alone. About 5–10 seconds per track. In a terminal: `train --groove-check <folder>` (or the Traktor options).
+
 ---
 
 ## 10. All commands

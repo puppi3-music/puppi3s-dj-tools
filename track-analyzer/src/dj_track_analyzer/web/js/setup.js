@@ -152,17 +152,25 @@ async function pageSetup(main) {
       : GN.mode === "both" ? `<b>Both:</b> your genre on the ${plural(GN.tracks_with_yours, "track")} that clearly sound like one; every other track keeps its built-in genre. ${gWhere[0].toUpperCase() + gWhere.slice(1)}.`
       : GN.mode === "mine" ? `<b>Mine only:</b> every track gets the closest of your genres, also tracks that sound like none of them. ${gWhere[0].toUpperCase() + gWhere.slice(1)}.`
       : `<b>Starter:</b> the built-in genres only. ${plural(GN.tracks_with_yours, "scanned track")} clearly sound like one of yours. Pick <b>Both</b> (yours where one fits, built-in elsewhere) or <b>Mine only</b> (yours on every track) to see what would change first; Starter puts the built-in genres back at any time.`}</div>`;
+  const GC = GN.groove_check, f3 = v => v == null ? "–" : (+v).toFixed(2);
+  const gGroove = !GC ? "" : `<div class="small" style="margin-top:6px"><b>Groove rules</b> (the check that re-weights a mix's genres), tested on ${esc(GC.checked_at || "")}:
+    ${GC.agree} of ${plural(GC.examples, "example")} labelled as their own genre.${GC.not_checked?.length ? ` No rules for ${esc(GC.not_checked.join(", "))}.` : ""}
+    ${Object.entries(GC.genres || {}).map(([g, d]) => `<details><summary>${esc(g)}: ${d.agree}/${d.examples} agree; keeps ${pc(d.kept_median)} of the model's ${esc(g)} score (worst ${pc(d.kept_min)})</summary>
+      <div style="overflow-x:auto"><table class="small"><tr><th>feature</th><th>median</th><th>range</th></tr>${Object.entries(d.features || {}).map(([k, v]) =>
+        `<tr><td style="white-space:nowrap">${esc(k)}</td><td>${f3(v.median)}</td><td>${f3(v.lo)} – ${f3(v.hi)}</td></tr>`).join("")}</table></div>
+      ${(d.mislabelled || []).map(r => `<div>✗ ${esc(r.track)}: ${esc(r.label)} (own fit ${f3(r.own_fit)})${r.failed?.length ? `: ${esc(r.failed.join("; "))}` : ""}</div>`).join("")}</details>`).join("")}</div>`;
+  const grooveBtn = jb("su-groove", "Check the groove rules", false, "", "");
   const genreStep = GN.trained
     ? step(GN.in_use ? "done" : "todo", 7, "Your genres",
         `Learned ${esc(Object.entries(GN.counts).map(([g, n]) => `${g} (${n})`).join(", "))} on ${esc(GN.trained_at || "")}.
          ${GR.cross_validated_accuracy != null ? `Tested on your tracks: it recognised ${pc(GR.cross_validated_accuracy)} of the examples${GR.others_given_yours != null ? ` and gave one of your genres to ${pc(GR.others_given_yours)} of your other tracks` : ""}.` : ""}
          ${GR.most_confused && Object.keys(GR.most_confused).length ? `Mix-ups: ${esc(Object.entries(GR.most_confused).map(([k, n]) => `${k} ${n}`).join(", "))}.` : ""}
-         ${gUse}<div id="su-gprev"></div>${gSource}<div id="su-gmsg" class="small" hidden></div>`,
-        jb("su-gtrain", "Learn again"))
+         ${gUse}${gGroove}<div id="su-gprev"></div>${gSource}<div id="su-gmsg" class="small" hidden></div>`,
+        jb("su-gtrain", "Learn again") + grooveBtn)
     : step(genreOk ? "todo" : "blocked", 7, "Learn your genres",
         `Optional. Teaches it genres the built-in ones don't have (like Hyperpop), or your own way of splitting them. ${gHow}
-         ${genreOk ? gSource : ` <b>Needs 30 scanned tracks first</b> (you have ${sc.tracks}).`}<div id="su-gmsg" class="small" hidden></div>`,
-        genreOk ? jb("su-gtrain", "Learn your genres", true) : "");
+         ${gGroove}${genreOk ? "" : ` <b>Learning needs 30 scanned tracks first</b> (you have ${sc.tracks}); checking the groove rules doesn't.`}${gSource}<div id="su-gmsg" class="small" hidden></div>`,
+        (genreOk ? jb("su-gtrain", "Learn your genres", true) : "") + grooveBtn);
   const tool = (n, name, what) => st.tools[name] ? step("done", n, name, `Installed. ${what}`)
     : step("todo", n, name, `${what} ${st.install[name] ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
         : `Install it in a terminal: <code>${esc(st.install_hint[name])}</code>, then reload this page.`}`,
@@ -318,11 +326,15 @@ async function pageSetup(main) {
     gBox();
   });
   gBox();
-  on("su-gtrain", () => {
-    if (SF.gsrc === "traktor_playlists") return SF.gpl.length >= 2 ? go("genres_train", { playlists: SF.gpl }) : gmsg("Tick at least two playlists first.", true);
-    if (SF.gsrc === "traktor_genres") return SF.ggenres.length >= 2 ? go("genres_train", { genres: SF.ggenres }) : gmsg("Tick at least two genres first.", true);
-    const f = ($("#su-gfolder")?.value || "").trim(); f ? go("genres_train", { folder: f, ...(SF.gsrc === "folder_tags" ? { by_tag: true } : {}) }) : $("#su-gfolder")?.focus();
-  });
+  // Learn your genres (at least two genres) or check the groove rules on the same examples (one is enough)
+  const gRun = (job, least) => {
+    const two = least > 1 ? "at least two" : "some";
+    if (SF.gsrc === "traktor_playlists") return SF.gpl.length >= least ? go(job, { playlists: SF.gpl }) : gmsg(`Tick ${two} playlists first.`, true);
+    if (SF.gsrc === "traktor_genres") return SF.ggenres.length >= least ? go(job, { genres: SF.ggenres }) : gmsg(`Tick ${two} genres first.`, true);
+    const f = ($("#su-gfolder")?.value || "").trim(); f ? go(job, { folder: f, ...(SF.gsrc === "folder_tags" ? { by_tag: true } : {}) }) : $("#su-gfolder")?.focus();
+  };
+  on("su-gtrain", () => gRun("genres_train", 2));
+  on("su-groove", () => gRun("groove_check", 1));
   const gSwitch = async (mode, btn) => {
     btn.disabled = true; gmsg("");
     try { await postJSON("/api/genres/use", { mode }); S.tracks = {}; SETUP = null; route(); }

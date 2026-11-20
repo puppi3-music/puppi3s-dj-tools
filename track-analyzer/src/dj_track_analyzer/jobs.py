@@ -61,12 +61,12 @@ def _scan(o: dict) -> list[str]:
     return [*args, "--rescan"] if o.get("rescan") is True else args
 
 
-def _genres_train(o: dict) -> list[str]:
+def _genres_train(o: dict, least: int = 2) -> list[str]:
     for key, flag, what in (("playlists", "--traktor-playlist", "playlists"), ("genres", "--traktor-genre", "genres")):
         if o.get(key):  # Traktor playlists / genres in Traktor's Genre field
             names = [str(g).strip() for g in o[key] if str(g).strip()] if isinstance(o[key], list) else []
-            if len(names) < 2:
-                raise ValueError(f"Tick at least 2 {what}")
+            if len(names) < least:
+                raise ValueError(f"Tick at least {least} {what}" if least > 1 else f"Tick some {what}")
             return ["train", *[a for g in names for a in (flag, g)]]
     folder = str(o.get("folder") or "").strip()
     if not folder:
@@ -157,6 +157,7 @@ ACTIONS = {
     "colors_train": ("Learn your colours", lambda o: ["colors", "train", *(["--refresh-views"] if o.get("views") else [])], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
     "genres_train": ("Learn your genres", _genres_train, False),
+    "groove_check": ("Check the groove rules", lambda o: [*_genres_train(o, least=1), "--groove-check"], False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
     "tempo_scan": ("Scan the tempo view", lambda o: ["tempo", "scan", "--bpm", _bpm(o)], False),

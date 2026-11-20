@@ -343,6 +343,9 @@ def main() -> None:
                    "instead: each is a genre named after it (repeat for each, at least 2; in folders as \"DJ / Hyperpop\")")
     t.add_argument("--traktor-genre", action="append", metavar="GENRE", help="learn from Traktor's Genre field "
                    "instead: the tracks with this genre (repeat for each genre, at least 2)")
+    t.add_argument("--groove-check", action="store_true", help="only check the groove rules (groove_genre) "
+                   "against these examples instead of learning from them: per genre the measured features and the "
+                   "examples the rules mislabel; examples named after a groove genre (Psytrance, Tech Trance, ...) only")
     t.add_argument("--use", choices=["starter", "both", "mine"], default=None,
                    help="the Setup tab's genre switch: starter = built-in genres only; both = yours where one fits, "
                         "built-in elsewhere; mine = the nearest of yours on every track")
@@ -479,6 +482,12 @@ def main() -> None:
         if not sources and not args.use:
             raise SystemExit("Give the folder with your example tracks (or --traktor-playlist / --traktor-genre), "
                              "or --use starter|both|mine.")
+        if args.groove_check:
+            if not sources:
+                raise SystemExit("--groove-check needs the examples: a folder, --traktor-playlist or --traktor-genre.")
+            mygenres.groove_check(args.folder, playlists=args.traktor_playlist, genres=args.traktor_genre,
+                                  by_tag=args.by_tag)
+            return
         out = mygenres.train(args.folder, playlists=args.traktor_playlist, genres=args.traktor_genre,
                               by_tag=args.by_tag) if sources else {}
         if args.use:

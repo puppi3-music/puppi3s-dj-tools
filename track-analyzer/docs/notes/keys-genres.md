@@ -80,3 +80,12 @@ at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top g
   returns None) instead of counting as 0. Works with no scan of the track (psy cap at 0% on Linux). New track
   fields: `groove_label`, `groove_why`, `genre_before_groove` (only when the check changed it); the page shows
   "groove check: was X" with the why as tooltip.
+- Calibration hook (2026-11-20): Setup → Learn your genres → **Check the groove rules** (`mygenres.groove_check`,
+  `train --groove-check`, MCP `train_genres(groove_check=True)`). Same sources as learning; sets matched to `GENRES` by
+  name (`groove_genre.reference_genre`: GENRES name or ALIASES, `_` as space, last playlist path part; a set just
+  called "Trance" is left out). Each file measured whole (`measure_file`, breakdowns included) in a spawn process
+  pool. `reference_report`: per genre agree/examples, `kept` = FLOOR + (1 − FLOOR)·own fit (what a wrong demotion
+  costs; FLOOR = 0.15 now a named constant), feature medians/ranges, mislabelled with the failed checks. Saved to
+  `data/groove_check.json`, shown in the step. Reports only: thresholds, FLOOR and `tracklist.GROOVE_TEMPO` are
+  changed by hand after looking at the numbers (brief step 5). Known open case: Nov 6 mix track #20 stays Psytrance
+  at 0.11 after demotion because the trance styles score even lower.

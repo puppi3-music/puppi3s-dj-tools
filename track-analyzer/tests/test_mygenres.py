@@ -261,3 +261,26 @@ def test_genres_train_job_passes_by_tag(tmp_path):
 
     assert jobs._genres_train({"folder": str(tmp_path), "by_tag": True})[-1] == "--by-tag"
     assert "--by-tag" not in jobs._genres_train({"folder": str(tmp_path)})
+
+
+def test_groove_check_job_takes_one_set(tmp_path):
+    from dj_track_analyzer import jobs
+
+    assert jobs.ACTIONS["groove_check"][1]({"playlists": ["DJ / Psytrance"]})[-1] == "--groove-check"
+    with pytest.raises(ValueError):
+        jobs._genres_train({"playlists": ["DJ / Psytrance"]})  # learning still needs two
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="needs ffmpeg")
+def test_groove_check_on_a_reference_folder(tmp_path, monkeypatch):
+    import soundfile as sf
+    from dj_track_analyzer.groove_genre import groove_genre as gg
+
+    for name, pattern in (("Psytrance", "psy"), ("Hyperpop", "offbeat")):
+        (tmp_path / name).mkdir()
+        sf.write(tmp_path / name / f"{pattern}.wav", gg._synth(pattern, seconds=60), gg.SR)
+    monkeypatch.setattr(mygenres, "GROOVE_CHECK", tmp_path / "groove_check.json")
+    rep = mygenres.groove_check(str(tmp_path), progress=lambda *a: None, workers=1)
+    assert list(rep["genres"]) == ["Psytrance"] and rep["not_checked"] == ["Hyperpop"]
+    assert rep["genres"]["Psytrance"]["features"]["gallop"]["median"] > 0.5
+    assert mygenres._groove_check_brief()["genres"]["Psytrance"].get("tracks") is None
