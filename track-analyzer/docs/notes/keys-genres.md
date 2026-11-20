@@ -89,3 +89,11 @@ at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top g
   `data/groove_check.json`, shown in the step. Reports only: thresholds, FLOOR and `tracklist.GROOVE_TEMPO` are
   changed by hand after looking at the numbers (brief step 5). Known open case: Nov 6 mix track #20 stays Psytrance
   at 0.11 after demotion because the trance styles score even lower.
+- Half-time fix (2026-11-20): the smoke run of the check read 3 of 13 tracks at 62-65 BPM (every rule fit 0), e.g.
+  Lola Young "Messy (Desyfer Remix)" 125 → 62.6, Lost Frequencies "Kick The Nation" 130 → 65. Per window, accented
+  kicks or a bassline in the kick band made the 2-beat lag the stronger autocorrelation even against the 0.8 weight
+  outside 110-180, and the summary median followed. `estimate_tempo` (no hint, pick below 110) now folds the kick
+  onsets at the picked tempo and doubles it when there is a second peak half a cycle on of ≥ `HALF_BEAT_PEAK` (0.25)
+  of the main one: those windows had 0.32-0.95, a real half-time groove (nothing between kicks) 0.07. Both tracks now
+  read 125/130 in every window. Fold contrast at double vs half tempo was tried first and doesn't separate them (it
+  depends on bin width: a sparse 65 BPM kick kept 0.79 of its contrast at 130). Stored fixtures unchanged.
