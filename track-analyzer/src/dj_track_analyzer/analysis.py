@@ -1777,13 +1777,14 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
                     result["genre_basis"]["bpm"] = mix_bpm
             if is_mix:
                 say(f"measuring the groove ({pool.workers} processes)")
-                groove_measure(result, pool, extra["mono22"])
+                groove_windows = groove_measure(result, pool, extra["mono22"])
                 groove_headline(result, scores, genre_bpm or result.get("genre_basis", {}).get("bpm"))
             if tracklist and is_mix:
                 from . import tracklist as tl
 
                 say("checking against the tracklist")
-                tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p)
+                tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p,
+                         groove_windows=groove_windows)
         extra = None  # the 22.05 kHz copy (~0.6 GB for a 2 h mix) isn't needed past here
     if standalone and tracklist and is_mix and result.get("tracklist"):
         from . import standalone as sa
@@ -1906,17 +1907,20 @@ class AudioPool:
 
 
 GROOVE_SR = 22050  # groove_genre.SR
+GROOVE_WINDOW = 30.0  # seconds per groove_genre window
 
 
-def groove_measure(result: dict, pool: AudioPool, mono22: np.ndarray) -> None:
-    """groove_genre's structural features of a whole mix (every 30 s window) -> result["groove"] (its summary)."""
+def groove_measure(result: dict, pool: AudioPool, mono22: np.ndarray) -> list[dict]:
+    """groove_genre's structural features of a whole mix (every 30 s window) -> result["groove"] (its summary).
+    Returns the measured windows (each with its start "t" in seconds), so each track's slot reuses them."""
     from . import groove_genre as gg
 
     meter = lambda n_done, total: f"  groove windows measured: {n_done}/{total}"  # noqa: E731
     run = lambda starts, n: pool.measure([(w0, n) for w0 in starts],  # noqa: E731
                                          lambda k: meter(k, len(starts)), fn=_groove_window)
-    summary = gg.analyze(mono22, stride=GROOVE_STRIDE, run=run)["summary"]
-    result["groove"] = _rounded(summary)
+    measured = gg.analyze(mono22, window=GROOVE_WINDOW, stride=GROOVE_STRIDE, run=run)
+    result["groove"] = _rounded(measured["summary"])
+    return measured["windows"]
 
 
 def _rounded(x, nd: int = 3):
