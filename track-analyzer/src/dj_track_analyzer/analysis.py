@@ -1765,6 +1765,11 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
                 say(f"building the timeline ({pool.workers} processes)")
                 result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool,
                                                       moods=mood_p)
+                mix_bpm = timeline_bpm(result["timeline"])
+                if is_mix and scores and not genre_bpm and mix_bpm:
+                    # the headline was judged with no BPM above (a mix has no single one), so bpm_fit ignored tempo
+                    result["dj_genre"] = dj_genre(scores, mix_bpm)
+                    result["genre_basis"]["bpm"] = mix_bpm
             if tracklist and is_mix:
                 from . import tracklist as tl
 
@@ -1869,6 +1874,12 @@ class AudioPool:
 
             shutil.rmtree(self._dir, ignore_errors=True)
         _AUDIO.pop("mono44", None)
+
+
+def timeline_bpm(timeline: list[dict]) -> float | None:
+    """A mix's tempo for the genre rules: the median of its timeline segments' BPMs."""
+    bpms = [seg["bpm"] for seg in timeline if seg.get("bpm")]
+    return round_bpm(float(np.median(bpms))) if bpms else None
 
 
 def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None, moods: dict | None = None):
