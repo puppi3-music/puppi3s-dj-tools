@@ -309,9 +309,11 @@ def _fit_keys(placed: list[dict], pool) -> dict:
 
 
 def check(result: dict, pool, acts, scores: dict | None, duration: float,
-          plays: list[dict], history: Path, start: datetime, moods: dict | None = None) -> None:
+          plays: list[dict], history: Path, start: datetime, moods: dict | None = None,
+          groove_windows: list[dict] | None = None) -> None:
     """Add a per-track report to an analysed mix (result), and judge its genres at the tracks' own BPMs.
-    moods: analysis.mood_patches of the mix, for each track's mood as heard."""
+    moods: analysis.mood_patches of the mix, for each track's mood as heard. groove_windows: the mix's
+    measured groove_genre windows (analysis.groove_measure), to check each track's genre against its own."""
     placed = place(plays, start, duration)
     if not placed:
         raise SystemExit(f"None of the tracks in {history} play during this recording "
@@ -383,10 +385,12 @@ def check(result: dict, pool, acts, scores: dict | None, duration: float,
             if g:
                 t["genre_uncorrected"] = g[0]["genre"]
             fixed, basis = corrected(heard, p)
-            g = dj_genre(label_scores(fixed), bpm, top=1)
+            capped = label_scores(fixed)
+            g = dj_genre(capped, bpm, top=1)
             if g:
                 t["genre"] = g[0]["genre"]
                 t["genre_basis"] = basis
+            track_groove(t, groove_windows, a, b, capped, bpm)
             if p.get("view_acts") is not None:
                 t["mixing"] = mixing_effect(heard - p["view_acts"])
         tracks.append(t)
@@ -494,6 +498,29 @@ def corrected(heard: np.ndarray, p: dict) -> tuple[np.ndarray, str]:
         for k in group:
             out[names.index(k)] = min(out[names.index(k)], cap)
     return out, "as heard, psy and juke held to 1.5x the track's own-tempo level"
+
+
+def track_groove(t: dict, wins: list[dict] | None, a: float, b: float, scores: dict, bpm: float | None) -> None:
+    """Check a track's genre (t, from its psy-capped scores) against the groove measured in its stretch a-b of
+    the mix, the same way as the mix's headline (analysis.groove_headline): the windows the mix already measured
+    that lie at least half inside a-b, summarized alone. Works without the psy cap (no scan of the track)."""
+    from . import groove_genre as gg
+
+    half = analysis.GROOVE_WINDOW / 2
+    here = [w for w in wins or [] if min(b, w["t"] + 2 * half) - max(a, w["t"]) >= half]
+    if not here or not scores:
+        return
+    ev = gg.genre_evidence(gg.summarize(here), scores)  # no audio: breakdown checks are left out
+    t["groove_label"] = ev["label"]
+    t["groove_why"] = gg.why(ev, scores)
+    g = dj_genre({**scores, **ev["adjusted_model_scores"]}, bpm, top=1)
+    if not g:
+        return
+    if g[0]["genre"] != t.get("genre"):
+        t["genre_before_groove"] = t.get("genre")
+        t["genre"] = g[0]["genre"]
+    t["genre_basis"] = (f"{t.get('genre_basis', 'as heard')}; checked against the groove of its "
+                        f"{len(here)} measured {2 * half:.0f} s window{'s' if len(here) > 1 else ''}")
 
 
 def mixing_effect(diff: np.ndarray, n: int = 3, min_change: float = 0.05) -> dict:
