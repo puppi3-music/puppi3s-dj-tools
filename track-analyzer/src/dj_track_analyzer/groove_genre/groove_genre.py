@@ -340,13 +340,14 @@ ALIASES = {
 }
 
 
-def genre_evidence(f: dict, model_scores: dict | None = None, floor: float = 0.15) -> dict:
+def genre_evidence(f: dict, model_scores: dict | None = None, floor: float | None = None) -> dict:
     """Score each genre from measured structure, optionally re-weighting a model's scores.
 
     Returns {"fits": {genre: {fit, tempo_fit, reasons}}, "ranking": [...], "label": {...},
              "adjusted_model_scores": {...} (if model_scores given)}.
     A model score is multiplied by floor + (1 - floor) * fit, so a style the audio clearly
     contradicts (no gallop -> psytrance) is pushed down but never deleted outright."""
+    floor = FLOOR if floor is None else floor
     fits = {}
     for g, spec in GENRES.items():
         lo, hi = spec["bpm"]
@@ -377,6 +378,84 @@ def genre_evidence(f: dict, model_scores: dict | None = None, floor: float = 0.1
             factor = floor + (1 - floor) * fits[g]["fit"] if g else 1.0
             adj[name] = round(float(s) * factor, 4)
         out["adjusted_model_scores"] = dict(sorted(adj.items(), key=lambda kv: -kv[1]))
+    return out
+
+
+FLOOR = 0.15  # genre_evidence's default floor: the least share of a model score the evidence keeps
+
+# ---------------------------------------------------------------------------- reference check (calibration hook)
+# Features shown per genre in the reference check: the ones the GENRES checks read.
+REFERENCE_FEATURES = ("bpm", "gallop", "psy_windows", "hat_offbeat", "hat_16ths", "bass_swell", "rumble",
+                      "melodic_ratio", "minor_share", "chord_change", "long_breakdown_share")
+REFERENCE_SKIP_ALIASES = {"trance"}
+NO_RULE_FITS = "no rule fits"  # every genre's fit is 0 (e.g. the tempo read half-time): no label to speak of  # a set just called "Trance" may be any trance: no rules to check it against
+
+
+def reference_genre(name: str) -> str | None:
+    """The GENRES entry a set of labelled examples stands for: a folder, playlist or Genre-field name like
+    "Psytrance", "tech_trance" or "DJ / Psy-Trance". None when no groove rules exist for it."""
+    n = name.replace("\\", "/").rsplit("/", 1)[-1].strip().lower()
+    for cand in (n, n.replace("_", " "), n.replace("_", "-")):
+        hit = {g.lower(): g for g in GENRES}.get(cand)
+        if hit:
+            return hit
+        if cand in ALIASES and cand not in REFERENCE_SKIP_ALIASES:
+            return ALIASES[cand]
+    return None
+
+
+def reference_report(examples: dict[str, list[tuple[str, dict]]], floor: float = FLOOR) -> dict:
+    """Check the groove rules against labelled reference tracks. `examples`: {GENRES name: [(track, summary)]},
+    each summary from analyze() on the whole track. Reports, per genre, the feature medians and ranges, how many
+    examples the rules label as their own genre, the share of the model's score for their own genre the evidence
+    would keep (floor + (1 - floor) * fit: what a wrong demotion costs), and each mislabelled example with the
+    checks that failed it. Only reports: thresholds are changed by hand after looking at these numbers."""
+    genres, total, wrong = {}, 0, 0
+    for g, items in examples.items():
+        rows = []
+        for track, s in items:
+            ev = genre_evidence(s)
+            own = ev["fits"][g]
+            rank = ev["ranking"].index(g) + 1
+            top_fit = ev["fits"][ev["label"]["category"]]["fit"]
+            rows.append(dict(track=track, label=ev["label"]["category"] if top_fit > 0 else NO_RULE_FITS, rank=rank,
+                             own_fit=own["fit"], top_fit=top_fit,
+                             kept=round(floor + (1 - floor) * own["fit"], 3),
+                             failed=[r for f, r in sorted(own["checks"], key=lambda c: c[0]) if f < 0.5][:WHY_REASONS],
+                             features={k: round(float(s[k]), 3) for k in REFERENCE_FEATURES if s.get(k) is not None}))
+        if not rows:
+            continue
+        feats = {}
+        for k in REFERENCE_FEATURES:
+            v = [r["features"][k] for r in rows if k in r["features"]]
+            if v:
+                feats[k] = dict(median=round(float(np.median(v)), 3), lo=round(float(min(v)), 3), hi=round(float(max(v)), 3))
+        bad = [r for r in rows if r["label"] != g]
+        genres[g] = dict(examples=len(rows), agree=len(rows) - len(bad),
+                         kept_median=round(float(np.median([r["kept"] for r in rows])), 3),
+                         kept_min=min(r["kept"] for r in rows),
+                         features=feats, mislabelled=bad, tracks=rows)
+        total += len(rows)
+        wrong += len(bad)
+    return dict(examples=total, agree=total - wrong, floor=floor, genres=genres)
+
+
+def measure_file(path: str) -> dict:
+    """The whole-track summary of one reference file (every 30 s window, plus its breakdowns)."""
+    return analyze(str(path))["summary"]
+
+
+def reference_lines(rep: dict) -> list[str]:
+    """The reference report as plain lines (CLI)."""
+    out = [f"Groove rules vs your examples: {rep['agree']} of {rep['examples']} labelled as their own genre "
+           f"(floor {rep['floor']})."]
+    for g, d in rep["genres"].items():
+        out.append(f"\n{g}: {d['agree']}/{d['examples']} agree; evidence keeps {d['kept_median']:.0%} of the model's "
+                   f"{g} score (worst {d['kept_min']:.0%})")
+        out += [f"  {k:22} {v['median']:7.3f}   ({v['lo']:.3f} - {v['hi']:.3f})" for k, v in d["features"].items()]
+        for r in d["mislabelled"]:
+            out.append(f"  ✗ {r['track']}: {r['label']} (own fit {r['own_fit']:.2f}, rank {r['rank']}): "
+                       + ("; ".join(r["failed"]) or "other genre fits better"))
     return out
 
 

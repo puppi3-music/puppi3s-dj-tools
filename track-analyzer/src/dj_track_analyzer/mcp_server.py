@@ -95,7 +95,7 @@ def build_mcp():
     @mcp.tool()
     @friendly
     def train_genres(folder: str = "", traktor_playlists: list[str] | None = None,
-                     traktor_genres: list[str] | None = None) -> dict:
+                     traktor_genres: list[str] | None = None, groove_check: bool = False) -> dict:
         """OPTIONAL. Teach the analyzer the user's own genre labels from example tracks.
         Not needed for normal use: dj_genre already works without training.
 
@@ -113,11 +113,21 @@ def build_mcp():
             traktor_playlists: Traktor playlists (at least 2; in folders as "DJ / Hyperpop"): each is one genre,
                 named after the playlist.
             traktor_genres: Genres from Traktor's Genre field (at least 2): the tracks with each are its examples.
+            groove_check: Don't learn: check the groove rules (the evidence that re-weights a mix's genres) against
+                the examples instead. Only examples named after a groove genre (Psytrance, Tech Trance, Uplifting
+                Trance, Hard Techno, ...) count, one set is enough; returns per genre the measured features and the
+                examples the rules mislabel.
         """
         from . import mygenres
 
         if sum(map(bool, (folder, traktor_playlists, traktor_genres))) != 1:
             raise ValueError("Give one of folder, traktor_playlists or traktor_genres")
+        if groove_check:
+            rep = mygenres.groove_check(folder or None, progress=lambda *a: None, playlists=traktor_playlists or None,
+                                        genres=traktor_genres or None)
+            for d in rep["genres"].values():
+                d.pop("tracks", None)
+            return rep
         return mygenres.train(folder or None, progress=lambda *a: None, playlists=traktor_playlists or None,
                               genres=traktor_genres or None)
 

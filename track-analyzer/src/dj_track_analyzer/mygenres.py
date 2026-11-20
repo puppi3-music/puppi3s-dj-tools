@@ -131,6 +131,72 @@ def train(folder: str | None = None, progress=log, playlists: list[str] | None =
     return report
 
 
+GROOVE_CHECK = analysis.HOME / "groove_check.json"
+
+
+def groove_check(folder: str | None = None, progress=log, playlists: list[str] | None = None,
+                 genres: list[str] | None = None, by_tag: bool = False, workers: int | None = None) -> dict:
+    """The calibration hook of the groove evidence (groove_genre): measures the groove of labelled example tracks
+    (the same sources as Learn your genres) and reports per genre the features, how many examples the rules label as
+    their own genre and which they mislabel. Only reports, and doesn't touch your learned genres. Saved in
+    GROOVE_CHECK for the Setup tab. Sets are matched to the groove rules by name (Psytrance, tech_trance, ...)."""
+    import json
+    import os
+    import time
+    from concurrent.futures import ProcessPoolExecutor
+    import multiprocessing as mp
+
+    from .groove_genre import groove_genre as gg
+
+    if folder and by_tag:
+        sets, source = analysis.collect_tagged_set(folder), {"kind": "folder_tags", "folder": str(Path(folder).expanduser())}
+    elif folder:
+        sets, source = analysis.collect_training_set(folder), {"kind": "folder", "folder": str(Path(folder).expanduser())}
+    else:
+        sets, source = traktor_sets(playlists, genres)
+    mapped: dict[str, list] = {}
+    for name, files in sets.items():
+        g = gg.reference_genre(name)
+        if g:
+            mapped.setdefault(g, []).extend(Path(f) for f in files)
+        elif files:
+            progress(f"No groove rules for {name}: left out")
+    if not mapped:
+        raise SystemExit(f"None of these genres has groove rules ({', '.join(sets) or 'nothing found'}). Name the "
+                         f"examples after one of: {', '.join(gg.GENRES)}.")
+    jobs = [(g, f) for g, files in mapped.items() for f in dict.fromkeys(files)]
+    workers = workers or max(1, min(5, (os.cpu_count() or 4) // 2))
+    examples: dict[str, list] = {g: [] for g in mapped}
+    failed = []
+    with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as ex:
+        futs = [ex.submit(gg.measure_file, str(f)) for _g, f in jobs]
+        for k, ((g, f), fut) in enumerate(zip(jobs, futs), 1):
+            progress(f"[{k}/{len(jobs)}] checking the groove: {f.name}")
+            try:
+                examples[g].append((f.name, fut.result()))
+            except Exception as err:  # unreadable file, too short etc.
+                failed.append(f"{f.name}: {str(err).strip().splitlines()[-1] if str(err).strip() else type(err).__name__}")
+    rep = gg.reference_report(examples)
+    rep.update(checked_at=time.strftime("%Y-%m-%d %H:%M"), source=source,
+               not_checked=[n for n in sets if not gg.reference_genre(n)])
+    if failed:
+        rep["skipped_files"] = failed[:20]
+    GROOVE_CHECK.parent.mkdir(parents=True, exist_ok=True)
+    GROOVE_CHECK.write_text(json.dumps(rep, ensure_ascii=False))
+    for line in gg.reference_lines(rep):
+        progress(line)
+    return rep
+
+
+def last_groove_check() -> dict | None:
+    import json
+
+    try:
+        return json.loads(GROOVE_CHECK.read_text())
+    except (OSError, ValueError):
+        return None
+
+
 def set_mode(mode: str) -> dict:
     """The genre switch: "starter", "both" or "mine". Changes only the analyzer's own data: files and Traktor get
     your genres the next time genres are written (tag / traktor)."""
@@ -153,7 +219,7 @@ def status() -> dict:
     out = {"trained": bool(b), "mode": mode, "chosen": analysis.app_setting("my_genres_mode") or "starter",
            "in_use": mode != "starter", "not_ready": analysis.my_genres_not_ready(b),
            "min_total": analysis.MY_GENRES_MIN_TOTAL, "min_each": analysis.MY_GENRES_MIN_EACH,
-           "tracks_with_yours": 0}
+           "tracks_with_yours": 0, "groove_check": _groove_check_brief()}
     if b:
         out.update(trained_at=b.get("trained_at"), source=b.get("source"), counts=b.get("counts") or {},
                    source_kind=b.get("source_kind") or ({"kind": "folder", "folder": b["source"]} if b.get("source") else None),
@@ -165,6 +231,16 @@ def status() -> dict:
                 out["tracks_with_yours"] = con.execute(
                     "SELECT COUNT(*) FROM tracks WHERE trained_genre IS NOT NULL").fetchone()[0]
     return out
+
+
+def _groove_check_brief() -> dict | None:
+    """The last groove check for the Setup tab, without the per-track features."""
+    rep = last_groove_check()
+    if not rep:
+        return None
+    for d in rep.get("genres", {}).values():
+        d.pop("tracks", None)
+    return rep
 
 
 def preview(mode: str = "both") -> dict:
