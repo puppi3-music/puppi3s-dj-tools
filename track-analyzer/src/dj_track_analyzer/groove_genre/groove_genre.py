@@ -189,19 +189,31 @@ def find_breakdowns(y: np.ndarray, bpm: float, min_bars: int = 4, thresh: float 
 
 
 # --------------------------------------------------------------------------- whole file
-def analyze(src, window: float = 30.0, stride: int = 1, bpm_hint: float | None = None, progress=None) -> dict:
+def window_starts(n_samples: int, window: float = 30.0, stride: int = 1) -> list[int]:
+    """First sample of each analyzed window (at SR)."""
+    n = int(window * SR)
+    return list(range(0, max(n_samples - n, 0) + 1, n))[::stride] or [0]
+
+
+def analyze(src, window: float = 30.0, stride: int = 1, bpm_hint: float | None = None, progress=None,
+            run=None) -> dict:
     """Analyze a file path or mono float32 array at 22,050 Hz.
-    stride=2 analyzes every 2nd window (about twice as fast, same conclusions on long mixes)."""
+    stride=2 analyzes every 2nd window (about twice as fast, same conclusions on long mixes).
+    run(starts, n) -> analyze_window results in the starts' order (windows y[s:s + n]), for running them
+    elsewhere (the analyzer's process pool); default: one after another here."""
     y = load_audio(src) if isinstance(src, str) else np.asarray(src, dtype=np.float32)
     n = int(window * SR)
-    starts = list(range(0, max(len(y) - n, 0) + 1, n))[::stride] or [0]
-    wins = []
-    for k, w0 in enumerate(starts):
-        f = analyze_window(y[w0:w0 + n], bpm_hint=bpm_hint)
+    starts = window_starts(len(y), window, stride)
+    if run is not None:
+        wins = run(starts, n)
+    else:
+        wins = []
+        for k, w0 in enumerate(starts):
+            wins.append(analyze_window(y[w0:w0 + n], bpm_hint=bpm_hint))
+            if progress:
+                progress(k + 1, len(starts))
+    for f, w0 in zip(wins, starts):
         f["t"] = w0 / SR
-        wins.append(f)
-        if progress:
-            progress(k + 1, len(starts))
     return dict(windows=wins, summary=summarize(wins, y))
 
 
@@ -336,8 +348,10 @@ def genre_evidence(f: dict, model_scores: dict | None = None, floor: float = 0.1
         trait = float(np.mean([p[0] for p in parts])) if parts else 1.0
         gate = spec["gate"](f) if "gate" in spec else 1.0      # defining trait: absent -> genre ruled out
         fit = tf * (0.1 + 0.9 * gate) * (0.35 + 0.65 * trait)
+        tempo_reason = f"tempo {f['bpm']:.1f} BPM vs {lo}-{hi}"
         fits[g] = dict(fit=round(fit, 3), tempo_fit=round(tf, 3),
-                       reasons=[f"tempo {f['bpm']:.1f} BPM vs {lo}-{hi}"] + [p[1] for p in parts])
+                       reasons=[tempo_reason] + [p[1] for p in parts],
+                       checks=[[round(tf, 3), tempo_reason]] + [[round(float(p[0]), 3), p[1]] for p in parts])
     ranking = sorted(fits, key=lambda g: -fits[g]["fit"])
     top = ranking[0]
     descriptor = top
@@ -356,6 +370,30 @@ def genre_evidence(f: dict, model_scores: dict | None = None, floor: float = 0.1
             factor = floor + (1 - floor) * fits[g]["fit"] if g else 1.0
             adj[name] = round(float(s) * factor, 4)
         out["adjusted_model_scores"] = dict(sorted(adj.items(), key=lambda kv: -kv[1]))
+    return out
+
+
+WHY_REASONS = 3        # reasons shown per genre
+WHY_DEMOTED = 0.5      # a model style counts as demoted when the evidence keeps less than this share of its score
+WHY_MIN_SCORE = 0.1    # ... and the model gave it at least this much
+
+
+def why(ev: dict, model_scores: dict | None = None) -> list[str]:
+    """Short explanation: the label's strongest reasons, then each model style the evidence pushed down with the
+    checks that failed it most, e.g. "Psy-Trance demoted 0.56 -> 0.09: 16th-note bass gallop 0.24 (psy needs about 0.5+)"."""
+    from ..analysis import split_style
+
+    top = ev["label"]["category"]
+    best = sorted(ev["fits"][top]["checks"], key=lambda c: -c[0])[:WHY_REASONS]
+    out = [f"{ev['label']['descriptor']}: " + "; ".join(r for _f, r in best)]
+    adj = ev.get("adjusted_model_scores") or {}
+    for name, s in sorted((model_scores or {}).items(), key=lambda kv: -kv[1]):
+        g = ALIASES.get(split_style(name)[0].lower().strip())
+        if not g or s < WHY_MIN_SCORE or adj.get(name, s) >= WHY_DEMOTED * s:
+            continue
+        failed = sorted(ev["fits"][g]["checks"], key=lambda c: c[0])
+        worst = [c for c in failed if c[0] < 1][:WHY_REASONS] or failed[:1]   # only what counted against it
+        out.append(f"{split_style(name)[0]} demoted {s:.2f} -> {adj[name]:.2f}: " + "; ".join(r for _f, r in worst))
     return out
 
 
