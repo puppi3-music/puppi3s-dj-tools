@@ -113,5 +113,12 @@ at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top g
     windows; whole-track summaries say nothing about it). Psy, Hard Techno, Hard/Uplifting Trance: 0-2 examples, no
     change. Techno 2 of 16: the tagged techno is mostly 124-130 BPM melodic techno with a melodic share of 0.32-0.55,
     which these features can't tell apart from Melodic Techno; its own fit stays 0.69-1.0, so it isn't demoted.
-  - Still misread tempo: Copini, Goldspek, Doksu "Parallel Universe" 63.0 (half of 126, the half-beat peak rule
-    didn't fire) and Ann Clue "Ethereal" 93.75 (3/4 of 125, a different error). Both get every fit 0.
+  - Still misread tempo then: Copini, Goldspek, Doksu "Parallel Universe" 63.0 (half of 126) and Ann Clue
+    "Ethereal" 93.75 (the median of 62.5 and 125 windows). Both get every fit 0. Fixed below.
+- Half-tempo check, second witness (2026-11-20): in those windows the kick band's energy fold at the half tempo had a
+  second kick half a cycle on (0.76-0.97 of the main one), but a bassline in the band moved the onsets of every
+  other kick a 16th early or late (onset fold bins 24/40, 0.06-0.10 at the half), so the `HALF_BEAT_PEAK` rule didn't
+  fire. `estimate_tempo` now also takes the kick band energy (`level_env`) and doubles when either fold has the
+  peak. Re-measured per window on all 82 reference tracks: Parallel Universe 8 of 12 windows 63 → 126 (summary 126.0),
+  Ethereal 3 of 11 windows 62.5 → 125 (summary 125.0), Frankey & Sandrino "The Moment" 1 window 62.5 → 125 (summary
+  125.03 unchanged); no other window of the other 79 tracks changed.
