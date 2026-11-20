@@ -73,6 +73,9 @@ def save_app_setting(key: str, value) -> None:
 BPM_MIN = float(os.environ.get("TRACK_ANALYZER_BPM_MIN", "85"))
 BPM_MAX = float(os.environ.get("TRACK_ANALYZER_BPM_MAX", "220"))
 
+# groove_genre windows analysed in a mix: 1 = all of them (2 would be ~2x faster, but rougher)
+GROOVE_STRIDE = 1
+
 # Files longer than this are treated as DJ mixes and get a per-segment timeline.
 MIX_THRESHOLD_SEC = float(os.environ.get("TRACK_ANALYZER_MIX_THRESHOLD", str(12 * 60)))
 
@@ -1759,17 +1762,29 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         result["highlights"] = tl.highlights(short, duration, highlights, clip_seconds,
                                              energy=tl.mood_energy(mood_p, duration), energy_weight=clip_mood)
 
-    if segment_seconds or (tracklist and is_mix):
-        with AudioPool(mono44) as pool:
+    if segment_seconds or is_mix:
+        # groove_genre works at 22.05 kHz; resampled once here, its windows run in the pool's processes
+        extra = {"mono22": resample_medium(mono44, 44100, GROOVE_SR)} if is_mix else None
+        with AudioPool(mono44, extra=extra) as pool:
             if segment_seconds:
                 say(f"building the timeline ({pool.workers} processes)")
                 result["timeline"] = segment_timeline(mono44, short, emb, acts, duration, segment_seconds, pool=pool,
                                                       moods=mood_p)
+                mix_bpm = timeline_bpm(result["timeline"])
+                if is_mix and scores and not genre_bpm and mix_bpm:
+                    # the headline was judged with no BPM above (a mix has no single one), so bpm_fit ignored tempo
+                    result["dj_genre"] = dj_genre(scores, mix_bpm)
+                    result["genre_basis"]["bpm"] = mix_bpm
+            if is_mix:
+                say(f"measuring the groove ({pool.workers} processes)")
+                groove_measure(result, pool, extra["mono22"])
+                groove_headline(result, scores, genre_bpm or result.get("genre_basis", {}).get("bpm"))
             if tracklist and is_mix:
                 from . import tracklist as tl
 
                 say("checking against the tracklist")
                 tl.check(result, pool, acts, scores, duration, *tracklist, moods=mood_p)
+        extra = None  # the 22.05 kHz copy (~0.6 GB for a 2 h mix) isn't needed past here
     if standalone and tracklist and is_mix and result.get("tracklist"):
         from . import standalone as sa
 
@@ -1789,7 +1804,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
 _AUDIO: dict[str, np.ndarray] = {}
 
 
-def _audio_pool_init(npy: str) -> None:
+def _audio_pool_init(npy: str, extra: dict[str, str] | None = None) -> None:
     import signal
 
     signal.signal(signal.SIGINT, signal.SIG_IGN)  # let the parent handle Ctrl-C
@@ -1798,6 +1813,8 @@ def _audio_pool_init(npy: str) -> None:
     os.dup2(2, 1)  # stray library output to stderr: stdout may be the MCP channel
     dsp()
     _AUDIO["mono44"] = np.load(npy, mmap_mode="r")
+    for name, path in (extra or {}).items():
+        _AUDIO[name] = np.load(path, mmap_mode="r")
 
 
 def _measure(job: tuple[float, float, bool, bool | str]) -> dict:
@@ -1820,11 +1837,21 @@ def _measure(job: tuple[float, float, bool, bool | str]) -> dict:
     return out
 
 
-class AudioPool:
-    """`with AudioPool(mono44) as pool: pool.measure(jobs)`. One process when parallel wouldn't pay."""
+def _groove_window(job: tuple[int, int]) -> dict:
+    """job: (first sample, length) of a window of the 22.05 kHz mono copy -> groove_genre.analyze_window."""
+    from .groove_genre import analyze_window
 
-    def __init__(self, mono44: np.ndarray, workers: int | None = None):
+    w0, n = job
+    return analyze_window(np.ascontiguousarray(_AUDIO["mono22"][w0:w0 + n], dtype=np.float32))
+
+
+class AudioPool:
+    """`with AudioPool(mono44) as pool: pool.measure(jobs)`. One process when parallel wouldn't pay.
+    extra: more arrays the job functions read from _AUDIO by name (the mix's 22.05 kHz copy for groove_genre)."""
+
+    def __init__(self, mono44: np.ndarray, workers: int | None = None, extra: dict[str, np.ndarray] | None = None):
         self.mono44 = mono44
+        self.extra = extra or {}
         self.workers = workers or max(1, min(5, (os.cpu_count() or 4) // 2))  # as `scan`
         self._pool = self._dir = None
 
@@ -1836,17 +1863,23 @@ class AudioPool:
             self._dir = tempfile.mkdtemp(prefix="track-analyzer-")
             npy = os.path.join(self._dir, "mono44.npy")
             np.save(npy, self.mono44.astype(np.float32, copy=False))
-            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_audio_pool_init, initargs=(npy,))
+            extra = {}
+            for name, arr in self.extra.items():
+                extra[name] = os.path.join(self._dir, f"{name}.npy")
+                np.save(extra[name], arr.astype(np.float32, copy=False))
+            self._pool = mp.get_context("spawn").Pool(self.workers, initializer=_audio_pool_init,
+                                                      initargs=(npy, extra))
         return self
 
-    def measure(self, jobs: list[tuple[float, float, bool, bool | str]], meter=None) -> list[dict]:
-        """Results in the jobs' order. meter(n done) -> a line to show while it runs, kept updated in place (\\r) on
-        stderr, as the page's job bar shows it; the last one stays."""
+    def measure(self, jobs: list, meter=None, fn=_measure) -> list[dict]:
+        """fn(job) for each job (default _measure: BPM/key of a stretch), results in the jobs' order. meter(n done) -> a
+        line to show while it runs, kept updated in place (\\r) on stderr, as the page's job bar shows it; the last one stays."""
         if self._pool is None or len(jobs) < 2:
             _AUDIO["mono44"] = self.mono44
-            results = (_measure(j) for j in jobs)
+            _AUDIO.update(self.extra)
+            results = (fn(j) for j in jobs)
         else:
-            results = self._pool.imap(_measure, jobs, chunksize=1)
+            results = self._pool.imap(fn, jobs, chunksize=1)
         out = []
         if meter:
             sys.stderr.write(f"\r{meter(0)}")
@@ -1868,7 +1901,59 @@ class AudioPool:
             import shutil
 
             shutil.rmtree(self._dir, ignore_errors=True)
-        _AUDIO.pop("mono44", None)
+        for name in ("mono44", *self.extra):
+            _AUDIO.pop(name, None)
+
+
+GROOVE_SR = 22050  # groove_genre.SR
+
+
+def groove_measure(result: dict, pool: AudioPool, mono22: np.ndarray) -> None:
+    """groove_genre's structural features of a whole mix (every 30 s window) -> result["groove"] (its summary)."""
+    from . import groove_genre as gg
+
+    meter = lambda n_done, total: f"  groove windows measured: {n_done}/{total}"  # noqa: E731
+    run = lambda starts, n: pool.measure([(w0, n) for w0 in starts],  # noqa: E731
+                                         lambda k: meter(k, len(starts)), fn=_groove_window)
+    summary = gg.analyze(mono22, stride=GROOVE_STRIDE, run=run)["summary"]
+    result["groove"] = _rounded(summary)
+
+
+def _rounded(x, nd: int = 3):
+    if isinstance(x, dict):
+        return {k: _rounded(v, nd) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [_rounded(v, nd) for v in x]
+    if isinstance(x, (float, np.floating)):
+        return round(float(x), nd)
+    if isinstance(x, np.integer):
+        return int(x)
+    return x
+
+
+def groove_headline(result: dict, scores: dict | None, bpm: float | None) -> None:
+    """Check the style model's scores against the measured groove (result["groove"]) and name the mix from the
+    checked ones: dj_genre, plus groove_label, groove_why and discogs_styles_adjusted. scores: the model's, or with
+    a tracklist the psy-capped ones (tracklist._rejudge_genres), so the order is heard -> psy cap -> evidence."""
+    from . import groove_genre as gg
+
+    groove = result.get("groove")
+    if not groove:
+        return
+    ev = gg.genre_evidence(groove, scores or None)
+    result["groove_label"] = ev["label"]
+    result["groove_why"] = gg.why(ev, scores)
+    result["groove"]["fits"] = {g: ev["fits"][g]["fit"] for g in ev["ranking"]}
+    if scores:
+        adjusted = {**scores, **ev["adjusted_model_scores"]}
+        result["discogs_styles_adjusted"] = top_styles(adjusted)
+        result["dj_genre"] = dj_genre(adjusted, bpm or groove.get("bpm"))
+
+
+def timeline_bpm(timeline: list[dict]) -> float | None:
+    """A mix's tempo for the genre rules: the median of its timeline segments' BPMs."""
+    bpms = [seg["bpm"] for seg in timeline if seg.get("bpm")]
+    return round_bpm(float(np.median(bpms))) if bpms else None
 
 
 def segment_timeline(mono44, short, emb, acts, duration, seg_sec, pool: AudioPool | None = None, moods: dict | None = None):

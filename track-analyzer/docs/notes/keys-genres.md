@@ -62,3 +62,14 @@ a genre holding their top style. Fixes where the top style fell through only on 
 - Tech Trance 125-145 (modern tech trance sits at 128), Tech House 118-132, House 115-135 (house at 132-135 went UK Garage).
 Left alone on purpose: Neo Trance + Deep House stays Deep House (decision of 2026-11-11, test guards it); Psy-Trance
 at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top genres changed.
+
+### Mix genre: groove evidence (`groove_genre/`, 2026-11-20)
+- A whole mix's headline is judged at the median timeline BPM (`analysis.timeline_bpm`, `genre_basis.bpm`); it used
+  to be bpm=None, so the BPM ranges were ignored ("Psytrance / Hi-Tech / Darkpsy" at 145).
+- Every mix: `groove_genre` measures each 30 s window (stride 1, `analysis.GROOVE_STRIDE`) of a 22.05 kHz copy
+  (`resample_medium`) in the AudioPool (`_groove_window`). `genre_evidence` re-weights the model's styles
+  (×(0.15 + 0.85·fit), thresholds only in `GENRES`), and the headline `dj_genre` is named from the re-weighted ones.
+  Order: heard → psy cap (`tracklist._rejudge_genres`, PSY_GATE) → evidence (`analysis.groove_headline`).
+  `dj_genre_uncorrected` = the model's own reading (no cap, no evidence). New fields: `groove` (summary + `fits`),
+  `groove_label`, `groove_why`, `discogs_styles_adjusted`; `discogs_styles` stays raw. Brief and six-set
+  validation: `docs/notes/groove-genre/`.

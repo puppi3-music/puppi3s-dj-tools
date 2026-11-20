@@ -48,3 +48,15 @@ def test_fast_breakbeat_is_drum_and_bass():
 def test_fast_techno_is_hard_techno():
     assert names({"Techno": 0.4, "Trance": 0.3}, 150)[0] == "Hard Techno"
     assert names({"Techno": 0.4, "Trance": 0.3}, 130)[0] == "Techno"
+
+
+def test_mix_headline_judged_at_timeline_bpm():
+    # a whole mix used to be judged with bpm=None, so bpm_fit let "Psytrance / Hi-Tech / Darkpsy" through at 145
+    tl = [{"bpm": 144}, {"bpm": 145}, {}, {"bpm": 146}, {"bpm": 145}]
+    assert analysis.timeline_bpm(tl) == 145
+    assert analysis.timeline_bpm([{}, {"start": "0:00"}]) is None
+    psy = {"Psy-Trance": 0.8, "Goa Trance": 0.3}
+    at_mix = analysis.dj_genre({f"Electronic---{s}": v for s, v in psy.items()}, analysis.timeline_bpm(tl))
+    no_bpm = analysis.dj_genre({f"Electronic---{s}": v for s, v in psy.items()}, None)
+    assert [g["score"] for g in no_bpm] == [g["score"] for g in no_bpm][:1] * len(no_bpm)  # tempo ignored: a tie
+    assert at_mix[0]["genre"] == "Psytrance" and all(g["score"] < at_mix[0]["score"] for g in at_mix[1:])

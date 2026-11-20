@@ -530,8 +530,12 @@ def _rejudge_genres(result: dict, placed: list[dict], acts, scores: dict | None,
     if not fixed:
         return
     played_bpm = round_bpm(float(np.average([b for b, _ in bpms], weights=[w for _, w in bpms]))) if bpms else None
-    result["dj_genre_uncorrected"] = result.get("dj_genre")
-    result["dj_genre"] = dj_genre(label_scores(np.average(fixed, axis=0, weights=weights)), played_bpm)
+    # the model's own reading at the mix's tempo (no psy gate, no groove evidence)
+    result["dj_genre_uncorrected"] = (dj_genre(scores, result.get("genre_basis", {}).get("bpm")) if scores
+                                      else result.get("dj_genre"))
+    capped = label_scores(np.average(fixed, axis=0, weights=weights))
+    result["dj_genre"] = dj_genre(capped, played_bpm)
+    analysis.groove_headline(result, capped, played_bpm)  # then the measured groove checks what the cap left
     gated = scanned / sum(weights)
     result["genre_basis"] = {**result.get("genre_basis", {}),
                              "dj_genre": f"the mix as heard at {played_bpm} BPM, psy and juke held to 1.5x each track's "
