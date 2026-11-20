@@ -75,7 +75,8 @@ at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top g
   validation: `docs/notes/groove-genre/`.
 - Per track (`tracklist.track_groove`, 2026-11-20): each track's genre (psy-capped scores of its judged stretch)
   gets the same evidence from the windows the mix already measured (`groove_measure` returns them; ≥ half of a
-  window inside the stretch). Summarized without audio, so the 32-bar breakdown checks are left out (`_breaks`
+  window inside the stretch, and only windows within 4% of the played tempo, `GROOVE_TEMPO`: the set's half-time
+  outro read 72.5 at 145 and fell to Ambient). Summarized without audio, so the 32-bar breakdown checks are left out (`_breaks`
   returns None) instead of counting as 0. Works with no scan of the track (psy cap at 0% on Linux). New track
   fields: `groove_label`, `groove_why`, `genre_before_groove` (only when the check changed it); the page shows
   "groove check: was X" with the why as tooltip.

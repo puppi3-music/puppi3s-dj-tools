@@ -48,6 +48,7 @@ MIN_MAIN = 30.0      # a track needs this much main stretch for a key verdict
 # as the lag at which most keys match (with key lock on and off).
 LAGS = (0, 30, 60, 90, 120, 150)
 SPEED_GENRE = 0.04   # tempo changed by more than this: judge the genre at the track's own BPM
+GROOVE_TEMPO = 0.04  # a groove window counts for a track only within this of its played tempo
 
 
 # ----------------------------------------------------------------------------
@@ -503,11 +504,13 @@ def corrected(heard: np.ndarray, p: dict) -> tuple[np.ndarray, str]:
 def track_groove(t: dict, wins: list[dict] | None, a: float, b: float, scores: dict, bpm: float | None) -> None:
     """Check a track's genre (t, from its psy-capped scores) against the groove measured in its stretch a-b of
     the mix, the same way as the mix's headline (analysis.groove_headline): the windows the mix already measured
-    that lie at least half inside a-b, summarized alone. Works without the psy cap (no scan of the track)."""
+    that lie at least half inside a-b and ran at the track's played tempo bpm (half-time outros and breakdowns
+    measure every trait on the wrong grid), summarized alone. Works without the psy cap (no scan of the track)."""
     from . import groove_genre as gg
 
     half = analysis.GROOVE_WINDOW / 2
-    here = [w for w in wins or [] if min(b, w["t"] + 2 * half) - max(a, w["t"]) >= half]
+    here = [w for w in wins or [] if min(b, w["t"] + 2 * half) - max(a, w["t"]) >= half
+            and (not bpm or abs(w["bpm"] / bpm - 1) <= GROOVE_TEMPO)]
     if not here or not scores:
         return
     ev = gg.genre_evidence(gg.summarize(here), scores)  # no audio: breakdown checks are left out

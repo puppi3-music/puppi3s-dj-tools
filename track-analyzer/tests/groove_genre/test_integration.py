@@ -85,3 +85,15 @@ def test_breakdown_checks_left_out_without_audio():
     assert not any("breakdowns" in r for g in ev["fits"].values() for r in g["reasons"])
     with_breaks = genre_evidence({**f, "long_breakdown_share": 0.0})
     assert any("breakdowns" in r for r in with_breaks["fits"]["Tech Trance"]["reasons"])
+
+
+def test_track_windows_off_its_tempo_are_left_out():
+    """A half-time outro measures 72.5 at a played 145: its traits are on the wrong grid, so no check."""
+    from dj_track_analyzer import tracklist as tl
+
+    y = np.concatenate([_synth("offbeat", seed=i) for i in range(2)]).astype(np.float32)
+    with analysis.AudioPool(np.zeros(16, np.float32), workers=1, extra={"mono22": y}) as pool:
+        wins = analysis.groove_measure({}, pool, y)
+    t = {"genre": "Psytrance"}
+    tl.track_groove(t, wins, 0.0, 60.0, dict(MODEL), 72.5)
+    assert t == {"genre": "Psytrance"}
