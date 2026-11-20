@@ -157,7 +157,7 @@ async function pageSetup(main) {
     ${GC.agree} of ${plural(GC.examples, "example")} labelled as their own genre.${GC.not_checked?.length ? ` No rules for ${esc(GC.not_checked.join(", "))}.` : ""}
     ${Object.entries(GC.genres || {}).map(([g, d]) => `<details><summary>${esc(g)}: ${d.agree}/${d.examples} agree; keeps ${pc(d.kept_median)} of the model's ${esc(g)} score (worst ${pc(d.kept_min)})</summary>
       <div style="overflow-x:auto"><table class="small"><tr><th>feature</th><th>median</th><th>range</th></tr>${Object.entries(d.features || {}).map(([k, v]) =>
-        `<tr><td>${esc(k)}</td><td>${f3(v.median)}</td><td>${f3(v.lo)} – ${f3(v.hi)}</td></tr>`).join("")}</table></div>
+        `<tr><td style="white-space:nowrap">${esc(k)}</td><td>${f3(v.median)}</td><td>${f3(v.lo)} – ${f3(v.hi)}</td></tr>`).join("")}</table></div>
       ${(d.mislabelled || []).map(r => `<div>✗ ${esc(r.track)}: ${esc(r.label)} (own fit ${f3(r.own_fit)})${r.failed?.length ? `: ${esc(r.failed.join("; "))}` : ""}</div>`).join("")}</details>`).join("")}</div>`;
   const grooveBtn = jb("su-groove", "Check the groove rules", false, "", "");
   const genreStep = GN.trained
@@ -169,8 +169,8 @@ async function pageSetup(main) {
         jb("su-gtrain", "Learn again") + grooveBtn)
     : step(genreOk ? "todo" : "blocked", 7, "Learn your genres",
         `Optional. Teaches it genres the built-in ones don't have (like Hyperpop), or your own way of splitting them. ${gHow}
-         ${gGroove}${genreOk ? gSource : ` <b>Needs 30 scanned tracks first</b> (you have ${sc.tracks}).`}<div id="su-gmsg" class="small" hidden></div>`,
-        genreOk ? jb("su-gtrain", "Learn your genres", true) + grooveBtn : "");
+         ${gGroove}${genreOk ? "" : ` <b>Learning needs 30 scanned tracks first</b> (you have ${sc.tracks}); checking the groove rules doesn't.`}${gSource}<div id="su-gmsg" class="small" hidden></div>`,
+        (genreOk ? jb("su-gtrain", "Learn your genres", true) : "") + grooveBtn);
   const tool = (n, name, what) => st.tools[name] ? step("done", n, name, `Installed. ${what}`)
     : step("todo", n, name, `${what} ${st.install[name] ? "" : st.mac ? `Install <a href="https://brew.sh" target="_blank" rel="noopener">Homebrew</a> first, then come back here.`
         : `Install it in a terminal: <code>${esc(st.install_hint[name])}</code>, then reload this page.`}`,
