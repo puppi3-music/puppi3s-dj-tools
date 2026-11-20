@@ -55,9 +55,10 @@ def _onsets(env):
     return np.maximum(np.diff(np.log1p(env * 1e3), prepend=0), 0)
 
 
-def estimate_tempo(onset_env, lo=60.0, hi=200.0, prefer=(110.0, 180.0), hint=None):
+def estimate_tempo(onset_env, lo=60.0, hi=200.0, prefer=(110.0, 180.0), hint=None, level_env=None):
     """Coarse autocorrelation estimate, then fine refinement by beat-fold contrast.
-    Returns (bpm, contrast). `hint` (bpm) restricts the search to hint +/- 3 %."""
+    Returns (bpm, contrast). `hint` (bpm) restricts the search to hint +/- 3 %. `level_env`: the kick band's energy
+    (same frames), a second witness for the half-tempo check below."""
     o = onset_env - onset_env.mean()
     ac = np.correlate(o, o, "full")[len(o) - 1:]
     if hint:
@@ -73,15 +74,23 @@ def estimate_tempo(onset_env, lo=60.0, hi=200.0, prefer=(110.0, 180.0), hint=Non
         # A kick on every beat with a 2-beat pattern on top (accented kicks, a bassline in the kick band) can make
         # the 2-beat lag the stronger autocorrelation: 125 read as 62.5. Folded at that half tempo, a second kick
         # peak half a cycle after the first means a kick on every beat; a real half-time groove has none there.
-        f = _fold(onset_env, 60 * FR / best[1], 0, 64)
-        f = np.roll(f, -int(np.argmax(f)))
-        if f[29:36].max() >= HALF_BEAT_PEAK * f[0]:
+        # The kick band's energy is the second witness: with a bassline in the band the onsets of every other kick
+        # can land a 16th early or late (bins 24/40, the onset fold has ~0.08 at the half), while the energy fold
+        # still peaks there (0.76-0.97).
+        if any(_half_beat_peak(e, best[1]) >= HALF_BEAT_PEAK for e in (onset_env, level_env) if e is not None):
             best = _refine(onset_env, 2 * best[1])
     return float(best[1]), float(best[0])
 
 
 HALF_BEAT_PEAK = 0.25  # estimate_tempo doubles a tempo below the preferred range when the kick fold has a peak of
                        # this share half a cycle after the main one (real tracks read half: 0.32-0.95; half-time: 0.07)
+
+
+def _half_beat_peak(env, bpm):
+    """Peak half a cycle after the main one in the fold of `env` at `bpm`, as a share of the main one."""
+    f = _fold(env, 60 * FR / bpm, 0, 64)
+    f = np.roll(f, -int(np.argmax(f)))
+    return f[29:36].max() / (f[0] + 1e-12)
 
 
 def _refine(onset_env, coarse):
@@ -132,7 +141,7 @@ def analyze_window(y: np.ndarray, bpm_hint: float | None = None) -> dict:
 
     kick = _band(P2, freqs, 40, 110)
     kon = _onsets(kick)
-    bpm, contrast = estimate_tempo(kon, hint=bpm_hint)
+    bpm, contrast = estimate_tempo(kon, hint=bpm_hint, level_env=kick)
     per = 60 * FR / max(bpm, 1e-6)
     phase = np.argmax(_fold(kon, per, 0, 64)) / 64 * per
 

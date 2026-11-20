@@ -57,6 +57,22 @@ def test_accented_kicks_are_not_read_half_time():
     assert abs(estimate_tempo(_kick_env(125, accent=0.5))[0] - 125) < 0.5
 
 
+def test_shifted_onsets_of_every_other_kick_still_double():
+    """A bassline in the kick band can put the onsets of every other kick a 16th early (Parallel Universe, Ethereal:
+    the onset fold has ~0.08 half a cycle on). The kick band's energy still peaks there, so 126 isn't read as 63."""
+    beat = 60 * FR / 126
+    onsets, level = np.zeros(int(30 * FR)), np.zeros(int(30 * FR))
+    for k in range(int(len(level) / beat) - 1):
+        i = int(round(k * beat))
+        level[i:i + 8] += 1.0
+        onsets[i if k % 2 == 0 else i - int(round(beat / 4))] += 1.0  # odd kicks' onsets a 16th early
+    assert abs(estimate_tempo(onsets)[0] - 63) < 0.5  # onsets alone: half tempo
+    assert abs(estimate_tempo(onsets, level_env=level)[0] - 126) < 0.5
+    half = np.zeros_like(level)
+    half[::int(round(2 * beat))] = 1.0
+    assert abs(estimate_tempo(half, level_env=half)[0] - 63) < 0.5  # real half-time: nothing in either fold
+
+
 def test_real_half_time_stays_half():
     assert abs(estimate_tempo(_kick_env(125, every=2))[0] - 62.5) < 0.5
     assert abs(estimate_tempo(_kick_env(62.5))[0] - 62.5) < 0.5
