@@ -2,7 +2,9 @@
 import json
 import os
 
-from dj_track_analyzer.groove_genre.groove_genre import _synth, analyze_window, genre_evidence
+import numpy as np
+
+from dj_track_analyzer.groove_genre.groove_genre import FR, _synth, analyze_window, estimate_tempo, genre_evidence
 
 FIX = json.load(open(os.path.join(os.path.dirname(__file__), "puppi3_sets.json")))
 
@@ -39,3 +41,22 @@ def test_discogs_labels_match_aliases():
     full = genre_evidence(d["summary"], {"Electronic---Psy-Trance": 0.5, "Electronic---Tech Trance": 0.3})
     assert full["adjusted_model_scores"] == {f"Electronic---{k}": v for k, v in plain.items()}
     assert full["adjusted_model_scores"]["Electronic---Psy-Trance"] < 0.5
+
+
+def _kick_env(bpm, every=1, accent=1.0, seconds=30):
+    """Onset envelope with a kick spike on every `every`-th beat; every 2nd kick at `accent` level."""
+    e = np.zeros(int(seconds * FR))
+    beat = 60 * FR / bpm
+    for k in range(0, int(len(e) / beat), every):
+        e[int(round(k * beat))] += 1.0 if k % 2 == 0 else accent
+    return e
+
+
+def test_accented_kicks_are_not_read_half_time():
+    # every other kick quieter: the 2-beat lag wins the autocorrelation (read 62.5 before the half-beat check)
+    assert abs(estimate_tempo(_kick_env(125, accent=0.5))[0] - 125) < 0.5
+
+
+def test_real_half_time_stays_half():
+    assert abs(estimate_tempo(_kick_env(125, every=2))[0] - 62.5) < 0.5
+    assert abs(estimate_tempo(_kick_env(62.5))[0] - 62.5) < 0.5
