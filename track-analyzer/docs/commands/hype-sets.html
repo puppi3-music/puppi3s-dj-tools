@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hype, sets and crates · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <a href="hype-sets.html" aria-current="page">Hype, sets and crates</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#hype">hype</a>
+  <a class="sub" href="#set">set</a>
+  <a class="sub" href="#crates">crates</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a href="app.html">The app itself</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Hype, sets and crates</div>
+<h1>Hype, sets and crates</h1>
+<p class="lede">The commands that find tracks by how hype they are, plan a set along a shape of colour and hype, and sort your tracks into warm-up, peak and closing crates: <a href="#hype">hype</a>, <a href="#set">set</a> and <a href="#crates">crates</a>.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>All of them work on scanned tracks with a colour: run <a href="library.html#scan">scan</a> first (<code>scan --traktor</code> reads your DJ app's collection). <code>hype</code> needs at least 20 scanned tracks. Nothing here analyses audio again.</li>
+  <li>Colour is your own where you set one, else the predicted one (see <a href="colours.html">Colours</a>). Hype is a score from 1 (chill) to 10 (peak), ranked within your own scanned collection.</li>
+  <li>Without <code>--traktor</code> they only print a table; nothing is written. Everything that writes has <code>--dry-run</code> and an undo.</li>
+  <li>Quit your DJ app before any <code>--traktor</code> or <code>--remove</code>: they refuse while it runs.</li>
+</ul>
+<p>On the web page, hype lives on the Hype tab and the crates in the Setup tab's <b>Sync everything</b>; planning a set runs from a terminal for now. The guide's <a href="../GUIDE.html#hype">Finding hype tracks</a> and <a href="../GUIDE.html#sets">Planning a set</a> walk through it.</p>
+
+<h2 id="hype"><code>hype</code></h2>
+<p>Lists tracks by how hype they are, most hype first, with filters for picking the next track in a set. Can also write the score into your DJ app's Comment field, so you can sort by it there.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>, unless <code>--traktor</code></li>
+  <li><b>Changes:</b> nothing; with <code>--traktor</code> your DJ app's collection (backup first)</li>
+  <li><b>Undo:</b> <code>hype --traktor --remove</code>, or <code>traktor --undo</code></li>
+  <li><b>Needs:</b> a <code>scan</code> of at least 20 tracks</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer hype --bpm 126 --key 8A
+uv run dj-track-analyzer hype --gems
+uv run dj-track-analyzer hype --traktor --dry-run</pre></div>
+<ul>
+  <li>The score mixes how rave or deep a track sounds (its style) with its energy (loudness, party, aggressive versus relaxed). On a test collection of about 470 tracks it followed the star ratings well, but it can't predict exact stars.</li>
+  <li>Hype you set with <a href="genres.html#edit">edit</a> wins, also in <code>--traktor</code>.</li>
+  <li><code>--gems</code>: very hype (8+) but rated 4 stars or less, or played at most once. Most underrated first. Worth a listen and maybe a fifth star.</li>
+  <li><code>--traktor</code> writes <code>Hype NN</code> into Comment, after your own text there (joined with <code> · </code>). Show the <b>Comment</b> column in Traktor's track list and sort by it. Comment goes onto Pioneer USB exports; Comment 2 doesn't.</li>
+  <li>An old <code>Hype NN</code> in Comment 2, from earlier versions, is taken out on every write. <code>--clean-comment2</code> does only that.</li>
+  <li><code>--traktor</code> refuses while Traktor is set to write tags into your files, since the Hype would land in the files too. <code>--force</code> writes anyway.</li>
+  <li>While a <a href="tempo.html">tempo view</a> is loaded in Traktor, <code>hype</code> lists the hype as heard at that tempo. <code>--native</code> uses each track at its own tempo.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--least</code></td><td>Least hype (chill) first.</td><td class="def">off</td></tr>
+<tr><td><code>--colour C</code></td><td>Only tracks of this colour, yours or else the predicted one. <code>--color</code> works too.</td><td class="def">all</td></tr>
+<tr><td><code>--bpm N</code></td><td>Only tracks near this BPM.</td><td class="def">all</td></tr>
+<tr><td><code>--bpm-tolerance PCT</code></td><td>With <code>--bpm</code>: how near, in percent.</td><td class="def">4</td></tr>
+<tr><td><code>--key K</code></td><td>Only tracks that mix with this Camelot key, e.g. <code>8A</code>.</td><td class="def">all</td></tr>
+<tr><td><code>--gems</code></td><td>Hype 8+ but rated 4 stars or less, or played at most once.</td><td class="def">off</td></tr>
+<tr><td><code>--limit N</code></td><td>How many tracks to list.</td><td class="def">25</td></tr>
+<tr><td><code>--traktor</code></td><td>Writes <code>Hype NN</code> into Comment. Quit Traktor first.</td><td class="def">off</td></tr>
+<tr><td><code>--remove</code></td><td>With <code>--traktor</code>: takes the Hype part out of Comment again. Your own text stays.</td><td class="def">off</td></tr>
+<tr><td><code>--clean-comment2</code></td><td>With <code>--traktor</code>: only takes an old <code>Hype NN</code> out of Comment 2. Your own text there stays.</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>With <code>--traktor</code>: shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>With <code>--traktor</code>: writes even though Traktor is set to write tags into your files.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+<tr><td><code>--native</code></td><td>Each track at its own tempo, even while a tempo view is loaded.</td><td class="def">off</td></tr>
+<tr><td><code>--json</code></td><td>Prints JSON instead of a table.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="set"><code>set</code></h2>
+<p>Plans a set along a shape (an arc) of colour, hard ↔ pretty, and hype, chill ↔ peak, with keys that mix from track to track. Can write it as a playlist into your DJ app.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>, unless <code>--traktor</code> or <code>--remove</code></li>
+  <li><b>Changes:</b> nothing; with <code>--traktor</code> a playlist in your DJ app (backup first)</li>
+  <li><b>Undo:</b> <code>set --remove NAME</code></li>
+  <li><b>Needs:</b> a <code>scan</code>; at least as many tracks as <code>--tracks</code> left after the filters</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer set
+uv run dj-track-analyzer set --arc Magenta/3,Red/9,Violet/6 --tracks 30
+uv run dj-track-analyzer set --traktor --name "Friday warm-up"</pre></div>
+<ul>
+  <li>Every slot gets a target colour and hype from the arc. The planner picks the order that stays closest to them, with a bonus for higher star ratings and a cost for keys that clash, the same artist twice in a row and (with <code>--bpm-step</code>) big BPM jumps.</li>
+  <li>The table shows each slot's aim (colour/hype), the track picked, its key (✗ where it doesn't mix with the track before) and the set's length if every track played in full.</li>
+  <li>Arcs: <code>warmup</code> (pretty and chill → harder and hype), <code>peak</code>, <code>journey</code> (pretty → hard peak → back), <code>closing</code> (hard and hype → pretty and calmer), or your own points like <code>Magenta/3,Red/9</code>, spaced evenly. Colours are <code>Red</code> … <code>Magenta</code> or 1–7, hype 1–10.</li>
+  <li><code>mine</code> learns the arc from your Traktor History: the average colour and hype in each fifth of your sets. It needs at least 3 sessions of 8 or more known tracks.</li>
+  <li><code>--start</code>, <code>--end</code> and <code>--exclude</code> take text that matches one track's path or name; too many matches and it asks you to be more specific.</li>
+  <li><code>--tempo 145</code> plans with the colours and hype heard at 145 BPM, for when you play everything there with key lock. It needs that <a href="tempo.html">tempo view</a>. Keys stay the tracks' own.</li>
+  <li><code>--traktor</code> writes a playlist into a <b>Sets (Track Analyzer)</b> folder, named <code>Set &lt;date&gt; &lt;arc&gt;</code> unless you pass <code>--name</code>. A playlist of the same name there is replaced; your own playlists aren't touched. Works on the DJ app you chose (Traktor or Rekordbox).</li>
+  <li><code>--remove NAME</code> takes exactly that playlist out again and nothing else, so it works even while a tempo view is loaded. <code>traktor --undo</code> doesn't undo a set.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--arc ARC</code></td><td><code>warmup</code>, <code>peak</code>, <code>journey</code>, <code>closing</code>, <code>mine</code>, or points like <code>Magenta/3,Red/9,Violet/6</code> (colour/hype).</td><td class="def"><code>warmup</code></td></tr>
+<tr><td><code>--tracks N</code></td><td>How many tracks.</td><td class="def">20</td></tr>
+<tr><td><code>--tempo BPM</code></td><td>Plans with the colours and hype heard at this BPM (its tempo view).</td><td class="def">own tempo</td></tr>
+<tr><td><code>--bpm-step PCT</code></td><td>Each next track within this many percent of the last one's BPM.</td><td class="def">any</td></tr>
+<tr><td><code>--bpm RANGE</code></td><td>Only tracks in this BPM range, e.g. <code>124-132</code>. With <code>--bpm-step</code>: the set rises from the first BPM to the second.</td><td class="def">all</td></tr>
+<tr><td><code>--genre G</code></td><td>Only tracks with this genre among their top three.</td><td class="def">all</td></tr>
+<tr><td><code>--playlist NAME</code></td><td>Only tracks in this Traktor playlist, e.g. your crate.</td><td class="def">all</td></tr>
+<tr><td><code>--min-stars N</code></td><td>Only tracks rated this many stars or more.</td><td class="def">all</td></tr>
+<tr><td><code>--start TEXT</code></td><td>Opens with the track matching TEXT.</td><td class="def">any</td></tr>
+<tr><td><code>--end TEXT</code></td><td>Ends with the track matching TEXT.</td><td class="def">any</td></tr>
+<tr><td><code>--exclude TEXT</code></td><td>Leaves out tracks matching TEXT. Repeat for several.</td><td class="def">none</td></tr>
+<tr><td><code>--traktor</code></td><td>Also writes the set as a playlist in <b>Sets (Track Analyzer)</b>. Quit your DJ app first.</td><td class="def">off</td></tr>
+<tr><td><code>--name NAME</code></td><td>With <code>--traktor</code>: the playlist's name. One of that name in the folder is replaced.</td><td class="def">Set &lt;date&gt; &lt;arc&gt;</td></tr>
+<tr><td><code>--remove NAME</code></td><td>Takes the playlist NAME out of <b>Sets (Track Analyzer)</b> again.</td><td class="def">none</td></tr>
+<tr><td><code>--dry-run</code></td><td>With <code>--traktor</code> or <code>--remove</code>: shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+<tr><td><code>--json</code></td><td>Prints JSON instead of a table.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="crates"><code>crates</code></h2>
+<p>Sorts your tracks into three crates by colour and hype, and can write them as playlists into your DJ app.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>, unless <code>--traktor</code> or <code>--remove</code></li>
+  <li><b>Changes:</b> nothing; with <code>--traktor</code> playlists in your DJ app (backup first)</li>
+  <li><b>Undo:</b> <code>crates --remove</code></li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer crates
+uv run dj-track-analyzer crates --traktor --dry-run
+uv run dj-track-analyzer crates --traktor</pre></div>
+<ul>
+  <li><b>Warm-up</b>: Green … Magenta with hype up to 5, the most approachable first. <b>Peak</b>: Red … Yellow with hype 8 or more, the most hype and hardest first. <b>Closing</b>: Blue … Magenta with hype 6 or more, the most hype and prettiest first. A track can be in more than one.</li>
+  <li>They're fixed rules, not learned: on a test collection your History didn't show where in a set a track gets played.</li>
+  <li><code>--traktor</code> writes them into a <b>Crates (Track Analyzer)</b> folder. Run it again after scanning or recolouring: the crates are replaced in place. Your own playlists aren't touched. The table shows <code>--limit</code> tracks per crate; the playlists get them all.</li>
+  <li>With <code>--tempo 145</code> they use the colours and hype heard at 145 and are named <code>Warm-up @145</code> and so on, next to the normal ones. <code>crates --remove --tempo 145</code> takes those out.</li>
+  <li><a href="../GUIDE.html#sync">Sync everything</a> on the page writes the crates too.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--tempo BPM</code></td><td>Uses the colours and hype heard at this BPM (its tempo view). Playlists get <code> @&lt;BPM&gt;</code> in their name.</td><td class="def">own tempo</td></tr>
+<tr><td><code>--warmup-max-hype N</code></td><td>Warm-up: Green … Magenta with hype up to this.</td><td class="def">5</td></tr>
+<tr><td><code>--peak-min-hype N</code></td><td>Peak: Red … Yellow with hype from this.</td><td class="def">8</td></tr>
+<tr><td><code>--closing-min-hype N</code></td><td>Closing: Blue … Magenta with hype from this.</td><td class="def">6</td></tr>
+<tr><td><code>--bpm RANGE</code></td><td>Only tracks in this BPM range, e.g. <code>124-132</code>.</td><td class="def">all</td></tr>
+<tr><td><code>--genre G</code></td><td>Only tracks with this genre among their top three.</td><td class="def">all</td></tr>
+<tr><td><code>--playlist NAME</code></td><td>Only tracks in this Traktor playlist.</td><td class="def">all</td></tr>
+<tr><td><code>--min-stars N</code></td><td>Only tracks rated this many stars or more.</td><td class="def">all</td></tr>
+<tr><td><code>--exclude TEXT</code></td><td>Leaves out tracks matching TEXT. Repeat for several.</td><td class="def">none</td></tr>
+<tr><td><code>--limit N</code></td><td>Tracks shown per crate. All of them are written.</td><td class="def">15</td></tr>
+<tr><td><code>--traktor</code></td><td>Writes the crates as playlists in <b>Crates (Track Analyzer)</b>, replacing the last ones. Quit your DJ app first.</td><td class="def">off</td></tr>
+<tr><td><code>--remove</code></td><td>Takes the crate playlists out again (those of <code>--tempo</code>'s view, if given).</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>With <code>--traktor</code> or <code>--remove</code>: shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+<tr><td><code>--json</code></td><td>Prints JSON instead of tables.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the commands it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--arc ARC</code></td><td>set</td><td class="def"><code>warmup</code></td></tr>
+<tr><td><code>--bpm</code></td><td>hype (N), set, crates (RANGE)</td><td class="def">all</td></tr>
+<tr><td><code>--bpm-step PCT</code></td><td>set</td><td class="def">any</td></tr>
+<tr><td><code>--bpm-tolerance PCT</code></td><td>hype</td><td class="def">4</td></tr>
+<tr><td><code>--clean-comment2</code></td><td>hype</td><td class="def">off</td></tr>
+<tr><td><code>--closing-min-hype N</code></td><td>crates</td><td class="def">6</td></tr>
+<tr><td><code>--colour C</code>, <code>--color</code></td><td>hype</td><td class="def">all</td></tr>
+<tr><td><code>--dry-run</code></td><td>hype, set, crates</td><td class="def">off</td></tr>
+<tr><td><code>--end TEXT</code></td><td>set</td><td class="def">any</td></tr>
+<tr><td><code>--exclude TEXT</code></td><td>set, crates</td><td class="def">none</td></tr>
+<tr><td><code>--force</code></td><td>hype</td><td class="def">off</td></tr>
+<tr><td><code>--gems</code></td><td>hype</td><td class="def">off</td></tr>
+<tr><td><code>--genre G</code></td><td>set, crates</td><td class="def">all</td></tr>
+<tr><td><code>--json</code></td><td>hype, set, crates</td><td class="def">off</td></tr>
+<tr><td><code>--key K</code></td><td>hype</td><td class="def">all</td></tr>
+<tr><td><code>--least</code></td><td>hype</td><td class="def">off</td></tr>
+<tr><td><code>--limit N</code></td><td>hype, crates</td><td class="def">25, 15</td></tr>
+<tr><td><code>--min-stars N</code></td><td>set, crates</td><td class="def">all</td></tr>
+<tr><td><code>--name NAME</code></td><td>set</td><td class="def">Set &lt;date&gt; &lt;arc&gt;</td></tr>
+<tr><td><code>--native</code></td><td>hype</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>hype, set, crates</td><td class="def">found</td></tr>
+<tr><td><code>--peak-min-hype N</code></td><td>crates</td><td class="def">8</td></tr>
+<tr><td><code>--playlist NAME</code></td><td>set, crates</td><td class="def">all</td></tr>
+<tr><td><code>--remove</code></td><td>hype, crates; set (NAME)</td><td class="def">off</td></tr>
+<tr><td><code>--start TEXT</code></td><td>set</td><td class="def">any</td></tr>
+<tr><td><code>--tempo BPM</code></td><td>set, crates</td><td class="def">own tempo</td></tr>
+<tr><td><code>--traktor</code></td><td>hype, set, crates</td><td class="def">off</td></tr>
+<tr><td><code>--tracks N</code></td><td>set</td><td class="def">20</td></tr>
+<tr><td><code>--warmup-max-hype N</code></td><td>crates</td><td class="def">5</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Library and analysis · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html" aria-current="page">Library and analysis</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#setup">setup</a>
+  <a class="sub" href="#scan">scan</a>
+  <a class="sub" href="#analyze">analyze</a>
+  <a class="sub" href="#stats">stats</a>
+  <a class="sub" href="#export">export</a>
+  <a class="sub" href="#keys">keys</a>
+  <a class="sub" href="#styles">styles</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a href="app.html">The app itself</a>
+  <a href="genres.html">Genres and tags</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Library and analysis</div>
+<h1>Library and analysis</h1>
+<p class="lede">The commands that get the models, analyse your tracks and show what came out: <a href="#setup">setup</a>, <a href="#scan">scan</a>, <a href="#analyze">analyze</a>, <a href="#stats">stats</a>, <a href="#export">export</a>, <a href="#keys">keys</a> and <a href="#styles">styles</a>. Every other area builds on a scan.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>Run <code>setup</code> once first: <code>scan</code> refuses until the style models are there.</li>
+  <li>None of these change your DJ app, so they're all fine with it open. Quit it before <code>scan --traktor</code> if you've just added tracks, so its collection is saved.</li>
+  <li>The app keeps its results in its <code>data/</code> folder: <code>collection.db</code> (the scan), <code>collection.csv</code> (the spreadsheet) and <code>models/</code>.</li>
+  <li><code>scan</code>, <code>analyze</code> and <code>keys</code> always work on each track at its own tempo. <code>stats</code> and <code>export</code> use the loaded <a href="tempo.html">tempo view</a> while one is loaded; add <code>--native</code> for the normal library. Each says on its first line which library it uses.</li>
+</ul>
+<p>On the web page, the same things live on the Setup tab (models, <b>Scan</b>) and the <b>Tracks</b> tab.</p>
+
+<h2 id="setup"><code>setup</code></h2>
+<p>Downloads the models the analysis uses, then checks the genre rules (as <a href="#styles">styles</a> does).</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's files only (<code>data/models/</code>)</li>
+  <li><b>Needs:</b> an internet connection, once</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer setup</pre></div>
+<ul>
+  <li>Files already downloaded are skipped, so running it again only fetches what's missing.</li>
+  <li>The MAEST genre model is a few hundred MB. Without it the genres rely on the other style model alone.</li>
+  <li>When the model site (<code>essentia.upf.edu</code>) can't be reached, it lists each file's address and the folder to put it in. Download them in a browser, move them there, and run <code>setup</code> again to check.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--no-maest</code></td><td>Skips the larger MAEST genre model.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="scan"><code>scan</code></h2>
+<p>Analyses a whole collection and saves the results: BPM, key, genre, moods, colour and more per track, in the app's database and a spreadsheet.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's files only, unless <code>--write-tags</code></li>
+  <li><b>Undo for tags:</b> <code>untag</code></li>
+  <li><b>Needs:</b> <code>setup</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer scan --traktor 2&gt;&amp;1 | tee logs/scan.txt</pre></div>
+<p>Tell it what to scan: <code>--traktor</code> for every track in every DJ app found (Traktor and Rekordbox), one or more folders, or both:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer scan "/path/to/Music"
+uv run dj-track-analyzer scan --traktor "/path/to/New tracks"</pre></div>
+<ul>
+  <li>It's resumable. Ctrl-C stops safely; run the same command to carry on. Tracks already scanned are skipped unless the file changed, and tracks that failed last time are tried again.</li>
+  <li>Each line shows the progress and the time left. A first scan takes a while; later ones only analyse what's new.</li>
+  <li>Traktor's own mix recordings and samples folders are left out, and so are Syncthing conflict copies (<code>*.sync-conflict-*</code>), which are the same tracks twice.</li>
+  <li>Results for files that no longer exist, or are now in an excluded folder, are removed.</li>
+  <li>At the end it writes the spreadsheet and prints the same summary as <a href="#stats">stats</a>.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--traktor</code></td><td>Scans every track in every DJ app found (Traktor and Rekordbox). Works together with folders.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Reads this <code>collection.nml</code> instead of the one found automatically.</td><td class="def">found</td></tr>
+<tr><td><code>--exclude FOLDER</code></td><td>Leaves this folder out. Repeat for several.</td><td class="def">none</td></tr>
+<tr><td><code>--include-recordings</code></td><td>Also scans Traktor's own mix recordings.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks to analyse at once.</td><td class="def">half the cores, at most 5</td></tr>
+<tr><td><code>--rescan</code></td><td>Analyses every file again, even ones already scanned.</td><td class="def">off</td></tr>
+<tr><td><code>--write-tags FIELDS</code></td><td>Also writes results into the files' own tags: any of <code>genre</code>, <code>bpm</code>, <code>key</code>, <code>camelot</code>, comma-separated (key or camelot, not both). The old tags are backed up first, so <code>untag</code> restores them.</td><td class="def">off</td></tr>
+<tr><td><code>--csv PATH</code></td><td>Writes the spreadsheet here.</td><td class="def"><code>data/collection.csv</code></td></tr>
+</tbody></table></div>
+<p>Examples:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer scan --traktor --exclude "/path/to/Old stuff"
+uv run dj-track-analyzer scan "/path/to/Music" --write-tags genre,bpm,camelot</pre></div>
+<p>To write genres into the tags later, with more control, use <code>tag</code> instead.</p>
+
+<h2 id="analyze"><code>analyze</code></h2>
+<p>Analyses one file and prints the result as JSON. Nothing is saved to the collection.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Changes:</b> nothing, unless <code>--out</code></li>
+  <li><b>Needs:</b> <code>setup</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/track.mp3"</pre></div>
+<ul>
+  <li>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Windows: Shift + right-click → <i>Copy as path</i>. On Linux, drag the file into the terminal. Keep the quotes.</li>
+  <li>The JSON holds the BPM and how sure it is, the key and Camelot, the DJ genre and the Discogs styles behind it, your own genre if you trained one, moods, loudness, instruments, how much of it has vocals, the colour, and the energy curve.</li>
+  <li>Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps, and a readable summary after the JSON.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--segments SECONDS</code></td><td>Adds a timeline in steps of this many seconds (<code>60</code> for 1-minute steps).</td><td class="def">none; 120 for a mix</td></tr>
+<tr><td><code>--out FILE.json</code></td><td>Saves the JSON in this file instead of printing it. The file is replaced once the analysis is done.</td><td class="def">printed</td></tr>
+<tr><td><code>--json-only</code></td><td>For a mix: leaves out the readable summary after the JSON.</td><td class="def">off</td></tr>
+</tbody></table></div>
+<h3 id="analyze-mix">Recorded mixes</h3>
+<p>The rest of <code>analyze</code>'s options are for your own recorded mixes: checking one against what you played, YouTube chapters, clip suggestions and standalone pieces. They're explained on <a href="mixes.html">Mixes and clips</a>. They are <code>--tracklist</code>, <code>--start</code>, <code>--chapters</code>, <code>--offset</code>, <code>--highlights</code>, <code>--clip-length</code>, <code>--clip-mood</code>, <code>--no-standalone</code>, <code>--standalone-separate</code>, <code>--standalone-pairs-only</code> and <code>--no-solo-rework</code>.</p>
+
+<h2 id="stats"><code>stats</code></h2>
+<p>A summary of the scanned collection, as JSON.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer stats</pre></div>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>tracks</code></td><td>How many tracks are scanned.</td></tr>
+<tr><td><code>errors</code></td><td>How many failed to analyse. Scan again to retry them.</td></tr>
+<tr><td><code>last_scan</code></td><td>When the last scan ran.</td></tr>
+<tr><td><code>avg_bpm</code>, <code>bpm_histogram</code></td><td>The average BPM, and how many tracks fall in each BPM range.</td></tr>
+<tr><td><code>top_camelot_keys</code></td><td>The most common keys, in Camelot.</td></tr>
+<tr><td><code>genres</code></td><td>Tracks per genre.</td></tr>
+<tr><td><code>colours</code></td><td>Tracks per colour.</td></tr>
+</tbody></table></div>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--native</code></td><td>Uses the normal library even while a tempo view is loaded.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="export"><code>export</code></h2>
+<p>Writes the scanned collection to a CSV spreadsheet, one row per track. <code>scan</code> already does this at the end; use <code>export</code> for another copy, or for a tempo view's values.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the spreadsheet file only</li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer export
+uv run dj-track-analyzer export "/path/to/collection.csv"</pre></div>
+<p>Without a path it writes <code>data/collection.csv</code>. To open it: <code>open data/collection.csv</code> on a Mac, <code>start data\collection.csv</code> on Windows, <code>xdg-open data/collection.csv</code> on Linux.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>PATH</code></td><td>Where to write the spreadsheet.</td><td class="def"><code>data/collection.csv</code></td></tr>
+<tr><td><code>--native</code></td><td>Uses the normal library even while a tempo view is loaded.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="keys"><code>keys</code></h2>
+<p>Measures the key with the MusicalKeyCNN model for scanned tracks that don't have one yet, and compares it with Essentia's key and Traktor's.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's database only</li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer keys</pre></div>
+<ul>
+  <li>New scans measure this key already. <code>keys</code> fills it in for tracks scanned before, and can be stopped and run again.</li>
+  <li>The report starts with how many tracks have a CNN key. Then, per comparison, how often the keys are the same, the MIREX score (partial credit for close keys), and how often they differ by a fifth, as relative or parallel keys, or otherwise.</li>
+  <li>Last comes a list of the least confident CNN keys next to Essentia's and Traktor's. Those are the tracks worth checking by ear.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--rescan</code></td><td>Measures every track again, not only those without a CNN key.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks to measure at once.</td><td class="def">all cores but two</td></tr>
+<tr><td><code>--show N</code></td><td>How many of the least confident keys to list.</td><td class="def">20</td></tr>
+<tr><td><code>--json</code></td><td>Prints JSON instead of the report.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="styles"><code>styles</code></h2>
+<p>Lists the 400 Discogs style names the genre model knows, then checks the genre rules in <code>dj_genres.json</code> against them.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Needs:</b> <code>setup</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer styles</pre></div>
+<ul>
+  <li>Use it when you edit the genre rules: each DJ genre is made from Discogs styles, and a misspelled style is ignored. The last line says how many DJ genres there are and whether every style name is valid, or names the ones that aren't.</li>
+  <li>Your own copy in <code>data/dj_genres.json</code> wins over the built-in one. After editing it, <code>regenre</code> works out the genres again without a new scan.</li>
+  <li>How styles become DJ genres: <a href="../GUIDE.html#how-genre">From styles to DJ genres</a> in the guide.</li>
+</ul>
+<p>No options.</p>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the commands it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--csv PATH</code></td><td>scan</td><td class="def"><code>data/collection.csv</code></td></tr>
+<tr><td><code>--exclude FOLDER</code></td><td>scan</td><td class="def">none</td></tr>
+<tr><td><code>--include-recordings</code></td><td>scan</td><td class="def">off</td></tr>
+<tr><td><code>--json</code></td><td>keys</td><td class="def">off</td></tr>
+<tr><td><code>--json-only</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--native</code></td><td>stats, export</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>scan</td><td class="def">found</td></tr>
+<tr><td><code>--no-maest</code></td><td>setup</td><td class="def">off</td></tr>
+<tr><td><code>--out FILE.json</code></td><td>analyze</td><td class="def">printed</td></tr>
+<tr><td><code>--rescan</code></td><td>scan, keys</td><td class="def">off</td></tr>
+<tr><td><code>--segments SECONDS</code></td><td>analyze</td><td class="def">none; 120 for a mix</td></tr>
+<tr><td><code>--show N</code></td><td>keys</td><td class="def">20</td></tr>
+<tr><td><code>--traktor</code></td><td>scan</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>scan (half the cores, at most 5), keys (all cores but two)</td><td class="def">see commands</td></tr>
+<tr><td><code>--write-tags FIELDS</code></td><td>scan</td><td class="def">off</td></tr>
+</tbody></table></div>
+<p><code>analyze</code>'s options for recorded mixes are <a href="#analyze-mix">listed above</a>.</p>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The app itself · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a href="app.html" aria-current="page">The app itself</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#web">web</a>
+  <a class="sub" href="#serve">serve</a>
+  <a class="sub" href="#update">update</a>
+  <a class="sub" href="#all-options">All options</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › The app itself</div>
+<h1>The app itself</h1>
+<p class="lede"><code>web</code> opens the web page, or saves a read-only snapshot of it to share. <code>serve</code> runs the MCP server, so a local LLM (LM Studio, Open WebUI) can search your collection. <code>update</code> installs the newest release, and goes back again if it doesn't suit you.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>The launcher (<code>Start Puppi3's Track Analyzer.command</code> on a Mac, <code>.bat</code> on Windows) does the same as <code>web</code>, and also starts the page again after an update.</li>
+  <li>Most of the page and the LLM's answers come from your scan: <a href="library.html#scan">scan</a> first.</li>
+  <li>All three are fine with your DJ app open.</li>
+</ul>
+<p>The guide's <a href="../GUIDE.html#start">Open the web page</a>, <a href="../GUIDE.html#llm">Asking a local LLM</a> and <a href="../GUIDE.html#update">Updating the app</a> walk through them on the page.</p>
+
+<h2 id="web"><code>web</code></h2>
+<p>Starts the web page on this computer and opens it in your browser: Overview, Tracks, Hype, Colours, Tempo view, Mixes, Files and Setup. Leave the terminal window open while you use it; <b>Ctrl-C</b> stops it.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing while you browse; only buttons that say so write (holds, cue approvals, saved samples, the Setup tab's writers), with a preview first</li>
+  <li><b>Needs:</b> a scan for most tabs; saved mix analyses in <code>logs/</code> for the Mixes tab</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer web
+uv run dj-track-analyzer web --no-open --port 8800
+uv run dj-track-analyzer web --export snapshot.html</pre></div>
+<ul>
+  <li>The page is at <code>http://127.0.0.1:8766/</code>. It answers only this computer's own names, so another web site can't reach it.</li>
+  <li><code>--host 0.0.0.0</code> opens it to other devices on your network. It has no password: only on your home network, and never port-forward it.</li>
+  <li><code>--export FILE.html</code> saves the whole page as one HTML file with the data inside, instead of serving it: it opens in any browser, offline, and can't change anything. It includes track names, file paths, playlists and play counts. On the page this is <b>Export snapshot</b>, top right.</li>
+  <li><code>--logs</code> picks the folders whose saved JSON the Mixes and Files tabs show.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--host HOST</code></td><td>The address the page listens on.</td><td class="def"><code>127.0.0.1</code></td></tr>
+<tr><td><code>--port PORT</code></td><td>The port of the page.</td><td class="def">8766</td></tr>
+<tr><td><code>--logs FOLDER</code></td><td>A folder with saved JSON output, such as mix analyses. Repeat it for several.</td><td class="def"><code>logs/</code></td></tr>
+<tr><td><code>--no-open</code></td><td>Doesn't open the browser.</td><td class="def">off</td></tr>
+<tr><td><code>--export FILE.html</code></td><td>Saves a read-only snapshot of the page as one file instead of serving it.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="serve"><code>serve</code></h2>
+<p>Runs the MCP server: a local LLM can then analyse a track or folder, search your collection, suggest what mixes with a track, give the collection's numbers, list your genres and train your own genres. On its own it talks over stdio, which is what LM Studio starts; with <code>--http</code> it serves streamable HTTP for Open WebUI.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing in your files or DJ app; training genres from the chat saves your genre model</li>
+  <li><b>Needs:</b> a scan; the LLM app set up once (README section 8)</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer serve --http
+uv run dj-track-analyzer serve --http --host 0.0.0.0</pre></div>
+<ul>
+  <li><b>LM Studio</b> starts the server itself: in its <b>mcp.json</b>, <code>command</code> is the full path of <code>uv</code> and <code>args</code> are <code>run --directory &lt;project folder&gt; dj-track-analyzer</code>. You don't run <code>serve</code> by hand.</li>
+  <li><b>Open WebUI</b>: run <code>serve --http</code> and leave the window open, then add an <b>MCP (Streamable HTTP)</b> tool with the URL <code>http://127.0.0.1:8765/mcp</code> (in Docker on the same computer: <code>http://host.docker.internal:8765/mcp</code>; on another machine: this computer's LAN address).</li>
+  <li><code>--host 0.0.0.0</code> is needed for Open WebUI in Docker or on another machine. The server has no password: only on your home network, and never port-forward it.</li>
+  <li>File paths are paths on the computer running the analyzer.</li>
+  <li>Use a model that's good at tool calling. The <a href="https://github.com/puppi3-music/puppi3s-dj-tools/blob/main/track-analyzer/README.md#8-ask-a-local-llm-lm-studio-open-webui">README's section 8</a> has the full setup for both.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--http</code></td><td>Streamable HTTP (at <code>/mcp</code>) instead of stdio.</td><td class="def">off: stdio</td></tr>
+<tr><td><code>--host HOST</code></td><td>With <code>--http</code>: the address it listens on.</td><td class="def"><code>127.0.0.1</code></td></tr>
+<tr><td><code>--port PORT</code></td><td>With <code>--http</code>: the port.</td><td class="def">8765</td></tr>
+</tbody></table></div>
+
+<h2 id="update"><code>update</code></h2>
+<p>Installs the newest release and prints what it did as JSON. Your <code>data/</code> folder (scans, models, training, settings), <code>logs/</code> and the installed packages aren't touched. Every file it replaces is backed up first, so <code>--undo</code> goes back to the version you had.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's own files; backups in <code>data/app-backups/</code></li>
+  <li><b>Needs:</b> an internet connection</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer update --check
+uv run dj-track-analyzer update --dry-run
+uv run dj-track-analyzer update
+uv run dj-track-analyzer update --undo</pre></div>
+<ul>
+  <li><code>--check</code> only says whether a newer release is out, and what's new.</li>
+  <li>The release's download is checked against its checksum before anything is written; if it fails halfway, the old version is put back at once.</li>
+  <li>After an update, start the analyzer again (its launcher, or <code>web</code>) to use the new version. From a terminal, then run <code>uv sync --inexact</code> and <code>setup</code> for new packages and models; the guide's <a href="../GUIDE.html#cli-update">Updating the app</a> lists the steps a release can need after that.</li>
+  <li>Which builds you get follows the Setup tab's <b>Updates: Stable / Dev</b>: Stable installs only finished releases, Dev also the newest work in progress. It never goes back to an older version on its own.</li>
+  <li>In a git clone it runs <code>git pull</code> on <code>main</code>, only without changes of your own; <code>--undo</code> goes back to the commit it was on. In Docker, build the image again instead.</li>
+  <li>On the page this is the Setup tab's <b>Update now…</b> and <b>Go back to …</b>.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--check</code></td><td>Only says whether a newer release is out, and what's new.</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>Shows what would change, changes nothing. Works with <code>--undo</code> too.</td><td class="def">off</td></tr>
+<tr><td><code>--undo</code></td><td>Goes back to the version before the last update.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the commands it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--check</code></td><td>update</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>update</td><td class="def">off</td></tr>
+<tr><td><code>--export FILE.html</code></td><td>web</td><td class="def">off</td></tr>
+<tr><td><code>--host HOST</code></td><td>web, serve</td><td class="def"><code>127.0.0.1</code></td></tr>
+<tr><td><code>--http</code></td><td>serve</td><td class="def">off: stdio</td></tr>
+<tr><td><code>--logs FOLDER</code></td><td>web</td><td class="def"><code>logs/</code></td></tr>
+<tr><td><code>--no-open</code></td><td>web</td><td class="def">off</td></tr>
+<tr><td><code>--port PORT</code></td><td>web, serve</td><td class="def">web 8766, serve 8765</td></tr>
+<tr><td><code>--undo</code></td><td>update</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

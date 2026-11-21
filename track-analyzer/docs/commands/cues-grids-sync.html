@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cues, grids and sync · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html" aria-current="page">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#cues-train">cues train</a>
+  <a class="sub" href="#cues-scan">cues scan</a>
+  <a class="sub" href="#cues-show">cues show</a>
+  <a class="sub" href="#cues-apply">cues apply</a>
+  <a class="sub" href="#grids-check">grids check</a>
+  <a class="sub" href="#grids-show">grids show</a>
+  <a class="sub" href="#grids-apply">grids apply</a>
+  <a class="sub" href="#sync">sync</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="app.html">The app itself</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Cues, grids and sync</div>
+<h1>Cues, grids and sync</h1>
+<p class="lede">The commands that learn where you put cue points and loops, check that your DJ app's beat grids sit on the kicks, and write everything the analyzer has into your DJ app in one go: <a href="#cues-train">cues</a>, <a href="#grids-check">grids</a> and <a href="#sync">sync</a>.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li><code>cues</code> and <code>grids</code> work on tracks with a beat grid in your DJ app: let it analyse your tracks first. They read the grid and your own cues; they never change the grid while measuring.</li>
+  <li>Approving cues and grid fixes happens on the web page (a track's <b>Cues and phrases</b> and <b>Beat grid</b> sections). From a terminal you learn, listen, look at one track and write what you approved.</li>
+  <li>Learning, listening and checking are fine with your DJ app open. Quit it before <code>cues apply</code>, <code>grids apply</code> and <code>sync</code>: they refuse while it runs. Their <code>--dry-run</code> works either way.</li>
+  <li>Everything that writes makes a backup first and has <code>--dry-run</code> and an undo.</li>
+</ul>
+<p>On the web page, all of this lives on the Setup tab (<b>Your cue points</b>, <b>Check the beat grids</b>, <b>Sync everything into …</b>) and in each track's panel. The guide's <a href="../GUIDE.html#cues">Cue points like mine</a>, <a href="../GUIDE.html#grids">Beat grids that sit on the kicks</a> and <a href="../GUIDE.html#sync">Everything into my DJ app in one go</a> walk through it.</p>
+
+<h2 id="cues-train"><code>cues train</code></h2>
+<p>Learns from the tracks you cued yourself which bars you cue and where you put your mix loop, and how long you make your loops.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads its collection only</li>
+  <li><b>Changes:</b> the app's database and your cue model</li>
+  <li><b>Needs:</b> at least 30 tracks with a beat grid and 3 or more of your own cue points</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer cues train</pre></div>
+<ul>
+  <li>It listens to the cued tracks first, bar by bar on your DJ app's beat grid: about 13 minutes the first time.</li>
+  <li>It reports how often its suggestions land on bars you cued, on tracks it didn't learn from.</li>
+  <li>Until you train, a starter model that ships with the app makes the suggestions. It doesn't propose corrections of your own cues; your own model does.</li>
+  <li>Train again after cueing more tracks.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--workers N</code></td><td>How many tracks are listened to at once.</td><td class="def">half your cores, max 5</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="cues-scan"><code>cues scan</code></h2>
+<p>Listens to every track with a beat grid, so they all get cue and loop suggestions, not only the ones you cued.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads its collection only</li>
+  <li><b>Changes:</b> the app's database</li>
+  <li><b>Needs:</b> beat grids in your DJ app</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer cues scan</pre></div>
+<ul>
+  <li>Tracks already measured are skipped, unless their beat grid or file changed.</li>
+  <li>The suggestions show in each track's <b>Cues and phrases</b> section on the web page, where you approve them.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--rescan</code></td><td>Listens again to tracks already measured.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks are listened to at once.</td><td class="def">half your cores, max 5</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="cues-show"><code>cues show</code></h2>
+<p>Prints one track's suggested cues and loops next to your own cues.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Needs:</b> the track listened to, by <code>cues train</code> or <code>cues scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer cues show "part of the name"</pre></div>
+<p>The text only has to match part of the track's file name; put it in quotes if it has spaces.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>TRACK</code></td><td>Part of the track's file name. Needed.</td><td class="def">none</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="cues-apply"><code>cues apply</code></h2>
+<p>Writes the cues and corrections you approved on the web page into your DJ app.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app's collection (backup first)</li>
+  <li><b>Undo:</b> <code>traktor --undo</code>, or <b>Undo</b> on the page (brings your approvals back too)</li>
+  <li><b>Needs:</b> cues approved on the page</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer cues apply --dry-run
+uv run dj-track-analyzer cues apply</pre></div>
+<ul>
+  <li>New cues go only into free hot-cue slots: cue points in 1–7, the loop in 8.</li>
+  <li>Your own cues move only where you approved a correction or moved them, and are deleted only where you marked that.</li>
+  <li>Pad numbers can shift: if your cues were in time order, a new cue between 3 and 4 becomes 4 and pushes the rest up, and a deleted cue's gap closes.</li>
+  <li>A track whose beat grid changed after you approved is left alone.</li>
+  <li>Works the same with Rekordbox as your DJ app (chosen on the Setup tab).</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Shows what would be added, moved or deleted without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="grids-check"><code>grids check</code></h2>
+<p>Measures, for every track with a beat grid, where the kick lands against the grid lines. Cue suggestions, loops and samples all trust that grid.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads its collection only</li>
+  <li><b>Changes:</b> the app's database</li>
+  <li><b>Needs:</b> beat grids in your DJ app</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer grids check</pre></div>
+<ul>
+  <li>It looks at up to six 8-bar stretches per track where the kick plays. About 3 minutes for 470 tracks the first time, then only new and changed grids.</li>
+  <li>Each track reads as <i>on the kicks</i> (within a few ms), off by a steady amount of 10 ms or more (e.g. <i>kick +14 ms</i>), <i>BPM drifts</i> or <i>couldn't tell</i>.</li>
+  <li><i>BPM drifts</i> means the BPM in your DJ app is slightly off. Moving the grid can't fix that; fix the BPM there.</li>
+  <li>Approve fixes in each track's <b>Beat grid</b> section on the web page; the Tracks filter <b>Grid off the kicks or drifting</b> lists them.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--rescan</code></td><td>Measures again tracks already measured.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks are measured at once.</td><td class="def">half your cores, max 6</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="grids-show"><code>grids show</code></h2>
+<p>Prints one track's grid reading, and whether its stem file lines up with the track.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Needs:</b> the track measured by <code>grids check</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer grids show "part of the name"</pre></div>
+<p>Traktor uses one grid for a track and its stem file, so a stem that's off needs remaking before the grid is moved. The text only has to match part of the track's file name.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>TRACK</code></td><td>Part of the track's file name. Needed.</td><td class="def">none</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="grids-apply"><code>grids apply</code></h2>
+<p>Moves the beat grids you approved on the web page, together with each track's cues and loops, so they stay on the beat.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app's collection (backup first)</li>
+  <li><b>Undo:</b> <code>traktor --undo</code>, or <b>Undo</b> on the page (brings your approvals back too)</li>
+  <li><b>Needs:</b> grid fixes approved on the page</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer grids apply --dry-run
+uv run dj-track-analyzer grids apply</pre></div>
+<ul>
+  <li>Every cue, loop and marker of the track moves with its grid, and your approved cues for it are written too.</li>
+  <li>With Rekordbox, it rewrites the grid in the track's analysis file as one steady tempo. Tracks Rekordbox hasn't analysed are listed and left alone, and so are tracks with tempo changes in their grid. Re-analysing a track in Rekordbox replaces the grid.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Shows what would move without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+
+<h2 id="sync"><code>sync</code></h2>
+<p>Writes everything the analyzer has into the DJ app chosen on the Setup tab, in one go, with one preview and one undo. With <code>--copy</code> it brings over what your other DJ app has instead (Traktor ↔ Rekordbox).</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app's library (backup first)</li>
+  <li><b>Undo:</b> <code>sync --undo</code>; a copy: <code>sync --copy --undo</code></li>
+  <li><b>Needs:</b> a <code>scan</code>; approved cues and grid fixes for those steps</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer sync --dry-run
+uv run dj-track-analyzer sync --only tracks,cues
+uv run dj-track-analyzer sync --undo</pre></div>
+<ul>
+  <li>The steps, in order:
+    <ul>
+      <li><code>tracks</code>: tracks whose file moved are found again by file name; analysed tracks the DJ app lacks are added. Two candidates for one track: left alone and listed.</li>
+      <li><code>genres</code>: genres, predicted colours for uncoloured tracks, and genre Smartlists (smart playlists in Rekordbox).</li>
+      <li><code>hype</code>: hype in the Comment field, as <a href="hype-sets.html#hype">hype --traktor</a> does.</li>
+      <li><code>cues</code>: the cues you approved. Approved cues you since deleted in the DJ app are put back (added cues only, never moves).</li>
+      <li><code>grids</code>: the grid fixes you approved. Traktor only for now; with Rekordbox use <a href="#grids-apply">grids apply</a>.</li>
+      <li><code>crates</code>: the warm-up, peak and closing crates, as <a href="hype-sets.html#crates">crates --traktor</a> does.</li>
+      <li><code>samples</code>: loops saved as samples on the page (Rekordbox: copied into its sampler folder).</li>
+    </ul></li>
+  <li>A step with nothing to do is listed with its reason and skipped. Set playlists aren't rebuilt: each has its own arc and name (<a href="hype-sets.html#set">set --traktor</a>).</li>
+  <li><code>--undo</code> puts back the library from before the whole sync, every step at once. It refuses if the DJ app changed the library since; <code>--force</code> restores anyway and loses those changes.</li>
+  <li><code>--copy</code> steps: <code>tracks</code> it lacks; <code>genres</code> and <code>colours</code> (the other app's win where it has one; an empty one never erases yours); <code>cues</code> (hot cues and loops into free slots, nothing of yours moves); <code>grids</code> (Traktor's into Rekordbox only); <code>playlists</code> (in a <b>From … (Track Analyzer)</b> folder); <code>samples</code>. Recordings are never copied. A copy has its own undo, separate from the sync's.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Previews each step without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--only STEPS</code></td><td>Only these steps, comma-separated, e.g. <code>tracks,cues</code>. Steps: <code>tracks</code> <code>genres</code> <code>hype</code> <code>cues</code> <code>grids</code> <code>crates</code> <code>samples</code>; with <code>--copy</code>: <code>tracks</code> <code>genres</code> <code>colours</code> <code>cues</code> <code>grids</code> <code>playlists</code> <code>samples</code>.</td><td class="def">all</td></tr>
+<tr><td><code>--copy</code></td><td>Copies the other DJ app's library into the chosen one instead. With <code>--undo</code>: undoes the last copy.</td><td class="def">off</td></tr>
+<tr><td><code>--undo</code></td><td>Puts back the library from before the last sync (or copy, with <code>--copy</code>).</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>With <code>--undo</code>: restores even if your DJ app changed the library since. Those changes are lost.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> (Traktor). Rekordbox uses the database chosen on the Setup tab.</td><td class="def">found</td></tr>
+<tr><td><code>--json</code></td><td>Prints the full result as JSON.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the commands it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--copy</code></td><td>sync</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>cues apply, grids apply, sync</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>sync (with <code>--undo</code>)</td><td class="def">off</td></tr>
+<tr><td><code>--json</code></td><td>sync</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>cues, grids, sync</td><td class="def">found</td></tr>
+<tr><td><code>--only STEPS</code></td><td>sync</td><td class="def">all</td></tr>
+<tr><td><code>--rescan</code></td><td>cues scan, grids check</td><td class="def">off</td></tr>
+<tr><td><code>--undo</code></td><td>sync</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>cues train / scan, grids check</td><td class="def">half your cores, max 5 / 6</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>
