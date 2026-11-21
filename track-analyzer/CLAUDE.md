@@ -4,7 +4,8 @@ Local music-analysis tool for DJs: BPM, key/Camelot, subgenre, mood, a learned T
 score, synced into Traktor Pro 4 or Rekordbox 7 (optionally Lexicon), plus an MCP server for local LLMs (LM Studio, Open WebUI).
 macOS and Linux x86_64 (Linux has no Traktor: those steps say so; also as a Docker image), Python 3.11 via `uv`. Data dir: `data/` (`TRACK_ANALYZER_HOME`).
 
-Docs: README.md (install + full reference), docs/GUIDE.html (task-first guide, self-contained, opened in a browser),
+Docs: README.md (install + full reference), docs/GUIDE.html (task-first guide, self-contained, opened in a browser), docs/commands/ (command reference, a page per area;
+`ref_coverage.py` checks it),
 docs/IDEAS.md (features, ideas, tried-and-failed), docs/WINDOWS.md (what a Windows port needs), docs/RELEASING.md
 (version bump PR, `AFTER` steps, tag `v<version>`). Keep them in sync when commands, options or numbers change: the
 `/update-docs` skill does this (`.claude/skills/update-docs/scripts/doc_drift.py` lists CLI options the docs miss).

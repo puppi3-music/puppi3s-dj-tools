@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tempo view · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html" aria-current="page">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#tempo-scan">tempo scan</a>
+  <a class="sub" href="#tempo-report">tempo report</a>
+  <a class="sub" href="#tempo-export">tempo export</a>
+  <a class="sub" href="#tempo-nml">tempo nml</a>
+  <a class="sub" href="#tempo-load">tempo load</a>
+  <a class="sub" href="#tempo-native">tempo native</a>
+  <a class="sub" href="#tempo-refresh">tempo refresh</a>
+  <a class="sub" href="#tempo-status">tempo status</a>
+  <a class="sub" href="#install">install rubberband</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="app.html">The app itself</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Tempo view</div>
+<h1>Tempo view</h1>
+<p class="lede">If you play a set at one tempo with key lock, <code>tempo</code> stretches every scanned track to that tempo with <a href="https://breakfastquay.com/rubberband/">Rubber Band</a> (pitch kept) and analyses it again: genre, moods, colour and hype. You can then switch your DJ app to the view and back. Your normal results are never touched. <a href="#install">install rubberband</a> gets the stretcher on Windows.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>The view needs Rubber Band 3.0 or newer. On a Mac: <code>brew install rubberband</code>; on Linux: <code>sudo apt install rubberband-cli</code>; on Windows: <a href="#install">install rubberband</a>. The Setup tab's <b>Extra tools</b> card installs it too.</li>
+  <li>Scan your music normally first (<a href="library.html#scan">scan</a>): the view only takes tracks that have a normal scan.</li>
+  <li><b>Pick any tempo.</b> The default is 145; add <code>--bpm 140</code> (or any tempo) to every action except <code>native</code> and <code>status</code>. Each tempo is a separate view with its own data in <code>data/at-&lt;bpm&gt;/</code>, so several can exist side by side. Only one can be loaded at a time.</li>
+  <li>Scanning, reports and files are fine with your DJ app open. Quit it before <code>tempo load</code> and <code>tempo native</code>: they refuse while it runs. Their <code>--dry-run</code> works either way.</li>
+  <li><b>How to read it.</b> The models learned from tracks at the tempo they were released at. Almost no house was released at 145, so stretched there a rolling house track sounds to them like trance and psytrance. Read the view as how the models hear the sped-up track, not as facts. Psytrance, the worst case, is held back: in the view it counts at most 1.5× what the track had at its own tempo.</li>
+</ul>
+<p>On the web page, the Setup tab's <b>Tempo view</b> step scans a view, and the <b>Tempo view</b> tab shows what changes and loads it into your DJ app and back. <b>This page shows</b> browses a view on the other tabs. The guide's <a href="../GUIDE.html#tempo">Hearing my catalogue at my play tempo</a> walks through it.</p>
+
+<h2 id="tempo-scan"><code>tempo scan</code></h2>
+<p>Stretches every scanned track to the view tempo and analyses it again.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads its collection only</li>
+  <li><b>Changes:</b> the view's own data in <code>data/at-&lt;bpm&gt;/</code></li>
+  <li><b>Needs:</b> Rubber Band, and a normal <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo scan
+uv run dj-track-analyzer tempo scan --bpm 140</pre></div>
+<ul>
+  <li>About an hour for 470 tracks the first time. It's resumable: stop it and run it again to carry on. Later runs only take new tracks.</li>
+  <li>It uses Rubber Band's R2 engine, which changes the sound for the models far less than R3. (The page's player uses R3, which sounds best to the ear.)</li>
+  <li>Your colour isn't replaced: in the view it's moved by how far the colour model thinks the track shifts at that tempo. Uncoloured tracks stay uncoloured, and a colour you <a href="genres.html#hold">hold</a> stays as it is.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>The tempo you play at. Each tempo is its own view.</td><td class="def">145</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks are analysed at once.</td><td class="def">half your cores, max 5</td></tr>
+<tr><td><code>--rescan</code></td><td>Analyses again tracks already in the view.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-report"><code>tempo report</code></h2>
+<p>Prints what changes at the view tempo: genres, colours and hype.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+  <li><b>Needs:</b> a <code>tempo scan</code> at that tempo</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo report
+uv run dj-track-analyzer tempo report --limit 30</pre></div>
+<p>It lists genres at own tempo next to genres at the view tempo, the most common changes, your colours at that tempo, the tracks that turn hardest or prettiest, and the tracks with the most hype there and the biggest hype risers. The <b>Tempo view</b> tab on the page shows the same.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>Which view to report on.</td><td class="def">145</td></tr>
+<tr><td><code>--limit N</code></td><td>How many tracks each list shows.</td><td class="def">15</td></tr>
+<tr><td><code>--json</code></td><td>Prints the full result as JSON instead of the report.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-export"><code>tempo export</code></h2>
+<p>Writes the view as a CSV spreadsheet.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> writes <code>at-&lt;bpm&gt;/collection.csv</code> (or the <code>--out</code> file)</li>
+  <li><b>Needs:</b> a <code>tempo scan</code> at that tempo</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo export</pre></div>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>Which view to export.</td><td class="def">145</td></tr>
+<tr><td><code>--out FILE</code></td><td>Writes the spreadsheet here instead.</td><td class="def"><code>at-&lt;bpm&gt;/</code></td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-nml"><code>tempo nml</code></h2>
+<p>Writes a standalone copy of Traktor's <code>collection.nml</code> with the view's genres, colours and hype in it. Your real collection isn't touched.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads its collection only</li>
+  <li><b>Changes:</b> writes <code>at-&lt;bpm&gt;/collection.nml</code> (or the <code>--out</code> file)</li>
+  <li><b>Needs:</b> a <code>tempo scan</code> at that tempo</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo nml</pre></div>
+<p>To switch Traktor itself to the view and back, use <a href="#tempo-load">tempo load</a> and <a href="#tempo-native">tempo native</a> instead.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>Which view to write.</td><td class="def">145</td></tr>
+<tr><td><code>--out FILE</code></td><td>Writes the collection here instead.</td><td class="def"><code>at-&lt;bpm&gt;/</code></td></tr>
+<tr><td><code>--nml PATH</code></td><td>Starts from this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-load"><code>tempo load</code></h2>
+<p>Switches your DJ app to the view: it then shows the genres heard at that tempo, your colours moved by the shift and the view's hype.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app's collection (backup first); with <code>--lexicon</code> Lexicon's library too</li>
+  <li><b>Undo:</b> <a href="#tempo-native">tempo native</a>, or <b>Switch Traktor back to normal…</b> on the Tempo view tab</li>
+  <li><b>Needs:</b> a <code>tempo scan</code> at that tempo</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo load --dry-run
+uv run dj-track-analyzer tempo load
+uv run dj-track-analyzer tempo load --lexicon</pre></div>
+<ul>
+  <li>Per track it changes:
+    <ul>
+      <li><b>Genre</b>: the genres heard at the view tempo.</li>
+      <li><b>Colour</b>: <i>your</i> colour, moved by how far the model thinks the track shifts (your Blue, one step harder, becomes Green). Uncoloured and held tracks stay as they are.</li>
+      <li><b>Comment</b>: the "Hype NN" part becomes the hype at that tempo; your own text there stays.</li>
+      <li><b>Smartlists</b>: "Genres (Track Analyzer)" is replaced by "Genres @145 (Track Analyzer)" (@ the view tempo).</li>
+      <li><b>Clock tempo</b> (Traktor): set to the view tempo. Tracks follow it only with Sync on and the clock as master.</li>
+    </ul></li>
+  <li>It refuses while Traktor writes tags to your files (Preferences → File Management), because Traktor could write the view's genres into them and <code>native</code> only restores the collection. <code>--force</code> loads anyway.</li>
+  <li>While the view is loaded, <code>hype</code>, <code>stats</code> and <code>export</code> use its data; add <code>--native</code> for each track at its own tempo. Commands that write your own values refuse to run so they can't mix them into the view: <code>traktor</code>, <code>sync</code>, <code>hype --traktor</code>, <code>colors apply</code>, <code>colors train</code>, <code>cues apply</code>, <code>grids apply</code>, <code>edit</code> and others.</li>
+  <li>Works with Rekordbox as your DJ app too (chosen on the Setup tab); it has no clock tempo to switch.</li>
+  <li><code>--lexicon</code> also switches <a href="https://www.lexicondj.com">Lexicon</a>: its genre, colour, comment and Energy (the view's hype, 1–10), plus a "Genres @145 (Track Analyzer)" smartlist folder. Once: open Lexicon and turn on Settings → Integrations → <b>Local API</b>. Lexicon's library is copied to <code>data/lexicon-backups/</code> first. While Lexicon has the view, don't sync Lexicon → Traktor or import from Traktor into Lexicon; syncing to a USB is fine.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>Which view to load.</td><td class="def">145</td></tr>
+<tr><td><code>--dry-run</code></td><td>Shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>Loads even while Traktor is set to write tags to your files.</td><td class="def">off</td></tr>
+<tr><td><code>--lexicon</code></td><td>Switches Lexicon too (Lexicon open, Local API on). If your DJ app already has the view, only Lexicon is switched.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-native"><code>tempo native</code></h2>
+<p>Switches your DJ app back from whichever view is loaded. This is the undo of <code>tempo load</code>.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app's collection (backup first); with <code>--lexicon</code> Lexicon's library too</li>
+  <li><b>Needs:</b> a view loaded with <code>tempo load</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo native --dry-run
+uv run dj-track-analyzer tempo native
+uv run dj-track-analyzer tempo native --lexicon</pre></div>
+<ul>
+  <li>It puts back only genre, colour, Comment and the genre Smartlists, so cue points, plays, History and tracks added meanwhile all stay. The clock always goes back to your tempo.</li>
+  <li>A genre, colour or Comment you changed yourself while the view was loaded is kept, and listed under <code>kept</code>.</li>
+  <li>If Lexicon still has the view, it says so: run it again with <code>--lexicon</code>. With <code>--lexicon</code> both are switched back, a Lexicon field only where it still holds the view's value.</li>
+  <li>Backups are named <code>collection.nml.before-tempo-view-…</code>; <code>traktor --undo</code> ignores them. Don't delete <code>data/tempo-loaded.json</code> while a view is loaded: it holds your own values.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Shows what would be put back without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--lexicon</code></td><td>Switches Lexicon back too (Lexicon open, Local API on).</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-refresh"><code>tempo refresh</code></h2>
+<p>Works out the view's genres, colours and hype again from what the scan measured, without listening again. Takes seconds.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the view's own data</li>
+  <li><b>Needs:</b> a <code>tempo scan</code> at that tempo</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo refresh</pre></div>
+<p>Run it after editing <code>dj_genres.json</code> or retraining colours. <a href="colours.html#colors-train">colors train</a> with <code>--refresh-views</code> does it for every view.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>Which view to refresh.</td><td class="def">145</td></tr>
+</tbody></table></div>
+
+<h2 id="tempo-status"><code>tempo status</code></h2>
+<p>Says which view is loaded in your DJ app and in Lexicon, and lists the views scanned so far with their track counts.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tempo status</pre></div>
+<p>The <b>Traktor tempo view</b> and <b>Lexicon tempo view</b> labels at the top of the web page show the same. No options.</p>
+
+<h2 id="install"><code>install rubberband</code></h2>
+<p>Installs Rubber Band, the time-stretcher the tempo view needs. On Windows it downloads Rubber Band's own build.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> puts the program in <code>data/tools/rubberband/</code></li>
+  <li><b>Needs:</b> Windows and an internet connection</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer install rubberband</pre></div>
+<ul>
+  <li>The download is checked against its known SHA-256 before anything is installed.</li>
+  <li>On a Mac or Linux it installs nothing and prints the command to run instead: <code>brew install rubberband</code>, or <code>sudo apt install rubberband-cli</code> (or your distribution's package manager).</li>
+  <li>The Setup tab's <b>Extra tools</b> card does the same (on Linux it shows the command).</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>TOOL</code></td><td>The tool to install. Only <code>rubberband</code> for now. Needed.</td><td class="def">none</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the actions it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm BPM</code></td><td>tempo scan, report, export, nml, load, refresh</td><td class="def">145</td></tr>
+<tr><td><code>--dry-run</code></td><td>tempo load, native</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>tempo load</td><td class="def">off</td></tr>
+<tr><td><code>--json</code></td><td>tempo report</td><td class="def">off</td></tr>
+<tr><td><code>--lexicon</code></td><td>tempo load, native</td><td class="def">off</td></tr>
+<tr><td><code>--limit N</code></td><td>tempo report</td><td class="def">15</td></tr>
+<tr><td><code>--nml PATH</code></td><td>tempo scan, nml, load, native</td><td class="def">found</td></tr>
+<tr><td><code>--out FILE</code></td><td>tempo export, nml</td><td class="def"><code>at-&lt;bpm&gt;/</code></td></tr>
+<tr><td><code>--rescan</code></td><td>tempo scan</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>tempo scan</td><td class="def">half your cores, max 5</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

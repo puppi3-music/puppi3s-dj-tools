@@ -66,7 +66,8 @@ pass cost 60k tokens as the context grew 55k → 95k).
 
 1. **Commands**: `uv run python .claude/skills/update-docs/scripts/guide_commands.py` parses every command in
    GUIDE.html with the real parser. Rejections from placeholders (`X`, `a|b`, pipes) are expected.
-2. **Options and links**: `doc_drift.py` (step 1).
+2. **Options and links**: `doc_drift.py` (step 1). For the command reference (`docs/commands/*.html`, one page per area):
+   `uv run python .claude/skills/update-docs/scripts/ref_coverage.py` lists every command, action and option its page misses.
 3. **Button, tab, filter and step names**: `python3 .claude/skills/update-docs/scripts/guide_labels.py` lists bold
    names not found in the page (`${…}` counts as a wildcard). Prose labels are noise; names the page builds from
    a variable alone (`Scan ${APPLIB}`) need a manual grep.

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genres and tags · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html" aria-current="page">Genres and tags</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#tag">tag</a>
+  <a class="sub" href="#untag">untag</a>
+  <a class="sub" href="#regenre">regenre</a>
+  <a class="sub" href="#train">train</a>
+  <a class="sub" href="#traktor">traktor</a>
+  <a class="sub" href="#hold">hold</a>
+  <a class="sub" href="#edit">edit</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a href="app.html">The app itself</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Genres and tags</div>
+<h1>Genres and tags</h1>
+<p class="lede">The commands that put genres into your files and your DJ app, learn your own genres, and keep or set a track's values by hand: <a href="#tag">tag</a>, <a href="#untag">untag</a>, <a href="#regenre">regenre</a>, <a href="#train">train</a>, <a href="#traktor">traktor</a>, <a href="#hold">hold</a> and <a href="#edit">edit</a>.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>All of them work on scanned tracks: run <a href="library.html#scan">scan</a> first. Nothing here analyses audio again, except <code>train</code> for example tracks it hasn't heard yet.</li>
+  <li>The usual order: <code>scan</code>, check the <code>genres_multi</code> column in <code>data/collection.csv</code>, then <code>tag</code> for the files and <code>traktor</code> for your DJ app.</li>
+  <li>Everything that writes has <code>--dry-run</code> (except <code>hold</code> and <code>train</code>, which only change the app's own files) and an undo: <code>untag</code> for the files, <code>traktor --undo</code> for your DJ app.</li>
+  <li>Quit your DJ app before <code>traktor</code> and <code>edit</code>: they refuse while Traktor runs.</li>
+</ul>
+<p>On the web page, the same things live on the Setup tab (<b>Genre tags in your files</b>, <b>Genres, colours and Smartlists in Traktor</b>, <b>Learn your genres</b>) and in each track's <b>Edit</b>. The guide's <a href="../GUIDE.html#genres">Genres for Traktor and Navidrome</a> walks through it.</p>
+
+<h2 id="tag"><code>tag</code></h2>
+<p>Writes the scanned genres, and if you like the BPM and key, into your music files' own tags, for Navidrome, Lexicon and other players. No new analysis.</p>
+<ul class="facts">
+  <li><b>Changes:</b> your music files' tags</li>
+  <li><b>Undo:</b> <code>untag</code></li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer tag --multi --dry-run
+uv run dj-track-analyzer tag --multi</pre></div>
+<ul>
+  <li>Before a file's tags change for the first time, the old genre, BPM and key are saved in the app's database, so <code>untag</code> can put them back.</li>
+  <li>Tracks whose genre is <a href="#hold">held</a> keep the genre they have.</li>
+  <li>Give folders to tag only the tracks in them: <code>tag "/path/to/New tracks"</code>.</li>
+  <li>Players pick the new tags up on their next library scan.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>FOLDER</code></td><td>Only the scanned tracks in these folders. Give several if you like.</td><td class="def">all scanned</td></tr>
+<tr><td><code>--fields FIELDS</code></td><td>What to write, comma-separated: any of <code>genre</code>, <code>bpm</code>, <code>key</code>, <code>camelot</code> (key or camelot, not both). Example: <code>genre,bpm,camelot</code>.</td><td class="def"><code>genre</code></td></tr>
+<tr><td><code>--multi</code></td><td>Also adds close runner-up genres, e.g. <code>Acid Trance; Hard Trance</code>.</td><td class="def">off</td></tr>
+<tr><td><code>--multi-ratio R</code></td><td>With <code>--multi</code>: a runner-up needs at least this share of the top genre's score.</td><td class="def">0.7</td></tr>
+<tr><td><code>--max-genres N</code></td><td>With <code>--multi</code>: the most genres per track.</td><td class="def">3</td></tr>
+<tr><td><code>--min-score S</code></td><td>Skips tracks whose genre score is below this (e.g. <code>0.2</code>).</td><td class="def">0, none skipped</td></tr>
+<tr><td><code>--use-my-genre</code></td><td>Writes your <a href="#train">trained genres</a> instead, where one fits. The genre switch on Both or Mine does this always.</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>Shows what would change without touching any file.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="untag"><code>untag</code></h2>
+<p>Puts back the genre, BPM and key tags your files had before this app first changed them.</p>
+<ul class="facts">
+  <li><b>Changes:</b> your music files' tags</li>
+  <li><b>Needs:</b> an earlier <code>tag</code>, or a <code>scan</code> with <code>--write-tags</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer untag --dry-run
+uv run dj-track-analyzer untag</pre></div>
+<ul>
+  <li>Only files the app changed are touched. Give folders to restore only the files in them.</li>
+  <li>Your DJ app keeps what <code>traktor</code> wrote; undo that with <code>traktor --undo</code>.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>FOLDER</code></td><td>Only the files in these folders.</td><td class="def">every changed file</td></tr>
+<tr><td><code>--dry-run</code></td><td>Shows what would change without touching any file.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="regenre"><code>regenre</code></h2>
+<p>Works out every scanned track's genres again from the saved analysis and the current genre rules, in seconds, without decoding any audio.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's files only (database and spreadsheet)</li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer regenre</pre></div>
+<ul>
+  <li>Run it after editing <code>data/dj_genres.json</code>, or after an update changed the built-in genre list. <a href="library.html#styles">styles</a> checks your edits first.</li>
+  <li>It gives the same genres a new scan would. Genres you set with <code>edit</code> are kept.</li>
+  <li>Files and your DJ app only change when you run <code>tag</code> and <code>traktor</code> afterwards.</li>
+</ul>
+<p>No options.</p>
+
+<h2 id="train"><code>train</code></h2>
+<p>Learns your own genres from example tracks, for genres the built-in ones don't have or your own way of splitting them. Also sets the genre switch: which genres your tracks get.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b> (but quit it so new playlists are saved)</li>
+  <li><b>Changes:</b> the app's files only</li>
+  <li><b>Needs:</b> a <code>scan</code>; 20–50 example tracks per genre, at least two genres</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer train "/path/to/Genre examples"
+uv run dj-track-analyzer train --use both</pre></div>
+<p>Give the examples one way:</p>
+<ul>
+  <li>A folder with one subfolder, or one <code>.m3u8</code> playlist, per genre. Each is a genre named after it.</li>
+  <li>A folder with <code>--by-tag</code>: each file's own genre tag is its genre; subfolders are searched too.</li>
+  <li><code>--traktor-playlist</code> once per playlist, or <code>--traktor-genre</code> once per value of Traktor's Genre field.</li>
+</ul>
+<ul>
+  <li>It also learns what "everything else" sounds like from the rest of your scanned collection, so it needs at least 30 other tracks.</li>
+  <li>Only example tracks it hasn't heard before are analysed, so training again after adding examples is quick.</li>
+  <li>It prints how it did per genre on your own tracks. Both and Mine only need 30 example tracks with at least 10 in each genre.</li>
+  <li>The page's version: <a href="../GUIDE.html#my-genres">Your own genres</a> in the guide.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>FOLDER</code></td><td>The folder of examples: one subfolder or <code>.m3u8</code> playlist per genre.</td><td class="def">none</td></tr>
+<tr><td><code>--by-tag</code></td><td>The folder's files are grouped by the genre in their own tags instead of by subfolder.</td><td class="def">off</td></tr>
+<tr><td><code>--traktor-playlist PLAYLIST</code></td><td>Learns from this Traktor playlist, a genre named after it. Repeat for each, at least 2. In folders: <code>"DJ / Hyperpop"</code>.</td><td class="def">none</td></tr>
+<tr><td><code>--traktor-genre GENRE</code></td><td>Learns from the tracks with this value in Traktor's Genre field. Repeat for each, at least 2.</td><td class="def">none</td></tr>
+<tr><td><code>--use MODE</code></td><td>The genre switch. <code>starter</code>: the built-in genres only. <code>both</code>: yours where one fits, built-in elsewhere. <code>mine</code>: the nearest of yours on every track. Works alone or with examples.</td><td class="def">unchanged; starter at first</td></tr>
+</tbody></table></div>
+<p>Give one source of examples (a folder, <code>--traktor-playlist</code> or <code>--traktor-genre</code>), or only <code>--use</code>.</p>
+
+<h2 id="traktor"><code>traktor</code></h2>
+<p>Puts the genres into your DJ app's collection, gives uncoloured tracks their predicted colour, and builds a <b>Genres (Track Analyzer)</b> Smartlist folder with one Smartlist per genre. Works on the DJ app you chose (Traktor or Rekordbox, where they are smart playlists).</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b></li>
+  <li><b>Changes:</b> your DJ app's collection (backup first)</li>
+  <li><b>Undo:</b> <code>traktor --undo</code></li>
+  <li><b>Needs:</b> a <code>scan</code>, and <code>tag</code> unless <code>--genres-from-analysis</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer traktor --dry-run
+uv run dj-track-analyzer traktor</pre></div>
+<ul>
+  <li>The genres come from the files' tags, as <code>tag</code> wrote them. With <code>--genres-from-analysis</code> they come straight from the analysis instead and the files are left alone.</li>
+  <li>Colours you set yourself stay, unless <code>--overwrite-colors</code>. <a href="#hold">Held</a> genres and colours stay as they are.</li>
+  <li>Smartlists are made only for the app's genres (and your trained ones), not for every tag a shop put in.</li>
+  <li>Edits only the parts it changes, never the whole file. Tested with Traktor Pro 4.5.</li>
+  <li><code>--undo</code> refuses if the collection changed since this app wrote it, so Traktor's own later changes aren't lost. <code>--force</code> restores anyway.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--genres-from-analysis</code></td><td>Genres straight from the analysis, as <code>tag --multi</code> picks them, leaving the files' tags alone.</td><td class="def">off</td></tr>
+<tr><td><code>--smartlists-only</code></td><td>Only (re)creates the Smartlists; genres stay.</td><td class="def">off</td></tr>
+<tr><td><code>--no-smartlists</code></td><td>Only updates the genres in the collection.</td><td class="def">off</td></tr>
+<tr><td><code>--no-colors</code></td><td>Doesn't set predicted colours.</td><td class="def">off</td></tr>
+<tr><td><code>--overwrite-colors</code></td><td>Also replaces colours you set yourself. Not recommended.</td><td class="def">off</td></tr>
+<tr><td><code>--color-min-confidence C</code></td><td>Only sets predicted colours at or above this confidence.</td><td class="def">0, all</td></tr>
+<tr><td><code>--undo</code></td><td>Restores the collection from before the last run.</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>With <code>--undo</code>: restores even if Traktor changed the collection since. Those changes are lost.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="hold"><code>hold</code></h2>
+<p>Keeps tracks' genre or colour as they are, so <code>tag</code>, <code>traktor</code>, the tempo view and the Lexicon and Rekordbox writes leave them alone.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> the app's hold list only</li>
+  <li><b>Undo:</b> <code>--release</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer hold --genre "part of the name"
+uv run dj-track-analyzer hold</pre></div>
+<ul>
+  <li>Picks the scanned tracks whose path contains the text, in any case. At most 10 at a time, so a short typo can't hold half the collection.</li>
+  <li><code>hold</code> alone lists what's held, with the value and since when.</li>
+  <li>A genre or colour set with <code>edit</code> is held already.</li>
+  <li>The page's version: <a href="../GUIDE.html#hold">Holding a genre or colour</a> in the guide.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--genre TEXT</code></td><td>Holds the genre of the scanned tracks whose path contains TEXT.</td><td class="def">none</td></tr>
+<tr><td><code>--colour TEXT</code></td><td>Holds their colour. <code>--color</code> works too.</td><td class="def">none</td></tr>
+<tr><td><code>--release</code></td><td>With <code>--genre</code> or <code>--colour</code>: takes those tracks off the hold list.</td><td class="def">off</td></tr>
+</tbody></table></div>
+<p>One at a time: <code>--genre</code> or <code>--colour</code>, not both.</p>
+
+<h2 id="edit"><code>edit</code></h2>
+<p>Sets one track's colour, key, genre, hype or BPM by hand, in the app and in your DJ app.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b>, unless <code>--no-traktor</code></li>
+  <li><b>Changes:</b> the app's database, and your DJ app's collection (backup first)</li>
+  <li><b>Undo:</b> <code>--clear</code>, or <code>traktor --undo</code></li>
+  <li><b>Needs:</b> a <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer edit "part of the name" --colour Red --genre "Hard Trance"
+uv run dj-track-analyzer edit "part of the name"
+uv run dj-track-analyzer edit</pre></div>
+<ul>
+  <li>Name the track by its path or text in it that matches one track. With no changes it shows the track's values; with no track at all it lists the tracks edited by hand.</li>
+  <li>Values you set are kept after every scan, <code>regenre</code> and new hype score. A hand colour is kept always and counts as yours when the colour scale learns; a hand genre is <a href="#hold">held</a>.</li>
+  <li>BPM stays in the app: your DJ app's BPM goes with its beat grid, which this app doesn't write. Hype goes into Traktor's Comment only where the Comment already carries one. Rekordbox gets colour and genre; the key stays in the app.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>TRACK</code></td><td>The track's path, or text in it that matches one track.</td><td class="def">none: list hand edits</td></tr>
+<tr><td><code>--colour C</code></td><td><code>Red</code> … <code>Magenta</code>, or 1–7. <code>--color</code> works too.</td><td class="def">unchanged</td></tr>
+<tr><td><code>--key K</code></td><td>Camelot (<code>8A</code>) or a key like <code>Am</code>, <code>F#</code>, <code>Eb minor</code>.</td><td class="def">unchanged</td></tr>
+<tr><td><code>--genre G</code></td><td>The genre. It's held, so <code>tag</code>, <code>traktor</code> and the tempo view keep it.</td><td class="def">unchanged</td></tr>
+<tr><td><code>--hype N</code></td><td>1–10, kept when hype is scored again.</td><td class="def">unchanged</td></tr>
+<tr><td><code>--bpm N</code></td><td>The whole BPM the app uses. Your DJ app's BPM and grid stay.</td><td class="def">unchanged</td></tr>
+<tr><td><code>--clear FIELD</code></td><td>Back to the analysis: <code>colour</code> (off the keep-always list), <code>genre</code>, <code>hype</code> or <code>bpm</code>. Repeat for several.</td><td class="def">none</td></tr>
+<tr><td><code>--no-traktor</code></td><td>Changes the app only, not your DJ app.</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>Shows what would change and writes nothing.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the commands it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--bpm N</code></td><td>edit</td><td class="def">unchanged</td></tr>
+<tr><td><code>--by-tag</code></td><td>train</td><td class="def">off</td></tr>
+<tr><td><code>--clear FIELD</code></td><td>edit</td><td class="def">none</td></tr>
+<tr><td><code>--color-min-confidence C</code></td><td>traktor</td><td class="def">0</td></tr>
+<tr><td><code>--colour</code>, <code>--color</code></td><td>hold (TEXT), edit (C)</td><td class="def">none</td></tr>
+<tr><td><code>--dry-run</code></td><td>tag, untag, traktor, edit</td><td class="def">off</td></tr>
+<tr><td><code>--fields FIELDS</code></td><td>tag</td><td class="def"><code>genre</code></td></tr>
+<tr><td><code>--force</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--genre</code></td><td>hold (TEXT), edit (G)</td><td class="def">none</td></tr>
+<tr><td><code>--genres-from-analysis</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--hype N</code></td><td>edit</td><td class="def">unchanged</td></tr>
+<tr><td><code>--key K</code></td><td>edit</td><td class="def">unchanged</td></tr>
+<tr><td><code>--max-genres N</code></td><td>tag</td><td class="def">3</td></tr>
+<tr><td><code>--min-score S</code></td><td>tag</td><td class="def">0</td></tr>
+<tr><td><code>--multi</code></td><td>tag</td><td class="def">off</td></tr>
+<tr><td><code>--multi-ratio R</code></td><td>tag</td><td class="def">0.7</td></tr>
+<tr><td><code>--nml PATH</code></td><td>traktor</td><td class="def">found</td></tr>
+<tr><td><code>--no-colors</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--no-smartlists</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--no-traktor</code></td><td>edit</td><td class="def">off</td></tr>
+<tr><td><code>--overwrite-colors</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--release</code></td><td>hold</td><td class="def">off</td></tr>
+<tr><td><code>--smartlists-only</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--traktor-genre GENRE</code></td><td>train</td><td class="def">none</td></tr>
+<tr><td><code>--traktor-playlist PLAYLIST</code></td><td>train</td><td class="def">none</td></tr>
+<tr><td><code>--undo</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--use MODE</code></td><td>train</td><td class="def">unchanged</td></tr>
+<tr><td><code>--use-my-genre</code></td><td>tag</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colours · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html" aria-current="page">Colours</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#colors-train">colors train</a>
+  <a class="sub" href="#colors-review">colors review</a>
+  <a class="sub" href="#colors-explain">colors explain</a>
+  <a class="sub" href="#colors-apply">colors apply</a>
+  <a class="sub" href="#colors-guessed">colors guessed</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html">Mixes and clips</a>
+  <a href="app.html">The app itself</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Colours</div>
+<h1>Colours</h1>
+<p class="lede">The <code>colors</code> command learns how you colour-code tracks in your DJ app, checks your colours against it, explains what each colour means, and colours new tracks. Five actions: <a href="#colors-train">train</a>, <a href="#colors-review">review</a>, <a href="#colors-explain">explain</a>, <a href="#colors-apply">apply</a> and <a href="#colors-guessed">guessed</a>.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer colors &lt;action&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>Scan your tracks first (<code>scan --traktor</code>): the colour model learns from the analysis of each track's sound.</li>
+  <li>Your colours are read from your DJ app: Traktor's <code>collection.nml</code>, or Rekordbox's library. Quit the app first so your latest changes are saved.</li>
+  <li>While a <a href="tempo.html">tempo view</a> is loaded into Traktor, the colours there aren't yours, so these commands refuse. Switch back first with <code>tempo native</code>.</li>
+  <li>The colours are one scale, from Red to Magenta in Traktor's order. The model places each track on it (a position from 1 to 7) and the nearest colour is its guess.</li>
+  <li>Everything except <code>explain</code> prints its result as JSON.</li>
+</ul>
+<p>On the web page, the same things live on the <b>Colours</b> tab and the Setup tab's <b>Your colour scale</b> card.</p>
+
+<h2 id="colors-train"><code>colors train</code></h2>
+<p>Learns your colour scale from the tracks you've already coloured, and saves it as your own colour model.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b> (but quit it so recent colours are saved)</li>
+  <li><b>Changes:</b> the app's files only (<code>data/my_colors.joblib</code>)</li>
+  <li><b>Needs:</b> 30 coloured tracks that are also scanned</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors train 2&gt;&amp;1 | tee logs/colors.txt</pre></div>
+<ul>
+  <li>The first run listens to every scanned track again for the deeper features the model uses (MAEST and moods), so it takes a while. Later runs take about a minute.</li>
+  <li>Colours the app guessed itself, which nobody has checked yet, are left out (see <a href="#colors-guessed">guessed</a>).</li>
+  <li>It prints how well the model does: how often it gets your colour exactly, how often within one colour, and the average distance in colours.</li>
+  <li>Until you train, the app uses a starter model learned from another DJ's colours. <code>review</code> needs your own.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--no-deep</code></td><td>Skips the MAEST and mood features: faster, less accurate.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks to listen to at once in the deep pass.</td><td class="def">half the cores, at most 5</td></tr>
+<tr><td><code>--refresh-views</code></td><td>Afterwards, redoes every tempo view's colours with the new model, as <code>tempo refresh</code> does.</td><td class="def">off</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Reads this <code>collection.nml</code> instead of the one found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+<p><b>Undo:</b> nothing in your DJ app changes. Train again after recolouring to update the model.</p>
+
+<h2 id="colors-review"><code>colors review</code></h2>
+<p>Lists the tracks whose sound disagrees most with the colour you gave them. With <code>--apply</code> it recolours the clearest cases in your DJ app.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b> without <code>--apply</code></li>
+  <li class="stop"><b>Quit your DJ app</b> for <code>--apply</code></li>
+  <li><b>Undo:</b> <code>traktor --undo</code></li>
+  <li><b>Needs:</b> your own model (<code>colors train</code>)</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors review</pre></div>
+<p>It lists up to 25 tracks whose sound points at least 1.5 colours from yours, biggest gap first. Each track's guess comes from a model that hadn't seen that track's colour (cross-validation), so a track can't simply agree with itself. Per track:</p>
+<pre class="out">{
+ "file": "Artist - Title (Extended Mix).mp3",
+ "your_colour": "Magenta",
+ "sounds_like": "Yellow",
+ "position": 2.78,
+ "gap": 4.22,
+ "confidence": 0.7,
+ "confidence_exact": 0.26,
+ "meets_apply_threshold": false,
+ "kept": true,
+ "path": "/path/to/Artist - Title (Extended Mix).mp3"
+}</pre>
+<div class="table-wrap"><table>
+<thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>position</code></td><td>Where the sound sits on the scale: 1 is Red, 7 is Magenta.</td></tr>
+<tr><td><code>gap</code></td><td>The distance, in colours, between your colour and the guess.</td></tr>
+<tr><td><code>confidence</code></td><td>How often the tracks the model placed at this position really were that colour or a neighbour of it.</td></tr>
+<tr><td><code>confidence_exact</code></td><td>The same, counting only exactly that colour.</td></tr>
+<tr><td><code>meets_apply_threshold</code></td><td>Whether <code>--apply</code> would recolour it.</td></tr>
+<tr><td><code>kept</code></td><td>You chose to keep its colour always, so <code>--apply</code> skips it.</td></tr>
+</tbody></table></div>
+<p>Some will be the model's mistakes and some will be worth recolouring. Listen to the top ones in your DJ app before you decide.</p>
+
+<h3 id="review-apply">Recolouring the clearest cases</h3>
+<p>A track qualifies when its gap is at least 2.5 colours <em>and</em> its confidence is at least 0.75. Preview first:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer colors review --apply --dry-run</pre></div>
+<p>Then quit your DJ app and run it:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer colors review --apply</pre></div>
+<p>It asks about each track:</p>
+<ul>
+  <li><code>y</code>: recolour it</li>
+  <li><code>n</code>: keep your colour</li>
+  <li><code>k</code>: keep it and never ask about that track again</li>
+  <li><code>a</code>: recolour all the rest</li>
+  <li><code>c</code>: cancel without changing anything</li>
+</ul>
+<p>Undo with <code>traktor --undo</code> before you open your DJ app again. Once Traktor has opened and saved the collection, the undo refuses unless you add <code>--force</code>, which loses what Traktor saved. Afterwards, <a href="#colors-train">train</a> again so the model learns your corrections.</p>
+
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--apply</code></td><td>Recolours the tracks over both thresholds in your DJ app (backup first).</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>With <code>--apply</code>: lists what would be recoloured and changes nothing.</td><td class="def">off</td></tr>
+<tr><td><code>--min-gap N</code></td><td>With <code>--apply</code>: only tracks at least this many colours from yours. Stricter: <code>3</code>.</td><td class="def">2.5</td></tr>
+<tr><td><code>--min-confidence N</code></td><td>With <code>--apply</code>: only tracks at or above this confidence (0–1). Stricter: <code>0.85</code>.</td><td class="def">0.75</td></tr>
+<tr><td><code>--yes</code></td><td>With <code>--apply</code>: recolours every qualifying track without asking.</td><td class="def">off</td></tr>
+<tr><td><code>--track PATH</code></td><td>With <code>--apply</code>: recolours only this track, whatever the thresholds, without asking. Give the full path as the review lists it; repeat for several.</td><td class="def">none</td></tr>
+<tr><td><code>--planned</code></td><td>With <code>--apply</code>: writes what you marked on the web page's <b>Colours</b> tab. Approved tracks are recoloured, kept ones go on the keep-always list.</td><td class="def">off</td></tr>
+<tr><td><code>--kept</code></td><td>Lists the tracks on the keep-always list instead of reviewing.</td><td class="def">off</td></tr>
+<tr><td><code>--keep TEXT</code></td><td>With <code>--kept</code>: adds the coloured tracks whose path contains TEXT to the list.</td><td class="def">none</td></tr>
+<tr><td><code>--forget TEXT</code></td><td>With <code>--kept</code>: takes tracks whose path contains TEXT off the list, so review suggests them again.</td><td class="def">none</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code>.</td><td class="def">found</td></tr>
+</tbody></table></div>
+<p>Examples:</p>
+<div class="cmd"><pre>uv run dj-track-analyzer colors review --apply --min-gap 3 --dry-run
+uv run dj-track-analyzer colors review --kept --forget "part of the name"</pre></div>
+
+<h2 id="colors-explain"><code>colors explain</code></h2>
+<p>What each colour means in your collection: how the tracks sound, which playlists and sets they turn up in, and which artists.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b>, fine with your DJ app open</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors explain</pre></div>
+<p>It prints tables, starting with the number of coloured tracks per colour. How to read them: <a href="../GUIDE.html#res-explain">Reading <code>colors explain</code></a> in the guide.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--json</code></td><td>Prints JSON instead of tables.</td><td class="def">off</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks to listen to at once, for tracks still missing the deeper features.</td><td class="def">half the cores, at most 5</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code>.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="colors-apply"><code>colors apply</code></h2>
+<p>Analyses the tracks that are new in your DJ app and gives a colour to every track that has none. Colours you set are never changed, and genres and Smartlists are left alone.</p>
+<ul class="facts">
+  <li class="stop"><b>Quit your DJ app</b> (not for <code>--dry-run</code>)</li>
+  <li><b>Changes:</b> your DJ app (backup first)</li>
+  <li><b>Undo:</b> <code>traktor --undo</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors apply --dry-run
+uv run dj-track-analyzer colors apply</pre></div>
+<ul>
+  <li>New tracks are analysed first, about 10–20 seconds each. The preview lists what it would set, e.g. <code>Track.mp3: no colour → Orange</code>.</li>
+  <li>Works before you train too, with the starter model. Your own model fits your colours better.</li>
+  <li>The colours it sets count as guesses until you check them: see <a href="#colors-guessed">guessed</a>.</li>
+  <li>To colour and set genres in one go, use <code>traktor</code> or <code>sync</code> instead.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Lists which colours would be set and changes nothing.</td><td class="def">off</td></tr>
+<tr><td><code>--min-confidence N</code></td><td>Only sets a colour when the model is at least this sure (0–1). Tracks below it stay uncoloured.</td><td class="def">0</td></tr>
+<tr><td><code>--workers N</code></td><td>How many tracks to analyse at once.</td><td class="def">half the cores, at most 5</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code>.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="colors-guessed"><code>colors guessed</code></h2>
+<p>Lists the colours the app wrote into your DJ app (by <code>colors apply</code> or <code>traktor</code>) that nobody has checked. <code>train</code> leaves them out, so the model doesn't learn from its own guesses.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b> without <code>--accept</code></li>
+  <li><b>With <code>--accept</code>:</b> the app's database only</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors guessed</pre></div>
+<p>For each guess you can either:</p>
+<ul>
+  <li>change the colour in your DJ app, if it's wrong. It then counts as yours.</li>
+  <li>accept it, if it's right. <code>train</code> then learns from it.</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer colors guessed --accept "part of the name"
+uv run dj-track-analyzer colors guessed --accept all</pre></div>
+<p>On the web page: the Tracks tab's <b>All tracks → Colour guessed by the app, not checked yet</b>, then <b>Guessed colours are right</b>.</p>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--accept TEXT</code></td><td>Marks the guesses whose path contains TEXT as right, at most 10 at a time so a short word can't accept half the collection. <code>all</code> accepts every one.</td><td class="def">none</td></tr>
+<tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code>.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every <code>colors</code> option and the actions it works with.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Actions</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--accept TEXT</code></td><td>guessed</td><td class="def">none</td></tr>
+<tr><td><code>--apply</code></td><td>review</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>apply, review --apply</td><td class="def">off</td></tr>
+<tr><td><code>--forget TEXT</code></td><td>review --kept</td><td class="def">none</td></tr>
+<tr><td><code>--json</code></td><td>explain</td><td class="def">off</td></tr>
+<tr><td><code>--keep TEXT</code></td><td>review --kept</td><td class="def">none</td></tr>
+<tr><td><code>--kept</code></td><td>review</td><td class="def">off</td></tr>
+<tr><td><code>--min-confidence N</code></td><td>apply (default 0), review --apply (default 0.75)</td><td class="def">see actions</td></tr>
+<tr><td><code>--min-gap N</code></td><td>review --apply</td><td class="def">2.5</td></tr>
+<tr><td><code>--nml PATH</code></td><td>all</td><td class="def">found</td></tr>
+<tr><td><code>--no-deep</code></td><td>train</td><td class="def">off</td></tr>
+<tr><td><code>--planned</code></td><td>review --apply</td><td class="def">off</td></tr>
+<tr><td><code>--refresh-views</code></td><td>train</td><td class="def">off</td></tr>
+<tr><td><code>--track PATH</code></td><td>review --apply</td><td class="def">none</td></tr>
+<tr><td><code>--workers N</code></td><td>train, explain, apply</td><td class="def">half the cores, at most 5</td></tr>
+<tr><td><code>--yes</code></td><td>review --apply</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>

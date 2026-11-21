@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mixes and clips · Command reference · Puppi3's Track Analyzer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="ref.css">
+</head>
+<body>
+<div class="layout">
+<nav class="toc" aria-label="Command reference">
+  <div class="brand"><i style="background:var(--red)"></i><i style="background:var(--orange)"></i><i style="background:var(--yellow)"></i><i style="background:var(--green)"></i><i style="background:var(--blue)"></i><i style="background:var(--violet)"></i><i style="background:var(--magenta)"></i><a href="index.html">Commands</a></div>
+  <a href="index.html">All areas</a>
+  <a href="colours.html">Colours</a>
+  <a href="library.html">Library and analysis</a>
+  <a href="genres.html">Genres and tags</a>
+  <a href="hype-sets.html">Hype, sets and crates</a>
+  <a href="cues-grids-sync.html">Cues, grids and sync</a>
+  <a href="tempo.html">Tempo view</a>
+  <a href="mixes.html" aria-current="page">Mixes and clips</a>
+  <a class="sub" href="#before">Before you start</a>
+  <a class="sub" href="#analyze-mix">analyze --tracklist</a>
+  <a class="sub" href="#chapters">Chapters and clip ideas</a>
+  <a class="sub" href="#standalone">Standalone pieces</a>
+  <a class="sub" href="#mixes">mixes</a>
+  <a class="sub" href="#clips">clips</a>
+  <a class="sub" href="#clips-describe">clips describe</a>
+  <a class="sub" href="#all-options">All options</a>
+  <a href="app.html">The app itself</a>
+  <div class="group">Guide</div>
+  <a href="../GUIDE.html#cli">Tasks from a terminal</a>
+</nav>
+
+<main>
+<div class="crumbs"><a href="index.html">Command reference</a> › Mixes and clips</div>
+<h1>Mixes and clips</h1>
+<p class="lede">For your own recorded mixes: <code>analyze &lt;mix&gt; --tracklist</code> checks a recording against what you played in Traktor, and adds YouTube chapters, clip ideas and pieces long enough to post on their own. <code>mixes</code> adds up all your analysed mixes. <code>clips</code> cuts the clips from the finished video, and <code>clips describe &lt;analysis&gt; &lt;clips&gt;</code> describes clips someone else cut, for the posts.</p>
+
+<h2 id="before">Before you start</h2>
+<ul>
+  <li>Run every command from the project folder, as <code>uv run dj-track-analyzer &lt;command&gt;</code>. See <a href="index.html#running">Running a command</a>.</li>
+  <li>Any file over 12 minutes is treated as a DJ mix by <a href="library.html#analyze">analyze</a>: it gets a timeline and a readable summary after the JSON. The options on this page add the rest.</li>
+  <li>The tracklist check needs Traktor's history file of the session. Traktor writes it when it closes, so close Traktor once after the set. Its own recordings carry their start time in the name (<code>Recording_2026-01-31_22h00m00s.wav</code>); for any other name give <code>--start</code>.</li>
+  <li><b>Scan your music first</b> (<a href="library.html#scan">scan</a>): the per-track check compares the mix with each track alone. With a <a href="tempo.html">tempo view</a> near the tempo you played, it also shows what your mixing changed.</li>
+  <li><code>clips</code> and <code>clips describe &lt;analysis&gt; &lt;clips&gt;</code> need ffmpeg. The Setup tab installs it; or <code>brew install ffmpeg</code> on a Mac, <code>winget install ffmpeg</code> on Windows, <code>sudo apt install ffmpeg</code> on Linux.</li>
+  <li>Everything here is fine with your DJ app open: it only reads Traktor's history and collection.</li>
+</ul>
+<p>On the web page, the Mixes tab's <b>Analyse a mix…</b> does all of this with ticks, and saves each result in <code>logs/</code>; the mix's <b>Your editor's clips</b> card is <code>clips describe &lt;analysis&gt; &lt;clips&gt;</code>, and <b>All N mixes</b> is <code>mixes</code>. The guide's <a href="../GUIDE.html#mixes">My recorded mixes</a> walks through it.</p>
+
+<h2 id="analyze-mix"><code>analyze &lt;mix&gt; --tracklist</code></h2>
+<p>Checks a recorded mix against Traktor's history of that session: each track placed in the recording, with its key, tempo and mood as played.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b>; reads Traktor's history only</li>
+  <li><b>Changes:</b> nothing (with <code>--out</code>: that file)</li>
+  <li><b>Needs:</b> a recording, Traktor's history file, a normal <code>scan</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/Recording_2026-01-31_22h00m00s.wav" --tracklist
+uv run dj-track-analyzer analyze "/path/to/mix.wav" --tracklist --start 22:00:00 --out logs/mix.json</pre></div>
+<ul>
+  <li><b>Key:</b> Traktor's key against the key heard in the middle of the track's main stretch. Long blends are normal, so it measures how long after Traktor logs a start a track takes over, and judges from there. A mismatch can still be the other deck; a track with under 30 s of its own gets no verdict. Each change of track is rated key to key: same key, one step, two steps or a clash.</li>
+  <li><b>Mood:</b> the track's mood as played, next to the track alone and, with a tempo view, the track at that tempo.</li>
+  <li><b>Key lock:</b> history files don't record it. It's taken as on, unless the keys fit key lock off clearly better.</li>
+  <li><b>Genre:</b> how the mix sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view.</li>
+  <li>When no history file covers the recording, the mix is analysed without the check and the result says why, so <code>--tracklist</code> works on any file. A history file you name, or <code>--chapters</code>, has to work, or it stops.</li>
+  <li>The JSON is printed, then the readable summary; <code>--json-only</code> leaves the summary out. Save it with <code>--out</code> into <code>logs/</code> to see it on the Mixes tab and in <a href="#mixes">mixes</a>.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--tracklist [HISTORY.nml]</code></td><td>Checks the mix against Traktor's history. Without a path it finds the file from the recording's date.</td><td class="def">off; found</td></tr>
+<tr><td><code>--start HH:MM:SS</code></td><td>When the recording started, for a file whose name doesn't say.</td><td class="def">from the name</td></tr>
+<tr><td><code>--out FILE.json</code></td><td>Saves the JSON in this file instead of printing it.</td><td class="def">printed</td></tr>
+<tr><td><code>--json-only</code></td><td>Leaves out the readable summary after the JSON.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="chapters">Chapters and clip ideas</h2>
+<p>For posting the mix as a video: YouTube chapter lines for the description, and the best stretches for short clips.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing (with <code>--out</code>: that file)</li>
+  <li><b>Needs:</b> the offset, read off the finished video</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --chapters --offset 0:14
+uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --offset 0:14 --highlights 5 --out logs/mix.json</pre></div>
+<ul>
+  <li><b>The offset</b> is how far into the finished video the first track starts. Check it in the video itself: it depends on how you lined the audio up, so it can't come from the recording. Trimming silence off the audio doesn't change the times; they count from the first track's start.</li>
+  <li><b>Chapters:</b> the video's opening becomes an "Intro" chapter at 0:00, and very short plays fold into the next chapter (YouTube wants at least three, 10 s apart).</li>
+  <li><b>Clip ideas</b> are loud stretches rising out of something quieter, ranked #1 best, in video times with <code>--offset</code>. That's loudness only, so pick by eye and snap to a bar; <a href="#clips">clips</a> adds how much moves on screen.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--chapters</code></td><td>Prints YouTube chapter lines. Needs <code>--tracklist</code> and <code>--offset</code>.</td><td class="def">off</td></tr>
+<tr><td><code>--offset SECONDS</code></td><td>Where the first track starts in the finished video (<code>14</code> or <code>0:14</code>), for chapter and clip times.</td><td class="def">none</td></tr>
+<tr><td><code>--highlights [N]</code></td><td>Suggests the N best stretches for short clips.</td><td class="def">off; 2</td></tr>
+<tr><td><code>--clip-length SECONDS</code></td><td>Length of each suggested clip.</td><td class="def">40</td></tr>
+<tr><td><code>--clip-mood LU</code></td><td>Also favours clips that sound party or aggressive, worth up to this many LU of loudness. Try 3.</td><td class="def">0 (loudness and rise only)</td></tr>
+</tbody></table></div>
+
+<h2 id="standalone">Standalone pieces</h2>
+<p>With <code>--tracklist</code>, the analysis also looks for long blends that work as a track of their own, to post on SoundCloud.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing; on by default with <code>--tracklist</code></li>
+  <li><b>Needs:</b> the original tracks on disk; stem files help</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --standalone-separate
+uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --no-standalone</pre></div>
+<ul>
+  <li>A piece is a change where two or more tracks (the two of the change, and the track before or after them) play near their own level for 2:30 or more. Blends of 64 bars or more that fall short of that are listed as short edits, a moment to post on its own.</li>
+  <li><b>Near</b> means no more than 6 dB under the track's own level, or lower (down to 16 dB under) but steady, as a track played bass-down or filtered is.</li>
+  <li>A track with a stem file is measured per stem, so a live stem cut or bass swap lowers it by that stem's share instead of reading as a fade. Without one it's measured whole, unless you add <code>--standalone-separate</code>.</li>
+  <li>It also looks for <b>solo reworks</b>: one track alone, played changed (EQ, stems or re-arranged) in half its bars or more.</li>
+  <li>No piece is a valid answer: then the result shows the closest change.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--no-standalone</code></td><td>Doesn't look for standalone pieces.</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-separate</code></td><td>Splits tracks without a stem file into stems with Demucs over the stretch where they play. Slow, a few minutes a track; needs the stems extra.</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-pairs-only</code></td><td>Measures only the two tracks of each change, not the track before and after. A run of three or more tracks then isn't seen.</td><td class="def">off</td></tr>
+<tr><td><code>--no-solo-rework</code></td><td>Doesn't look for solo reworks.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="mixes"><code>mixes</code></h2>
+<p>Adds up all your analysed mixes: the shape of your sets, keys Traktor may have wrong, mood as played, mood by fifth of the set and how your key changes go.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing</li>
+  <li><b>Needs:</b> mix analyses saved in <code>logs/</code> (by the page or <code>--out</code>)</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer mixes
+uv run dj-track-analyzer mixes --logs ~/old-mixes --logs logs</pre></div>
+<ul>
+  <li>Only the newest analysis of each recording counts.</li>
+  <li><b>Your sets start to end:</b> each set stretched to the same length, the mean hype and loudness per stretch, and the colour you played there most.</li>
+  <li><b>Keys Traktor may have wrong:</b> tracks whose key in your sets is our key but not Traktor's, with key lock on. Worth checking in Traktor.</li>
+  <li><b>Mood as played</b> for each track, against the track alone and in the tempo view; <b>mood by fifth</b> of the set.</li>
+  <li><b>Changes of track:</b> how often the key change from one track to the next was the same key, one step, two steps or a clash.</li>
+  <li>Mixes analysed before November 2026 count in fully once analysed again.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--logs FOLDER</code></td><td>The folder with the saved mix analyses. Repeat it for several.</td><td class="def"><code>logs/</code></td></tr>
+<tr><td><code>--json</code></td><td>Prints the report as JSON.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="clips"><code>clips</code></h2>
+<p>Cuts quick previews of every clip suggestion from the finished video so you can watch and choose, then the clips you pick at full quality.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> preview files; with <code>--pick</code>, clip files next to the video</li>
+  <li><b>Needs:</b> ffmpeg, and an analysis made with <code>--highlights</code> and <code>--offset</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer clips logs/mix.json --video final.mp4
+uv run dj-track-analyzer clips logs/mix.json --video final.mp4 --pick 1 4 20:30-21:10</pre></div>
+<ul>
+  <li><b>Previews</b> are 720p, in a folder named after the analysis. While cutting, it measures how much moves on screen in each, and ranks them by the audio and the movement together. Files start with that rank (<code>#1 clip-1 7m37s.mp4</code>). The audio alone can't see a stretch where the DJ stands still.</li>
+  <li><b><code>--pick</code></b> takes suggestion numbers or your own ranges. Clips are 1440p30 H.264 (the hardware encoder on a Mac, software elsewhere), named <code>&lt;video&gt;-clip-1.mp4</code>, or <code>-clip-20m30s-21m10s.mp4</code> for a range.</li>
+  <li>Clips already there are never replaced without <code>--force</code>.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--video FILE</code></td><td>The finished video the offset was read off. Required.</td><td class="def">none</td></tr>
+<tr><td><code>--pick N …</code></td><td>Makes these clips at full quality: suggestion numbers (<code>1 4</code>) or own ranges (<code>7:35-8:15</code>).</td><td class="def">previews of all</td></tr>
+<tr><td><code>--previews DIR</code></td><td>Folder for the previews; they go in a subfolder named after the analysis.</td><td class="def"><code>/tmp/clip-previews</code></td></tr>
+<tr><td><code>--out DIR</code></td><td>Where the <code>--pick</code> clips go.</td><td class="def">next to the video</td></tr>
+<tr><td><code>--height PX</code></td><td>The <code>--pick</code> clips' height in pixels.</td><td class="def">1440</td></tr>
+<tr><td><code>--bitrate RATE</code></td><td>The <code>--pick</code> clips' video bitrate.</td><td class="def">16M</td></tr>
+<tr><td><code>--force</code></td><td>Replaces <code>--pick</code> clips that are already there.</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>Lists what would be made, writes nothing.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="clips-describe"><code>clips describe &lt;analysis&gt; &lt;clips&gt;</code></h2>
+<p>When an editor cuts the clips, gives them back to the analyzer for the posts: where each sits in the mix, the track playing, and how it sounds.</p>
+<ul class="facts">
+  <li class="ok"><b>Fine with your DJ app open</b></li>
+  <li><b>Changes:</b> nothing; with <code>--save</code>, the analysis' JSON</li>
+  <li><b>Needs:</b> ffmpeg, the mix's analysis and its recording</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer clips describe logs/mix.json "/path/to/clips"
+uv run dj-track-analyzer clips describe logs/mix.json clip-1.mp4 clip-2.mp4 --offset 0:14 --at 2=41:20 --save</pre></div>
+<ul>
+  <li>Each clip is found in the recording by its sound, so it works however the editor trimmed the audio. About 15 seconds a clip.</li>
+  <li>Each gets a line like the clip suggestions: its video time, the track playing, LUFS, rise and energy, plus its own genre, top moods and BPM from the clip's own sound. Use an analysis made with <code>--tracklist</code> for the track names.</li>
+  <li>Video times need the offset: <code>--offset</code>, or it's worked out from the analysis' clip suggestions when they have video times.</li>
+  <li>A clip whose sound isn't clearly in the recording says so (another mix, or a phone's room sound). Place it by hand with <code>--at</code>: clip 2 starts 41:20 into the video. Without an offset the time is a mix time.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--recording FILE</code></td><td>The recording the analysis was made from, if it has moved.</td><td class="def">the file named in the JSON</td></tr>
+<tr><td><code>--offset SECONDS</code></td><td>Where the first track starts in the finished video, for video times.</td><td class="def">from the clip suggestions</td></tr>
+<tr><td><code>--at CLIP=TIME</code></td><td>Places a clip by hand where its sound isn't found, e.g. <code>2=41:20</code>. Repeat for several.</td><td class="def">found by sound</td></tr>
+<tr><td><code>--save</code></td><td>Also keeps the result in the analysis' JSON, shown on the page.</td><td class="def">off</td></tr>
+<tr><td><code>--json</code></td><td>Prints JSON instead of the readable lines.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="all-options">All options</h2>
+<p>Every option of these commands and the actions it works with. <code>analyze</code>'s other options are on <a href="library.html#analyze">Library and analysis</a>.</p>
+<input class="filter" data-table="opt-table" type="search" placeholder="Filter options…" aria-label="Filter options">
+<div class="table-wrap"><table id="opt-table">
+<thead><tr><th>Option</th><th>Commands</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--at CLIP=TIME</code></td><td>clips describe</td><td class="def">found by sound</td></tr>
+<tr><td><code>--bitrate RATE</code></td><td>clips</td><td class="def">16M</td></tr>
+<tr><td><code>--chapters</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--clip-length SECONDS</code></td><td>analyze</td><td class="def">40</td></tr>
+<tr><td><code>--clip-mood LU</code></td><td>analyze</td><td class="def">0</td></tr>
+<tr><td><code>--dry-run</code></td><td>clips</td><td class="def">off</td></tr>
+<tr><td><code>--force</code></td><td>clips</td><td class="def">off</td></tr>
+<tr><td><code>--height PX</code></td><td>clips</td><td class="def">1440</td></tr>
+<tr><td><code>--highlights [N]</code></td><td>analyze</td><td class="def">off; 2</td></tr>
+<tr><td><code>--json</code></td><td>mixes, clips describe</td><td class="def">off</td></tr>
+<tr><td><code>--json-only</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--logs FOLDER</code></td><td>mixes</td><td class="def"><code>logs/</code></td></tr>
+<tr><td><code>--no-solo-rework</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--no-standalone</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--offset SECONDS</code></td><td>analyze, clips describe</td><td class="def">none</td></tr>
+<tr><td><code>--out</code></td><td>analyze (a file), clips (a folder)</td><td class="def">printed; next to the video</td></tr>
+<tr><td><code>--pick N …</code></td><td>clips</td><td class="def">previews of all</td></tr>
+<tr><td><code>--previews DIR</code></td><td>clips</td><td class="def"><code>/tmp/clip-previews</code></td></tr>
+<tr><td><code>--recording FILE</code></td><td>clips describe</td><td class="def">the file in the JSON</td></tr>
+<tr><td><code>--save</code></td><td>clips describe</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-pairs-only</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-separate</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--start HH:MM:SS</code></td><td>analyze</td><td class="def">from the name</td></tr>
+<tr><td><code>--tracklist [HISTORY.nml]</code></td><td>analyze</td><td class="def">off; found</td></tr>
+<tr><td><code>--video FILE</code></td><td>clips</td><td class="def">required</td></tr>
+</tbody></table></div>
+
+<footer class="legal">Puppi3's Track Analyzer · <a href="index.html">Command reference</a> · <a href="../GUIDE.html">Guide</a></footer>
+</main>
+</div>
+<button class="theme" id="theme" type="button" aria-label="Switch light or dark">◐ Theme</button>
+<script src="ref.js"></script>
+</body>
+</html>
