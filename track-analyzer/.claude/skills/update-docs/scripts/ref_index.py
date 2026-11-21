@@ -34,7 +34,7 @@ def first_sentence(fragment: str, limit: int = 150) -> str:
 
 
 def page_entries(name: str) -> list[dict]:
-    src = (DOCS / f"{name}.html").read_text()
+    src = (DOCS / f"{name}.html").read_text(encoding="utf-8")
     h1 = text(re.search(r"<h1[^>]*>(.*?)</h1>", src, re.S).group(1))
     area = "Overview" if name == "index" else h1
     lede = re.search(r"<h1.*?</h1>\s*<p[^>]*>(.*?)</p>", src, re.S)
@@ -75,8 +75,8 @@ def build() -> str:
 if __name__ == "__main__":
     new = build()
     if "--check" in sys.argv:
-        stale = not OUT.exists() or OUT.read_text() != new
+        stale = not OUT.exists() or OUT.read_text(encoding="utf-8") != new
         print("search index:", "STALE, rerun ref_index.py" if stale else "up to date")
         sys.exit(1 if stale else 0)
-    OUT.write_text(new)
+    OUT.write_text(new, encoding="utf-8")
     print(f"wrote {OUT.relative_to(DOCS.parents[1])}: {new.count(chr(10)) - 3} entries")
