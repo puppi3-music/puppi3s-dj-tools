@@ -76,6 +76,14 @@ li ol { padding-left: 22px; }
 li > .cmd { margin-top: 6px; }
 .note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
 .note p { margin: 0; }
+.ref-box { background: var(--accent-soft); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 14px 16px; margin: 16px 0 20px; }
+.ref-box b { display: block; font-family: var(--display); margin-bottom: 4px; }
+.ref-box p { margin: 0 0 10px; }
+.ref-areas { display: flex; flex-wrap: wrap; gap: 6px; }
+.ref-areas a { background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; text-decoration: none; color: var(--text); }
+.ref-areas a:hover { border-color: var(--accent); color: var(--accent); }
+.ref-link { margin: -6px 0 10px; font-size: 13px; color: var(--muted); }
+td a code { color: var(--accent); }
 .stop { display: inline-block; font: 700 11px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--stop); border: 1px solid currentColor; border-radius: 4px; padding: 3px 6px; margin-right: 6px; vertical-align: 2px; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 20px 0; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
@@ -145,6 +153,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <a class="sub" href="#commands">All commands</a>
   <a class="sub" href="#options">Options</a>
   <a class="sub" href="#results">Terminal output</a>
+  <a class="sub" href="commands/index.html">Command reference →</a>
 </nav>
 
 <main>
@@ -607,7 +616,8 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <!-- ───────────────────────────── -->
 <h2 id="cli">Command line</h2>
-<p class="note">Looking up one command or option? The <a href="commands/index.html">command reference</a> explains every command and option, by area (<a href="commands/colours.html">Colours</a> and <a href="commands/library.html">Library and analysis</a>, <a href="commands/genres.html">Genres and tags</a>, <a href="commands/hype-sets.html">Hype, sets and crates</a>, <a href="commands/cues-grids-sync.html">Cues, grids and sync</a>, <a href="commands/tempo.html">Tempo view</a>, <a href="commands/mixes.html">Mixes and clips</a>, <a href="commands/app.html">The app itself</a>).</p>
+<div class="ref-box"><b>Command reference</b><p>Every command and every option, explained one page per area. Start at the <a href="commands/index.html">overview</a>, or go straight to an area:</p>
+<div class="ref-areas"><a href="commands/colours.html">Colours</a><a href="commands/library.html">Library and analysis</a><a href="commands/genres.html">Genres and tags</a><a href="commands/hype-sets.html">Hype, sets and crates</a><a href="commands/cues-grids-sync.html">Cues, grids and sync</a><a href="commands/tempo.html">Tempo view</a><a href="commands/mixes.html">Mixes and clips</a><a href="commands/app.html">The app itself</a></div></div>
 <p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now:</p><ul><li>planning a set, and taking set or crate playlists out again</li><li>saving a tempo view as a spreadsheet or standalone collection (<code>tempo export</code>, <code>tempo nml</code>)</li><li>cutting clips from a mix's video (describing clips an editor made is on the page)</li><li>working out genres again or re-analysing everything outside an update (after an update, its card has a <b>Run</b> button for them)</li></ul>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
@@ -626,6 +636,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <h3 id="cli-tasks">Tasks from a terminal</h3>
 <p>The same tasks as above, as commands.</p>
 <h3 id="cli-new-tracks">I bought new tracks</h3>
+<p class="ref-link">All options: <a href="commands/library.html#scan">Library and analysis</a> and <a href="commands/colours.html#colors-apply">Colours</a> reference</p>
 <ol>
   <li>Add them to Traktor and let Traktor analyse them.</li>
   <li>Quit Traktor.</li>
@@ -646,6 +657,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-recoloured">I recoloured a bunch of tracks</h3>
+<p class="ref-link">All options: <a href="commands/colours.html#colors-train">Colours</a> reference</p>
 <ol>
   <li>Quit Traktor, so the collection is saved.</li>
   <li>Retrain. About a minute after the first time.
@@ -656,6 +668,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-check-colours">Checking my colours for mistakes</h3>
+<p class="ref-link">All options: <a href="commands/colours.html#colors-review">Colours</a> reference</p>
 <ol>
   <li>List the tracks whose sound disagrees most with the colour you gave them:
     <div class="cmd"><pre>uv run dj-track-analyzer colors review</pre></div></li>
@@ -674,6 +687,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-understand">Understanding my collection</h3>
+<p class="ref-link">All options: <a href="commands/library.html#stats">Library and analysis</a> reference</p>
 <ul>
   <li>The web page itself: <div class="cmd"><pre>uv run dj-track-analyzer web</pre></div> (<code>--export set.html</code> saves a snapshot instead).</li>
   <li>What each colour means (see <a href="#res-explain">reading <code>colors explain</code></a>): <div class="cmd"><pre>uv run dj-track-analyzer colors explain</pre></div></li>
@@ -682,10 +696,12 @@ li > figure.shot { margin: 12px 0 4px; }
 </ul>
 
 <h3 id="cli-hold">Holding a genre or colour</h3>
+<p class="ref-link">All options: <a href="commands/genres.html#hold">Genres and tags</a> reference</p>
 <p>By part of the file name; <code>hold</code> alone lists them, <code>--release</code> takes one off:</p>
 <div class="cmd"><pre>uv run dj-track-analyzer hold --genre "part of the name"</pre></div>
 
 <h3 id="cli-cues">Cue points and beat grids</h3>
+<p class="ref-link">All options: <a href="commands/cues-grids-sync.html">Cues, grids and sync</a> reference</p>
 <p>Learning and listening work from a terminal; approving needs the page. Writing what you approved:</p>
 <div class="cmd"><pre>uv run dj-track-analyzer cues train</pre></div>
 <div class="cmd"><pre>uv run dj-track-analyzer cues scan</pre></div>
@@ -699,6 +715,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p><code>apply</code> needs Traktor closed; undo with <code>traktor --undo</code>. Works the same with Rekordbox (grid fixes rewrite its analysis file; tracks with tempo changes are listed, not moved).</p>
 
 <h3 id="cli-sync">Sync everything, and fixing one track by hand</h3>
+<p class="ref-link">All options: <a href="commands/cues-grids-sync.html#sync">Cues, grids and sync</a> and <a href="commands/genres.html#edit">Genres and tags</a> reference</p>
 <div class="cmd"><pre>uv run dj-track-analyzer sync --dry-run</pre></div>
 <div class="cmd"><pre>uv run dj-track-analyzer sync</pre></div>
 <div class="cmd"><pre>uv run dj-track-analyzer sync --only tracks,cues</pre></div>
@@ -710,6 +727,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Which genres are used after <code>train</code>: <code>train --use starter</code> (built-in only), <code>--use both</code> (yours where one fits), or <code>--use mine</code> (yours on every track).</p>
 
 <h3 id="cli-hype">Finding hype tracks</h3>
+<p class="ref-link">All options: <a href="commands/hype-sets.html#hype">Hype, sets and crates</a> reference</p>
 <ul>
   <li><b>Most hype first</b> (add <code>--least</code> for the chill end):
     <div class="cmd"><pre>uv run dj-track-analyzer hype</pre></div></li>
@@ -723,6 +741,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-sets">Planning a set and making crates</h3>
+<p class="ref-link">All options: <a href="commands/hype-sets.html#set">Hype, sets and crates</a> reference</p>
 <ul>
   <li><b>A warm-up set of 20 tracks:</b> the table shows each slot's aim (colour/hype), the track picked for it, its key (✗ where it doesn't mix with the track before) and the set's length if every track played in full. Nothing is written.
     <div class="cmd"><pre>uv run dj-track-analyzer set</pre></div></li>
@@ -744,6 +763,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-genres">Genres for Traktor and Navidrome</h3>
+<p class="ref-link">All options: <a href="commands/genres.html">Genres and tags</a> reference</p>
 <ol>
   <li>Analyse new or changed tracks:
     <div class="cmd"><pre>uv run dj-track-analyzer scan --traktor</pre></div></li>
@@ -762,6 +782,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-tempo">Hearing my catalogue at my play tempo</h3>
+<p class="ref-link">All options: <a href="commands/tempo.html">Tempo view</a> reference</p>
 <p>If you play a set at one tempo with key lock, this shows what the models hear there. Every track is stretched to that tempo (pitch kept) and analysed again for genre, moods, colour and hype. Your normal results are never touched.</p>
 <p><b>Any tempo works.</b> The default is 145. Add <code>--bpm 140</code> (or any tempo) to <code>scan</code>, <code>report</code>, <code>export</code>, <code>nml</code>, <code>refresh</code> and <code>load</code>; each tempo is its own view in <code>data/at-&lt;bpm&gt;/</code>. Only one can be loaded at a time, and <code>native</code> switches back whichever one is. The steps below use the default.</p>
 <ol>
@@ -794,6 +815,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-one-track">One track, and recorded mixes</h3>
+<p class="ref-link">All options: <a href="commands/library.html#analyze">Library and analysis</a> and <a href="commands/mixes.html">Mixes and clips</a> reference</p>
 <div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/track.mp3"</pre></div>
 <p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Windows: Shift + right-click the file → <i>Copy as path</i>. On Linux, drag the file into the terminal window. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
 <p id="cli-mix"><b>Checking a recorded mix against what you played:</b> add <code>--tracklist</code> to a Traktor recording. It finds that session's history file, and places each track in the recording. Per track it shows the key Traktor has against the key heard, the tempo you played it at and whether key lock was on. It names the mix by how it sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view, so scan the tracks first. With <code>tempo scan</code> at about the tempo you played, it also lists what your mixing pushed up or down. For a recording Traktor didn't name, add <code>--start 22:00:00</code> (when it began). When there's no history to check against, as with another DJ app's recording, the mix is still analysed, without the per-track check, and the page and summary say why.</p>
@@ -801,6 +823,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 
 <h3 id="cli-update">Updating the app</h3>
+<p class="ref-link">All options: <a href="commands/app.html#update">The app itself</a> reference</p>
 <ol>
   <li>See what's new, then install it (<code>--dry-run</code> first shows what would change; <code>--undo</code> goes back to the version before):
     <div class="cmd"><pre>uv run dj-track-analyzer update --check</pre></div>
@@ -822,48 +845,48 @@ li > figure.shot { margin: 12px 0 4px; }
 <div class="table-wrap"><table id="cmd-table">
 <thead><tr><th>Command</th><th>What it does</th><th>Changes</th></tr></thead>
 <tbody>
-<tr><td><code>setup</code></td><td>Downloads or checks the models</td><td>Model files only</td></tr>
-<tr><td><code>analyze &lt;file&gt;</code></td><td>Full analysis of one track, or a timeline for a mix over 12 min</td><td>Nothing</td></tr>
-<tr><td><code>scan --traktor</code></td><td>Analyses every track in your Traktor collection that's new or changed</td><td>App database + CSV</td></tr>
-<tr><td><code>scan &lt;folder&gt;</code></td><td>The same for a folder (both can be combined)</td><td>App database + CSV</td></tr>
-<tr><td><code>stats</code></td><td>Summary of the scanned collection</td><td>Nothing</td></tr>
-<tr><td><code>export [file]</code></td><td>Rewrites the CSV (default <code>data/collection.csv</code>)</td><td>CSV</td></tr>
-<tr><td><code>tag</code></td><td>Writes the genre (optionally BPM/key) into the audio files' tags</td><td class="changes">Your files<br><small>undo: <code>untag</code></small></td></tr>
-<tr><td><code>untag</code></td><td>Puts back the tags files had before <code>tag</code></td><td class="changes">Your files</td></tr>
-<tr><td><code>regenre</code></td><td>Genres of every scanned track again from the saved analysis, after editing dj_genres.json (seconds)</td><td>App database + CSV</td></tr>
-<tr><td><code>keys</code></td><td>The key model's key for tracks scanned before it came in, and how it compares with Essentia's and Traktor's (<code>--rescan</code>, <code>--workers</code>, <code>--show 20</code>, <code>--json</code>)</td><td>App database</td></tr>
-<tr><td><code>traktor</code></td><td>Genres, colours for uncoloured tracks, and the genre Smartlists into Traktor</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
-<tr><td><code>colors train</code></td><td>Learns your colour scale from your coloured tracks</td><td>App files only</td></tr>
-<tr><td><code>colors review</code></td><td>Tracks whose sound disagrees most with the colour you gave them</td><td>Nothing; with <code>--apply</code>: <span class="changes">Traktor</span></td></tr>
-<tr><td><code>colors explain</code></td><td>What each colour means: sound, playlists, sets, artists</td><td>Nothing</td></tr>
-<tr><td><code>colors apply</code></td><td>Analyses new Traktor tracks and colours the uncoloured ones</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
-<tr><td><code>colors guessed</code></td><td>Colours the app guessed into Traktor that nobody has checked; <code>--accept TEXT</code> or <code>all</code>: they're right, learn from them</td><td>Nothing; with <code>--accept</code>: app database</td></tr>
-<tr><td><code>hype</code></td><td>Lists tracks by hype (1–10), with filters</td><td>App database</td></tr>
-<tr><td><code>hype --traktor</code></td><td>Writes "Hype NN" into Comment, after your own text there</td><td class="changes">Traktor<br><small>undo: <code>hype --traktor --remove</code></small></td></tr>
-<tr><td><code>set</code></td><td>Plans a set along an arc of colour and hype, with keys that mix</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>set --remove "&lt;name&gt;"</code></small></td></tr>
-<tr><td><code>crates</code></td><td>Warm-up, peak and closing crates from colour and hype</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>crates --remove</code></small></td></tr>
-<tr><td><code>tempo scan</code></td><td>Analyses every scanned track stretched to your play tempo (145 unless <code>--bpm</code>), key lock</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
-<tr><td><code>tempo report</code></td><td>What changes at the view tempo: genres, colours, hype</td><td>Nothing</td></tr>
-<tr><td><code>tempo export</code> / <code>tempo nml</code></td><td>The view as a spreadsheet / as a standalone collection.nml</td><td>Files in <code>at-&lt;bpm&gt;/</code></td></tr>
-<tr><td><code>tempo load</code></td><td>Switches Traktor's genres, colours, Comment, genre Smartlists and clock to the view; <code>--lexicon</code> does Lexicon too</td><td class="changes">Traktor<br><small>undo: <code>tempo native</code></small></td></tr>
-<tr><td><code>tempo native</code></td><td>Switches Traktor (and with <code>--lexicon</code>, Lexicon) back to your normal values</td><td class="changes">Traktor</td></tr>
-<tr><td><code>tempo refresh</code></td><td>Redoes the view's genres, colours and hype from its saved analysis (seconds)</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
-<tr><td><code>tempo status</code></td><td>Which view is loaded, and which views exist</td><td>Nothing</td></tr>
-<tr><td><code>styles</code></td><td>Lists the 400 Discogs style names and checks dj_genres.json</td><td>Nothing</td></tr>
-<tr><td><code>update</code></td><td>Installs the newest release, keeping your data folder (<code>--check</code>: only what's new; <code>--dry-run</code>; <code>--undo</code>: back to the version before). See <a href="#cli-update">Updating the app</a></td><td>The app's own files (backed up)</td></tr>
-<tr><td><code>train &lt;folder&gt;</code></td><td>Optional: teach your own genre names from example folders (the Setup tab's Learn your genres); <code>--by-tag</code> groups the folder's files by their own genre tags; <code>--traktor-playlist PLAYLIST</code> / <code>--traktor-genre GENRE</code> (repeat) learn from Traktor; <code>--use starter|both|mine</code> = Genres used</td><td>App files only</td></tr>
-<tr><td><code>serve</code></td><td>Runs the MCP server for LM Studio (<code>--http</code> for Open WebUI)</td><td>Nothing</td></tr>
-<tr><td><code>web</code></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
-<tr><td><code>cues train</code> / <code>cues scan</code> / <code>cues show</code></td><td>Learns where you put cues and loops; listens to your tracks bar by bar; suggestions for one track</td><td>App database and model file</td></tr>
-<tr><td><code>cues apply</code></td><td>Writes the cues and corrections you approved in the web page into free hot-cue slots</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
-<tr><td><code>grids check</code> / <code>grids show</code> / <code>grids apply</code></td><td>Checks that Traktor's beat grids sit on the kicks; one track's reading and its stem file; moves the grids you approved in the web page, with their cues</td><td class="changes">apply: Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
-<tr><td><code>hold</code></td><td>Lists the tracks whose genre or colour the writers leave alone; <code>--genre</code> / <code>--colour "name"</code> adds, with <code>--release</code> removes</td><td>The hold list only</td></tr>
-<tr><td><code>sync</code></td><td>Everything into your DJ app in one go: tracks, genres and colours, hype, approved cues and grid fixes, crates, samples (<code>--only</code> picks steps; <code>--copy</code> brings over what the other DJ app has)</td><td class="changes">Your DJ app<br><small>undo: <code>sync --undo</code></small></td></tr>
-<tr><td><code>edit</code></td><td>One track's colour, key, genre, hype or BPM by hand (<code>--clear</code> goes back to the analysis)</td><td class="changes">App database and your DJ app (not with <code>--no-traktor</code>)</td></tr>
-<tr><td><code>mixes</code></td><td>What your analysed recorded mixes add up to: keys, moods, the shape of your sets</td><td>Nothing</td></tr>
-<tr><td><code>clips</code></td><td>Previews of a mix's clip suggestions from the finished video, or the picked clips at full quality</td><td>New video files only</td></tr>
-<tr><td><code>clips describe</code></td><td>Clips someone else made, found in the mix by their sound and described for the posts (video time, track, LUFS, rise, energy, genre, moods)</td><td>Nothing (<code>--save</code>: the analysis' JSON)</td></tr>
-<tr><td><code>install rubberband</code></td><td>Installs Rubber Band for the tempo view where Homebrew isn't used (Windows)</td><td>Installs that tool</td></tr>
+<tr><td><a href="commands/library.html#setup"><code>setup</code></a></td><td>Downloads or checks the models</td><td>Model files only</td></tr>
+<tr><td><a href="commands/library.html#analyze"><code>analyze &lt;file&gt;</code></a></td><td>Full analysis of one track, or a timeline for a mix over 12 min</td><td>Nothing</td></tr>
+<tr><td><a href="commands/library.html#scan"><code>scan --traktor</code></a></td><td>Analyses every track in your Traktor collection that's new or changed</td><td>App database + CSV</td></tr>
+<tr><td><a href="commands/library.html#scan"><code>scan &lt;folder&gt;</code></a></td><td>The same for a folder (both can be combined)</td><td>App database + CSV</td></tr>
+<tr><td><a href="commands/library.html#stats"><code>stats</code></a></td><td>Summary of the scanned collection</td><td>Nothing</td></tr>
+<tr><td><a href="commands/library.html#export"><code>export [file]</code></a></td><td>Rewrites the CSV (default <code>data/collection.csv</code>)</td><td>CSV</td></tr>
+<tr><td><a href="commands/genres.html#tag"><code>tag</code></a></td><td>Writes the genre (optionally BPM/key) into the audio files' tags</td><td class="changes">Your files<br><small>undo: <code>untag</code></small></td></tr>
+<tr><td><a href="commands/genres.html#untag"><code>untag</code></a></td><td>Puts back the tags files had before <code>tag</code></td><td class="changes">Your files</td></tr>
+<tr><td><a href="commands/genres.html#regenre"><code>regenre</code></a></td><td>Genres of every scanned track again from the saved analysis, after editing dj_genres.json (seconds)</td><td>App database + CSV</td></tr>
+<tr><td><a href="commands/library.html#keys"><code>keys</code></a></td><td>The key model's key for tracks scanned before it came in, and how it compares with Essentia's and Traktor's (<code>--rescan</code>, <code>--workers</code>, <code>--show 20</code>, <code>--json</code>)</td><td>App database</td></tr>
+<tr><td><a href="commands/genres.html#traktor"><code>traktor</code></a></td><td>Genres, colours for uncoloured tracks, and the genre Smartlists into Traktor</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><a href="commands/colours.html#colors-train"><code>colors train</code></a></td><td>Learns your colour scale from your coloured tracks</td><td>App files only</td></tr>
+<tr><td><a href="commands/colours.html#colors-review"><code>colors review</code></a></td><td>Tracks whose sound disagrees most with the colour you gave them</td><td>Nothing; with <code>--apply</code>: <span class="changes">Traktor</span></td></tr>
+<tr><td><a href="commands/colours.html#colors-explain"><code>colors explain</code></a></td><td>What each colour means: sound, playlists, sets, artists</td><td>Nothing</td></tr>
+<tr><td><a href="commands/colours.html#colors-apply"><code>colors apply</code></a></td><td>Analyses new Traktor tracks and colours the uncoloured ones</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><a href="commands/colours.html#colors-guessed"><code>colors guessed</code></a></td><td>Colours the app guessed into Traktor that nobody has checked; <code>--accept TEXT</code> or <code>all</code>: they're right, learn from them</td><td>Nothing; with <code>--accept</code>: app database</td></tr>
+<tr><td><a href="commands/hype-sets.html#hype"><code>hype</code></a></td><td>Lists tracks by hype (1–10), with filters</td><td>App database</td></tr>
+<tr><td><a href="commands/hype-sets.html#hype"><code>hype --traktor</code></a></td><td>Writes "Hype NN" into Comment, after your own text there</td><td class="changes">Traktor<br><small>undo: <code>hype --traktor --remove</code></small></td></tr>
+<tr><td><a href="commands/hype-sets.html#set"><code>set</code></a></td><td>Plans a set along an arc of colour and hype, with keys that mix</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>set --remove "&lt;name&gt;"</code></small></td></tr>
+<tr><td><a href="commands/hype-sets.html#crates"><code>crates</code></a></td><td>Warm-up, peak and closing crates from colour and hype</td><td>Nothing; with <code>--traktor</code>: <span class="changes">Traktor</span><br><small>undo: <code>crates --remove</code></small></td></tr>
+<tr><td><a href="commands/tempo.html#tempo-scan"><code>tempo scan</code></a></td><td>Analyses every scanned track stretched to your play tempo (145 unless <code>--bpm</code>), key lock</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
+<tr><td><a href="commands/tempo.html#tempo-report"><code>tempo report</code></a></td><td>What changes at the view tempo: genres, colours, hype</td><td>Nothing</td></tr>
+<tr><td><a href="commands/tempo.html#tempo-export"><code>tempo export</code></a> / <a href="commands/tempo.html#tempo-nml"><code>tempo nml</code></a></td><td>The view as a spreadsheet / as a standalone collection.nml</td><td>Files in <code>at-&lt;bpm&gt;/</code></td></tr>
+<tr><td><a href="commands/tempo.html#tempo-load"><code>tempo load</code></a></td><td>Switches Traktor's genres, colours, Comment, genre Smartlists and clock to the view; <code>--lexicon</code> does Lexicon too</td><td class="changes">Traktor<br><small>undo: <code>tempo native</code></small></td></tr>
+<tr><td><a href="commands/tempo.html#tempo-native"><code>tempo native</code></a></td><td>Switches Traktor (and with <code>--lexicon</code>, Lexicon) back to your normal values</td><td class="changes">Traktor</td></tr>
+<tr><td><a href="commands/tempo.html#tempo-refresh"><code>tempo refresh</code></a></td><td>Redoes the view's genres, colours and hype from its saved analysis (seconds)</td><td>Its own data in <code>at-&lt;bpm&gt;/</code></td></tr>
+<tr><td><a href="commands/tempo.html#tempo-status"><code>tempo status</code></a></td><td>Which view is loaded, and which views exist</td><td>Nothing</td></tr>
+<tr><td><a href="commands/library.html#styles"><code>styles</code></a></td><td>Lists the 400 Discogs style names and checks dj_genres.json</td><td>Nothing</td></tr>
+<tr><td><a href="commands/app.html#update"><code>update</code></a></td><td>Installs the newest release, keeping your data folder (<code>--check</code>: only what's new; <code>--dry-run</code>; <code>--undo</code>: back to the version before). See <a href="#cli-update">Updating the app</a></td><td>The app's own files (backed up)</td></tr>
+<tr><td><a href="commands/genres.html#train"><code>train &lt;folder&gt;</code></a></td><td>Optional: teach your own genre names from example folders (the Setup tab's Learn your genres); <code>--by-tag</code> groups the folder's files by their own genre tags; <code>--traktor-playlist PLAYLIST</code> / <code>--traktor-genre GENRE</code> (repeat) learn from Traktor; <code>--use starter|both|mine</code> = Genres used</td><td>App files only</td></tr>
+<tr><td><a href="commands/app.html#serve"><code>serve</code></a></td><td>Runs the MCP server for LM Studio (<code>--http</code> for Open WebUI)</td><td>Nothing</td></tr>
+<tr><td><a href="commands/app.html#web"><code>web</code></a></td><td>Opens everything in a web page on this computer: collection, hype, colours, tempo view, saved mix analyses. Hold genres and colours, approve cues, save loops, and on the Setup tab run the other commands with buttons (writers preview first)</td><td>Only what you press: holds, cue approvals and samples; the Setup tab's writers change what their command changes</td></tr>
+<tr><td><a href="commands/cues-grids-sync.html#cues-train"><code>cues train</code></a> / <a href="commands/cues-grids-sync.html#cues-scan"><code>cues scan</code></a> / <a href="commands/cues-grids-sync.html#cues-show"><code>cues show</code></a></td><td>Learns where you put cues and loops; listens to your tracks bar by bar; suggestions for one track</td><td>App database and model file</td></tr>
+<tr><td><a href="commands/cues-grids-sync.html#cues-apply"><code>cues apply</code></a></td><td>Writes the cues and corrections you approved in the web page into free hot-cue slots</td><td class="changes">Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><a href="commands/cues-grids-sync.html#grids-check"><code>grids check</code></a> / <a href="commands/cues-grids-sync.html#grids-show"><code>grids show</code></a> / <a href="commands/cues-grids-sync.html#grids-apply"><code>grids apply</code></a></td><td>Checks that Traktor's beat grids sit on the kicks; one track's reading and its stem file; moves the grids you approved in the web page, with their cues</td><td class="changes">apply: Traktor<br><small>undo: <code>traktor --undo</code></small></td></tr>
+<tr><td><a href="commands/genres.html#hold"><code>hold</code></a></td><td>Lists the tracks whose genre or colour the writers leave alone; <code>--genre</code> / <code>--colour "name"</code> adds, with <code>--release</code> removes</td><td>The hold list only</td></tr>
+<tr><td><a href="commands/cues-grids-sync.html#sync"><code>sync</code></a></td><td>Everything into your DJ app in one go: tracks, genres and colours, hype, approved cues and grid fixes, crates, samples (<code>--only</code> picks steps; <code>--copy</code> brings over what the other DJ app has)</td><td class="changes">Your DJ app<br><small>undo: <code>sync --undo</code></small></td></tr>
+<tr><td><a href="commands/genres.html#edit"><code>edit</code></a></td><td>One track's colour, key, genre, hype or BPM by hand (<code>--clear</code> goes back to the analysis)</td><td class="changes">App database and your DJ app (not with <code>--no-traktor</code>)</td></tr>
+<tr><td><a href="commands/mixes.html#mixes"><code>mixes</code></a></td><td>What your analysed recorded mixes add up to: keys, moods, the shape of your sets</td><td>Nothing</td></tr>
+<tr><td><a href="commands/mixes.html#clips"><code>clips</code></a></td><td>Previews of a mix's clip suggestions from the finished video, or the picked clips at full quality</td><td>New video files only</td></tr>
+<tr><td><a href="commands/mixes.html#clips-describe"><code>clips describe</code></a></td><td>Clips someone else made, found in the mix by their sound and described for the posts (video time, track, LUFS, rise, energy, genre, moods)</td><td>Nothing (<code>--save</code>: the analysis' JSON)</td></tr>
+<tr><td><a href="commands/tempo.html#install"><code>install rubberband</code></a></td><td>Installs Rubber Band for the tempo view where Homebrew isn't used (Windows)</td><td>Installs that tool</td></tr>
 </tbody></table></div>
 
 <h3 id="options">Useful options</h3>
@@ -1066,7 +1089,7 @@ wireFilter('cmd-filter', 'cmd-table');
 wireFilter('opt-filter', 'opt-table');
 
 // Highlight the current section in the contents
-var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a[href^="#"]'));
 var targets = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
 function onScroll() {
   var current = 0;
