@@ -42,6 +42,22 @@
   }
   if (links.length) { document.addEventListener('scroll', onScroll, { passive: true }); onScroll(); }
 
+  // Options table pre-filtered from a search result (page.html?opt=--flag#all-options)
+  var opt = new URLSearchParams(location.search).get('opt');
+  var optFilter = document.querySelector('input.filter[data-table="opt-table"]');
+  if (opt && optFilter) { optFilter.value = opt; optFilter.dispatchEvent(new Event('input')); }
+
+  // Search box at the top of the contents; search-index.js then search.js (kept in order)
+  var brand = document.querySelector('nav.toc .brand');
+  if (brand) {
+    var box = document.createElement('div');
+    box.setAttribute('data-ref-search', '');
+    brand.insertAdjacentElement('afterend', box);
+    ['search-index.js', 'search.js'].forEach(function (src) {
+      var sc = document.createElement('script'); sc.src = src; sc.async = false; document.body.appendChild(sc);
+    });
+  }
+
   // Light/dark toggle, remembered per browser (same key as the guide)
   var root = document.documentElement;
   try { var saved = localStorage.getItem('guide-theme'); if (saved) root.setAttribute('data-theme', saved); } catch (e) {}
