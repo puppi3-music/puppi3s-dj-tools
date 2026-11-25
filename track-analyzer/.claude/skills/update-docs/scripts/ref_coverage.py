@@ -54,4 +54,11 @@ for page, names in AREAS.items():
             o = max(a.option_strings, key=len)
             if not re.search(re.escape(o) + r"(?![\w-])", codes + extra):
                 missing += 1; print(f"{page}: {name} {o} not in a <code>")
+# every page's sidebar lists the area pages in the same order (the order of AREAS)
+order = [p for p in AREAS if (docs / p).exists()]
+for f in sorted(docs.glob("*.html")):
+    nav = re.search(r'<nav class="toc".*?</nav>', f.read_text(encoding="utf-8"), re.S)
+    got = [p for p in re.findall(r'<a href="([a-z-]+\.html)"', nav.group(0) if nav else "") if p in AREAS]
+    if got != order:
+        missing += 1; print(f"{f.name}: sidebar order {' '.join(got)} (want {' '.join(order)})")
 print("missing", missing)

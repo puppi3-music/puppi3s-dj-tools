@@ -128,6 +128,12 @@ def main() -> None:
         files = [f for f in re.findall(r"\]\(([^)#:]+)\)", text) if not ((ROOT / d).parent / f).exists()]
         if files:
             print(f"  {d} missing files: {files}")
+    # example folder names carry the current version (puppi3s-track-analyzer-<version>)
+    ver = re.search(r'^version = "([^"]+)"', (ROOT / "pyproject.toml").read_text(), re.M).group(1)
+    for d in ["README.md", "docs/GUIDE.html", "docs/WINDOWS.md", *sorted(str(p.relative_to(ROOT)) for p in (ROOT / "docs/commands").glob("*.html"))]:
+        old = sorted({v for v in re.findall(r"puppi3s-track-analyzer-(\d+\.\d+\.\d+)", (ROOT / d).read_text(encoding="utf-8")) if v != ver})
+        if old:
+            print(f"  {d}: example version {', '.join(old)} (now {ver})")
 
 
 if __name__ == "__main__":

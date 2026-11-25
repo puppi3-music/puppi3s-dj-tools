@@ -250,6 +250,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <!-- ───────────────────────────── -->
 <h2 id="tasks">Everyday tasks</h2>
+<p>One section per job, each starting from the tab you need. The same jobs as terminal commands are under <a href="#cli-tasks">Tasks from a terminal</a>.</p>
 
 <h3 id="new-tracks">I bought new tracks</h3>
 <p>Gives new tracks a colour, and optionally a genre and hype. Needs a learned colour scale (<a href="#first">Setup</a>).</p>
@@ -304,6 +305,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ol>
 
 <h3 id="check-colours">Checking my colours for mistakes</h3>
+<p>Finds tracks whose sound disagrees with the colour you gave them. Needs a learned colour scale (<a href="#first">Setup</a>).</p>
 <ol>
   <li>On the Colours tab, <b>Tracks that disagree with their colour</b> lists your colour (<b>Yours</b>) next to what the track <b>Sounds like</b>. It also shows how many colours apart they are (<b>Gap</b>) and how sure the model is (<b>Confidence</b>). The model judged each track without seeing its colour. Click a row to open the track's panel.</li>
   <li>Listen to the tracks at the top in Traktor, and recolour the ones you agree are off.</li>
@@ -378,6 +380,7 @@ li > figure.shot { margin: 12px 0 4px; }
 </ol>
 
 <h3 id="hype">Finding hype tracks</h3>
+<p>Needs scanned tracks: hype is worked out once 20 are scanned (<a href="#first">Setup</a>).</p>
 <ul>
   <li><b>Most hype first:</b> the Hype tab. Tick <b>least hype first</b> for the chill end.</li>
   <li><b>For the next track in a set:</b> type the BPM (within 4%, change it beside the box) and a key in <b>Mixes with key</b>, e.g. <code>8A</code>. Pick a colour to stay within one.</li>
@@ -400,7 +403,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>Quit Traktor, then on the Setup tab <b>Genres, colours and Smartlists in Traktor → Preview…</b> and <b>Write it</b>. It sets the genres, gives uncoloured tracks their predicted colour and builds a <b>Genres (Track Analyzer)</b> Smartlist folder. Two ticks change what it does:<ul><li><b>colours too</b>: untick it to leave colours alone</li><li><b>only in Traktor</b>: tick it if you skipped the step above; the genres go straight into Traktor and your files keep their own tags</li></ul><b>Undo…</b> on the <b>Undo the last change to Traktor</b> row takes it back.</li>
 </ol>
 <p>Edited the genre rules (<code>dj_genres.json</code>)? Working the genres out again from the saved analysis is a terminal step for now: <a href="#cli-genres">regenre</a>.</p>
-<div class="note"><p><b>The built-in genres don't know hyperpop.</b> The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). None of the DJ genres is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest. It says nothing about the music. Out of the box, a hyperpop track gets the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre. To give one track its own name, open it, press <b>✎ Edit</b> and type <b>Hyperpop</b> as the genre; it's kept from then on, through rescans and in Traktor. For your whole collection, teach it hyperpop from example tracks: <a href="#my-genres">Your own genres</a>.</p></div>
+<div class="note"><p><b>The built-in genres don't know hyperpop.</b> The genre models learned a fixed list of Discogs styles, taken when they were trained, and Hyperpop isn't on it (Discogs has the style now, but the models never saw it). None of the DJ genres is Hyperpop. The same goes for scenes close to it, like digicore and glitchcore. Trans and queer artists built hyperpop, and many trans listeners call it home, so the gap hits them hardest. It says nothing about the music.</p><p>Out of the box, a hyperpop track gets the nearest styles the models do know (usually Glitch, Bubblegum, Dance-pop, Synth-pop, Experimental or Trap) and may come out as IDM or a pop genre.</p><p>To give one track its own name, open it, press <b>✎ Edit</b> and type <b>Hyperpop</b> as the genre; it's kept from then on, through rescans and in Traktor. For your whole collection, teach it hyperpop from example tracks: <a href="#my-genres">Your own genres</a>.</p></div>
 
 <h3 id="my-genres">Your own genres</h3>
 <p>For genres the built-in ones don't have (Hyperpop, Afro House, Big Room, …) or your own way of splitting them.</p>
@@ -418,16 +421,16 @@ li > figure.shot { margin: 12px 0 4px; }
 <ol>
   <li>Once: install <b>rubberband</b> (the time-stretcher) under Extra tools on the Setup tab.</li>
   <li>Scan your music normally first, then set the <b>BPM</b> of the Tempo view step (145 by default; any tempo works) and press <b>Scan tempo view</b>. About an hour the first time. Each tempo is its own view; for one already scanned the button says <b>Scan new tracks</b>.</li>
-  <li>The <b>Tempo view</b> tab shows what changes. It lists genres at own tempo next to genres at the view tempo, the most common changes, your colours at that tempo, the tracks that turn hardest (<b>Turn hardest</b>) or stay or turn prettiest (<b>Stay prettiest / turn prettier</b>), and the tracks with the most hype there and the biggest hype risers.</li>
+  <li>The <b>Tempo view</b> tab shows what changes. It lists:<ul><li>genres at own tempo next to genres at the view tempo, and the most common changes</li><li>your colours at that tempo</li><li>the tracks that turn hardest (<b>Turn hardest</b>) or stay or turn prettiest (<b>Stay prettiest / turn prettier</b>)</li><li>the tracks with the most hype there, and the biggest hype risers</li></ul></li>
   <li>Browse it: set <b>This page shows</b> to <b>all tracks at 145 BPM</b>, and the Overview, Tracks and Hype tabs show the view. In a track's panel, the <b>at 145 BPM</b> tick box (on while the page shows the view) plays the track stretched, as the view hears it.</li>
   <li>Optional, switch Traktor to the view: quit Traktor, <b>Load into Traktor…</b> (Tempo view or Setup tab), preview, write. Traktor then shows the genres heard at that tempo, <i>your</i> colour moved by how far the model thinks the track shifts, and the view's hype in Comment. The genre Smartlist folder becomes <b>Genres @145 (Track Analyzer)</b>. The label at the top of the page shows it's loaded.</li>
   <li>Switch back with <b>Switch Traktor back to normal…</b> on the Tempo view tab (or <b>Switch Traktor back…</b> on Setup), Traktor closed. Cue points, plays, History and new tracks from meanwhile all stay; a genre, colour or Comment you changed yourself meanwhile is kept.</li>
   <li>Lexicon too: open Lexicon, turn on Settings → Integrations → <b>Local API</b> once, and tick <b>Lexicon too</b> on the Setup tab before loading. Its genre, colour, comment and Energy switch to the view. While it's loaded, don't sync Lexicon → Traktor; syncing to your USB is fine (sync again after switching back).</li>
 </ol>
-<div class="note"><p><b>Keep in mind:</b> the genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so stretched to 145 a rolling house track sounds to them like the trance and psytrance they <i>did</i> hear at that tempo. Read the view as how the models hear the sped-up track, not as facts. Psytrance, the worst case, is held back: in the view, psy only counts as much as the track already had at its own tempo. Rubber Band also isn't Traktor's own stretcher, so it sounds close but not identical. While a view is loaded in Traktor, the other Traktor writers and colour training refuse to run; switch back first.</p></div>
+<div class="note"><p><b>Keep in mind:</b> the genre, mood and instrument models learned from millions of tracks, each at the tempo it was released at. Almost no house was released at 145, so stretched to 145 a rolling house track sounds to them like the trance and psytrance they <i>did</i> hear at that tempo. Read the view as how the models hear the sped-up track, not as facts.</p><p>Psytrance, the worst case, is held back: in the view, psy only counts as much as the track already had at its own tempo. Rubber Band also isn't Traktor's own stretcher, so it sounds close but not identical. While a view is loaded in Traktor, the other Traktor writers and colour training refuse to run; switch back first.</p></div>
 
 <h3 id="mixes">My recorded mixes</h3>
-<p>The Mixes tab shows, for a recorded set:</p><ul><li>its genre and mood</li><li>a timeline of the set: each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness. Click one of the mix's genres, styles or moods to light up the stretches and tracks where it is</li><li>a check of the tracklist against Traktor's history: key heard vs Traktor's, the tempo each track was played at, key lock</li><li>clip ideas</li><li>standalone pieces: long blends that work as their own track, to post on SoundCloud (below)</li><li>the clips your editor made, described for the posts (<a href="#editor-clips">below</a>)</li></ul>
+<p>The Mixes tab shows, for a recorded set:</p><ul><li>its genre and mood</li><li>a timeline of the set: each stretch coloured and sized by the hype and Traktor colour of the track you played, or by loudness. Click one of the mix's genres, styles or moods to light up the stretches and tracks where it is</li><li>a check of the tracklist against Traktor's history: key heard vs Traktor's, the tempo each track was played at, key lock</li><li>clip ideas</li><li>possible sub-mixes (standalone pieces): long blends that work as their own track, to post on SoundCloud (below)</li><li>the clips your editor made, described for the posts (<a href="#editor-clips">below</a>)</li></ul>
 <ol>
   <li>On the Mixes tab, press <b>Analyse a mix…</b> and tick one or more of Traktor's recordings (<i>tick all not analysed yet</i> picks the new ones), or drop any other mix file on it. A recording whose name doesn't carry its start time (Traktor's do) can't be matched to Traktor's history: give it under <b>Started at</b> when you analyse that one mix.</li>
   <li>They run in the background one after another; the bar at the top says how many are still to go, and whether one failed. <b>Stop all</b> stops the one running and the rest.</li>
@@ -436,10 +439,16 @@ li > figure.shot { margin: 12px 0 4px; }
 </ol>
 <p><b>Possible sub-mixes (standalone pieces).</b> Two ticks in <b>Analyse a mix…</b>:</p>
 <ul>
-  <li><b>Find possible sub-mixes</b> (on): looks for changes where two or more tracks (the two of the change, and the track before or after them) play near their own level for 2:30 or more: long enough to release as a track of its own. Blends of 64 bars or more (counted in whole phrases, about 1:46 at 145 BPM) that fall short of that are listed under <b>Short edits</b>, a moment from the set to post as one. Near means no more than 6 dB under its own level, or lower (down to 16 dB under) but steady, its level changing by 1 dB or less from bar to bar, as a track played bass-down or filtered does; a track that isn't playing never reads steady like that. A track with a stem file is measured per stem, its stems weighted by how loud each is there, so a live stem cut or bass swap lowers it by that stem's share instead of reading as a fade.</li>
+  <li><b>Find possible sub-mixes</b> (on): looks for changes where two or more tracks play near their own level for 2:30 or more: long enough to release as a track of its own. The tracks counted are the two of the change and the track before or after them.<ul><li><b>Short edits</b>: blends of 64 bars or more (counted in whole phrases, about 1:46 at 145 BPM) that fall short of 2:30. A moment from the set to post as one.</li><li><b>Near its own level</b>: no more than 6 dB under it. Lower (down to 16 dB under) also counts if it's steady, changing by 1 dB or less from bar to bar, as a track played bass-down or filtered does. A track that isn't playing never reads steady like that.</li><li><b>Tracks with a stem file</b> are measured per stem, each weighted by how loud it is there. A live stem cut or bass swap then lowers the level by that stem's share instead of reading as a fade.</li></ul></li>
   <li><b>Separate tracks without a stem file</b> (off): splits those tracks into stems over the stretch where they play. Slow, a few minutes per track. Without it they're measured whole.</li>
 </ul>
-<p>The mix then has a <b>Possible sub-mixes</b> panel after the video clip suggestions. Each piece shows its span, why it qualifies and a strip of each track's level per bar (the tracks before and after the change dashed) (the run shaded). <b>▶ Preview</b> plays your recording from 4 bars before the piece and stops at its end; <b>Run start</b>, <b>Middle</b> and <b>Last 8 bars</b> jump into it, <b>After the end</b> plays on past it, and a click on the strip plays from there. The bars sit on the incoming track's beat grid, and each piece starts widened to whole 16-bar phrases of it. Pieces are also marked green under the timeline: click one to go to it. Pick a <b>Name</b> (Live Mashup, Live Rework, …), paste the <b>Full set link</b> and press <b>Copy</b> for the title and credits. When no change qualifies, the panel says so and shows the closest one: no piece is a valid answer.</p>
+<p>The mix then has a <b>Possible sub-mixes</b> panel after the video clip suggestions. Each piece shows its span, why it qualifies and a strip of each track's level per bar (dashed: the tracks before and after the change; shaded: the run). The bars sit on the incoming track's beat grid, and each piece starts widened to whole 16-bar phrases of it.</p>
+<ul>
+  <li><b>Listen:</b> <b>▶ Preview</b> plays your recording from 4 bars before the piece and stops at its end. <b>Run start</b>, <b>Middle</b> and <b>Last 8 bars</b> jump into it, <b>After the end</b> plays on past it, and a click on the strip plays from there.</li>
+  <li><b>Find:</b> pieces are also marked green under the timeline; click one to go to it.</li>
+  <li><b>Post:</b> pick a <b>Name</b> (Live Mashup, Live Rework, …), paste the <b>Full set link</b> and press <b>Copy</b> for the title and credits.</li>
+</ul>
+<p>When no change qualifies, the panel says so and shows the closest one: no piece is a valid answer.</p>
 <p>The same from a terminal: <a href="#cli-mix">recorded mixes</a>.</p>
 <p id="editor-clips"><b>Clips someone else made:</b> when an editor cuts the clips from the finished video, open the mix and use the <b>Your editor's clips</b> card:</p>
 <ol>
@@ -478,10 +487,11 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>If the release needs something done once (work out the genres again, analyse everything again, new models), the card lists it under <b>After updating to version …</b>, each with a <b>Run</b> button. Press <b>Done, hide this</b> when you've done them.</li>
   <li>Something wrong with the new version? <b>Go back to …</b> on the same card installs the version you had (the app's files were backed up before the update).</li>
 </ol>
-<p class="small">The page asks GitHub for the newest release at most every 6 hours, and nothing else is sent; untick <b>check when the page opens</b> to turn that off. <b>Updates: Stable / Dev</b>: Stable installs only finished releases; Dev installs the newest work in progress (rebuilt after every change, may have bugs). Back on Stable you keep the dev build until the next release is out, nothing goes back. A clone is updated with <code>git pull</code> (only on <code>main</code> without changes of your own); in Docker, build the image again. <i>Updating from 1.0.1 on Windows:</i> after that one update, close the launcher's window and double-click <code>Start Puppi3's Track Analyzer.bat</code> again; later updates restart by themselves.</p>
+<p class="small">The page asks GitHub for the newest release at most every 6 hours, and nothing else is sent; untick <b>check when the page opens</b> to turn that off.</p><p class="small"><b>Updates: Stable / Dev</b>: Stable installs only finished releases; Dev installs the newest work in progress (rebuilt after every change, may have bugs). Back on Stable you keep the dev build until the next release is out, nothing goes back. A clone is updated with <code>git pull</code> (only on <code>main</code> without changes of your own); in Docker, build the image again. <i>Updating from 1.0.1 on Windows:</i> after that one update, close the launcher's window and double-click <code>Start Puppi3's Track Analyzer.bat</code> again; later updates restart by themselves.</p>
 
 <!-- ───────────────────────────── -->
 <h2 id="reading">Reading the page</h2>
+<p>What the numbers and marks on the page mean.</p>
 <ul>
   <li><b>Colours:</b> a <b>?</b> after a colour means it's predicted, not set by you. <b>Confidence</b> is how often tracks placed at that spot really had that colour, on tracks the model hadn't seen. Most are 20–30%, because neighbouring colours are close to a coin flip from the sound alone. The ends of the scale are clearly apart. The colours shown beside it (like Yellow–Blue) are that colour and its neighbours; the track's panel also says how sure the model is that the track is somewhere in that range.</li>
   <li><b>Hype</b> is 1–10 within your own collection: 10 = more hype than 90% of your tracks. Half the euphoric "rave" sound (trance, hard trance, hands-up, hardstyle rather than deep or tech house), half energy (loud, party, aggressive, not relaxed). It can shift a step when you add many tracks.</li>
@@ -508,7 +518,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <h3 id="how-listen">1. Listening to each track</h3>
 <p><code>scan</code> decodes every file once and measures it with the methods of <a href="https://essentia.upf.edu/">Essentia</a>, an open-source audio library (ported to Rust, so they run faster and on every platform):</p>
 <ul>
-  <li><b>BPM and key</b>: BPM in whole numbers, key shown as Camelot. The key comes from a small neural network trained on electronic music (<a href="https://github.com/a1ex90/MusicalKeyCNN">MusicalKeyCNN</a> by Alexander Sommer, MIT License). It agreed with Traktor more often than Essentia's key-finder (75% vs 58% of a test collection). Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beatgrid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
+  <li><b>BPM and key</b>: BPM in whole numbers, key shown as Camelot. The key comes from a small neural network trained on electronic music (<a href="https://github.com/a1ex90/MusicalKeyCNN">MusicalKeyCNN</a> by Alexander Sommer, MIT License). It agreed with Traktor more often than Essentia's key-finder (75% vs 58% of a test collection). Where Traktor has its own BPM and key, those are used for searching and mixing; ours fill the gaps. Traktor's BPM is never changed, and its beat grid only moves when you approve a fix (<a href="#grids">beat grids</a>).</li>
   <li><b>Loudness</b> and how the energy rises and falls through the track.</li>
   <li><b>Style</b>: two AI models trained on Discogs (one hears 400 styles, the other 519) listen to the main, loudest part of the track and their opinions are blended. These models, and the mood and instrument ones below, are by the Music Technology Group of Universitat Pompeu Fabra (<a href="https://essentia.upf.edu/models/">Essentia's models</a>, <a href="https://creativecommons.org/licenses/by-nc-sa/4.0/">CC BY-NC-SA 4.0</a>: non-commercial use only).</li>
   <li><b>Mood, instruments and vocals</b>: smaller models on top say how aggressive, happy, party, relaxed or sad it sounds, which instruments they hear and whether there are vocals.</li>
@@ -531,7 +541,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Traktor keeps its own copy of track info in <code>collection.nml</code>. The app makes small text edits there rather than rewriting the file, so everything else stays byte-for-byte the same. It edits:</p>
 <ul>
   <li>genre, colour and key, and the Hype in the Comment</li>
-  <li>cue points and beat-grid fixes, only the ones you approve</li>
+  <li>cue points and beat grid fixes, only the ones you approve</li>
   <li>a Smartlist folder, and its own folders of set and crate playlists</li>
   <li>the tempo view's values while it's loaded</li>
 </ul>
@@ -540,6 +550,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <!-- ───────────────────────────── -->
 <h2 id="undo">Undo and safety</h2>
+<p>How to take back each kind of change, and what the app never does.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>If you…</th><th>Undo in the page</th><th>From a terminal</th><th>Notes</th></tr></thead>
 <tbody>
@@ -555,7 +566,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>What the app never does:</p>
 <ul>
   <li>change a colour you set yourself, unless you ask: <b>Recolour clear disagreements</b>, colours you mark on the Colours tab, <b>✎ Edit</b>, a copy from the other DJ app, or <code>--overwrite-colors</code> in a terminal (a tempo view only changes them until you switch back)</li>
-  <li>touch cue points or beatgrids you didn't approve a change to (a copy from the other DJ app only adds its hot cues into free slots), play counts or your own playlists</li>
+  <li>touch cue points or beat grids you didn't approve a change to (a copy from the other DJ app only adds its hot cues into free slots), play counts or your own playlists</li>
   <li>change your own text in Comment: hype is added after it and taken out again on its own</li>
   <li>write to your DJ app while it's running</li>
   <li>save a Traktor collection that wouldn't be valid XML</li>
@@ -594,6 +605,7 @@ li > figure.shot { margin: 12px 0 4px; }
 
 <!-- ───────────────────────────── -->
 <h2 id="trouble">When something goes wrong</h2>
+<p>Messages you may see, and what to do about each.</p>
 <div class="table-wrap"><table>
 <thead><tr><th>You see</th><th>What to do</th></tr></thead>
 <tbody>
@@ -622,7 +634,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <p>Every button in the page runs a command, shown while it runs, so you can do the same from a terminal (Terminal, or VS Code's). A few things are terminal-only for now:</p><ul><li>planning a set, and taking set or crate playlists out again</li><li>saving a tempo view as a spreadsheet or standalone collection (<code>tempo export</code>, <code>tempo nml</code>)</li><li>cutting clips from a mix's video (describing clips an editor made is on the page)</li><li>working out genres again or re-analysing everything outside an update (after an update, its card has a <b>Run</b> button for them)</li></ul>
 <ul>
   <li><b>Run every command from the project folder</b> in Terminal (or VS Code's terminal):
-    <div class="cmd"><pre>cd ~/Downloads/puppi3s-track-analyzer-1.2.3</pre></div> (the folder you unzipped, wherever you put it; in a clone, its <code>track-analyzer</code> folder). On Windows, use PowerShell or Command Prompt.</li>
+    <div class="cmd"><pre>cd ~/Downloads/puppi3s-track-analyzer-1.4.3</pre></div> (the folder you unzipped, wherever you put it; in a clone, its <code>track-analyzer</code> folder). On Windows, use PowerShell or Command Prompt.</li>
   <li><b>Every command starts with <code>uv run dj-track-analyzer</code></b>, for example <code>uv run dj-track-analyzer stats</code>. The copy buttons on this page copy the whole command.</li>
   <li><b>Try <code>--dry-run</code> first</b> on anything that changes files. It shows what would happen and changes nothing.</li>
   <li><b>To keep a copy of the output</b>, add <code>2>&amp;1 | tee logs/something.txt</code> to the end of a command. Handy when asking for help.</li>
@@ -803,7 +815,7 @@ li > figure.shot { margin: 12px 0 4px; }
     Traktor then shows, per track: the genres heard at the view tempo; <i>your</i> colour moved by how far the model thinks the track shifts (uncoloured tracks stay uncoloured); the view's hype in Comment. The <b>Genres (Track Analyzer)</b> folder is swapped for <b>Genres @145 (Track Analyzer)</b>, and the clock is set to the view tempo (tracks follow it only with Sync on and the clock as master).</li>
   <li>Switch back (Traktor closed). Cue points, plays, History and new tracks from while the view was loaded all stay. If you changed a genre, colour or Comment yourself in the meantime, your change is kept and listed under <code>kept</code>. The clock always goes back to your tempo.
     <div class="cmd"><pre>uv run dj-track-analyzer tempo native</pre></div></li>
-  <li>Optional, Lexicon too. Open Lexicon, turn on Settings → Integrations → <b>Local API</b> once, then add <code>--lexicon</code>. Lexicon's genre, colour, comment ("Hype NN" after your text) and Energy (the view's hype, 1–10) switch to the view. <code>native</code> puts Lexicon's own energy back, and a <b>Genres @145 (Track Analyzer)</b> smartlist folder appears. If Traktor already has the view, only Lexicon is switched. While it's loaded, don't sync Lexicon → Traktor or import from Traktor; syncing to your USB is fine (sync again after switching back).
+  <li>Optional, Lexicon too. Open Lexicon, turn on Settings → Integrations → <b>Local API</b> once, then add <code>--lexicon</code>. Lexicon's genre, colour, comment ("Hype NN" after your text) and Energy (the view's hype, 1–10) switch to the view. A <b>Genres @145 (Track Analyzer)</b> Smartlist folder appears there too; <code>native</code> takes it out and puts Lexicon's own energy back. If Traktor already has the view, only Lexicon is switched. While it's loaded, don't sync Lexicon → Traktor or import from Traktor; syncing to your USB is fine (sync again after switching back).
     <div class="cmd"><pre>uv run dj-track-analyzer tempo load --lexicon --dry-run</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer tempo load --lexicon</pre></div>
     <div class="cmd"><pre>uv run dj-track-analyzer tempo native --lexicon</pre></div></li>
@@ -819,7 +831,9 @@ li > figure.shot { margin: 12px 0 4px; }
 <p class="ref-link">All options: <a href="commands/library.html#analyze">Library and analysis</a> and <a href="commands/mixes.html">Mixes and clips</a> reference</p>
 <div class="cmd"><pre>uv run dj-track-analyzer analyze "/path/to/track.mp3"</pre></div>
 <p>To get the path: in Finder, hold <b>Option</b>, right-click the file and choose <b>Copy "…" as Pathname</b>. On Windows: Shift + right-click the file → <i>Copy as path</i>. On Linux, drag the file into the terminal window. Keep the quotes around it. Files over 12 minutes are treated as DJ mixes: they get a timeline in 2-minute steps and a readable summary after the JSON (<code>--segments 60</code> for 1-minute steps).</p>
-<p id="cli-mix"><b>Checking a recorded mix against what you played:</b> add <code>--tracklist</code> to a Traktor recording. It finds that session's history file, and places each track in the recording. Per track it shows the key Traktor has against the key heard, the tempo you played it at and whether key lock was on. It names the mix by how it sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view, so scan the tracks first. With <code>tempo scan</code> at about the tempo you played, it also lists what your mixing pushed up or down. For a recording Traktor didn't name, add <code>--start 22:00:00</code> (when it began). When there's no history to check against, as with another DJ app's recording, the mix is still analysed, without the per-track check, and the page and summary say why.</p>
+<p id="cli-mix"><b>Checking a recorded mix against what you played:</b> add <code>--tracklist</code> to a Traktor recording. It finds that session's history file, and places each track in the recording. Per track it shows the key Traktor has against the key heard, the tempo you played it at and whether key lock was on.</p>
+<p>It names the mix by how it sounds as played, with the speed-up and your mixing (stems, layers, effects) counted. Only the models' habit of calling almost any sped-up track psytrance is held back, as in the tempo view, so scan the tracks first. With <code>tempo scan</code> at about the tempo you played, it also lists what your mixing pushed up or down. </p>
+<p>For a recording Traktor didn't name, add <code>--start 22:00:00</code> (when it began). When there's no history to check against, as with another DJ app's recording, the mix is still analysed, without the per-track check, and the page and summary say why.</p>
 <p><b>Posting it as a video:</b> add <code>--chapters --offset 0:14</code> (how far into the finished video the first track starts: check it in the video itself) for YouTube chapters to paste into the description. Add <code>--highlights</code> for two suggested 40-second clips, in video times (<code>--highlights 5</code> for five, ranked). Then <code>clips &lt;analysis&gt;.json --video final.mp4</code> makes 720p previews of them to watch, ranked by the audio and by how much moves on screen, and <code>--pick 1 4</code> makes the ones you choose at full quality next to the video. When an editor made the clips, <code>clips describe &lt;analysis&gt;.json /path/to/clips</code> describes them for the posts (<a href="#editor-clips">as on the page</a>; <code>--at 2=41:20</code> places a clip whose sound isn't found).</p>
 
 
