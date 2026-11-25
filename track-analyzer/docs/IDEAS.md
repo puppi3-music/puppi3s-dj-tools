@@ -2,7 +2,7 @@
 
 What the app does today, ideas for what it could do next, and approaches that were tried and didn't help (so nobody retries them blindly). Suggestions welcome.
 
-Status: ✅ works · 🧪 partly tested · 💡 idea · ✗ tried, didn't help
+Status: ✅ works · 🧪 partly tested · 🛠️ partly built · 💡 idea · ✗ tried, didn't help
 
 Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.html`); the full reference is [README.md](../README.md).
 
@@ -66,7 +66,7 @@ Step-by-step recipes are in [GUIDE.html](GUIDE.html#tasks) (`open docs/GUIDE.htm
 - 💡 **Missing-tag filler.** Fill empty BPM/key/genre tags from the analysis.
 - 💡 **Genre clean-up.** Compare existing genre tags with the analysed genres and list the biggest mismatches.
 - 💡 **Stem check.** The grid check already finds a track's generated stem and measures whether it lines up. A Setup step could list tracks whose stem is missing, out of date (older than the file) or offset, so they can be remade before a gig.
-- 🛠️ **Samples in Sync everything.** Loops saved from the page go only to Traktor's sample folder; no sync step reaches them. Plan:
+- 🛠️ **Samples in Sync everything.** Loops saved from the page used to go only to Traktor's sample folder. Plan:
   - ✅ **Stage A (done):** a `samples` sync step. It drops `saved_sample` rows whose WAV is gone. For Traktor, it adds the WAVs to the collection plus a "Track Analyzer loops" playlist. For Rekordbox, it copies them to `~/Music/rekordbox/Sampler/Track Analyzer loops/` and adds them as `djmdContent` rows. Preview, backup and one undo, as for the other steps.
   - **Check after A:** do the loops show in Rekordbox's sampler browser ("All Samples")?
   - **Stage B (only if not):** write the sampler tree. `djmdSampler` holds the tree (Root, "All Samples" Attribute 5, "Capture" 6, folders 3, kits 2 of 8 slots) and `djmdSongSampler` holds the slots (SamplerID, ContentID, TrackNo 1–8). Make one kit by hand in Rekordbox first and diff master.db so the rows (usn, UUIDs) match exactly what Rekordbox writes.

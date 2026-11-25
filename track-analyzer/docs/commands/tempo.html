@@ -85,7 +85,7 @@ uv run dj-track-analyzer tempo scan --bpm 140</pre></div>
 </ul>
 <div class="cmd"><pre>uv run dj-track-analyzer tempo report
 uv run dj-track-analyzer tempo report --limit 30</pre></div>
-<p>It lists genres at own tempo next to genres at the view tempo, the most common changes, your colours at that tempo, the tracks that turn hardest or prettiest, and the tracks with the most hype there and the biggest hype risers. The <b>Tempo view</b> tab on the page shows the same.</p>
+<p>It lists:</p><ul><li>genres at own tempo next to genres at the view tempo, and the most common changes</li><li>your colours at that tempo</li><li>the tracks that turn hardest or prettiest</li><li>the tracks with the most hype there, and the biggest hype risers</li></ul><p>The <b>Tempo view</b> tab on the page shows the same.</p>
 <h3>Options</h3>
 <div class="table-wrap"><table>
 <thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
@@ -152,7 +152,7 @@ uv run dj-track-analyzer tempo load --lexicon</pre></div>
   <li>It refuses while Traktor writes tags to your files (Preferences → File Management), because Traktor could write the view's genres into them and <code>native</code> only restores the collection. <code>--force</code> loads anyway.</li>
   <li>While the view is loaded, <code>hype</code>, <code>stats</code> and <code>export</code> use its data; add <code>--native</code> for each track at its own tempo. Commands that write your own values refuse to run so they can't mix them into the view: <code>traktor</code>, <code>sync</code>, <code>hype --traktor</code>, <code>colors apply</code>, <code>colors train</code>, <code>cues apply</code>, <code>grids apply</code>, <code>edit</code> and others.</li>
   <li>Works with Rekordbox as your DJ app too (chosen on the Setup tab); it has no clock tempo to switch.</li>
-  <li><code>--lexicon</code> also switches <a href="https://www.lexicondj.com">Lexicon</a>: its genre, colour, comment and Energy (the view's hype, 1–10), plus a "Genres @145 (Track Analyzer)" smartlist folder. Once: open Lexicon and turn on Settings → Integrations → <b>Local API</b>. Lexicon's library is copied to <code>data/lexicon-backups/</code> first. While Lexicon has the view, don't sync Lexicon → Traktor or import from Traktor into Lexicon; syncing to a USB is fine.</li>
+  <li><code>--lexicon</code> also switches <a href="https://www.lexicondj.com">Lexicon</a>: its genre, colour, comment and Energy (the view's hype, 1–10), plus a "Genres @145 (Track Analyzer)" Smartlist folder. Once: open Lexicon and turn on Settings → Integrations → <b>Local API</b>. Lexicon's library is copied to <code>data/lexicon-backups/</code> first. While Lexicon has the view, don't sync Lexicon → Traktor or import from Traktor into Lexicon; syncing to a USB is fine.</li>
 </ul>
 <h3>Options</h3>
 <div class="table-wrap"><table>
