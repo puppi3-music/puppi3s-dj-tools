@@ -97,3 +97,21 @@ at 124-132 goes Progressive Trance / Melodic H&T (the psy gate). 11 of 474 top g
   of the main one: those windows had 0.32-0.95, a real half-time groove (nothing between kicks) 0.07. Both tracks now
   read 125/130 in every window. Fold contrast at double vs half tempo was tried first and doesn't separate them (it
   depends on bin width: a sparse 65 BPM kick kept 0.79 of its contrast at 130). Stored fixtures unchanged.
+- First real check (2026-11-20, 82 tracks: 50 Beatport "Melodic House & Techno" chart tracks as Melodic Techno, the
+  rest from single-genre Traktor tags: Techno 16, Progressive Trance 7, Tech Trance 6, Hard Techno 2, Psytrance 1).
+  41 → 46 of 82 agree after two changes; replayed from the saved features, no re-measuring:
+  - Tech Trance bpm 136 → 132: 3 of 6 tagged tech trance ran 130-135. Tech Trance 3 → 4 of 6, nothing else moved;
+    examples whose own genre fits below 0.5 (a wrong demotion in a mix) 7 → 6.
+  - Equal fits go to the genre whose tempo range centres nearest (was: table order). Around 124-130 BPM Melodic
+    Techno, Progressive Trance and Techno often all fit 1.0 and Progressive Trance won by coming first. Melodic Techno
+    29 → 35 of 50, Progressive Trance 6 → 5, Tech Trance 4 → 3 (a 135 BPM track ties with Progressive Trance).
+    Labels only: re-weighting a mix's model scores uses the fits, which don't change.
+  - Tried and dropped: moving Progressive Trance's floor to 128/130 or Melodic Techno's top to 130 raises agreement
+    (up to 59) but makes more examples' own genre fit below 0.5 (7 → 10) or drops Progressive Trance to 1-3 of 7.
+  - Kept: FLOOR 0.15 (the check only sees examples' own genre, so it shows the cost of a wrong demotion, never the
+    gain of a right one: 6 of 82 keep about 15-20 % of their own score) and tracklist.GROOVE_TEMPO 4 % (it filters mix
+    windows; whole-track summaries say nothing about it). Psy, Hard Techno, Hard/Uplifting Trance: 0-2 examples, no
+    change. Techno 2 of 16: the tagged techno is mostly 124-130 BPM melodic techno with a melodic share of 0.32-0.55,
+    which these features can't tell apart from Melodic Techno; its own fit stays 0.69-1.0, so it isn't demoted.
+  - Still misread tempo: Copini, Goldspek, Doksu "Parallel Universe" 63.0 (half of 126, the half-beat peak rule
+    didn't fire) and Ann Clue "Ethereal" 93.75 (3/4 of 125, a different error). Both get every fit 0.

@@ -315,7 +315,7 @@ GENRES = {
     "Hi-Tech": dict(bpm=(165, 200), family="psy", gate=lambda f: max(_ramp(f["gallop"], 0.30, 0.55), _ramp(f.get("psy_windows", 0), 0.15, 0.50)), checks=[
         lambda f: (_ramp(f["gallop"], 0.30, 0.55), f"16th-note bass gallop {f['gallop']:.2f}"),
     ]),
-    "Tech Trance": dict(bpm=(136, 147), family="trance", checks=[
+    "Tech Trance": dict(bpm=(132, 147), family="trance", checks=[  # 132: tagged tech trance at 130-135 (check 2026-11-20)
         lambda f: (_ramp(f["hat_offbeat"], 1.5, 3.0), f"offbeat open hat {f['hat_offbeat']:.1f}x the other 16ths"),
         lambda f: (1 - _ramp(f["gallop"], 0.40, 0.60), "no psytrance gallop" if f["gallop"] < 0.4 else "psy-style gallop present"),
         lambda f: _breaks(f, lambda v: (1 - _ramp(v, 0.25, 0.50), f"{v:.0%} of breakdowns are 32+ bars")),
@@ -377,7 +377,9 @@ def genre_evidence(f: dict, model_scores: dict | None = None, floor: float | Non
         fits[g] = dict(fit=round(fit, 3), tempo_fit=round(tf, 3),
                        reasons=[tempo_reason] + [p[1] for p in parts],
                        checks=[[round(tf, 3), tempo_reason]] + [[round(float(p[0]), 3), p[1]] for p in parts])
-    ranking = sorted(fits, key=lambda g: -fits[g]["fit"])
+    # equal fits (often several at 1.0 around 124-130 BPM) go to the genre whose tempo range centres nearest, not to
+    # whichever comes first in GENRES
+    ranking = sorted(fits, key=lambda g: (-fits[g]["fit"], abs(f["bpm"] - sum(GENRES[g]["bpm"]) / 2)))
     top = ranking[0]
     descriptor = top
     if top in ("Tech Trance", "Hard Trance") and f["minor_share"] >= 0.5 and f["chord_change"] < 0.3 and f["melodic_ratio"] >= 0.56:

@@ -60,3 +60,21 @@ def test_accented_kicks_are_not_read_half_time():
 def test_real_half_time_stays_half():
     assert abs(estimate_tempo(_kick_env(125, every=2))[0] - 62.5) < 0.5
     assert abs(estimate_tempo(_kick_env(62.5))[0] - 62.5) < 0.5
+
+
+def test_equal_fits_go_to_the_nearest_tempo_range():
+    """A 126 BPM track with an offbeat hat and few minor keys fits Melodic Techno, Progressive Trance and Techno
+    all at 1.0: the label goes to the range centred nearest (Melodic Techno 118-128), not to table order."""
+    f = dict(bpm=126.0, gallop=0.2, psy_windows=0.0, hat_offbeat=10.0, hat_16ths=0.05, bass_swell=1.0, rumble=0.01,
+             melodic_ratio=0.45, minor_share=0.8, chord_change=0.0, long_breakdown_share=0.0)
+    ev = genre_evidence(f)
+    assert ev["fits"]["Progressive Trance"]["fit"] == ev["fits"]["Melodic Techno"]["fit"] == 1.0
+    assert ev["label"]["category"] == "Melodic Techno"
+    assert genre_evidence(dict(f, bpm=131.0))["label"]["category"] == "Progressive Trance"  # 126-138 centres nearest
+
+
+def test_tech_trance_reaches_down_to_132():
+    """Tracks tagged tech trance ran 130-135 BPM in the 2026-11-20 groove check."""
+    f = dict(bpm=132.0, gallop=0.2, psy_windows=0.0, hat_offbeat=5.0, hat_16ths=0.1, bass_swell=1.0, rumble=0.1,
+             melodic_ratio=0.5, minor_share=0.7, chord_change=0.0, long_breakdown_share=0.0)
+    assert genre_evidence(f)["fits"]["Tech Trance"]["tempo_fit"] == 1.0
