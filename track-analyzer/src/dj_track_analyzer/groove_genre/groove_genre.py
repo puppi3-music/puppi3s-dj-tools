@@ -68,14 +68,31 @@ def estimate_tempo(onset_env, lo=60.0, hi=200.0, prefer=(110.0, 180.0), hint=Non
     if not m.any():
         return float(hint or 0.0), 0.0
     w = ac[1:][m] * np.where((bpm[m] >= prefer[0]) & (bpm[m] <= prefer[1]), 1.0, 0.8)
-    coarse = bpm[m][np.argmax(w)]
+    best = _refine(onset_env, bpm[m][np.argmax(w)])
+    if not hint and best[1] < prefer[0] and 2 * best[1] <= hi:
+        # A kick on every beat with a 2-beat pattern on top (accented kicks, a bassline in the kick band) can make
+        # the 2-beat lag the stronger autocorrelation: 125 read as 62.5. Folded at that half tempo, a second kick
+        # peak half a cycle after the first means a kick on every beat; a real half-time groove has none there.
+        f = _fold(onset_env, 60 * FR / best[1], 0, 64)
+        f = np.roll(f, -int(np.argmax(f)))
+        if f[29:36].max() >= HALF_BEAT_PEAK * f[0]:
+            best = _refine(onset_env, 2 * best[1])
+    return float(best[1]), float(best[0])
+
+
+HALF_BEAT_PEAK = 0.25  # estimate_tempo doubles a tempo below the preferred range when the kick fold has a peak of
+                       # this share half a cycle after the main one (real tracks read half: 0.32-0.95; half-time: 0.07)
+
+
+def _refine(onset_env, coarse):
+    """(contrast, bpm) of the sharpest 32-bin beat fold within coarse +/- 1.5 BPM."""
     best = (-1.0, coarse)
     for b in np.arange(coarse - 1.5, coarse + 1.5001, 0.05):
         f = _fold(onset_env, 60 * FR / b, 0, 32)
         c = f.max() / (f.mean() + 1e-9)
         if c > best[0]:
             best = (c, b)
-    return float(best[1]), float(best[0])
+    return best
 
 
 def gallop_index(bass_profile: np.ndarray) -> float:
