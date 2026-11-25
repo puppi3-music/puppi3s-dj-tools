@@ -276,7 +276,14 @@ def _ramp(x, a, b):
     return float(np.clip((x - a) / (b - a), 0, 1))
 
 
-# Each genre: tempo range plus trait checks. Every check returns (fit 0..1, reason).
+def _breaks(f, check):
+    """A breakdown check, or None (left out) when f has no breakdown counts: a track's slot in a mix is summarized
+    from its windows alone (summarize(wins), no audio), too short to count 32-bar breakdowns."""
+    v = f.get("long_breakdown_share")
+    return None if v is None else check(v)
+
+
+# Each genre: tempo range plus trait checks. Every check returns (fit 0..1, reason), or None to leave it out.
 GENRES = {
     "Psytrance": dict(bpm=(136, 150), family="psy", gate=lambda f: max(_ramp(f["gallop"], 0.30, 0.55), _ramp(f.get("psy_windows", 0), 0.15, 0.50)), checks=[
         lambda f: (_ramp(f["gallop"], 0.30, 0.55), f"16th-note bass gallop {f['gallop']:.2f} (psy needs about 0.5+)"),
@@ -294,10 +301,10 @@ GENRES = {
     "Tech Trance": dict(bpm=(136, 147), family="trance", checks=[
         lambda f: (_ramp(f["hat_offbeat"], 1.5, 3.0), f"offbeat open hat {f['hat_offbeat']:.1f}x the other 16ths"),
         lambda f: (1 - _ramp(f["gallop"], 0.40, 0.60), "no psytrance gallop" if f["gallop"] < 0.4 else "psy-style gallop present"),
-        lambda f: (1 - _ramp(f.get("long_breakdown_share", 0), 0.25, 0.50), f"{f.get('long_breakdown_share', 0):.0%} of breakdowns are 32+ bars"),
+        lambda f: _breaks(f, lambda v: (1 - _ramp(v, 0.25, 0.50), f"{v:.0%} of breakdowns are 32+ bars")),
     ]),
     "Uplifting Trance": dict(bpm=(134, 142), family="trance", checks=[
-        lambda f: (_ramp(f.get("long_breakdown_share", 0), 0.10, 0.35), f"{f.get('long_breakdown_share', 0):.0%} of breakdowns are 32+ bars (uplifting needs long ones)"),
+        lambda f: _breaks(f, lambda v: (_ramp(v, 0.10, 0.35), f"{v:.0%} of breakdowns are 32+ bars (uplifting needs long ones)")),
         lambda f: (_ramp(f["chord_change"], 0.10, 0.40), f"chords change in {f['chord_change']:.0%} of bars"),
         lambda f: (1 - _ramp(f["gallop"], 0.40, 0.60), "no psytrance gallop" if f["gallop"] < 0.4 else "psy-style gallop present"),
     ]),
@@ -306,7 +313,7 @@ GENRES = {
     ]),
     "Hard Trance": dict(bpm=(140, 155), family="trance", checks=[
         lambda f: (_ramp(f["bass_swell"], 1.1, 1.6), f"offbeat bass swell {f['bass_swell']:.2f}x"),
-        lambda f: (_ramp(f.get("long_breakdown_share", 0), 0.05, 0.25), f"{f.get('long_breakdown_share', 0):.0%} of breakdowns are 32+ bars (hard trance builds to long euphoric breaks)"),
+        lambda f: _breaks(f, lambda v: (_ramp(v, 0.05, 0.25), f"{v:.0%} of breakdowns are 32+ bars (hard trance builds to long euphoric breaks)")),
         lambda f: (_ramp(f["hat_offbeat"], 1.5, 3.0), f"offbeat open hat {f['hat_offbeat']:.1f}x"),
     ]),
     "Melodic Techno": dict(bpm=(118, 128), family="techno", checks=[
@@ -344,7 +351,7 @@ def genre_evidence(f: dict, model_scores: dict | None = None, floor: float = 0.1
     for g, spec in GENRES.items():
         lo, hi = spec["bpm"]
         tf = _range_fit(f["bpm"], lo, hi, soft=4.0)
-        parts = [c(f) for c in spec["checks"]]
+        parts = [p for p in (c(f) for c in spec["checks"]) if p is not None]
         trait = float(np.mean([p[0] for p in parts])) if parts else 1.0
         gate = spec["gate"](f) if "gate" in spec else 1.0      # defining trait: absent -> genre ruled out
         fit = tf * (0.1 + 0.9 * gate) * (0.35 + 0.65 * trait)

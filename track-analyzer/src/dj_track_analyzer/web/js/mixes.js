@@ -687,7 +687,7 @@ function renderMix(d) {
           + (t.library_camelot && t.library_camelot !== t.camelot ? `<div class="dim small" data-tip="Our key (the CNN's, of the track alone) differs from ${DJ()}'s">ours ${esc(t.library_camelot)}</div>` : "")
           + (t.transition ? `<div class="small"><span class="chip ${t.transition === "clash" ? "bad" : t.transition === "two steps" ? "warn" : "good"}" data-tip="From the track before, key to key as heard">${esc(t.transition)}</span></div>` : "") },
         ...(tlist.tracks?.some(t => t.heard_mood) ? [{ h: "Mood", f: moodCell }] : []),
-        { h: "Genre", f: t => `${esc(t.library_genre || "–")}${t.genre && t.genre !== t.library_genre ? ` → <b>${esc(t.genre)}</b>` : ""}${t.genre_uncorrected && t.genre_uncorrected !== t.genre ? `<div class="dim small">ungated ${esc(t.genre_uncorrected)}</div>` : ""}` },
+        { h: "Genre", f: t => `${esc(t.library_genre || "–")}${t.genre && t.genre !== t.library_genre ? ` → <b>${esc(t.genre)}</b>` : ""}${t.genre_uncorrected && t.genre_uncorrected !== t.genre ? `<div class="dim small">ungated ${esc(t.genre_uncorrected)}</div>` : ""}${t.genre_before_groove ? `<div class="dim small" title="${esc((t.groove_why || []).join("\n"))}">groove check: was ${esc(t.genre_before_groove)}</div>` : ""}` },
         { h: "Mixing", f: t => t.mixing ? `<span class="small">${[...(t.mixing.up || []), ...(t.mixing.down || [])].map(esc).join(", ")}</span>` : "" },
         { h: "Judged on", f: t => `<span class="small dim">${esc(t.judged_on || t.note || "")}</span>` }], tlist.tracks || [],
         { rowAttr: (t, i) => { const k = trackStr?.strength[i]; if (k == null) return ""; const v = trackStr.value[i];
