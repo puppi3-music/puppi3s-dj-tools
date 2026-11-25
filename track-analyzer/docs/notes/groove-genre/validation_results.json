@@ -1,0 +1,784 @@
+[
+ {
+  "set": "Falling Up",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Melodic Tech Trance",
+   "secondary": [
+    "Hard Trance",
+    "Psytrance (moments)"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.658
+   ],
+   [
+    "Uplifting Trance",
+    0.148
+   ],
+   [
+    "Techno",
+    0.147
+   ],
+   [
+    "Hard Techno",
+    0.039
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": null,
+  "adjusted_model_scores": null,
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.29 (psy needs about 0.5+)",
+   "16th hats at 3% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 144.95468750000066,
+   "gallop": 0.29318819897950643,
+   "psy_windows": 0.10416666666666667,
+   "hat_offbeat": 19.21573063180778,
+   "hat_16ths": 0.027927831671486027,
+   "bass_swell": 1.311893492417016,
+   "kick_ms": 81.85271643591204,
+   "rumble": 0.011123658531054716,
+   "melodic_ratio": 0.6687649488449097,
+   "minor_share": 0.6363636363636364,
+   "breakdowns": 35,
+   "breakdown_median_bars": 8.0,
+   "long_breakdown_share": 0.02857142857142857,
+   "tempo_sections": [
+    {
+     "start": 60.0,
+     "end": 150.0,
+     "bpm": 134.99917763157907
+    },
+    {
+     "start": 180.0,
+     "end": 390.0,
+     "bpm": 139.9998310810815
+    },
+    {
+     "start": 480.0,
+     "end": 570.0,
+     "bpm": 139.9998310810815
+    },
+    {
+     "start": 660.0,
+     "end": 750.0,
+     "bpm": 140.02483108108152
+    },
+    {
+     "start": 780.0,
+     "end": 1470.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1560.0,
+     "end": 1710.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1800.0,
+     "end": 1890.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 1920.0,
+     "end": 2250.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 2340.0,
+     "end": 2910.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 3180.0,
+     "end": 3270.0,
+     "bpm": 144.97968750000067
+    },
+    {
+     "start": 3300.0,
+     "end": 3390.0,
+     "bpm": 72.51329225352106
+    },
+    {
+     "start": 3480.0,
+     "end": 3570.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 3600.0,
+     "end": 3930.0,
+     "bpm": 144.97968750000067
+    }
+   ]
+  }
+ },
+ {
+  "set": "Full Bodied",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Tech Trance",
+   "secondary": [
+    "Hard Trance",
+    "Psytrance (moments)"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.661
+   ],
+   [
+    "Techno",
+    0.218
+   ],
+   [
+    "Uplifting Trance",
+    0.141
+   ],
+   [
+    "Hard Techno",
+    0.055
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": null,
+  "adjusted_model_scores": null,
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.27 (psy needs about 0.5+)",
+   "16th hats at 12% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 145.00468750000067,
+   "gallop": 0.27291789988683435,
+   "psy_windows": 0.10869565217391304,
+   "hat_offbeat": 3.681224692549983,
+   "hat_16ths": 0.11908181084772901,
+   "bass_swell": 1.2072834485913808,
+   "kick_ms": 93.74696938676507,
+   "rumble": 0.03881984424323803,
+   "melodic_ratio": 0.5471959710121155,
+   "minor_share": 0.5737704918032787,
+   "breakdowns": 32,
+   "breakdown_median_bars": 8.5,
+   "long_breakdown_share": 0.09375,
+   "tempo_sections": [
+    {
+     "start": 120.0,
+     "end": 390.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 420.0,
+     "end": 570.0,
+     "bpm": 72.48829225352105
+    },
+    {
+     "start": 600.0,
+     "end": 930.0,
+     "bpm": 145.02968750000068
+    },
+    {
+     "start": 1020.0,
+     "end": 1650.0,
+     "bpm": 145.05468750000068
+    },
+    {
+     "start": 1860.0,
+     "end": 2850.0,
+     "bpm": 145.05468750000068
+    },
+    {
+     "start": 2940.0,
+     "end": 3090.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 3120.0,
+     "end": 3270.0,
+     "bpm": 144.95468750000066
+    },
+    {
+     "start": 3300.0,
+     "end": 3450.0,
+     "bpm": 72.48829225352105
+    },
+    {
+     "start": 3480.0,
+     "end": 3570.0,
+     "bpm": 144.92968750000065
+    }
+   ]
+  }
+ },
+ {
+  "set": "Truth, Peace, Love, Acid",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Melodic Tech Trance",
+   "secondary": [
+    "Hard Trance"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.703
+   ],
+   [
+    "Techno",
+    0.194
+   ],
+   [
+    "Uplifting Trance",
+    0.141
+   ],
+   [
+    "Hard Techno",
+    0.05
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": {
+   "Psy-Trance": 0.59,
+   "Goa Trance": 0.49,
+   "Trance": 0.14,
+   "Progressive Trance": 0.14
+  },
+  "adjusted_model_scores": {
+   "Trance": 0.14,
+   "Psy-Trance": 0.1061,
+   "Goa Trance": 0.0881,
+   "Progressive Trance": 0.021
+  },
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.29 (psy needs about 0.5+)",
+   "16th hats at 8% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 145.00468750000067,
+   "gallop": 0.28631316121355943,
+   "psy_windows": 0.09523809523809523,
+   "hat_offbeat": 5.388724045604196,
+   "hat_16ths": 0.0786858912298809,
+   "bass_swell": 1.4153052222363525,
+   "kick_ms": 77.58369880284006,
+   "rumble": 0.01381182041695341,
+   "melodic_ratio": 0.58440762758255,
+   "minor_share": 0.6461538461538462,
+   "breakdowns": 39,
+   "breakdown_median_bars": 7.0,
+   "long_breakdown_share": 0.0,
+   "tempo_sections": [
+    {
+     "start": 60.0,
+     "end": 870.0,
+     "bpm": 144.90468750000065
+    },
+    {
+     "start": 1080.0,
+     "end": 1410.0,
+     "bpm": 72.48829225352105
+    },
+    {
+     "start": 1440.0,
+     "end": 1530.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1620.0,
+     "end": 1710.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1800.0,
+     "end": 2190.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 2280.0,
+     "end": 3210.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 3420.0,
+     "end": 3570.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 3600.0,
+     "end": 3870.0,
+     "bpm": 145.00468750000067
+    }
+   ]
+  }
+ },
+ {
+  "set": "Pump Up The Jam",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Tech Trance",
+   "secondary": [
+    "Hard Trance"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.723
+   ],
+   [
+    "Techno",
+    0.25
+   ],
+   [
+    "Uplifting Trance",
+    0.145
+   ],
+   [
+    "Hard Techno",
+    0.06
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": {
+   "Psy-Trance": 0.54,
+   "Goa Trance": 0.42,
+   "Trance": 0.15,
+   "Progressive Trance": 0.14
+  },
+  "adjusted_model_scores": {
+   "Trance": 0.15,
+   "Psy-Trance": 0.0971,
+   "Goa Trance": 0.0755,
+   "Progressive Trance": 0.021
+  },
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.26 (psy needs about 0.5+)",
+   "16th hats at 3% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 144.97968750000067,
+   "gallop": 0.2563038198948384,
+   "psy_windows": 0.022727272727272728,
+   "hat_offbeat": 24.83967193655881,
+   "hat_16ths": 0.026000603705794496,
+   "bass_swell": 1.4596682986583085,
+   "kick_ms": 71.1429218182403,
+   "rumble": 0.014457803791628357,
+   "melodic_ratio": 0.5071514248847961,
+   "minor_share": 0.6666666666666666,
+   "breakdowns": 36,
+   "breakdown_median_bars": 7.0,
+   "long_breakdown_share": 0.027777777777777776,
+   "tempo_sections": [
+    {
+     "start": 0.0,
+     "end": 630.0,
+     "bpm": 144.95468750000066
+    },
+    {
+     "start": 720.0,
+     "end": 810.0,
+     "bpm": 144.92968750000065
+    },
+    {
+     "start": 1080.0,
+     "end": 1170.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 1200.0,
+     "end": 1650.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1680.0,
+     "end": 1830.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 1920.0,
+     "end": 2130.0,
+     "bpm": 145.02968750000068
+    },
+    {
+     "start": 2220.0,
+     "end": 3750.0,
+     "bpm": 145.00468750000067
+    }
+   ]
+  }
+ },
+ {
+  "set": "Desire",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Melodic Tech Trance",
+   "secondary": [
+    "Hard Trance"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.772
+   ],
+   [
+    "Techno",
+    0.19
+   ],
+   [
+    "Uplifting Trance",
+    0.141
+   ],
+   [
+    "Hard Techno",
+    0.049
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": {
+   "Psy-Trance": 0.54,
+   "Goa Trance": 0.41,
+   "Progressive Trance": 0.16,
+   "Trance": 0.14
+  },
+  "adjusted_model_scores": {
+   "Trance": 0.14,
+   "Psy-Trance": 0.0971,
+   "Goa Trance": 0.0737,
+   "Progressive Trance": 0.024
+  },
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.23 (psy needs about 0.5+)",
+   "16th hats at 10% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 145.00468750000067,
+   "gallop": 0.22927170475783676,
+   "psy_windows": 0.023809523809523808,
+   "hat_offbeat": 8.258534517377617,
+   "hat_16ths": 0.09577724269925753,
+   "bass_swell": 1.4785061903770742,
+   "kick_ms": 77.61798900738172,
+   "rumble": 0.020673060645932335,
+   "melodic_ratio": 0.5908487439155579,
+   "minor_share": 0.6779661016949152,
+   "breakdowns": 34,
+   "breakdown_median_bars": 8.5,
+   "long_breakdown_share": 0.08823529411764706,
+   "tempo_sections": [
+    {
+     "start": 60.0,
+     "end": 930.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1020.0,
+     "end": 1710.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1920.0,
+     "end": 2190.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 2340.0,
+     "end": 2490.0,
+     "bpm": 72.48829225352105
+    },
+    {
+     "start": 2520.0,
+     "end": 3510.0,
+     "bpm": 145.00468750000067
+    }
+   ]
+  }
+ },
+ {
+  "set": "Just Getting Started",
+  "label": {
+   "category": "Tech Trance",
+   "descriptor": "Melodic Tech Trance",
+   "secondary": [
+    "Hard Trance"
+   ]
+  },
+  "ranking": [
+   [
+    "Tech Trance",
+    1.0
+   ],
+   [
+    "Hard Trance",
+    0.629
+   ],
+   [
+    "Techno",
+    0.207
+   ],
+   [
+    "Uplifting Trance",
+    0.148
+   ],
+   [
+    "Hard Techno",
+    0.05
+   ],
+   [
+    "Psytrance",
+    0.035
+   ],
+   [
+    "Goa Trance",
+    0.035
+   ],
+   [
+    "Darkpsy",
+    0.035
+   ],
+   [
+    "Hi-Tech",
+    0.0
+   ],
+   [
+    "Progressive Trance",
+    0.0
+   ],
+   [
+    "Melodic Techno",
+    0.0
+   ]
+  ],
+  "model_scores": {
+   "Psy-Trance": 0.56,
+   "Goa Trance": 0.46,
+   "Trance": 0.15,
+   "Tech Trance": 0.14
+  },
+  "adjusted_model_scores": {
+   "Trance": 0.15,
+   "Tech Trance": 0.14,
+   "Psy-Trance": 0.1007,
+   "Goa Trance": 0.0827
+  },
+  "psy_reasons": [
+   "tempo 145.0 BPM vs 136-150",
+   "16th-note bass gallop 0.28 (psy needs about 0.5+)",
+   "16th hats at 8% of the offbeat hat"
+  ],
+  "features": {
+   "bpm": 144.95468750000066,
+   "gallop": 0.27899023652764693,
+   "psy_windows": 0.07317073170731707,
+   "hat_offbeat": 7.210271185237296,
+   "hat_16ths": 0.08449189800319702,
+   "bass_swell": 1.1605191694463242,
+   "kick_ms": 90.4694582147604,
+   "rumble": 0.02073002864237642,
+   "melodic_ratio": 0.5804559886455536,
+   "minor_share": 0.5757575757575758,
+   "breakdowns": 36,
+   "breakdown_median_bars": 10.0,
+   "long_breakdown_share": 0.08333333333333333,
+   "tempo_sections": [
+    {
+     "start": 120.0,
+     "end": 210.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 240.0,
+     "end": 450.0,
+     "bpm": 145.02968750000068
+    },
+    {
+     "start": 540.0,
+     "end": 1710.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 1800.0,
+     "end": 1890.0,
+     "bpm": 144.97968750000067
+    },
+    {
+     "start": 1920.0,
+     "end": 2130.0,
+     "bpm": 72.53829225352105
+    },
+    {
+     "start": 2160.0,
+     "end": 2250.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 2400.0,
+     "end": 2610.0,
+     "bpm": 72.46329225352105
+    },
+    {
+     "start": 2760.0,
+     "end": 2910.0,
+     "bpm": 145.00468750000067
+    },
+    {
+     "start": 3000.0,
+     "end": 3570.0,
+     "bpm": 144.95468750000066
+    },
+    {
+     "start": 3600.0,
+     "end": 3750.0,
+     "bpm": 72.43829225352106
+    }
+   ]
+  }
+ }
+]
