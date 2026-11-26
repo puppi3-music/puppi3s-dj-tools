@@ -2,6 +2,8 @@
 measured, a live stem cut is still the track playing when it has stems. Made-up audio: noise whose spectrum changes
 every quarter second, so each "track" (and each stem) lines up in one place."""
 
+from functools import partial
+
 import numpy as np
 import pytest
 
@@ -60,12 +62,15 @@ def setup(tmp_path, overlap: float, wrong_b: bool = False, cut_a: int = 0):
     return result, mix, lambda p: by_path[p], stems
 
 
-def run(tmp_path, stems_on=False, **kw):
+def run(tmp_path, stems_on=False, near_db=sa.NEAR_DB, **kw):
     """find() on a made-up mix; stems_on: A has a stem file (B never does)."""
     result, mix, load, stems = setup(tmp_path, **kw)
     out = sa.find(result, mix, load=load, load_stems=(lambda p: stems.get(p)) if stems_on else (lambda p: None),
-                  say=lambda m: None)
+                  say=lambda m: None, near_db=near_db)
     return result, out
+
+
+run_ = run
 
 
 def test_long_blend_qualifies(tmp_path):
@@ -97,7 +102,8 @@ def test_wrong_file_cannot_be_measured(tmp_path):
     assert out["picks"] == [] and "closest_miss" not in out
 
 
-def test_stem_cut_still_counts_with_stems(tmp_path):
+def test_stem_cut_still_counts_with_stems(tmp_path):  # clean changes: the stricter rule tells a cut from a fade
+    run = partial(run_, near_db=sa.CLEAN_DB)
     _result, whole = run(tmp_path, overlap=45, cut_a=2)
     (c,) = whole["changes"]
     assert c["measured_with"] == {"from": "whole", "to": "whole"} and not c["qualifies"]  # read as a fade
@@ -140,16 +146,30 @@ def test_longest_run_allows_single_off_bars():
 
 def test_lower_but_steady_counts_as_near():
     N = None
-    assert sa._near([0.0, -3.0, -6.0, -7.0]) == [True, True, True, False]  # -7 alone, jumping from -6: off
+    _near = partial(sa._near, near_db=sa.CLEAN_DB)  # clean changes: the steady rule is what lets a track sit lower
+    assert _near([0.0, -3.0, -6.0, -7.0]) == [True, True, True, False]  # -7 alone, jumping from -6: off
     # bass-down: steady (the first and last bar measured have only 3 readings around them)
-    assert sa._near([-10.0, -10.5, -10.0, -10.4, -10.2]) == [False, True, True, True, False]
-    assert sa._near([-8.0, -12.0, -7.0, -11.0, -9.0]) == [False] * 5  # a track that isn't playing: jumpy floor
-    assert sa._near([-17.0, -17.0, -17.0, -17.0]) == [False] * 4  # too far down, however steady
-    assert sa._near([-10.0, N, N, -10.0]) == [False, False, False, False]  # too few readings
+    assert _near([-10.0, -10.5, -10.0, -10.4, -10.2]) == [False, True, True, True, False]
+    assert _near([-8.0, -12.0, -7.0, -11.0, -9.0]) == [False] * 5  # a track that isn't playing: jumpy floor
+    assert _near([-17.0, -17.0, -17.0, -17.0]) == [False] * 4  # too far down, however steady
+    assert _near([-10.0, N, N, -10.0]) == [False, False, False, False]  # too few readings
     run = [-10.0] * 40  # a blend with one track steady at -10 dB qualifies on the 2-near count
     rows = [(i * 2.0, 0.0, v) for i, v in enumerate(run)]
-    a, b = sa._near_bars(rows)
+    a, b = sa._near_bars(rows, sa.CLEAN_DB)
     assert all(a) and all(b[1:-1]) and sa._longest([x and y for x, y in zip(a, b)]) == (1, 38)
+
+
+def test_how_you_mix_sets_how_far_down_a_track_still_plays(tmp_path):
+    # the default, "I blend most of the time": a track 10 dB down counts, so does a stem cut read on the whole track
+    assert sa._near([0.0, -10.0, -12.0, -13.0]) == [True, True, True, False]
+    assert sa._near([0.0, -10.0, -12.0, -13.0], sa.CLEAN_DB) == [True, False, False, False]
+    _result, blend = run(tmp_path, overlap=45, cut_a=2)
+    _result, clean = run(tmp_path, overlap=45, cut_a=2, near_db=sa.CLEAN_DB)
+    (b,), (c,) = blend["changes"], clean["changes"]
+    assert b["qualifies"] and not c["qualifies"], (b["run"], c["run"])
+    assert blend["near_db"] == 12 and "within 12 dB" in blend["rule"]  # saved with the report: the page words it
+    assert clean["near_db"] == 6 and "within 6 dB" in clean["rule"]
+    assert sa.STYLES == {"blend": sa.NEAR_DB, "clean": sa.CLEAN_DB}
 
 
 def test_mix_job_passes_the_standalone_ticks(tmp_path):
@@ -164,6 +184,11 @@ def test_mix_job_passes_the_standalone_ticks(tmp_path):
     off = jobs._analyze_mix({**base, "standalone": False, "standalone_separate": True})
     assert "--standalone-separate" not in off
     assert "--no-standalone" not in jobs._analyze_mix({**base, "tracklist": False, "standalone": False})
+    assert "--standalone-style" not in jobs._analyze_mix(base)  # blend: the CLI's default
+    assert "--standalone-style" not in jobs._analyze_mix({**base, "standalone_style": "blend"})
+    a = jobs._analyze_mix({**base, "standalone_style": "clean"})
+    assert a[a.index("--standalone-style") + 1] == "clean"
+    assert "--standalone-style" not in jobs._analyze_mix({**base, "standalone": False, "standalone_style": "clean"})
 
 
 def test_preview_plays_only_the_recording_a_saved_mix_names(tmp_path):

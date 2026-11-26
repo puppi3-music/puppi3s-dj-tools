@@ -203,7 +203,7 @@ with their keys and genres, and the timeline's genres); `--json-only` leaves it 
 
   With a tempo view near the mix's tempo (`tempo scan`), `mixing` lists the styles your mixing pushed up or down against each track alone at that tempo (part of that can be the other deck still playing). The label without the psy limit is kept as `dj_genre_uncorrected` (also per track and timeline segment), and the library's genre per track as `library_genre`.
 
-**Standalone pieces:** with `--tracklist` the analysis also looks for long blends that work as a track of their own (to post on SoundCloud): two or more tracks playing near their own level (within 6 dB, or down to 16 dB under but steady) for 2:30 or more; blends of 64 bars or more that fall short are listed as short edits. It also looks for solo reworks: one track alone, played changed (EQ, stems or re-arranged) in half its bars or more. A track with a stem file is measured per stem. Options: `--no-standalone` and `--no-solo-rework` skip each search; `--standalone-separate` splits tracks without a stem file with Demucs (slow, needs the stems extra); `--standalone-pairs-only` measures only the two tracks of each change. Detail: [command reference](docs/commands/mixes.html).
+**Standalone pieces:** with `--tracklist` the analysis also looks for long blends that work as a track of their own (to post on SoundCloud): two or more tracks playing near their own level (within 12 dB, or 6 dB with `--standalone-style clean`; or down to 16 dB under but steady) for 2:30 or more; blends of 64 bars or more that fall short are listed as short edits. It also looks for solo reworks: one track alone, played changed (EQ, stems or re-arranged) in half its bars or more. A track with a stem file is measured per stem. Options: `--no-standalone` and `--no-solo-rework` skip each search; `--standalone-separate` splits tracks without a stem file with Demucs (slow, needs the stems extra); `--standalone-pairs-only` measures only the two tracks of each change; `--standalone-style clean` (for a DJ who mostly makes clean changes) counts a track only within 6 dB of its own level instead of 12 dB (`blend`, the default). The page shows the 5 longest per section (the blend with both tracks nearest full level always among them) and folds the rest. Detail: [command reference](docs/commands/mixes.html).
 
 **Posting the mix as a video:** `--chapters --offset 0:14` prints YouTube chapters for a video where the first track starts 0:14 in. Read that off the finished video itself: it depends on how you lined the audio up, so it can't come from the recording. The video's opening becomes an "Intro" chapter at 0:00, and very short plays fold into the next chapter (YouTube wants at least three, 10 s apart). Trimming silence off the audio file doesn't change the times: they're counted from the first track's start.
 
@@ -227,8 +227,7 @@ Video times need the offset: `--offset 0:14`, or it's worked out from the analys
 they have video times. A clip whose sound isn't clearly in the recording says so (another mix, or a phone's
 room sound); place it by hand with `--at 2=41:20` (clip 2 starts 41:20 into the video; repeat `--at` for
 several). `--recording` names the recording if it has moved; `--save` keeps the result in the analysis' JSON;
-`--json` prints JSON. About 15 seconds a clip. On the page: the mix's **Your editor's clips** card, with
-**Copy for posts**.
+`--json` prints JSON. About 15 seconds a clip.
 
 On a test mix of 22 house and melodic techno tracks, all sped up 12-20% with stems layered, 12 keys matched
 Traktor's and 1 was one step away. Without the tracklist the mix was called Psytrance (0.59); with it, Trance,
@@ -290,7 +289,7 @@ Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's 
 
   **All N mixes** (the button above the list) adds them up (the `mixes` command). **Analyse a mix…** lists Traktor's recordings and analyses the ones you tick in the background, one after another. A mix asked for while one is analysed waits its turn, **Stop all** empties the queue, and the bar says when one of them failed.
 
-  **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). A recording saved twice shows its older saves as **older copy**. **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
+  **Started at** gives one recording's start time when its name doesn't say it (Traktor's names do), for the tracklist check (= `--start`). **Sort** above the list orders it by when you analysed or played each mix, or by length (the page remembers your choice). A recording saved twice shows its older saves as **older copy**. **Delete…** on a mix moves its file to `logs/deleted/` (move it back to restore it).
 - **Files**: any other saved JSON.
 - **Setup**: what's done and what's next, with a button for each step (below).
 
@@ -1105,7 +1104,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `clips describe <analysis.json> CLIP… [--offset 0:14] [--at 2=41:20] [--recording FILE] [--save] [--json]` | Clips someone else cut from the finished video (or a folder of them): each found in the recording by its sound, with its video time, the track playing, LUFS, rise, energy, and its own genre, moods and BPM. `--at` places a clip whose sound isn't found. Needs ffmpeg | nothing (`--save`: the analysis' JSON) |
 | `analyze <mix> --tracklist --chapters --offset 0:14` | YouTube chapter lines from the tracklist, timed for a video where the first track starts at `--offset` | nothing |
 | `analyze <mix> --tracklist [history.nml] [--start HH:MM:SS]` | A recorded mix checked against Traktor's history file: each track's key heard vs Traktor's, the tempo it was played at, key lock, and the mix's genre with the psy-at-speed habit held back (see [Checking a recorded mix](#checking-a-recorded-mix)) | nothing |
-| `analyze <mix> --tracklist [--no-standalone] [--no-solo-rework] [--standalone-separate] [--standalone-pairs-only]` | Standalone pieces (long blends that work as their own track) and solo reworks, found by default with `--tracklist`; the options skip them, split tracks without a stem file with Demucs, or measure only the two tracks of each change | nothing |
+| `analyze <mix> --tracklist [--no-standalone] [--no-solo-rework] [--standalone-separate] [--standalone-pairs-only] [--standalone-style blend|clean]` | Standalone pieces (long blends that work as their own track) and solo reworks, found by default with `--tracklist`; the options skip them, split tracks without a stem file with Demucs, measure only the two tracks of each change, or set how far down a track still counts as playing (12 dB, clean: 6 dB) | nothing |
 | `scan` | Analyse a collection (section 2) | app database, CSV |
 | `stats` | Summary of the scanned collection | nothing |
 | `export [file]` | Write the CSV again | CSV |

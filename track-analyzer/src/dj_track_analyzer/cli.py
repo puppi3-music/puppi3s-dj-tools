@@ -106,6 +106,10 @@ def main() -> None:
     a.add_argument("--standalone-separate", action="store_true",
                    help="with --tracklist: tracks without a stem file are split into stems by Demucs over the stretch "
                         "where they play, for the standalone pieces (slow; needs the stems extra)")
+    a.add_argument("--standalone-style", choices=("blend", "clean"), default="blend",
+                   help="with --tracklist: how you mix, for the standalone pieces. blend (default: you blend most of "
+                        "the time): a track counts as playing up to 12 dB below its own level. clean (clean changes): "
+                        "up to 6 dB, so only blends with both tracks near full level count")
     a.add_argument("--standalone-pairs-only", action="store_true",
                    help="with --tracklist: measure only the two tracks of each change, not also the track before and "
                         "after (then a run of 3+ tracks, or two that aren't neighbours, isn't seen)")
@@ -438,11 +442,13 @@ def main() -> None:
                 skipped = {"tracklist_skipped": str(e.code), "tracklist_skipped_kind": e.kind,
                            **({"recording_start": e.start.isoformat(sep=" ")} if e.start else {})}
                 log(f"No tracklist check: {e.code}")
+        from .standalone import STYLES  # numpy-heavy module: only when a file is analysed
         result = analyze_file(args.file, args.segments, progress=True, tracklist=tracklist,
                               highlights=args.highlights, clip_seconds=args.clip_length, clip_mood=args.clip_mood,
                               standalone=not args.no_standalone, standalone_separate=args.standalone_separate,
                               standalone_multi=not args.standalone_pairs_only,
-                              standalone_solo=not args.no_solo_rework)
+                              standalone_solo=not args.no_solo_rework,
+                              standalone_near_db=STYLES[args.standalone_style])
         if skipped and result.get("type") == "dj_mix":
             result.update(skipped)
         if result.get("type") == "dj_mix":

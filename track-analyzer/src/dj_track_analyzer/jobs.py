@@ -98,6 +98,7 @@ def _analyze_mix(o: dict) -> list[str]:
             *(["--no-standalone"] if tl and not o.get("standalone", True) else []),
             *(["--no-solo-rework"] if tl and o.get("standalone", True) and not o.get("standalone_solo", True) else []),
             *(["--standalone-separate"] if tl and o.get("standalone", True) and o.get("standalone_separate") else []),
+            *(["--standalone-style", "clean"] if tl and o.get("standalone", True) and o.get("standalone_style") == "clean" else []),
             "--json-only", "--out", str(out)]
 
 

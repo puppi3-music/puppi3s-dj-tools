@@ -48,7 +48,7 @@
   <li><code>clips</code> and <code>clips describe &lt;analysis&gt; &lt;clips&gt;</code> need ffmpeg. The Setup tab installs it; or <code>brew install ffmpeg</code> on a Mac, <code>winget install ffmpeg</code> on Windows, <code>sudo apt install ffmpeg</code> on Linux.</li>
   <li>Everything here is fine with your DJ app open: it only reads Traktor's history and collection.</li>
 </ul>
-<p>On the web page, the Mixes tab's <b>Analyse a mix…</b> does all of this with ticks, and saves each result in <code>logs/</code>; the mix's <b>Your editor's clips</b> card is <code>clips describe &lt;analysis&gt; &lt;clips&gt;</code>, and <b>All N mixes</b> is <code>mixes</code>. The guide's <a href="../GUIDE.html#mixes">My recorded mixes</a> walks through it.</p>
+<p>On the web page, the Mixes tab's <b>Analyse a mix…</b> does all of this with ticks, and saves each result in <code>logs/</code>, and <b>All N mixes</b> is <code>mixes</code>. The guide's <a href="../GUIDE.html#mixes">My recorded mixes</a> walks through it.</p>
 
 <h2 id="analyze-mix"><code>analyze &lt;mix&gt; --tracklist</code></h2>
 <p>Checks a recorded mix against Traktor's history of that session: each track placed in the recording, with its key, tempo and mood as played.</p>
@@ -113,7 +113,7 @@ uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --offset 0
 uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --no-standalone</pre></div>
 <ul>
   <li>A piece is a change where two or more tracks (the two of the change, and the track before or after them) play near their own level for 2:30 or more. Blends of 64 bars or more that fall short of that are listed as short edits, a moment to post on its own.</li>
-  <li><b>Near</b> means no more than 6 dB under the track's own level, or lower (down to 16 dB under) but steady, as a track played bass-down or filtered is.</li>
+  <li><b>Near</b> means no more than 12 dB under the track's own level (6 dB with <code>--standalone-style clean</code>), or lower (down to 16 dB under) but steady, as a track played bass-down or filtered is.</li>
   <li>A track with a stem file is measured per stem, so a live stem cut or bass swap lowers it by that stem's share instead of reading as a fade. Without one it's measured whole, unless you add <code>--standalone-separate</code>.</li>
   <li>It also looks for <b>solo reworks</b>: one track alone, played changed (EQ, stems or re-arranged) in half its bars or more.</li>
   <li>No piece is a valid answer: then the result shows the closest change.</li>
@@ -126,6 +126,7 @@ uv run dj-track-analyzer analyze "/path/to/recording.wav" --tracklist --no-stand
 <tr><td><code>--standalone-separate</code></td><td>Splits tracks without a stem file into stems with Demucs over the stretch where they play. Slow, a few minutes a track; needs the stems extra.</td><td class="def">off</td></tr>
 <tr><td><code>--standalone-pairs-only</code></td><td>Measures only the two tracks of each change, not the track before and after. A run of three or more tracks then isn't seen.</td><td class="def">off</td></tr>
 <tr><td><code>--no-solo-rework</code></td><td>Doesn't look for solo reworks.</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-style blend|clean</code></td><td>How you mix. <code>blend</code>: you blend most of the time, so a track counts as playing up to 12 dB under its own level. <code>clean</code>: you mostly make clean changes, so only up to 6 dB counts and only blends with both tracks near full level are found. A solo rework needs the other tracks further down than that.</td><td class="def">blend</td></tr>
 </tbody></table></div>
 
 <h2 id="mixes"><code>mixes</code></h2>
@@ -235,6 +236,7 @@ uv run dj-track-analyzer clips describe logs/mix.json clip-1.mp4 clip-2.mp4 --of
 <tr><td><code>--save</code></td><td>clips describe</td><td class="def">off</td></tr>
 <tr><td><code>--standalone-pairs-only</code></td><td>analyze</td><td class="def">off</td></tr>
 <tr><td><code>--standalone-separate</code></td><td>analyze</td><td class="def">off</td></tr>
+<tr><td><code>--standalone-style blend|clean</code></td><td>analyze</td><td class="def">blend</td></tr>
 <tr><td><code>--start HH:MM:SS</code></td><td>analyze</td><td class="def">from the name</td></tr>
 <tr><td><code>--tracklist [HISTORY.nml]</code></td><td>analyze</td><td class="def">off; found</td></tr>
 <tr><td><code>--video FILE</code></td><td>clips</td><td class="def">required</td></tr>
