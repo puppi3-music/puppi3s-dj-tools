@@ -126,3 +126,32 @@ def test_page_switches_app_and_database(tmp_path, monkeypatch):
         analysis.save_app_setting(library.APP_SETTING, None)
         analysis.save_app_setting(rekordbox.DB_SETTING, None)
     assert library._path("x/collection.nml") == "x/collection.nml" and jobs.dj_app_status()["app"] == "traktor"
+
+
+def test_track_meta_rows(tmp_path):
+    # the optional columns' fields from plain rows: numbers parsed, size in MB, date added cut to the day, empties dropped
+    rows = [{"path": "/m/a.mp3", "album": "Alb", "genre": None, "label": "Lab", "remixer": None, "producer": None,
+             "org_artist": None, "lyricist": None, "mix": "", "comment": "hi", "rating": 4, "plays": "12",
+             "added": "2025-08-16 10:00:00", "released": 2021, "track_no": 3, "bitrate": 320, "sample_rate": 44100,
+             "size": 2097152}, {"path": "", "album": "gone"}]
+    m = rekordbox.track_meta(rows=rows)
+    assert list(m) == [rekordbox.norm_path("/m/a.mp3")]
+    assert m[rekordbox.norm_path("/m/a.mp3")] == {
+        "album": "Alb", "label": "Lab", "comment": "hi", "rating": 4.0, "plays": 12.0, "added": "2025-08-16",
+        "released": "2021", "track_no": 3.0, "bitrate": 320.0, "sample_rate": 44100.0, "size_mb": 2.0}
+    assert set(m[rekordbox.norm_path("/m/a.mp3")]) <= set(library.META_FIELDS)
+
+
+def test_traktor_track_meta(tmp_path):
+    nml = tmp_path / "collection.nml"
+    nml.write_text('<?xml version="1.0" encoding="UTF-8"?><NML VERSION="19"><COLLECTION ENTRIES="1">'
+                   '<ENTRY TITLE="T" ARTIST="A"><LOCATION DIR="/:m/:" FILE="a.mp3" VOLUME="" />'
+                   '<ALBUM TRACK="2" TITLE="Rel" /><INFO BITRATE="320000" GENRE="Techno" LABEL="Lab" COMMENT="c1" '
+                   'RATING="c2" PLAYCOUNT="26" RANKING="204" IMPORT_DATE="2025/8/16" LAST_PLAYED="2026/11/3" '
+                   'RELEASE_DATE="2025/1/1" FILESIZE="2048" /></ENTRY></COLLECTION></NML>', encoding="utf-8")
+    m = traktor.track_meta(str(nml))
+    assert m and all(v == {"album": "Rel", "track_no": 2.0, "genre": "Techno", "label": "Lab", "comment": "c1",
+                           "comment2": "c2", "rating": 4, "plays": 26.0, "last_played": "2026-11-03",
+                           "added": "2025-08-16", "released": "2025-01-01", "bitrate": 320.0, "size_mb": 2.0}
+                     for v in m.values())
+    assert set(next(iter(m.values()))) <= set(library.META_FIELDS)

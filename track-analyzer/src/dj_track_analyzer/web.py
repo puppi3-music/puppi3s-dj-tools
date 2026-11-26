@@ -184,7 +184,10 @@ def tracks(lib: str = "native") -> dict:
     except SystemExit:  # no Traktor collection found
         g = {}
     grid_res, grid_plans, grid_ign = gridfix.results(g=g), gridfix.plans(), gridfix.ignored()
+    meta = dj_meta()
     for r in rows:
+        if r["path"] in meta:  # the DJ app's own fields, for the optional columns
+            r["dj"] = meta[r["path"]]
         gr, d = grid_res.get(r["path"]), g.get(r["path"])
         if gr and d:  # the beat grid check: off (and not marked right), drifting, or a fix approved
             if r["path"] in grid_plans and gridfix.same(grid_plans[r["path"]], d["bpm"], d["grid_ms"]):
@@ -376,6 +379,25 @@ def cue_grids() -> dict:
             _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
 
+
+
+_meta: dict = {"mtime": None, "data": {}}
+
+
+def dj_meta() -> dict:
+    """The DJ app's browser fields (label, rating, plays …) for the Tracks tab's optional columns, read again only
+    when its library file changes; {} without one."""
+    from . import library as dj_app
+
+    try:
+        f = dj_app.find_collection(None)
+        m = (dj_app.app(), str(f), dj_app.changed_at(f))
+        if _meta["mtime"] != m:
+            _meta.update(mtime=m, data=dj_app.track_meta())
+    except (SystemExit, OSError, ImportError, ValueError) as err:
+        log(f"(the DJ app's track fields not read: {err})")
+        return {}
+    return _meta["data"]
 
 def traktor_nml() -> Path:
     from . import traktor

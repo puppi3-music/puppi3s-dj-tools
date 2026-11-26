@@ -196,6 +196,16 @@ label.approved { background: color-mix(in srgb, var(--good) 10%, transparent); b
   box-shadow: 0 8px 24px rgba(0,0,0,.2); padding: 4px; font-size: 12px; max-height: 50vh; overflow-y: auto; }
 .usemenu div { padding: 4px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
 .usemenu div:hover, .usemenu div.on { background: var(--accent-soft); }
+.colmenu { max-height: 70vh; min-width: 200px; }
+.colmenu label { display: flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 5px; cursor: pointer; white-space: nowrap; }
+.colmenu label:hover { background: var(--accent-soft); }
+.colmenu .hd { cursor: default; font-weight: 600; padding: 6px 10px 2px; }
+.colmenu .hd:hover { background: none; }
+.colmenu .sep { border-top: 1px solid var(--line-strong); margin: 4px 0; padding: 0; cursor: default; }
+.colmenu .sep:hover { background: none; }
+th.dropat { box-shadow: inset 3px 0 0 var(--accent); }
+td .clip { display: inline-block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.stars { color: var(--accent); letter-spacing: 1px; white-space: nowrap; }
 .fixbox select.target { font-size: 12px; padding: 1px 4px; max-width: 100%; }
 #approve select.slot, #approve select.as, #approve select.len { font-size: 12px; padding: 1px 4px; }
 #approve label.add { display: flex; align-items: flex-start; gap: 6px; margin: 3px 0; padding: 4px 6px; }

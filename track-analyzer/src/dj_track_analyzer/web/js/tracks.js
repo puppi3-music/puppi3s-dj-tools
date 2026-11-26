@@ -28,6 +28,94 @@ const SORTS = {
     const m = (t.mix_camelot || "").match(/(\d+)([AB])/); return m ? +m[1] * 2 + (m[2] === "B") : 1e9; },
   genre: t => (t.genre || "~").toLowerCase(), colour: colourPos, cues: t => -((t.corrections || 0) * 100 + (t.own_cues || 0)), hype: t => -(t.hype ?? -1), lufs: t => -(t.lufs ?? -99), length: t => t.duration_sec ?? 0,
 };
+// ---- the Tracks table's columns: right-click the header row to show / hide them, drag a header to move it ----
+const dj = (t, k) => t.dj?.[k];
+const txtSort = v => (v ?? "").toString().toLowerCase() || "\uffff";  // A to Z, empty last
+const hiSort = v => -(v ?? -1e15);  // highest (or newest) first, empty last
+const dateSort = v => hiSort(v ? Date.parse(v) : null);
+const djText = k => ({ sort: t => txtSort(dj(t, k)), cell: t => dj(t, k) ? `<span class="clip" data-tip="${esc(dj(t, k))}">${esc(dj(t, k))}</span>` : "" });
+const djNum = (k, f = v => fmt(v)) => ({ r: 1, sort: t => hiSort(dj(t, k)), cell: t => dj(t, k) != null ? f(dj(t, k)) : "" });
+const djDate = k => ({ sort: t => dateSort(dj(t, k)), cell: t => `<span class="nowrap">${esc(dj(t, k) || "")}</span>` });
+const isRb = () => DJ() === "Rekordbox";
+// id: {h: header (text or function), sort: key for SORTS, r: right-aligned, cell, apps: only for these DJ apps, group}
+const TCOLS = {
+  colour: { h: "Colour", sort: SORTS.colour, cell: t => `${colour(colourOf(t), !t.traktor_color)}${t.colour_guess ? guessMark() : ""}${t.held_colour ? lock("Colour") : ""}` },
+  track: { h: "Track", fixed: 1, sort: SORTS.track, cell: t => `${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? `No cue points or loops set in ${DJ()}` : `Not in ${DJ()}'s collection (or no beat grid)`}">no cues</span>` : ""}` },
+  bpm: { h: "BPM", r: 1, sort: SORTS.bpm, td: t => t.source_bpm ? `data-tip="own tempo ${Math.round(t.source_bpm)} BPM"` : "", cell: t => fmt(t.mix_bpm) },
+  key: { h: "Key", sort: SORTS.key, td: t => t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="${DJ()} ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : "",
+    cell: t => `${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}` },
+  genre: { h: "Genre", sort: SORTS.genre, cell: t => `${esc(t.my_genre || t.genre || "–")}${t.held_genre ? lock("Genre") : ""}${t.genre_2 ? `<div class="dim small">${esc(t.genre_2)}</div>` : ""}${t.error && !t.error.startsWith("tags:") ? `<div class="chip bad" data-tip="${esc(t.error)}">error</div>` : ""}` },
+  hype: { h: "Hype", r: 1, sort: SORTS.hype, cell: t => hypeBadge(t.hype) },
+  cues: { h: "Cues", r: 1, sort: SORTS.cues, td: t => `data-tip="${t.own_cues ? `${t.own_cues} cue${t.own_cues > 1 ? "s" : ""} set in ${DJ()}` : `no cues set in ${DJ()}`}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? ` · approved, not written yet: ${approvedText(t.cues_approved, true)}` : ""}"`,
+    cell: t => `${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">${approvedText(t.cues_approved)}</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}${t.grid_off != null ? ` <span class="chip warn" data-tip="${DJ()}'s beat grid is ${Math.abs(t.grid_off).toFixed(0)} ms ${t.grid_off > 0 ? "before" : "after"} the kicks: see Beat grid in the track's panel">grid ${t.grid_off > 0 ? "+" : ""}${t.grid_off.toFixed(0)} ms</span>` : t.grid_approved != null ? ` <span class="chip good" data-tip="Grid fix approved, not written yet">grid fix approved</span>` : t.grid_drift ? ` <span class="chip warn" data-tip="The kick drifts against the grid along the track: the BPM looks off">BPM drifts</span>` : ""}` },
+  lufs: { h: "LUFS", r: 1, sort: SORTS.lufs, cell: t => fmt(t.lufs, 1) },
+  length: { h: "Length", r: 1, sort: SORTS.length, cell: t => mmss(t.duration_sec) },
+  // this app's own extras
+  lra: { h: "Loudness range", group: "app", r: 1, sort: t => hiSort(t.loudness_range), cell: t => fmt(t.loudness_range, 1) },
+  file: { h: "File", group: "app", sort: t => txtSort(t.filename), cell: t => `<span class="clip" data-tip="${esc(t.path)}">${esc(t.filename || "")}</span>` },
+  folder: { h: "Folder", group: "app", sort: t => txtSort(t.folder), cell: t => `<span class="clip" data-tip="${esc(t.folder || "")}">${esc(t.folder || "")}</span>` },
+  format: { h: "File type", group: "app", sort: t => txtSort(ext(t)), cell: t => esc(ext(t)) },
+  // the DJ app's own fields (only those the chosen app has)
+  dj_album: { h: () => isRb() ? "Album" : "Release", ...djText("album") },
+  dj_track_no: { h: "Track #", ...djNum("track_no") },
+  dj_genre: { h: () => `Genre in ${DJ()}`, ...djText("genre") },
+  dj_label: { h: "Label", ...djText("label") },
+  dj_remixer: { h: "Remixer", ...djText("remixer") },
+  dj_producer: { h: () => isRb() ? "Composer" : "Producer", ...djText("producer") },
+  dj_org_artist: { h: "Original artist", apps: ["Rekordbox"], ...djText("org_artist") },
+  dj_lyricist: { h: "Lyricist", apps: ["Rekordbox"], ...djText("lyricist") },
+  dj_mix: { h: () => isRb() ? "Mix name" : "Mix", ...djText("mix") },
+  dj_catalog: { h: "Catalog no.", apps: ["Traktor"], ...djText("catalog") },
+  dj_comment: { h: () => isRb() ? "Comments" : "Comment", ...djText("comment") },
+  dj_comment2: { h: "Comment 2", apps: ["Traktor"], ...djText("comment2") },
+  dj_rating: { h: "Rating", ...djNum("rating", v => `<span class="stars" data-tip="${v} of 5">${"★".repeat(v)}</span>`), r: 0 },
+  dj_plays: { h: "Plays", ...djNum("plays") },
+  dj_last_played: { h: "Last played", apps: ["Traktor"], ...djDate("last_played") },
+  dj_added: { h: "Date added", ...djDate("added") },
+  dj_released: { h: "Released", ...djDate("released") },
+  dj_bitrate: { h: "Bitrate", ...djNum("bitrate", v => `${fmt(v)} kbps`) },
+  dj_sample_rate: { h: "Sample rate", apps: ["Rekordbox"], ...djNum("sample_rate", v => `${fmt(v / 1000, 1)} kHz`) },
+  dj_size: { h: "Size", ...djNum("size_mb", v => `${fmt(v, 1)} MB`) },
+};
+const ext = t => (t.filename || t.path || "").match(/\.([^./\\]+)$/)?.[1]?.toUpperCase() || "";
+const colHead = c => typeof c.h === "function" ? c.h() : c.h;
+const colOffered = id => { const c = TCOLS[id]; return !!c && (!c.apps || c.apps.includes(DJ())); };
+const TCOLS_DEFAULT = ["colour", "track", "bpm", "key", "genre", "hype", "cues", "lufs", "length"];
+for (const [id, c] of Object.entries(TCOLS)) SORTS[id] ??= c.sort;
+function shownCols() {  // the columns you picked, in your order (remembered in this browser)
+  let ids = null;
+  try { ids = JSON.parse(localStorage.getItem("ta-cols")); } catch (e) {}
+  ids = (Array.isArray(ids) ? ids : TCOLS_DEFAULT).filter(colOffered);
+  return ids.includes("track") ? ids : ["track", ...ids];
+}
+function saveCols(ids) { try { localStorage.setItem("ta-cols", JSON.stringify(ids)); } catch (e) {} }
+// the right-click menu: tick a column to show it; Reset brings back the usual ones
+function colMenu(x, y, redraw) {
+  document.querySelectorAll(".usemenu").forEach(m => m.remove());
+  const menu = document.createElement("div"); menu.className = "usemenu colmenu";
+  const close = () => { menu.remove(); removeEventListener("keydown", key); document.removeEventListener("mousedown", out); removeEventListener("scroll", scr, true); };
+  const key = e => { if (e.key === "Escape") close(); };
+  const out = e => { if (!menu.contains(e.target)) close(); };
+  const scr = e => { if (!menu.contains(e.target)) close(); };
+  const fill = () => {
+    const on = shownCols(), item = id => `<label class="${TCOLS[id].fixed ? "dim" : ""}"><input type="checkbox" data-col="${id}" ${on.includes(id) ? "checked" : ""} ${TCOLS[id].fixed ? "disabled" : ""}> ${esc(colHead(TCOLS[id]))}</label>`;
+    const ids = Object.keys(TCOLS).filter(colOffered), grp = g => ids.filter(id => (TCOLS[id].group || (id.startsWith("dj_") ? "dj" : "main")) === g);
+    menu.innerHTML = `<div class="hd">Columns <span class="dim">· drag a header to move it</span></div>${grp("main").map(item).join("")}
+      <div class="hd">From ${esc(DJ())}</div>${grp("dj").map(item).join("")}<div class="hd">From this app</div>${grp("app").map(item).join("")}
+      <div class="sep"></div><div data-reset>Reset to the usual columns</div>`;
+  };
+  fill();
+  menu.addEventListener("change", e => {
+    const id = e.target.dataset.col; if (!id) return;
+    const on = shownCols().filter(x => x !== id);
+    saveCols(e.target.checked ? [...on, id] : on); redraw();
+  });
+  menu.addEventListener("click", e => { if (e.target.closest("[data-reset]")) { try { localStorage.removeItem("ta-cols"); } catch (e) {} redraw(); fill(); } });
+  document.body.append(menu);
+  menu.style.left = `${Math.max(8, Math.min(x, innerWidth - menu.offsetWidth - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, innerHeight - menu.offsetHeight - 8))}px`;
+  addEventListener("keydown", key); document.addEventListener("mousedown", out); addEventListener("scroll", scr, true);
+}
 async function pageTracks(main, open) {
   const me = S.routeId;
   let all = await getTracks();
@@ -104,7 +192,7 @@ async function pageTracks(main, open) {
     const { key, dir } = S.trackSort, f = SORTS[key] || SORTS.track;  // a sort kept from an older page may be gone
     rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
     $("#tcount").innerHTML = `${rows.length} of ${all.length} files${S.fixesPending ? ` · <span class="counting">counting proposed corrections (about 30 s)…</span>` : ""}`;
-    const head = [["colour", "Colour"], ["track", "Track"], ["bpm", "BPM", 1], ["key", "Key"], ["genre", "Genre"], ["hype", "Hype", 1], ["cues", "Cues", 1], ["lufs", "LUFS", 1], ["length", "Length", 1]];
+    const cols = shownCols();
     const scroll = $("#ttable .tablewrap")?.scrollTop || 0;
     if (!rows.length) {
       $("#ttable").innerHTML = empty("No tracks match", all.length ? "Nothing matches all of these filters." : "Nothing is scanned yet.",
@@ -113,18 +201,23 @@ async function pageTracks(main, open) {
       selbar(); return;
     }
     $("#ttable").innerHTML = `<div class="tablewrap" style="max-height:calc(100vh - 230px);overflow:auto"><table>
-      <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${head.map(([k, h, r]) => `<th class="sort ${r ? "r" : ""} ${S.trackSort.key === k ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${k}">${h}</th>`).join("")}</tr></thead>
+      <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${cols.map(id => { const c = TCOLS[id]; return `<th class="sort ${c.r ? "r" : ""} ${S.trackSort.key === id ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${id}" draggable="true" data-tip="Click to sort · right-click to pick columns · drag to move">${esc(colHead(c))}</th>`; }).join("")}</tr></thead>
       <tbody>${rows.map(t => `<tr class="click ${SEL.has(t.path) ? "sel" : ""}" data-path="${esc(t.path)}">
         ${SNAP ? "" : `<td class="cb"><input type="checkbox" data-sel ${SEL.has(t.path) ? "checked" : ""}></td>`}
-        <td>${colour(colourOf(t), !t.traktor_color)}${t.colour_guess ? guessMark() : ""}${t.held_colour ? lock("Colour") : ""}</td><td>${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? `No cue points or loops set in ${DJ()}` : `Not in ${DJ()}'s collection (or no beat grid)`}">no cues</span>` : ""}</td>
-        <td class="r num" ${t.source_bpm ? `data-tip="own tempo ${Math.round(t.source_bpm)} BPM"` : ""}>${fmt(t.mix_bpm)}</td>
-        <td ${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="${DJ()} ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : ""}>${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}</td>
-        <td>${esc(t.my_genre || t.genre || "–")}${t.held_genre ? lock("Genre") : ""}${t.genre_2 ? `<div class="dim small">${esc(t.genre_2)}</div>` : ""}${t.error && !t.error.startsWith("tags:") ? `<div class="chip bad" data-tip="${esc(t.error)}">error</div>` : ""}</td>
-        <td class="r">${hypeBadge(t.hype)}</td>
-        <td class="r num" data-tip="${t.own_cues ? `${t.own_cues} cue${t.own_cues > 1 ? "s" : ""} set in ${DJ()}` : `no cues set in ${DJ()}`}${t.corrections ? ` · ${t.corrections} proposed correction${t.corrections > 1 ? "s" : ""}` : ""}${t.cues_approved ? ` · approved, not written yet: ${approvedText(t.cues_approved, true)}` : ""}">${t.own_cues ?? "–"}${t.corrections ? ` <span class="chip warn">${t.corrections} fix${t.corrections > 1 ? "es" : ""}</span>` : ""}${t.cues_approved ? ` <span class="chip good">${approvedText(t.cues_approved)}</span>` : ""}${S.fixesPending && t.own_cues ? ` <span class="dim small">counting…</span>` : ""}${t.grid_off != null ? ` <span class="chip warn" data-tip="${DJ()}'s beat grid is ${Math.abs(t.grid_off).toFixed(0)} ms ${t.grid_off > 0 ? "before" : "after"} the kicks: see Beat grid in the track's panel">grid ${t.grid_off > 0 ? "+" : ""}${t.grid_off.toFixed(0)} ms</span>` : t.grid_approved != null ? ` <span class="chip good" data-tip="Grid fix approved, not written yet">grid fix approved</span>` : t.grid_drift ? ` <span class="chip warn" data-tip="The kick drifts against the grid along the track: the BPM looks off">BPM drifts</span>` : ""}</td>
-        <td class="r num">${fmt(t.lufs, 1)}</td><td class="r num">${mmss(t.duration_sec)}</td></tr>`).join("")}</tbody></table></div>`;
+        ${cols.map(id => { const c = TCOLS[id]; return `<td class="${c.r ? "r num" : ""}" ${c.td ? c.td(t) : ""}>${c.cell(t)}</td>`; }).join("")}</tr>`).join("")}</tbody></table></div>`;
     $("#ttable .tablewrap").scrollTop = scroll;
-    $("#ttable thead").onclick = e => { const k = e.target.dataset?.k; if (!k) return; S.trackSort = { key: k, dir: S.trackSort.key === k ? -S.trackSort.dir : 1 }; draw(); };
+    const th = $("#ttable thead");
+    th.onclick = e => { const k = e.target.dataset?.k; if (!k) return; S.trackSort = { key: k, dir: S.trackSort.key === k ? -S.trackSort.dir : 1 }; draw(); };
+    th.oncontextmenu = e => { e.preventDefault(); colMenu(e.clientX, e.clientY, draw); };
+    th.ondragstart = e => { const k = e.target.dataset?.k; if (!k) return; e.dataTransfer.setData("text/plain", k); e.dataTransfer.effectAllowed = "move"; };
+    th.ondragover = e => { if (e.target.closest("th[data-k]")) { e.preventDefault(); th.querySelectorAll(".dropat").forEach(x => x.classList.remove("dropat")); e.target.closest("th").classList.add("dropat"); } };
+    th.ondragleave = e => e.target.closest?.("th")?.classList.remove("dropat");
+    th.ondrop = e => {  // the dragged column goes before the one it's dropped on
+      e.preventDefault(); const from = e.dataTransfer.getData("text/plain"), to = e.target.closest("th[data-k]")?.dataset.k;
+      if (!from || !to || from === to) { draw(); return; }
+      const ids = shownCols().filter(x => x !== from); ids.splice(ids.indexOf(to) + (cols.indexOf(from) < cols.indexOf(to) ? 1 : 0), 0, from);
+      saveCols(ids); draw();
+    };
     $("#ttable tbody").onclick = e => {
       const tr = e.target.closest("tr[data-path]"); if (!tr) return;
       if (e.target.closest(".cb")) {  // the checkbox cell selects instead of opening

@@ -9,6 +9,7 @@ module's builds, which installs download by themselves.
 - `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
   found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
   own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.
+- Tracks tab: right-click the column headers to show, hide and (by dragging a header) reorder columns. The new optional columns are the DJ app's own fields (Traktor: release, label, remixer, producer, mix, catalog no., comment, comment 2, rating, plays, last played, date added, release date, bitrate, size; Rekordbox: the same core fields plus composer, original artist, lyricist and sample rate) and the file name, folder, file type and loudness range. Every column sorts.
 - Web page: a notice when Traktor has tracks Lexicon doesn't, saying to use Import → Traktor in Lexicon (its Sync to Traktor only goes the other way).
 
 **Changed**

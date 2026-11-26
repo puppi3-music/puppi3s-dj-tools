@@ -917,6 +917,47 @@ OWN_FOLDERS = {FOLDER_NAME, "Sets (Track Analyzer)", "Crates (Track Analyzer)"}
 TRAKTOR_LISTS = {"_RECORDINGS", "_LOOPS"}
 
 
+
+def _date(v: str | None) -> str | None:
+    """Traktor's "2025/8/16" as "2025-08-16" (sorts as text)."""
+    m = re.fullmatch(r"(\d{4})/(\d{1,2})/(\d{1,2})", (v or "").strip())
+    return f"{m[1]}-{int(m[2]):02d}-{int(m[3]):02d}" if m else None
+
+
+def _num(v, scale: float = 1) -> float | None:
+    try:
+        return float(v) / scale if v not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def track_meta(nml: str | None = None) -> dict[str, dict]:
+    """{file path: Traktor's browser fields} for the Tracks tab's optional columns, with library.META_FIELDS's
+    names; empty fields are left out. RATING is Traktor's Comment 2, RANKING its stars (51 a star),
+    FILESIZE kB."""
+    root = ET.parse(find_collection(nml)).getroot()
+    out = {}
+    for e in root.find("COLLECTION").iter("ENTRY"):
+        loc = e.find("LOCATION")
+        if loc is None:
+            continue
+        i = e.find("INFO")
+        i = i.attrib if i is not None else {}
+        al = e.find("ALBUM")
+        al = al.attrib if al is not None else {}
+        rank = _num(i.get("RANKING"))
+        m = {"album": al.get("TITLE"), "track_no": _num(al.get("TRACK")), "genre": i.get("GENRE"),
+             "label": i.get("LABEL"), "remixer": i.get("REMIXER"), "producer": i.get("PRODUCER"), "mix": i.get("MIX"),
+             "comment": i.get("COMMENT"), "comment2": i.get("RATING"), "catalog": i.get("CATALOG_NO"),
+             "rating": round(rank / 51) if rank else None, "plays": _num(i.get("PLAYCOUNT")),
+             "last_played": _date(i.get("LAST_PLAYED")), "added": _date(i.get("IMPORT_DATE")),
+             "released": _date(i.get("RELEASE_DATE")), "bitrate": _num(i.get("BITRATE"), 1000),
+             "size_mb": _num(i.get("FILESIZE"), 1024)}
+        m = {k: v for k, v in m.items() if v not in (None, "")}
+        for p in location_paths(loc.attrib):
+            out[p] = m
+    return out
+
 def _collection_files(root) -> dict[str, tuple[str, dict]]:
     """{VOLUME+DIR+FILE (a playlist's PRIMARYKEY): (the audio file on disk, its INFO attributes)} for every entry of
     Traktor's collection whose file exists."""
