@@ -1,0 +1,5 @@
+# macOS Finder files
+.DS_Store
+
+# Local skill links so sessions opened at the repo root find the skills in track-analyzer/.claude/
+/.claude/
