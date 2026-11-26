@@ -79,18 +79,47 @@ const TCOLS = {
 };
 const ext = t => (t.filename || t.path || "").match(/\.([^./\\]+)$/)?.[1]?.toUpperCase() || "";
 const colHead = c => typeof c.h === "function" ? c.h() : c.h;
-const colOffered = id => { const c = TCOLS[id]; return !!c && (!c.apps || c.apps.includes(DJ())); };
 const TCOLS_DEFAULT = ["colour", "track", "bpm", "key", "genre", "hype", "cues", "lufs", "length"];
 for (const [id, c] of Object.entries(TCOLS)) SORTS[id] ??= c.sort;
-function shownCols() {  // the columns you picked, in your order (remembered in this browser)
+// a table whose columns you pick (right-click the headers), move (drag a header) and sort (click one).
+// spec: cols (id → column as in TCOLS), def: the usual columns, store: localStorage key, sortKey: where in S the sort lives,
+// groups: [group, menu heading] in menu order (a column's group: its own, else "dj" for dj_…, else "main")
+const TSPEC = { cols: TCOLS, def: TCOLS_DEFAULT, store: "ta-cols", sortKey: "trackSort",
+  groups: [["main", "Columns <span class=\"dim\">· drag a header to move it</span>"], ["dj", () => `From ${esc(DJ())}`], ["app", "From this app"]] };
+const colOffered = (spec, id) => { const c = spec.cols[id]; return !!c && (!c.apps || c.apps.includes(DJ())); };
+const colGroup = (c, id) => c.group || (id.startsWith("dj_") ? "dj" : "main");
+function shownCols(spec = TSPEC) {  // the columns you picked, in your order (remembered in this browser); fixed ones always
   let ids = null;
-  try { ids = JSON.parse(localStorage.getItem("ta-cols")); } catch (e) {}
-  ids = (Array.isArray(ids) ? ids : TCOLS_DEFAULT).filter(colOffered);
-  return ids.includes("track") ? ids : ["track", ...ids];
+  try { ids = JSON.parse(localStorage.getItem(spec.store)); } catch (e) {}
+  ids = (Array.isArray(ids) ? ids : spec.def).filter(id => colOffered(spec, id));
+  const fixed = Object.keys(spec.cols).filter(id => spec.cols[id].fixed && !ids.includes(id));
+  return [...fixed, ...ids];
 }
-function saveCols(ids) { try { localStorage.setItem("ta-cols", JSON.stringify(ids)); } catch (e) {} }
+function saveCols(spec, ids) { try { localStorage.setItem(spec.store, JSON.stringify(ids)); } catch (e) {} }
+// the header cells of the columns shown, marked with the sort
+const colHeads = (spec, cols) => { const s = S[spec.sortKey] || {}; return cols.map(id => { const c = spec.cols[id];
+  return `<th class="sort ${c.r ? "r" : ""} ${s.key === id ? (s.dir > 0 ? "asc" : "desc") : ""}" data-k="${id}" draggable="true" data-tip="Click to sort · right-click to pick columns · drag to move">${esc(colHead(c))}</th>`; }).join(""); };
+// rows sorted by the spec's sort (none set: as they came)
+function colSort(spec, rows) {
+  const { key, dir } = S[spec.sortKey] || {}, f = spec.cols[key]?.sort; if (!f) return rows;
+  return rows.sort((a, b) => { const x = f(a), y = f(b); return (x < y ? -1 : x > y ? 1 : 0) * dir; });
+}
+// a header row: click sorts, right-click picks columns, drag moves one
+function wireColHead(th, spec, redraw) {
+  th.onclick = e => { const k = e.target.dataset?.k; if (!k) return; const s = S[spec.sortKey] || {}; S[spec.sortKey] = { key: k, dir: s.key === k ? -s.dir : 1 }; redraw(); };
+  th.oncontextmenu = e => { e.preventDefault(); colMenu(e.clientX, e.clientY, redraw, spec); };
+  th.ondragstart = e => { const k = e.target.dataset?.k; if (!k) return; e.dataTransfer.setData("text/plain", k); e.dataTransfer.effectAllowed = "move"; };
+  th.ondragover = e => { if (e.target.closest("th[data-k]")) { e.preventDefault(); th.querySelectorAll(".dropat").forEach(x => x.classList.remove("dropat")); e.target.closest("th").classList.add("dropat"); } };
+  th.ondragleave = e => e.target.closest?.("th")?.classList.remove("dropat");
+  th.ondrop = e => {  // the dragged column goes before the one it's dropped on (after it when dragged rightwards)
+    e.preventDefault(); const from = e.dataTransfer.getData("text/plain"), to = e.target.closest("th[data-k]")?.dataset.k;
+    if (!from || !to || from === to || !spec.cols[from]) { redraw(); return; }
+    const cols = shownCols(spec), ids = cols.filter(x => x !== from); ids.splice(ids.indexOf(to) + (cols.indexOf(from) < cols.indexOf(to) ? 1 : 0), 0, from);
+    saveCols(spec, ids); redraw();
+  };
+}
 // the right-click menu: tick a column to show it; Reset brings back the usual ones
-function colMenu(x, y, redraw) {
+function colMenu(x, y, redraw, spec = TSPEC) {
   document.querySelectorAll(".usemenu").forEach(m => m.remove());
   const menu = document.createElement("div"); menu.className = "usemenu colmenu";
   const close = () => { menu.remove(); removeEventListener("keydown", key); document.removeEventListener("mousedown", out); removeEventListener("scroll", scr, true); };
@@ -98,23 +127,46 @@ function colMenu(x, y, redraw) {
   const out = e => { if (!menu.contains(e.target)) close(); };
   const scr = e => { if (!menu.contains(e.target)) close(); };
   const fill = () => {
-    const on = shownCols(), item = id => `<label class="${TCOLS[id].fixed ? "dim" : ""}"><input type="checkbox" data-col="${id}" ${on.includes(id) ? "checked" : ""} ${TCOLS[id].fixed ? "disabled" : ""}> ${esc(colHead(TCOLS[id]))}</label>`;
-    const ids = Object.keys(TCOLS).filter(colOffered), grp = g => ids.filter(id => (TCOLS[id].group || (id.startsWith("dj_") ? "dj" : "main")) === g);
-    menu.innerHTML = `<div class="hd">Columns <span class="dim">· drag a header to move it</span></div>${grp("main").map(item).join("")}
-      <div class="hd">From ${esc(DJ())}</div>${grp("dj").map(item).join("")}<div class="hd">From this app</div>${grp("app").map(item).join("")}
-      <div class="sep"></div><div data-reset>Reset to the usual columns</div>`;
+    const on = shownCols(spec), C = spec.cols, item = id => `<label class="${C[id].fixed ? "dim" : ""}"><input type="checkbox" data-col="${id}" ${on.includes(id) ? "checked" : ""} ${C[id].fixed ? "disabled" : ""}> ${esc(colHead(C[id]))}</label>`;
+    const ids = Object.keys(C).filter(id => colOffered(spec, id));
+    menu.innerHTML = spec.groups.map(([g, title]) => { const its = ids.filter(id => colGroup(C[id], id) === g);
+      return its.length ? `<div class="hd">${typeof title === "function" ? title() : title}</div>${its.map(item).join("")}` : ""; }).join("")
+      + `<div class="sep"></div><div data-reset>Reset to the usual columns</div>`;
   };
   fill();
   menu.addEventListener("change", e => {
     const id = e.target.dataset.col; if (!id) return;
-    const on = shownCols().filter(x => x !== id);
-    saveCols(e.target.checked ? [...on, id] : on); redraw();
+    const on = shownCols(spec).filter(x => x !== id);
+    saveCols(spec, e.target.checked ? [...on, id] : on); redraw();
   });
-  menu.addEventListener("click", e => { if (e.target.closest("[data-reset]")) { try { localStorage.removeItem("ta-cols"); } catch (e) {} redraw(); fill(); } });
+  menu.addEventListener("click", e => { if (e.target.closest("[data-reset]")) { try { localStorage.removeItem(spec.store); } catch (e) {} redraw(); fill(); } });
   document.body.append(menu);
   menu.style.left = `${Math.max(8, Math.min(x, innerWidth - menu.offsetWidth - 8))}px`;
   menu.style.top = `${Math.max(8, Math.min(y, innerHeight - menu.offsetHeight - 8))}px`;
   addEventListener("keydown", key); document.addEventListener("mousedown", out); addEventListener("scroll", scr, true);
+}
+// the Tracks tab's columns for another table whose rows carry a path: each row's track from the Tracks list (row.tr)
+// fills them, blank until that list has loaded. skip: the ids the table has columns of its own for
+function trackCols(skip) {
+  const out = {};
+  for (const [id, c] of Object.entries(TCOLS)) if (!skip.includes(id))
+    out[id] = { ...c, fixed: 0, group: c.group || (id.startsWith("dj_") ? "dj" : "tracks"),
+      sort: r => c.sort(r.tr || {}), cell: r => r.tr ? c.cell(r.tr) : "", td: c.td && (r => r.tr ? c.td(r.tr) : "") };
+  return out;
+}
+const TRACKS_GROUPS = [["tracks", "From the Tracks tab"], ["dj", () => `From ${esc(DJ())}`], ["app", "From this app"]];
+// gives each row its track (row.tr): at once when the Tracks list is in, else when it comes, then() redraws. A failed list leaves those columns blank
+function joinTracks(rows, then) {
+  const put = list => { const by = new Map(list.map(t => [t.path, t])); for (const r of rows) r.tr = by.get(r.path); };
+  if (S.tracks[S.lib]) { put(S.tracks[S.lib]); return; }
+  getTracks().then(list => { put(list); then(); }, () => {});
+}
+// a table with picked columns: lead / tail are fixed columns as in table() (a tick box, buttons)
+function colTable(spec, rows, { rowAttr, lead = [], tail = [] } = {}) {
+  const cols = shownCols(spec), C = spec.cols, fx = c => `<th class="${c.r ? "r" : ""}">${c.raw ? c.h : esc(c.h)}</th>`;
+  return `<div class="tablewrap"><table><thead><tr>${lead.map(fx).join("")}${colHeads(spec, cols)}${tail.map(fx).join("")}</tr></thead>
+    <tbody>${rows.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ""}>${lead.map(c => `<td class="${c.r ? "r num" : ""}">${c.f(r)}</td>`).join("")}${cols.map(id => {
+      const c = C[id]; return `<td class="${c.r ? "r num" : ""}" ${c.td ? c.td(r) : ""}>${c.cell(r)}</td>`; }).join("")}${tail.map(c => `<td class="${c.r ? "r num" : ""}">${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 async function pageTracks(main, open) {
   const me = S.routeId;
@@ -201,23 +253,12 @@ async function pageTracks(main, open) {
       selbar(); return;
     }
     $("#ttable").innerHTML = `<div class="tablewrap" style="max-height:calc(100vh - 230px);overflow:auto"><table>
-      <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${cols.map(id => { const c = TCOLS[id]; return `<th class="sort ${c.r ? "r" : ""} ${S.trackSort.key === id ? (dir > 0 ? "asc" : "desc") : ""}" data-k="${id}" draggable="true" data-tip="Click to sort · right-click to pick columns · drag to move">${esc(colHead(c))}</th>`; }).join("")}</tr></thead>
+      <thead><tr>${SNAP ? "" : `<th class="cb"><input type="checkbox" id="selall" data-tip="Select every track shown" ${rows.length && rows.every(t => SEL.has(t.path)) ? "checked" : ""}></th>`}${colHeads(TSPEC, cols)}</tr></thead>
       <tbody>${rows.map(t => `<tr class="click ${SEL.has(t.path) ? "sel" : ""}" data-path="${esc(t.path)}">
         ${SNAP ? "" : `<td class="cb"><input type="checkbox" data-sel ${SEL.has(t.path) ? "checked" : ""}></td>`}
         ${cols.map(id => { const c = TCOLS[id]; return `<td class="${c.r ? "r num" : ""}" ${c.td ? c.td(t) : ""}>${c.cell(t)}</td>`; }).join("")}</tr>`).join("")}</tbody></table></div>`;
     $("#ttable .tablewrap").scrollTop = scroll;
-    const th = $("#ttable thead");
-    th.onclick = e => { const k = e.target.dataset?.k; if (!k) return; S.trackSort = { key: k, dir: S.trackSort.key === k ? -S.trackSort.dir : 1 }; draw(); };
-    th.oncontextmenu = e => { e.preventDefault(); colMenu(e.clientX, e.clientY, draw); };
-    th.ondragstart = e => { const k = e.target.dataset?.k; if (!k) return; e.dataTransfer.setData("text/plain", k); e.dataTransfer.effectAllowed = "move"; };
-    th.ondragover = e => { if (e.target.closest("th[data-k]")) { e.preventDefault(); th.querySelectorAll(".dropat").forEach(x => x.classList.remove("dropat")); e.target.closest("th").classList.add("dropat"); } };
-    th.ondragleave = e => e.target.closest?.("th")?.classList.remove("dropat");
-    th.ondrop = e => {  // the dragged column goes before the one it's dropped on
-      e.preventDefault(); const from = e.dataTransfer.getData("text/plain"), to = e.target.closest("th[data-k]")?.dataset.k;
-      if (!from || !to || from === to) { draw(); return; }
-      const ids = shownCols().filter(x => x !== from); ids.splice(ids.indexOf(to) + (cols.indexOf(from) < cols.indexOf(to) ? 1 : 0), 0, from);
-      saveCols(ids); draw();
-    };
+    wireColHead($("#ttable thead"), TSPEC, draw);
     $("#ttable tbody").onclick = e => {
       const tr = e.target.closest("tr[data-path]"); if (!tr) return;
       if (e.target.closest(".cb")) {  // the checkbox cell selects instead of opening
