@@ -1668,6 +1668,9 @@ def delete_saved(dirs: list[Path], ident: str) -> dict:
 def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
+    if isinstance(data, dict) and data.get("type") == "dj_mix" and "analysed_at" not in data:
+        # saved before the date was kept: the file's own date (when it was last written)
+        data["analysed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(f.stat().st_mtime))
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
         colour_sync()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
         data["library"] = played_tracks(data["tracklist"]["tracks"])

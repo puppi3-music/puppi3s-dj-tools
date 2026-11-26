@@ -106,7 +106,8 @@ def test_describe_end_to_end(tmp_path, monkeypatch):
     c = report["clips"][0]
     assert report["offset"] == 15.0
     assert c["placed"] == "by sound" and c["start_s"] == pytest.approx(62.5, abs=0.05)
-    assert c["video"] == "1:08-1:38" and c["track"] == "Two - Second"  # the one playing at the clip's middle
+    assert c["video"] == "1:08-1:38" and c["track"] == "Two - Second"  # the one heard longest
+    assert [t["name"] for t in c["tracks"]] == ["Two - Second", "One - First"]  # 1:15-1:32.5, then 1:02.5-1:15
     assert c["rise_lu"] > 5
 
     hand = clipdesc.describe(analysis, [clip], at={1: 100.0}, log=lambda m: None)["clips"][0]
@@ -145,3 +146,16 @@ def test_page_job_arguments(tmp_path):
                 {"analysis": str(a), "clips": str(tmp_path), "offset": "soon"}, {"analysis": "mix.json", "clips": str(tmp_path)}):
         with pytest.raises(ValueError):
             jobs._clips_describe(bad)
+
+
+def test_tracks_heard_longest_first():
+    from dj_track_analyzer import tracklist as tl
+    tracks = [{"start": "0:00", "artist": "A", "title": "a"}, {"start": "1:05", "artist": "B", "title": "b"},
+              {"start": "1:30", "title": "c"}]
+    assert tl.tracks_heard(tracks, 60, 100) == [{"name": "B - b", "seconds": 25}, {"name": "c", "seconds": 10},
+                                                {"name": "A - a", "seconds": 5}]
+    assert tl.tracks_heard(tracks, 70, 80) == [{"name": "B - b", "seconds": 10}]
+    h = {"type": "dj_mix", "first_sound_seconds": 0.0, "tracklist": {"tracks": tracks},
+         "highlights": [{"start": "1:00", "end": "1:40"}]}
+    tl.describe_highlights(h, None)
+    assert h["highlights"][0]["track"] == "B - b" and len(h["highlights"][0]["tracks"]) == 3

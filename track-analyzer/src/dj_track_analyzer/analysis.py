@@ -1925,6 +1925,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
             result["standalone"]["timestamps"] = tl.chapters(result, 0)
 
     result["analysis_seconds"] = round(time.time() - t0, 1)
+    result["analysed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return result
 
 

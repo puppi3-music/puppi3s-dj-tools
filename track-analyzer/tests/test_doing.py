@@ -53,3 +53,15 @@ def test_the_setup_checks_name_each_part(monkeypatch):
     client().get("/api/setup")
     assert seen == [["Setup checks: checking the beat grids"]]
     assert web.doing_now() == []
+
+
+def test_saved_mix_says_when_it_was_analysed(tmp_path):
+    import json
+    import os
+
+    from dj_track_analyzer import web
+    (tmp_path / "old.json").write_text(json.dumps({"type": "dj_mix", "file": "x.wav"}))
+    (tmp_path / "new.json").write_text(json.dumps({"type": "dj_mix", "file": "x.wav", "analysed_at": "2026-11-20T10:00:00Z"}))
+    os.utime(tmp_path / "old.json", (1767225600, 1767225600))  # 2026-01-01
+    assert web.saved_file([tmp_path], "0/old.json")["analysed_at"] == "2026-01-01T00:00:00Z"  # older run: the file's date
+    assert web.saved_file([tmp_path], "0/new.json")["analysed_at"] == "2026-11-20T10:00:00Z"
