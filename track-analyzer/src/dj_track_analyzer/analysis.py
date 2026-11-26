@@ -603,7 +603,7 @@ def own_or_starter(own: Path, starter: Path) -> Path | None:
 def _load_color(path: Path | None):
     if path is None or not path.exists():
         return None
-    mtime = path.stat().st_mtime
+    mtime = (st := path.stat()).st_mtime_ns, st.st_size  # size too: on Windows two quick writes can share a time
     hit = _color_bundle.get(path)
     if not hit or hit[0] != mtime:
         import joblib
@@ -1594,7 +1594,7 @@ def dj_rules() -> dict:
     """DJ genre rules: data/dj_genres.json if present, else the one shipped here."""
     user = HOME / "dj_genres.json"
     path = user if user.exists() else Path(__file__).with_name("dj_genres.json")
-    mtime = path.stat().st_mtime if path.exists() else 0
+    mtime = ((st := path.stat()).st_mtime_ns, st.st_size) if path.exists() else 0
     if _rules_cache.get("key") != (str(path), mtime):
         rules = json.loads(path.read_text())["genres"] if path.exists() else {}
         _rules_cache.update(key=(str(path), mtime), rules=rules)
@@ -1673,7 +1673,7 @@ def my_genre_bundle() -> dict | None:
     if not GENRE_MODEL.exists():
         _genre_bundle.clear()
         return None
-    mtime = GENRE_MODEL.stat().st_mtime
+    mtime = (st := GENRE_MODEL.stat()).st_mtime_ns, st.st_size
     if _genre_bundle.get("mtime") != mtime:
         import joblib
 

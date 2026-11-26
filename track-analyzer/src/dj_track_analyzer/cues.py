@@ -712,7 +712,7 @@ _bundle: dict = {}
 def _load(path: Path | None):
     if path is None or not path.exists():
         return None
-    mtime = path.stat().st_mtime
+    mtime = (st := path.stat()).st_mtime_ns, st.st_size  # size too: on Windows two quick writes can share a time
     hit = _bundle.get(path)
     if not hit or hit[0] != mtime:  # reloaded when the file changes (a `cues train` from the web page)
         import joblib

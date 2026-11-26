@@ -461,8 +461,9 @@ def correction_counts() -> dict[str, int] | None:
 
     try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
         f = dj_app.find_collection(None)
-        key = (cues.MODEL.stat().st_mtime, cues.model_mode(),  # the cue switch: Both changes the suggestions' moves
-               cues.STARTER_MODEL.stat().st_mtime if cues.STARTER_MODEL.exists() else None,
+        stamp = lambda m: ((st := m.stat()).st_mtime_ns, st.st_size)  # size too: two quick writes can share a time
+        key = (stamp(cues.MODEL), cues.model_mode(),  # the cue switch: Both changes the suggestions' moves
+               stamp(cues.STARTER_MODEL) if cues.STARTER_MODEL.exists() else None,
                dj_app.app(), str(f), dj_app.changed_at(f))
         g = cue_grids()
     except (OSError, SystemExit):
