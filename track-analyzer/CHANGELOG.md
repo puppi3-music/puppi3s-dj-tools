@@ -21,6 +21,11 @@ module's builds, which installs download by themselves.
   the style models far more than the tempo change itself (it could flip a track's genre at +0.6 %). The page's
   player still plays with R3. The 135/145/165 views need a rescan.
 
+**Fixed**
+- Writing Hype to Traktor skipped tracks whose file tags differ from Traktor's entry even when Traktor wrote the
+  entry after the file last changed (a title renamed in Traktor, a key tagger's comment Traktor never took in).
+  Those tags aren't waiting for Traktor to read them, so the entry is now marked up to date and gets its Hype.
+
 ## 1.4.3 (2026-11-12)
 
 **Changed**

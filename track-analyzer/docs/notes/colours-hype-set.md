@@ -98,4 +98,7 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   `traktor.stamp_if_unchanged`, shared with `tempo load`: only when the file's title/artist/album/comment (`tags_match`;
   fields the file has, Hype ignored, genre not compared since `traktor` writes genres the files lack) still match the
   entry, else Traktor should read those edits: hype skips the track (`skipped_file_tags_changed`), load writes it
-  unstamped. Refuses while `tag_writing_on` (would copy Hype into the files) unless `--force`. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.
+  unstamped. Only when the file is newer than the entry stamp, though: an entry Traktor wrote after the file last
+  changed has passed over those tags (a title renamed in Traktor; a key tagger's "08A - 126 - 7" comment Traktor
+  never showed, even after a deck load) and is stamped as usual. Before 2026-11 such tracks never got their Hype.
+  Refuses while `tag_writing_on` (would copy Hype into the files) unless `--force`. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.

@@ -771,6 +771,12 @@ def file_stamp(path: str) -> str | None:
     return f"{t.tm_year}/{t.tm_mon}/{t.tm_mday} {t.tm_hour * 3600 + t.tm_min * 60 + t.tm_sec}"
 
 
+def _stamp_key(stamp: str) -> tuple[int, ...]:
+    """'2026/11/3 59934' → (2026, 11, 3, 59934), so stamps compare in time order."""
+    date, secs = stamp.split(" ")
+    return (*map(int, date.split("/")), int(secs))
+
+
 def set_entry_stamp(entry: str, stamp: str | None) -> str:
     """Set (or, for None, remove) MODIFIED_DATE / MODIFIED_TIME on an ENTRY."""
     m = re.match(r"<ENTRY\b(?:[^>\x22]|\x22[^\x22]*\x22)*>", entry)
@@ -848,14 +854,17 @@ def tags_match(entry: str, path: str) -> bool:
 def stamp_if_unchanged(entry: str, paths: list[str]) -> tuple[str, str]:
     """Mark Traktor as up to date with the file (MODIFIED_DATE/TIME = its mtime), so a tag re-read on deck load
     doesn't replace what we wrote, but only when the file's tags still match the entry: tags edited elsewhere
-    are left for Traktor to read. Returns (entry, "" | "stamped" | "tags_changed")."""
+    are left for Traktor to read. Tags that differ in a file older than the entry aren't edits Traktor still has
+    to read: Traktor wrote the entry after the file last changed (a title renamed in Traktor, a tagger's comment
+    Traktor never took in), so it won't re-read them on its own. Returns (entry, "" | "stamped" | "tags_changed")."""
     p = next((p for p in paths if file_stamp(p)), None)
     if p is None:
         return entry, ""
     stamp = file_stamp(p)
-    if stamp == entry_stamp(entry):
+    old = entry_stamp(entry)
+    if stamp == old:
         return entry, ""
-    if not tags_match(entry, p):
+    if not (old and _stamp_key(old) > _stamp_key(stamp)) and not tags_match(entry, p):
         return entry, "tags_changed"
     return set_entry_stamp(entry, stamp), "stamped"
 
