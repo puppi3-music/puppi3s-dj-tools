@@ -168,6 +168,15 @@ function colTable(spec, rows, { rowAttr, lead = [], tail = [] } = {}) {
     <tbody>${rows.map((r, i) => `<tr ${rowAttr ? rowAttr(r, i) : ""}>${lead.map(c => `<td class="${c.r ? "r num" : ""}">${c.f(r)}</td>`).join("")}${cols.map(id => {
       const c = C[id]; return `<td class="${c.r ? "r num" : ""}" ${c.td ? c.td(r) : ""}>${c.cell(r)}</td>`; }).join("")}${tail.map(c => `<td class="${c.r ? "r num" : ""}">${c.f(r)}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
+// a tempo view shown that was scanned before tracks were added to the normal library: they're not in this list
+function viewBehind() {
+  const n = S.viewMissing?.[S.lib];
+  if (!n || S.lib === "native") return "";
+  const label = S.libs?.libraries.find(l => l.id === S.lib)?.label || "This tempo view";
+  return `<div class="selbar"><span><b>${esc(label)} is missing ${plural(n, "track")} from your normal library</b>
+    (added since the view was scanned), so this list, its counts and sorts leave them out.</span>
+    <span style="display:flex;gap:8px;flex-wrap:wrap;margin-left:auto"><button id="t-native">Show the normal library</button>${toSetup("Scan new tracks on Setup")}</span></div>`;
+}
 async function pageTracks(main, open) {
   const me = S.routeId;
   let all = await getTracks();
@@ -190,6 +199,7 @@ async function pageTracks(main, open) {
       <select id="f-cues"><option value="">All tracks</option><optgroup label="Cues"><option value="some">Has cues in ${DJ()}</option><option value="none">No cues in ${DJ()}</option><option value="fixes">Corrections proposed for its cues</option><option value="approved">Cues approved, not written to ${DJ()} yet</option></optgroup><optgroup label="Beat grid"><option value="grid">Grid off the kicks or drifting</option><option value="grid_ok">Grid fix approved, not written to ${DJ()} yet</option></optgroup><optgroup label="Key"><option value="key">Our key doesn't mix with ${DJ()}'s</option></optgroup><optgroup label="Colour"><option value="guess">Colour guessed by the app, not checked yet</option></optgroup></select>
       <span id="f-chips" style="display:contents"></span>
     </div>
+    ${viewBehind()}
     <div id="t-learn"></div>
     <div id="selbar"></div>
     <div class="card" style="padding:0"><div id="ttable"></div></div>`;
@@ -197,6 +207,7 @@ async function pageTracks(main, open) {
   $("#t-write")?.addEventListener("click", () => writeToTraktor(() => S.reloadTracks()));
   $("#t-grids")?.addEventListener("click", () => writeGrids(() => S.reloadTracks()));
   $("#t-names")?.addEventListener("click", () => writeDialog("names", {}, () => S.reloadTracks()));
+  $("#t-native")?.addEventListener("click", () => { const sel = $("#lib"); sel.value = "native"; sel.onchange(); });
   $("#f-type").value = TF.type; $("#f-held").value = TF.held; $("#f-cues").value = TF.cues;
   const bind = (id, key, ev = "input", get = el => el.value) => { $(id).addEventListener(ev, e => { TF[key] = get(e.target); draw(); }); };
   bind("#f-q", "q"); bind("#f-genre", "genre", "change"); bind("#f-colour", "colour", "change"); bind("#f-bmin", "bpmMin");

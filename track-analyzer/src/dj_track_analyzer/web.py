@@ -169,6 +169,7 @@ def tracks(lib: str = "native") -> dict:
                 r.pop("traktor_color", None)
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
+            view_missing = _view_missing({r["path"] for r in rows})
     _unbiased_colours(rows)
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
     by_hand = collection.manual()
@@ -223,7 +224,17 @@ def tracks(lib: str = "native") -> dict:
             r["colour_guess"] = True
         if r["path"] in review:  # the colour review lists it: Approve / Keep in the panel, written from the Colours tab
             r["colour_review"] = review[r["path"]]
-    return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
+    return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {}),
+            **({"view_missing": view_missing} if lib and lib != "native" and view_missing else {})}
+
+
+def _view_missing(in_view: set[str]) -> int:
+    """How many tracks of the normal scan a tempo view's next scan would add (it has no row for them yet: added
+    since the view was scanned), as `tempo.scan` picks them: a BPM, the file on disk."""
+    from . import tempo
+
+    return sum(1 for p, r in tempo.native_rows().items()
+               if p not in in_view and (r["traktor_bpm"] or r["bpm"]) and os.path.exists(p))
 
 
 def _unbiased_colours(rows: list[dict]) -> None:
