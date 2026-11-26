@@ -328,23 +328,23 @@ function renderMixReport(r) {
   return `
     <div class="page-head"><div><h2>All your mixes</h2><div class="muted">${r.mixes.length} recorded mixes${old ? ` · ${old} analysed before the CNN key and per-segment mood: analyse them again to count them in` : ""}</div></div></div>
     ${SHAPE_SHOWN ? `<div class="card" id="shape">${shapeTimeline(SHAPE_SHOWN)}</div>` : ""}
-    <div class="card"><h3>Keys ${DJ()} may have wrong <span class="dim small">(heard in your mixes = our key, not ${DJ()}'s; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
+    <div class="card" data-foldable><h3>Keys ${DJ()} may have wrong <span class="dim small">(heard in your mixes = our key, not ${DJ()}'s; ${k.tracks} tracks heard in ${k.mixes} mixes)</span></h3>
       ${k.flags.length ? table([{ h: "Track", f: f => `${esc(f.title || baseName(f.path))}<div class="dim small">${esc(f.artist || "")}</div>` },
         { h: DJ(), f: f => esc(f.traktor) }, { h: "Ours", f: f => esc(f.ours) }, { h: "Heard", f: f => `${f.agree} of ${f.heard.length} ${f.heard.length === 1 ? "mix" : "mixes"}` }], k.flags)
         : `<div class="dim">None${k.mixes ? "" : " yet: needs mixes analysed with the CNN reading the heard key, played with key lock on"}.</div>`}
       <div class="note">A track heard in one mix only is a hint; the same key in several mixes is a good reason to check it in ${DJ()}.</div></div>
-    <div class="card"><h3>Mood as played vs the track alone <span class="dim small">(${v.tracks} tracks)</span></h3>
+    <div class="card" data-foldable><h3>Mood as played vs the track alone <span class="dim small">(${v.tracks} tracks)</span></h3>
       ${moodRows.length ? table([{ h: "Mood", f: ([m]) => esc(m) }, { h: "As played", r: 1, f: ([, x]) => pct(x.heard) },
         { h: "Tempo view", r: 1, f: ([, x]) => `${pct(x.view)} <span class="dim small">off by ${pct(x.view_error)}</span>` },
         { h: "Own tempo", r: 1, f: ([, x]) => `${pct(x.own)} <span class="dim small">off by ${pct(x.own_error)}</span>` }, { h: "Tracks", r: 1, f: ([, x]) => x.tracks }], moodRows)
         : `<div class="dim">Nothing yet: needs mixes analysed with this version, and a tempo view scanned near the tempo you played.</div>`}
       ${v.genre.tracks ? `<div class="note">Genre as played is the tempo view's on ${v.genre.same_as_view} of ${v.genre.tracks} tracks, the track's own on ${v.genre.same_as_own}.</div>` : ""}
       <div class="note">"Off by": the mean distance from what was heard in the mix. The smaller one predicts what you play better. The mix has blends, the other deck and your effects in it, so expect some distance either way.</div></div>
-    <div class="card"><details${SHAPE_SHOWN ? "" : " open"}><summary><h3 style="display:inline">Mood by fifth of the set</h3> <span class="dim small">(measured in ${a.mixes} recordings, each counted once)</span></summary>
+    <div class="card" data-foldable${SHAPE_SHOWN ? `="closed"` : ""}><h3>Mood by fifth of the set <span class="dim small">(measured in ${a.mixes} recordings, each counted once)</span></h3>
       ${a.parts.length ? table([{ h: "Part", f: p => `<span class="nowrap">${p.part} of 5</span>` }, ...[...new Set(a.parts.flatMap(p => Object.keys(p.mood)))].map(m => ({ h: m, r: 1, f: p => pct(p.mood[m]) })), { h: "LUFS", r: 1, f: p => fmt(p.lufs, 1) }, { h: "Mixes", r: 1, f: p => p.mixes }], a.parts)
         : `<div class="dim">Nothing yet: needs mixes analysed with this version.</div>`}
-      <div class="note">At the tempo you play, the models may hear sped-up tracks as more aggressive or party than they are alone; compare with the table above before reading much into it.</div></details></div>
-    <div class="card"><h3>Changes of track <span class="dim small">(key to key as heard)</span></h3>
+      <div class="note">At the tempo you play, the models may hear sped-up tracks as more aggressive or party than they are alone; compare with the table above before reading much into it.</div></div>
+    <div class="card" data-foldable><h3>Changes of track <span class="dim small">(key to key as heard)</span></h3>
       ${Object.keys(r.transitions).length ? `<div>${Object.entries(r.transitions).map(([t, n]) => `<span class="chip ${t === "clash" ? "bad" : t === "two steps" ? "warn" : "good"}">${n} ${esc(t)}</span>`).join(" ")}</div>` : `<div class="dim">Nothing yet.</div>`}
       ${table([{ h: "Mix", f: m => esc(mixTitle({ recording: m.file })) }, { h: "Tracks", r: 1, f: m => m.tracks }, { h: "Key lock", f: m => esc(m.keylock || "–") },
         { h: "Blend lag", f: m => m.blend_lag_seconds == null ? "–" : `${m.blend_lag_seconds} s${m.matches_per_lag ? ` <span class="dim small">${Object.entries(m.matches_per_lag).map(([l, n]) => `${l}:${n}`).join(" ")}</span>` : ""}` },
@@ -476,7 +476,7 @@ function fullPost(d) {  // the full set's SoundCloud post: main genre, genres, B
   const list = d.standalone?.picks?.length && d.standalone.timestamps?.length ? d.standalone.timestamps
     : ts.map(t => `${t.start} ${t.artist ? t.artist + " - " : ""}${t.title || t.filename || ""}`);
   const txt = [scInfo(ts, styles), ...(top.length ? [`Mix: ${top.join(", ")}`] : []), "", "Tracklist:", ...list].join("\n");
-  return `<div class="card"><h3>SoundCloud post <span class="dim small">for the full set: genre, BPM, key, tags, tracklist</span></h3>
+  return `<div class="card" data-foldable><h3>SoundCloud post <span class="dim small">for the full set: genre, BPM, key, tags, tracklist</span></h3>
     <div class="small muted">SoundCloud's Genre field: <b>${esc((d.dj_genre || [])[0]?.genre || tGenre(ts[0]) || "–")}</b></div>
     ${copyBox(`<textarea readonly rows="${txt.split("\n").length + 1}" style="${SA_FIT}">${esc(txt)}</textarea>`)}</div>`;
 }
@@ -576,7 +576,7 @@ function standalonePanel(d) {
         <div style="margin-top:6px">${copyBox(`<textarea class="sa-title" readonly rows="2" style="${SA_FIT};font:inherit;resize:none">${esc(c.title)}</textarea>`)}</div>
         <div style="margin-top:6px"><div class="small muted">Credits</div>${copyBox(`<textarea class="sa-credits" readonly rows="${c.credits.split("\n").length + 1}" style="${SA_FIT}">${esc(c.credits)}</textarea>`)}</div>
         <div style="margin-top:6px"><div class="small muted">Genre, BPM, key and tags</div>${copyBox(`<textarea readonly rows="5" style="${SA_FIT}">${esc(scInfo([...new Set([c.from, c.to, ...(c.with || [])])].map(n => tracks[n]).filter(Boolean)))}</textarea>`)}</div></div></details>`;
-  return `<div class="card" id="sa"><h3>Possible sub-mixes <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
+  return `<div class="card" id="sa" data-foldable><h3>Possible sub-mixes <span class="dim small">long blends that work as their own track</span></h3>${saRule(sa)}
     ${SA_SHOWN.length ? (picks.length ? picks.map(card).join("") : `<div class="small muted">No blend long enough to release as a track.</div>`)
       + (shorts.length ? `<h4 style="margin:12px 0 4px">Short edits <span class="dim small">a moment from the set, too short to be a track of its own</span></h4>` + shorts.map((c, i) => card(c, picks.length + i)).join("") : "")
       + (solos.length ? `<h4 style="margin:12px 0 4px">Solo reworks <span class="dim small">one track alone, played changed in ${Math.round((sa.rework_share ?? 0.5) * 100)}%+ of its bars: EQ, stems or re-arranged</span></h4>` + solos.map((c, i) => card(c, picks.length + shorts.length + i)).join("") : "")
@@ -659,7 +659,7 @@ function renderMix(d) {
       <div class="card"><h3>Styles</h3>${bars((d.discogs_styles || []).map(s => ({ label: s.style, value: s.score, sel: { kind: "style", label: s.style }, on: isOn("style", s.style) })))}
         ${d.mixing ? `<div class="note">What the mixing (effects, stems, overlap) added: ${[...(d.mixing.up || []), ...(d.mixing.down || [])].map(esc).join(", ") || "nothing notable"}</div>` : ""}</div>
     </div>
-    ${tl.length ? `<div class="card"><div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Timeline</h3><div class="spacer"></div>
+    ${tl.length ? `<div class="card" data-foldable><div class="filters" style="margin-bottom:2px"><h3 style="margin:0">Timeline</h3><div class="spacer"></div>
         ${sel ? `<button class="chip" data-mixsel="${esc(JSON.stringify(sel))}" data-tip="Stop showing it">${esc(selName)} ✕</button>` : ""}
         ${canHype ? `<div class="seg-toggle"><button data-mixview="hype" class="${view === "hype" ? "on" : ""}">Hype</button><button data-mixview="loudness" class="${view === "loudness" ? "on" : ""}">Loudness</button></div>` : ""}</div>
       <div class="dim small" style="margin-bottom:8px">${view === "hype" ? "Hype" : "Loudness"}${plays.some(x => x.colour) ? ` and ${DJ()} colour of the tracks you played` : ""} per ${segLength(tl[0])} segment; hover for more, click a genre, style or mood above to show where it is</div>
@@ -674,7 +674,7 @@ function renderMix(d) {
         ${hl.length ? `<span><i style="background:var(--text)"></i>contains a video clip suggestion</span>` : ""}${d.standalone?.picks?.length ? `<span><i style="background:var(--good)"></i>standalone piece (click to go to it)</span>` : ""}${canHype || d.tracklist ? "" : `<span>${d.tracklist_skipped ? "No tracklist check (see above), so no hype or colours of what you played." : "Analyse it with the tracklist check to see the hype and colours of what you played."}</span>`}</div>
       <details style="margin-top:10px"><summary class="small muted">Table</summary>${table([{ h: "Time", f: s => `${esc(s.start)}–${esc(s.end)}` }, { h: "BPM", r: 1, f: s => fmt(s.bpm) }, { h: "Key", f: s => esc(s.camelot || "–") },
         { h: "LUFS", r: 1, f: s => fmt(s.lufs, 1) }, ...(canHype ? [{ h: "Hype", r: 1, f: s => { const pl = plays[tl.indexOf(s)]; return pl.hype == null ? "–" : `${sw(pl.colour, pl.guessed)} ${fmt(pl.hype, 1)}`; } }] : []), { h: "Genre", f: s => esc(s.dj_genre || "–") }, { h: "Styles", f: s => `<span class="small">${esc((s.styles || []).join(", "))}</span>` }, { h: "Tracks", f: s => `<span class="small">${esc((s.tracks || []).join(" · "))}</span>` }], tl)}</details></div>` : ""}
-    ${tlist ? `<div class="card"><h3>Tracklist check <span class="dim small">against ${DJ()}'s history</span></h3>
+    ${tlist ? `<div class="card" data-foldable><h3>Tracklist check <span class="dim small">against ${DJ()}'s history</span></h3>
       <dl class="facts"><dt>History</dt><dd class="mono" style="word-break:break-all">${esc(tlist.history)}</dd><dt>Recording start</dt><dd>${esc(tlist.recording_start)}</dd>
       ${kl ? `<dt>Key lock</dt><dd><b>${esc(kl.verdict)}</b> · ${esc(kl.summary)} <span class="dim small">(${esc(kl.basis)}; blend lag ${kl.blend_lag_seconds} s)</span></dd>` : ""}
       ${kl?.matches_per_lag ? `<dt>Blend lag</dt><dd>${Object.entries(kl.matches_per_lag).map(([lag, n]) => `<span class="${+lag === kl.blend_lag_seconds ? "" : "dim"}">${lag} s: ${n}</span>`).join(" · ")} <span class="dim small">keys matching at each lag; a clear winner means the tracks' stretches are placed right</span></dd>` : ""}
@@ -692,7 +692,7 @@ function renderMix(d) {
         { h: "Judged on", f: t => `<span class="small dim">${esc(t.judged_on || t.note || "")}</span>` }], tlist.tracks || [],
         { rowAttr: (t, i) => { const k = trackStr?.strength[i]; if (k == null) return ""; const v = trackStr.value[i];
           return k < 0.5 ? `style="opacity:.45"` : `style="background:color-mix(in srgb, var(--accent) ${Math.round(k ** 2 * 35)}%, transparent)" data-tip="${esc(`${selName}: ${sel.kind === "genre" ? "its genre as heard" : sel.kind === "mood" ? `${pct(v)} over its stretch of the mix` : `${fmt(v, 2)} over its stretch of the mix`}`)}"`; } })}</div>` : ""}
-    ${hl.length ? `<div class="card"><h3>Video clip suggestions</h3>${table([{ h: "Rank", r: 1, f: h => h.rank }, { h: "Mix time", f: h => `${esc(h.start)}–${esc(h.end)}` },
+    ${hl.length ? `<div class="card" data-foldable><h3>Video clip suggestions</h3>${table([{ h: "Rank", r: 1, f: h => h.rank }, { h: "Mix time", f: h => `${esc(h.start)}–${esc(h.end)}` },
         { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, ...(hl.some(h => h.energy != null) ? [{ h: "Energy", r: 1, f: h => pct(h.energy) }] : []), { h: "Track", f: h => esc(h.track || "") }], hl)}
       <div class="note">Make previews: <span class="mono">clips &lt;this.json&gt; --video &lt;final.mp4&gt;</span></div></div>` : ""}
     ${standalonePanel(d)}
@@ -702,26 +702,31 @@ function renderMix(d) {
     <details class="card"><summary class="muted">Raw JSON</summary><div class="tree" style="margin-top:8px">${tree(d)}</div></details>`;
 }
 
-// Every section on a mix's page and the all-mixes page folds: click its heading. What is folded is remembered per section name.
-const FOLD_KEY = "ta-mix-folded";
-const foldedSet = () => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || "[]")); } catch (e) { return new Set(); } };
+// The big sections on a mix's page and the all-mixes page fold (cards marked data-foldable; small ones don't, nor the
+// cards side by side in a grid row, which stay as tall as their neighbours): click the heading. The choice is
+// remembered per section name; data-foldable="closed" starts folded until opened.
+const FOLD_KEY = "ta-mix-folded", OPEN_KEY = "ta-mix-unfolded";
+const foldSet = k => { try { return new Set(JSON.parse(localStorage.getItem(k) || "[]")); } catch (e) { return new Set(); } };
 const foldName = h => (h.firstChild?.textContent || h.textContent).trim();
 function setupFolds() {
-  const folded = foldedSet();
-  document.querySelectorAll("#mix .card, #fview .card").forEach(card => {
+  const folded = foldSet(FOLD_KEY), opened = foldSet(OPEN_KEY);
+  document.querySelectorAll("#mix .card[data-foldable], #fview .card[data-foldable]").forEach(card => {
     const h = card.querySelector(":scope > h3, :scope > .filters > h3");
     if (!h || h.dataset.fold) return;
     h.dataset.fold = "1"; h.classList.add("foldable");
     (h.parentElement === card ? h : h.parentElement).classList.add("fold-head");
-    card.classList.toggle("folded", folded.has(foldName(h)));
+    const name = foldName(h);
+    card.classList.toggle("folded", card.dataset.foldable === "closed" ? !opened.has(name) : folded.has(name));
   });
 }
 new MutationObserver(setupFolds).observe(document.body, { childList: true, subtree: true });
 document.addEventListener("click", e => {
   const h = e.target.closest("h3.foldable"); if (!h || e.target.closest("button, a, input, select, label, textarea")) return;
-  const card = h.closest(".card"), folded = foldedSet(), name = foldName(h);
-  card.classList.toggle("folded") ? folded.add(name) : folded.delete(name);
-  try { localStorage.setItem(FOLD_KEY, JSON.stringify([...folded])); } catch (e) { /* not remembered */ }
+  const card = h.closest(".card"), name = foldName(h), now = card.classList.toggle("folded");
+  for (const [k, add] of [[FOLD_KEY, now], [OPEN_KEY, !now]]) {
+    const set = foldSet(k); add ? set.add(name) : set.delete(name);
+    try { localStorage.setItem(k, JSON.stringify([...set])); } catch (e) { /* not remembered */ }
+  }
 });
 
 // "Your editor's clips": clips someone else cut from the finished video, placed in the mix by their sound
@@ -732,7 +737,7 @@ function clipsCard(d) {
   const time = c => c.start ? `<span class="nowrap">${esc(c.video || `${c.start}–${c.end}`)}</span>${c.placed === "by hand" ? ` <span class="dim small">by hand</span>` : ""}`
     : `<span class="err small nowrap" data-tip="${esc(`Best match ${fmt(c.match?.score, 2)}, elsewhere ${fmt(c.match?.next, 2)}: not clearly this mix's sound`)}">not found</span>`
       + (SNAP ? "" : ` <input class="cd-at" style="display:block;margin-top:4px" data-n="${c.n}" placeholder="M:SS" size="6" aria-label="Clip ${c.n}'s start in the video">`);
-  return `<div class="card" id="cd-card"><h3 style="display:flex;align-items:center;gap:8px">Your editor's clips${cl.length ? ` <button style="margin-left:auto" id="cd-copy" data-tip="The clips' lines as text, for the posting chat">Copy for posts</button>` : ""}</h3>
+  return `<div class="card" id="cd-card" data-foldable><h3 style="display:flex;align-items:center;gap:8px">Your editor's clips${cl.length ? ` <button style="margin-left:auto" id="cd-copy" data-tip="The clips' lines as text, for the posting chat">Copy for posts</button>` : ""}</h3>
     ${cl.length ? `${table([{ h: "Clip", r: 1, f: c => c.n }, { h: "File", f: c => `<span class="small nowrap">${esc(c.file)}</span>` },
       { h: dc.offset != null ? "Video time" : "Mix time", f: time }, { h: "LUFS", r: 1, f: c => fmt(c.lufs, 1) },
       { h: "Rise", r: 1, f: c => c.rise_lu != null ? `<span class="nowrap">${fmt(c.rise_lu, 1)} LU</span>` : "–" }, { h: "Energy", r: 1, f: c => c.energy != null ? pct(c.energy) : "–" },

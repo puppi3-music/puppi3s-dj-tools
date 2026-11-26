@@ -329,6 +329,7 @@ li > figure.shot { margin: 12px 0 4px; }
       <li>Filter by genre, colour, BPM range or key. <b>mixes with it</b> shows every key that mixes with the one you pick.</li>
       <li>The menu that starts at <b>All tracks</b> narrows to tracks with or without cues, grids to check and more. Each choice shows how many tracks it would list.</li>
       <li>Click a column to sort.</li>
+      <li>Right-click the column headers to pick which columns show. Besides the usual ones you can add your DJ app's own fields (label, comment, rating, play count, date added, release date, bitrate, size, remixer and more: the list follows the app chosen on the Setup tab) and this app's file name, folder, file type and loudness range. Drag a header to move its column. Every column sorts, and the page remembers your columns.</li>
     </ul></li>
   <li>Click a track for its panel. <b>⇤ Wide</b> gives the waveform more room. A page refresh keeps your filters, sort, scroll position and the open track.
     <figure class="shot">
@@ -384,6 +385,7 @@ li > figure.shot { margin: 12px 0 4px; }
 <ul>
   <li><b>Most hype first:</b> the Hype tab. Tick <b>least hype first</b> for the chill end.</li>
   <li><b>For the next track in a set:</b> type the BPM (within 4%, change it beside the box) and a key in <b>Mixes with key</b>, e.g. <code>8A</code>. Pick a colour to stay within one.</li>
+  <li><b>Columns:</b> right-click the list's headers to pick columns, as on the Tracks tab: besides hype, stars, plays, colour, BPM and key you can add any Tracks-tab column (genre, LUFS, your DJ app's label, comment, date added and more). Drag a header to move it, click one to sort. Each list remembers its own columns.</li>
   <li><b>Underrated tracks:</b> tick <b>gems</b>: very hype (8+) but rated 4★ or less, or played at most once. Worth a listen and maybe a fifth star.</li>
   <li><b>In Traktor:</b> quit Traktor, press <b>Write to Traktor's Comment…</b> on the Hype tab, then show the <b>Comment</b> column in Traktor's track list (right-click the column header) and sort by it. Your own text in Comment stays in front. <b>Take it out…</b> in the Setup tab's <b>Hype in Traktor's Comment</b> row removes only the Hype part again.</li>
 </ul>
@@ -495,13 +497,14 @@ li > figure.shot { margin: 12px 0 4px; }
 <ul>
   <li><b>Colours:</b> a <b>?</b> after a colour means it's predicted, not set by you. <b>Confidence</b> is how often tracks placed at that spot really had that colour, on tracks the model hadn't seen. Most are 20–30%, because neighbouring colours are close to a coin flip from the sound alone. The ends of the scale are clearly apart. The colours shown beside it (like Yellow–Blue) are that colour and its neighbours; the track's panel also says how sure the model is that the track is somewhere in that range.</li>
   <li><b>Hype</b> is 1–10 within your own collection: 10 = more hype than 90% of your tracks. Half the euphoric "rave" sound (trance, hard trance, hands-up, hardstyle rather than deep or tech house), half energy (loud, party, aggressive, not relaxed). It can shift a step when you add many tracks.</li>
-  <li><b>BPM and key:</b> Traktor's where it has them (you may have fixed the grid by hand), ours beside them. In the Tracks list, a dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). The filter <b>Our key doesn't mix with Traktor's</b> lists the tracks where the two keys don't mix, to check by ear. Our key agreed with Traktor's on about 75% of a test collection; neither is ground truth.</li>
+  <li><b>BPM and key:</b> Traktor's where it has them (you may have fixed the grid by hand), ours beside them. In the Tracks list, a dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). The filter <b>Key unsure: ours and Traktor's don't agree</b> lists the tracks where the two keys are too far apart to mix (neighbouring keys aren't listed), to check by ear. Our key agreed with Traktor's on about 75% of a test collection; neither is ground truth.</li>
   <li><b>Instruments</b> come from a tagger trained on non-club music: compare tracks, don't read the numbers as absolute amounts.</li>
 </ul>
 
 <h3 id="read-colours">Reading the Colours tab</h3>
 <ul>
   <li><b>Average error per colour</b>, <b>within one colour</b>, <b>exactly right</b>: how well the scale fits, tested on tracks it didn't learn from. The error is worked out per colour and averaged, so a small colour like Violet counts as much as Red. On the test collection the scale was 1.10 colours off on average, against 1.59 for guessing the middle colour for every track.</li>
+  <li><b>Tracks that disagree with their colour:</b> right-click the list's headers to pick columns (confidence, position on your scale, and any Tracks-tab column such as BPM, genre or your DJ app's comment); drag a header to move it, click one to sort.</li>
   <li><b>Profile per colour:</b> the average of each measurement per colour, darker = highest of the row. <b>ρ</b> is how strongly it moves with your scale: + means more of it toward Magenta, − toward Red. Around ±0.3 or more is a real pattern; under ±0.1 is basically nothing. <b>plays (median)</b> and <b>purchased</b> describe how you use the tracks, not how they sound.</li>
   <li><b>Where in a set:</b> from Traktor's History, how often each colour is played in the first, middle and last third of a session.</li>
   <li><b>Strongest links to the scale:</b> the measurements that move most with your colours, strongest first; → Magenta means more of it in prettier tracks, → Red in harder ones.</li>

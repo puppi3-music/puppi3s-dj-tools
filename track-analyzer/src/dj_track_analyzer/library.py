@@ -84,6 +84,23 @@ def track_info(path: str | None = None):
     return backend().track_info(_path(path))
 
 
+
+# the DJ app's own browser fields, for the Tracks tab's optional columns: {name: apps that have it}
+META_FIELDS = {
+    "album": ("traktor", "rekordbox"), "genre": ("traktor", "rekordbox"), "label": ("traktor", "rekordbox"),
+    "remixer": ("traktor", "rekordbox"), "producer": ("traktor", "rekordbox"), "mix": ("traktor", "rekordbox"),
+    "comment": ("traktor", "rekordbox"), "comment2": ("traktor",), "catalog": ("traktor",),
+    "org_artist": ("rekordbox",), "lyricist": ("rekordbox",), "rating": ("traktor", "rekordbox"),
+    "plays": ("traktor", "rekordbox"), "last_played": ("traktor",), "added": ("traktor", "rekordbox"),
+    "released": ("traktor", "rekordbox"), "track_no": ("traktor", "rekordbox"), "bitrate": ("traktor", "rekordbox"),
+    "sample_rate": ("rekordbox",), "size_mb": ("traktor", "rekordbox"),
+}
+
+
+def track_meta(path: str | None = None) -> dict[str, dict]:
+    """{file path: {field: value}} with META_FIELDS's names, from the chosen DJ app."""
+    return backend().track_meta(_path(path))
+
 def playlists(path: str | None = None):
     return backend().playlists(_path(path))
 

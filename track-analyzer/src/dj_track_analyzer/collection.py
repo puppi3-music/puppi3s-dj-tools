@@ -410,7 +410,7 @@ def _open_tags(p: Path):
     return f, ("id3" if isinstance(f.tags, id3.ID3) else "easy")
 
 
-_FRAMES = {"genre": "TCON", "bpm": "TBPM", "initialkey": "TKEY"}
+_FRAMES = {"genre": "TCON", "bpm": "TBPM", "initialkey": "TKEY", "artist": "TPE1", "title": "TIT2"}
 
 
 def _get_tag(f, mode, key):

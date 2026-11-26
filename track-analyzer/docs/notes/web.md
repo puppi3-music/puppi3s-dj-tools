@@ -70,3 +70,9 @@ browser (and Export snapshot) still gets one document with one script scope. Edi
   pool), so it answers while the pool's threads are busy; `core.js` asks it every 700 ms only while a `.loading`
   box shows, and writes the steps into a `.doing` line inside each one. A new slow step or endpoint: wrap it in
   `doing()` or add it to `ASKED`. Every `.loading` box must drop its class before it's refilled (all do).
+- Names from the DJ app: `web.tracks` fills an empty artist/title from `dj_meta()` (both apps' `track_meta` carry
+  `artist`/`title`; a Traktor TITLE equal to the file stem is its filler, not a name) and lists the fields in
+  `names_from_dj`; the track cell marks them and the head shows the `names` job button. `names.py` writes them into
+  the files' empty tags only (record data/names-written.json, cumulative until undone), refreshes the row's
+  artist/title/size/mtime + cache key, then with Traktor stamps the entries (`stamp_if_unchanged`, NML backup via
+  `traktor._save`). `names_undo` removes only values still equal to what was written, and stamps again.

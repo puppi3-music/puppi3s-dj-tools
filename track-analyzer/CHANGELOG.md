@@ -6,15 +6,32 @@ module's builds, which installs download by themselves.
 ## Unreleased
 
 **Added**
+- Tracks tab: a file without artist or title tags (say, imported while Traktor's tag writing is off) shows your DJ
+  app's name for it, marked as such, instead of its file name. **Write Traktor's names into N files…** (and the new
+  `names` command) copies them into the files' empty tags, with a preview and an undo; Traktor's entries are marked up
+  to date afterwards, so it doesn't read those files' tags again.
 - `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
   found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
   own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.
+- Tracks tab: right-click the column headers to show, hide and (by dragging a header) reorder columns. The new optional columns are the DJ app's own fields (Traktor: release, label, remixer, producer, mix, catalog no., comment, comment 2, rating, plays, last played, date added, release date, bitrate, size; Rekordbox: the same core fields plus composer, original artist, lyricist and sample rate) and the file name, folder, file type and loudness range. Every column sorts.
+- Tracks tab: a tempo view scanned before you added tracks says how many of your normal library's tracks it's
+  missing, with buttons to show the normal library or scan the new tracks on Setup.
 - Web page: a notice when Traktor has tracks Lexicon doesn't, saying to use Import → Traktor in Lexicon (its Sync to Traktor only goes the other way).
 
 **Changed**
 - Tempo views: tracks are stretched with Rubber Band's R2 engine for analysis instead of R3. R3 changed the sound for
   the style models far more than the tempo change itself (it could flip a track's genre at +0.6 %). The page's
   player still plays with R3. The 135/145/165 views need a rescan.
+- Track panel: a colour the app guessed has its **It's right** button right next to the colour, instead of below it
+  and again under the colour scale.
+- Mixes tab: only the big sections fold (small cards and cards side by side stay open), **Mood by fifth of the set**
+  starts folded until you open it, and every fold uses the same arrow.
+- Tracks tab: the key filter is now called **Key unsure: ours and Traktor's don't agree**.
+
+**Fixed**
+- Writing Hype to Traktor skipped tracks whose file tags differ from Traktor's entry even when Traktor wrote the
+  entry after the file last changed (a title renamed in Traktor, a key tagger's comment Traktor never took in).
+  Those tags aren't waiting for Traktor to read them, so the entry is now marked up to date and gets its Hype.
 
 ## 1.4.3 (2026-11-12)
 

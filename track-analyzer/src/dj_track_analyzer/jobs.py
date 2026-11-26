@@ -183,18 +183,20 @@ ACTIONS = {
     "sync_undo": ("Undo the last sync to Traktor", lambda o: ["sync", "--undo", *(["--force"] if o.get("force") is True else [])], True),
     "copy": ("Copy the other DJ app into Traktor", lambda o: ["sync", "--copy", "--json", *(["--only", ",".join(o["only"])] if o.get("only") else [])], True),
     "copy_undo": ("Undo the last copy into Traktor", lambda o: ["sync", "--copy", "--undo", *(["--force"] if o.get("force") is True else [])], True),
+    "names": ("Write Traktor's artist and title into files without them", lambda o: ["names"], True),
+    "names_undo": ("Take the names out of those files again", lambda o: ["names", "--undo"], True),
     "update": ("Update the app", lambda o: ["update"], True),
     "update_undo": ("Go back to the version before", lambda o: ["update", "--undo"], True),
 }
 UNDO = {"update": "update_undo", "tag": "untag", "traktor": "traktor_undo", "hype_traktor": "traktor_undo", "colors_apply": "traktor_undo",
         "colors_recolour": "traktor_undo", "colors_write_marked": "traktor_undo", "tempo_load": "tempo_native", "sync": "sync_undo",
-        "copy": "copy_undo"}
+        "copy": "copy_undo", "names": "names_undo"}
 NO_DRY_RUN = {"traktor_undo", "sync_undo", "copy_undo", "install"}  # traktor --undo has no preview; the page asks first
 # These write to whichever DJ app is chosen on the Setup tab (Traktor or Rekordbox); the rest of TOUCHES_TRAKTOR
 # (the tempo view) is Traktor's only.
-EITHER_APP = {"sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+EITHER_APP = {"names", "names_undo", "sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
               "colors_write_marked", "tempo_load", "tempo_native"}
-TOUCHES_TRAKTOR = {"sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
+TOUCHES_TRAKTOR = {"names", "names_undo", "sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour",
                    "colors_write_marked", "tempo_load", "tempo_native"}  # = the page's: in a container these need "Traktor is closed" first
 
 _lock = threading.Lock()

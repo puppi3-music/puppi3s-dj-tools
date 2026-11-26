@@ -53,6 +53,7 @@ async function getTracks(lib = S.lib) {
     let d;
     try { d = await req; } finally { delete S.tracksLoading[lib]; }
     S.tracks[lib] = d.tracks;
+    (S.viewMissing ||= {})[lib] = d.view_missing || 0;  // a tempo view: tracks of the normal library it hasn't scanned
     S.fixesPending = !!d.corrections_pending;
     navCounts();
     if (d.corrections_pending) setTimeout(async () => {  // corrections are still being counted: fetch again

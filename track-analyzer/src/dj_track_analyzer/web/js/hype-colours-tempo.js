@@ -1,5 +1,19 @@
 // ---------- hype ----------
 const HF = { colour: "", bpm: "", tolerance: 4, key: "", gems: false, least: false };
+// the Hype list's columns (right-click its headers to pick more, from the Tracks tab too)
+const colourSort = n => n ? COLOURS.indexOf(n) + 1 || 98 : 99;
+const HSPEC = { store: "ta-cols-hype", sortKey: "hypeSort", def: ["hype", "stars", "plays", "colour", "track", "bpm", "key"],
+  groups: [["main", "Columns <span class=\"dim\">· drag a header to move it</span>"], ...TRACKS_GROUPS],
+  cols: {
+    hype: { h: "Hype", r: 1, sort: t => -(t.hype ?? -1), cell: t => hypeBadge(t.hype) },
+    stars: { h: "Stars", sort: t => -(t.stars || 0), cell: t => t.stars ? "★".repeat(t.stars) : `<span class="dim">–</span>` },
+    plays: { h: "Plays", r: 1, sort: t => -(t.plays ?? -1), cell: t => fmt(t.plays) },
+    colour: { h: "Colour", sort: t => colourSort(t.colour), cell: t => colour(t.colour, !t.colour_is_yours) },
+    track: { h: "Track", fixed: 1, sort: SORTS.track, cell: trackName },
+    bpm: { h: "BPM", r: 1, sort: t => t.bpm ?? 1e9, cell: t => fmt(t.bpm) },
+    key: { h: "Key", sort: t => SORTS.key({ mix_camelot: t.camelot }), cell: t => esc(t.camelot || "–") },
+    ...trackCols(["hype", "colour", "track", "bpm", "key", "dj_rating", "dj_plays"]),
+  } };
 async function pageHype(main) {
   main.innerHTML = `
     <div class="page-head"><div><h2>Hype</h2><div class="muted">1-10 within your collection: rave sound and energy. Uses the scores from the last scan.</div></div>
@@ -23,12 +37,13 @@ async function pageHype(main) {
       box.className = "";
       if (!d.scored) { box.innerHTML = empty("No hype scores yet", "Hype ranks every track 1-10 by rave sound and energy within your collection. It needs 20 scanned tracks and takes seconds.", toSetup("Score hype")); return; }
       if (!d.matches) { box.innerHTML = empty("No tracks match", `None of the ${d.scored} scored tracks match ${esc(d.filters.join(", "))}.`); return; }
-      box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${d.matches} of ${d.scored} tracks match (${esc(d.filters.join(", "))}); ${esc(d.order)}</div>
-        <div class="card" style="padding:0">${table([
-          { h: "Hype", r: 1, f: t => hypeBadge(t.hype) }, { h: "Stars", f: t => t.stars ? "★".repeat(t.stars) : `<span class="dim">–</span>` },
-          { h: "Plays", r: 1, f: t => fmt(t.plays) }, { h: "Colour", f: t => colour(t.colour, !t.colour_is_yours) }, { h: "Track", f: trackName },
-          { h: "BPM", r: 1, f: t => fmt(t.bpm) }, { h: "Key", f: t => esc(t.camelot || "–") },
-        ], d.tracks, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` })}</div>`;
+      const rows = d.tracks;
+      const draw = () => {
+        box.innerHTML = `<div class="muted small" style="margin-bottom:8px">${d.matches} of ${d.scored} tracks match (${esc(d.filters.join(", "))}); ${esc(d.order)}</div>
+          <div class="card" style="padding:0">${colTable(HSPEC, colSort(HSPEC, [...rows]), { rowAttr: t => `class="click" data-path="${esc(t.path)}"` })}</div>`;
+        wireColHead(box.querySelector("thead"), HSPEC, draw);
+      };
+      joinTracks(rows, () => { if (ask === seq && box.isConnected) draw(); }); draw();
       box.onclick = e => { const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path); };
     } catch (e) { if (ask === seq && box.isConnected) { box.className = ""; box.innerHTML = errBox(e); } }
   }
@@ -36,6 +51,22 @@ async function pageHype(main) {
 }
 
 // ---------- colours ----------
+// the colour review's columns (right-click its headers to pick more, from the Tracks tab too)
+const reviewStatus = t => (t.meets_apply_threshold ? `<span class="chip warn">over threshold</span> ` : "") + (t.kept ? `<span class="chip">kept</span>` : "")
+  + (t.recoloured ? `<span class="chip good" data-tip="You recoloured it since training. Retrain to learn from it; it then leaves this list.">recoloured&nbsp; ${sw(t.recoloured)}${esc(t.recoloured)}</span>` : "");
+const CSPEC = { store: "ta-cols-colours", sortKey: "colourSort", def: ["track", "yours", "sounds", "gap", "confidence", "status"],
+  groups: [["main", "Columns <span class=\"dim\">· drag a header to move it</span>"], ...TRACKS_GROUPS],
+  cols: {
+    track: { h: "Track", fixed: 1, sort: t => (t.file || "").toLowerCase(), cell: t => `<div class="trk"><div class="t">${esc(t.file)}</div></div>` },
+    yours: { h: "Yours", sort: t => colourSort(t.your_colour), cell: t => colour(t.your_colour) },
+    sounds: { h: "Sounds like", sort: t => colourSort(t.sounds_like), cell: t => colour(t.sounds_like) },
+    gap: { h: "Gap", r: 1, sort: t => -(t.gap ?? -1), cell: t => fmt(t.gap) },
+    confidence: { h: "Confidence", r: 1, sort: t => -(t.confidence ?? -1),
+      cell: t => t.confidence == null ? "–" : `<span class="nowrap">${pct(t.confidence)} <span class="dim small">${esc(nearRange(t.sounds_like))}</span></span>` },
+    position: { h: "Position on your scale", r: 1, sort: t => t.position ?? 99, cell: t => fmt(t.position) },
+    status: { h: "Status", sort: t => -(2 * !!t.meets_apply_threshold + !!t.kept + 4 * !!t.recoloured), cell: reviewStatus },
+    ...trackCols(["track", "colour"]),
+  } };
 async function pageColours(main) {
   const me = S.routeId, viewOn = S.libs.loaded_view, viewTip = viewOn ? `${S.libs.loaded_app || DJ()} has the ${viewOn} BPM view loaded. Switch back first (Tempo view tab), then write` : "";
   const RSEL = new Set();  // ticked review rows (paths)
@@ -43,16 +74,10 @@ async function pageColours(main) {
     ? `<span class="nowrap"><span class="chip ${t.marked === "approve" ? "warn" : ""}" data-tip="Marked: happens when you press Write">${t.marked === "approve"
         ? `will recolour to&nbsp; ${sw(t.sounds_like)}${esc(t.sounds_like)}` : `will keep&nbsp; ${sw(t.your_colour)}${esc(t.your_colour)} always`}</span> <button class="mini" data-mark="" data-p="${esc(t.path)}" data-tip="Unmark">✕</button></span>`
     : `<span class="nowrap"><button class="mini" data-mark="approve" data-p="${esc(t.path)}" data-tip="Mark: recolour it ${esc(t.sounds_like)} when you press Write">Approve ${esc(t.sounds_like)}${t.confidence_exact != null ? ` (${pct(t.confidence_exact)})` : ""}</button> <button class="mini" data-mark="keep" data-p="${esc(t.path)}" data-tip="Mark: keep your ${esc(t.your_colour)} always when you press Write">Keep ${esc(t.your_colour)}</button></span>`;
-  const reviewTable = rows => table([
-          ...(SNAP ? [] : [{ h: `<input type="checkbox" data-ckall aria-label="Tick every track in this list">`, raw: 1,
-            f: t => t.kept || t.recoloured ? "" : `<input type="checkbox" data-ck="${esc(t.path)}" aria-label="Tick" ${RSEL.has(t.path) ? "checked" : ""}>` }]),
-          { h: "Track", f: t => `<div class="trk"><div class="t">${esc(t.file)}</div></div>` },
-          { h: "Yours", f: t => colour(t.your_colour) }, { h: "Sounds like", f: t => colour(t.sounds_like) },
-          { h: "Gap", r: 1, f: t => fmt(t.gap) }, { h: "Confidence", r: 1, f: t => t.confidence == null ? "–" : `<span class="nowrap">${pct(t.confidence)} <span class="dim small">${esc(nearRange(t.sounds_like))}</span></span>` },
-          { h: "", f: t => (t.meets_apply_threshold ? `<span class="chip warn">over threshold</span> ` : "") + (t.kept ? `<span class="chip">kept</span>` : "")
-            + (t.recoloured ? `<span class="chip good" data-tip="You recoloured it since training. Retrain to learn from it; it then leaves this list.">recoloured&nbsp; ${sw(t.recoloured)}${esc(t.recoloured)}</span>` : "") },
-          ...(SNAP ? [] : [{ h: "", r: 1, f: markCell }]),
-        ], rows, { rowAttr: t => `class="click" data-path="${esc(t.path)}"` });
+  const reviewTable = rows => colTable(CSPEC, rows, {
+    lead: SNAP ? [] : [{ h: `<input type="checkbox" data-ckall aria-label="Tick every track in this list">`, raw: 1,
+      f: t => t.kept || t.recoloured ? "" : `<input type="checkbox" data-ck="${esc(t.path)}" aria-label="Tick" ${RSEL.has(t.path) ? "checked" : ""}>` }],
+    tail: SNAP ? [] : [{ h: "", r: 1, f: markCell }], rowAttr: t => `class="click" data-path="${esc(t.path)}"` });
   main.innerHTML = `<div class="page-head"><div><h2>Colours</h2><div class="muted">What your colour scale means, and where the model disagrees with you.</div></div></div>
     <div id="c-learn"></div><div id="c-model" class="loading">Loading model…</div><div id="c-explain" class="loading">Loading profile (reads ${DJ()}'s collection and History)…</div>`;
   const [rv, ex, kp] = await Promise.allSettled([api("colours/review", { limit: 200 }), api("colours/explain"), api("colours/kept")]);
@@ -64,6 +89,7 @@ async function pageColours(main) {
     const draw = () => {
       const a = r.accuracy || {};
       const retrain = r.recoloured_since_training;
+      const list = colSort(CSPEC, [...r.tracks]);  // sorted as you clicked; at first biggest gap first
       const marks = r.tracks.filter(t => t.marked), nA = marks.filter(t => t.marked === "approve").length, nK = marks.length - nA;
       m.innerHTML = `<div class="tiles">
         <div class="tile"><div class="v">${fmt(a.average_error_per_colour)}</div><div class="l">average error per colour (in colours)</div></div>
@@ -81,9 +107,10 @@ async function pageColours(main) {
           <button class="primary" id="c-write" ${viewOn && nA ? `disabled title="${viewTip}"` : `data-tip="Preview first; ${DJ()} closed${nA ? "" : ` isn't needed: keeping writes nothing to ${DJ()}`}"`}>Write…</button>
           <button id="c-unmark">Unmark all</button><span class="small muted" id="c-markmsg"></span></div>` : ""}
         <div id="c-sel"></div>
-        ${reviewTable(r.tracks.slice(0, 25))}
-        ${r.tracks.length > 25 ? `<details ${m.dataset.more ? "open" : ""}><summary class="small muted" style="margin-top:8px;cursor:pointer">Show ${r.tracks.length - 25} more</summary>${reviewTable(r.tracks.slice(25))}</details>` : ""}
+        ${reviewTable(list.slice(0, 25))}
+        ${r.tracks.length > 25 ? `<details ${m.dataset.more ? "open" : ""}><summary class="small muted" style="margin-top:8px;cursor:pointer">Show ${r.tracks.length - 25} more</summary>${reviewTable(list.slice(25))}</details>` : ""}
       </div>`;
+      m.querySelectorAll("thead").forEach(th => wireColHead(th, CSPEC, draw));
       m.querySelector("details")?.addEventListener("toggle", e => { m.dataset.more = e.target.open ? "1" : ""; });
       $("#c-recolour")?.addEventListener("click", e => { e.stopPropagation(); writeDialog("colors_recolour", {}, () => route()); });
       $("#c-write")?.addEventListener("click", () => writeDialog("colors_write_marked", {}, () => route()));
@@ -130,7 +157,7 @@ async function pageColours(main) {
       const tr = e.target.closest("tr[data-path]"); if (tr) openTrack(tr.dataset.path);
     };
     const learn = () => retrainBars($("#c-learn"), ["colours"], { colours: r.recoloured_since_training && `${r.recoloured_since_training} of them on the list below` });
-    draw(); learn();
+    joinTracks(r.tracks, () => { if (m.isConnected) draw(); }); draw(); learn();
     // a hand edit in the track panel changes your colour: list the track as recoloured / kept straight away
     S.reloadColours = async () => {
       if (!m.isConnected) return;
@@ -139,7 +166,7 @@ async function pageColours(main) {
       if (!m.isConnected) return;
       r = n; byPath = new Map(r.tracks.map(t => [t.path, t]));
       for (const p of [...RSEL]) if (!byPath.has(p)) RSEL.delete(p);
-      draw(); learn();
+      joinTracks(r.tracks, () => { if (m.isConnected) draw(); }); draw(); learn();
     };
   }
   const x = $("#c-explain"); x.className = "";

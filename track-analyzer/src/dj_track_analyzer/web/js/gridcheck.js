@@ -189,12 +189,13 @@ function colourNotes(t) {
   const parts = [t.your_colour && `yours at its own tempo: ${esc(t.your_colour)}`, model].filter(Boolean);
   return parts.length ? ` <span class="dim small">· ${parts.join(" · ")}</span>` : "";
 }
+// a guessed colour: the "?" mark and the button to say it's right, straight after the colour itself (same look as the table)
+const guessOk = t => !t.colour_guess ? "" : guessMark() + (SNAP ? "" : ` <button type="button" class="mini" data-cguess data-tip="${GUESS_TIP()}">It's right</button>`);
 // the colour review (Colours tab) lists this track: mark it here the same way; Write stays on the Colours tab
 function colourReview(t) {
   const r = t.colour_review;
+  if (t.colour_guess) return "";  // the guess button sits next to the colour (guessOk)
   if (SNAP || S.lib !== "native") return "";
-  if (t.colour_guess) return `<div class="small" style="margin-top:4px"><span class="dim">Guessed by the app:</span>
-    <button type="button" class="mini" data-cguess data-tip="${GUESS_TIP()}">It's right</button></div>`;
   if (!t.traktor_color && t.color && canEdit(t)) return `<div class="small" style="margin-top:4px"><span class="dim">No colour in ${DJ()} yet; the model says ${esc(t.color)}:</span>
     <button type="button" class="mini" data-cuse="${esc(t.color)}" data-tip="Write ${esc(t.color)} into ${DJ()} as your colour (quit ${DJ()} first; a backup is made, and Undo puts it back)">Use ${esc(t.color)}</button></div>`;
   if (!r) return "";
@@ -227,7 +228,7 @@ async function openTrack(path) {
       <dt>BPM</dt><dd>${ed(t, "bpm", fmt(t.mix_bpm))}${t.traktor_bpm != null ? ` <span class="dim small">${bpmAgree(t) ? `${DJ()} and ours agree` : `${DJ()} ${fmt(Math.round(t.traktor_bpm))} · ours ${fmt(t.bpm != null ? Math.round(t.bpm) : null)}`}</span>` : ""}${t.source_bpm ? ` <span class="dim small">· own tempo ${Math.round(t.source_bpm)}</span>` : ""}</dd>
       <dt>Key</dt><dd>${ed(t, "key", esc(t.mix_camelot || "–"))} <span class="dim small">${t.traktor_camelot && t.traktor_camelot === t.camelot && t.camelot === t.mix_camelot
         ? `${esc(t.key || "–")} · ${DJ()} and ours agree` : `${t.traktor_camelot ? `${DJ()} ${esc(t.traktor_camelot)} · ` : ""}ours ${esc(t.camelot || "–")} (${esc(t.key || "–")})`}</span></dd>
-      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}${colourReview(t)}</dd>
+      <dt>Colour</dt><dd>${ed(t, "colour", colour(colourOf(t), !t.traktor_color) + guessOk(t))}${colourNotes(t)}${t.kept ? ` <span class="chip">kept always</span>` : ""}${colourReview(t)}</dd>
       <dt>Genre</dt><dd>${ed(t, "genre", esc(t.my_genre || t.genre || "–") + (t.held_genre ? lock("Genre") : ""), all)}</dd>
       <dt>Hype</dt><dd>${ed(t, "hype", hypeBadge(t.hype))} <span class="dim small">${t.hype != null ? "of 10, " : ""}compared with your collection</span></dd>
       <dt>Loudness</dt><dd>${t.lufs != null ? `${fmt(t.lufs, 1)} LUFS${t.loudness_range != null ? ` · range ${fmt(t.loudness_range, 1)} LU` : ""}` : "–"}</dd>
@@ -248,8 +249,7 @@ async function openTrack(path) {
       ${moods.length ? `<div class="sub">Mood</div>${bars(moods, { max: 1, fmtVal: v => pct(v) })}` : ""}
       ${t.instruments ? `<div class="sub">Instruments <span class="dim">(compare tracks, not absolute)</span></div>${bars(parseScores(t.instruments), { max: 1 })}` : ""}`,
       hint(moods.length ? moods.reduce((a, b) => b.value > a.value ? b : a).label : "")) : ""}
-    ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}
-      ${t.colour_guess ? `<div class="note">${guessMark()} ${GUESS_TIP()}${SNAP ? "" : ` <button id="dr-accept">It's right</button>`}</div>` : ""}`,
+    ${t.color_position != null || t.traktor_color ? fold("scale", "Colour scale", `<div class="small dim" style="margin-bottom:6px">Red = hardest … Magenta = prettiest</div>${scaleView(t)}`,
       hint(colourOf(t) + (t.colour_guess ? " · guessed" : ""))) : ""}
     ${t.type === "track" ? fold("hold", "Hold genre or colour", `<div class="holds">
       ${["genre", "colour"].map(k => `<span>${k === "genre" ? "Genre" : "Colour"}</span><span>${SNAP ? (t["held_" + k] ? `${LOCK} held` : `<span class="dim">not held</span>`)
@@ -268,7 +268,7 @@ async function openTrack(path) {
     b.dataset.tip = wide ? "Narrow the panel again" : "Widen the panel: more room for the waveform and cues"; tip.style.display = "none";
   };
   d.classList.toggle("wide", drawerWide());
-  body.querySelectorAll("#dr-accept, [data-cguess]").forEach(acc => acc.onclick = async () => {
+  body.querySelectorAll("[data-cguess]").forEach(acc => acc.onclick = async () => {
     try { await acceptColours([t.path]); const top = d.scrollTop; await openTrack(t.path); d.scrollTop = top; S.page === "tracks" && S.redrawTracks?.(); }
     catch (e) { acc.insertAdjacentHTML("afterend", ` <span class="small" style="color:var(--bad)">${esc(e.message)}</span>`); }
   });

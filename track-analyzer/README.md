@@ -277,7 +277,7 @@ uv run dj-track-analyzer web
 Opens `http://127.0.0.1:8766/` in your browser (double-clicking `Start Puppi3's Track Analyzer.command` on a Mac, or `Start Puppi3's Track Analyzer.bat` on Windows, does the same). Eight tabs:
 
 - **Overview**: the `stats` numbers as charts. Click a bar, column or tile to list those tracks.
-- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). The filter **Our key doesn't mix with Traktor's** lists the tracks where the two keys don't mix, to check by ear.
+- **Tracks**: a searchable, sortable list. Click a track for its genres, styles, moods, instruments and place on your colour scale, plus what mixes well with it. A dimmed key in brackets, like 5A (8B), is the key the analyzer heard, shown only when it disagrees with Traktor's (hover for both). The filter **Key unsure: ours and Traktor's don't agree** lists the tracks where the two keys are too far apart to mix (neighbouring keys aren't listed), to check by ear.
 
   Each check in the **All tracks** menu shows how many tracks it would list with the other filters you've set. **⇤ Wide** widens the panel for the waveform and cues. A page refresh keeps your filters, sort, scroll position and the open track.
 - **Hype**: the hype finder.
@@ -1110,6 +1110,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `stats` | Summary of the scanned collection | nothing |
 | `export [file]` | Write the CSV again | CSV |
 | `tag` / `untag` | Genres (and BPM/key) into file tags / put the old tags back | **your files** |
+| `names [--dry-run] [--undo]` | Your DJ app's artist and title into files whose tags have none (only empty fields; Traktor's entries marked up to date afterwards) | **your files**, collection.nml (backed up) |
 | `traktor` | Genres, colours and genre Smartlists into Traktor | **Traktor** (undo: `traktor --undo`) |
 | `regenre` | Genres again from saved scores after editing `dj_genres.json` | app database, CSV |
 | `keys` | The key model's key for tracks scanned before it, compared with Essentia's and Traktor's (see [Keys of tracks scanned earlier](#keys-of-tracks-scanned-earlier)) | app database |

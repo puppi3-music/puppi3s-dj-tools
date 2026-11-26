@@ -20,6 +20,7 @@
   <a class="sub" href="#before">Before you start</a>
   <a class="sub" href="#tag">tag</a>
   <a class="sub" href="#untag">untag</a>
+  <a class="sub" href="#names">names</a>
   <a class="sub" href="#regenre">regenre</a>
   <a class="sub" href="#train">train</a>
   <a class="sub" href="#traktor">traktor</a>
@@ -38,7 +39,7 @@
 <main>
 <div class="crumbs"><a href="index.html">Command reference</a> › Genres and tags</div>
 <h1>Genres and tags</h1>
-<p class="lede">The commands that put genres into your files and your DJ app, learn your own genres, and keep or set a track's values by hand: <a href="#tag">tag</a>, <a href="#untag">untag</a>, <a href="#regenre">regenre</a>, <a href="#train">train</a>, <a href="#traktor">traktor</a>, <a href="#hold">hold</a> and <a href="#edit">edit</a>.</p>
+<p class="lede">The commands that put genres into your files and your DJ app, learn your own genres, and keep or set a track's values by hand: <a href="#tag">tag</a>, <a href="#untag">untag</a>, <a href="#names">names</a>, <a href="#regenre">regenre</a>, <a href="#train">train</a>, <a href="#traktor">traktor</a>, <a href="#hold">hold</a> and <a href="#edit">edit</a>.</p>
 
 <h2 id="before">Before you start</h2>
 <ul>
@@ -97,6 +98,29 @@ uv run dj-track-analyzer untag</pre></div>
 <tbody>
 <tr><td><code>FOLDER</code></td><td>Only the files in these folders.</td><td class="def">every changed file</td></tr>
 <tr><td><code>--dry-run</code></td><td>Shows what would change without touching any file.</td><td class="def">off</td></tr>
+</tbody></table></div>
+
+<h2 id="names"><code>names</code></h2>
+<p>Copies your DJ app's artist and title into files whose own tags have none, so every other app sees the names too. A track imported while the DJ app's tag writing is off can have its name only in the app's library; the Tracks tab shows that name meanwhile, marked "Traktor's name" (or Rekordbox's), with a button at the top that runs this.</p>
+<ul class="facts">
+  <li><b>Changes:</b> your music files' artist and title tags; with Traktor also its collection</li>
+  <li><b>Needs:</b> a <code>scan</code>, your DJ app closed (Traktor)</li>
+  <li><b>Undo:</b> <code>names --undo</code></li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer names --dry-run
+uv run dj-track-analyzer names
+uv run dj-track-analyzer names --undo</pre></div>
+<ul>
+  <li>Only empty fields are filled: a name the file has is never replaced. A title that's only the file name (what Traktor shows for an untagged file) isn't written.</li>
+  <li>With Traktor, its entries for these files are then marked as up to date with them (collection backed up first). Otherwise Traktor reads a changed file's tags again when you load it, and they'd replace its genre, colour and comment with the file's.</li>
+  <li><code>--undo</code> takes out exactly what was written, where the file still has it, and marks Traktor's entries again.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--dry-run</code></td><td>Shows what would change without touching anything.</td><td class="def">off</td></tr>
+<tr><td><code>--undo</code></td><td>Takes the names this wrote out of the files again.</td><td class="def">off</td></tr>
 </tbody></table></div>
 
 <h2 id="regenre"><code>regenre</code></h2>
@@ -247,7 +271,7 @@ uv run dj-track-analyzer edit</pre></div>
 <tr><td><code>--clear FIELD</code></td><td>edit</td><td class="def">none</td></tr>
 <tr><td><code>--color-min-confidence C</code></td><td>traktor</td><td class="def">0</td></tr>
 <tr><td><code>--colour</code>, <code>--color</code></td><td>hold (TEXT), edit (C)</td><td class="def">none</td></tr>
-<tr><td><code>--dry-run</code></td><td>tag, untag, traktor, edit</td><td class="def">off</td></tr>
+<tr><td><code>--dry-run</code></td><td>tag, untag, names, traktor, edit</td><td class="def">off</td></tr>
 <tr><td><code>--fields FIELDS</code></td><td>tag</td><td class="def"><code>genre</code></td></tr>
 <tr><td><code>--force</code></td><td>traktor</td><td class="def">off</td></tr>
 <tr><td><code>--genre</code></td><td>hold (TEXT), edit (G)</td><td class="def">none</td></tr>
@@ -267,7 +291,7 @@ uv run dj-track-analyzer edit</pre></div>
 <tr><td><code>--smartlists-only</code></td><td>traktor</td><td class="def">off</td></tr>
 <tr><td><code>--traktor-genre GENRE</code></td><td>train</td><td class="def">none</td></tr>
 <tr><td><code>--traktor-playlist PLAYLIST</code></td><td>train</td><td class="def">none</td></tr>
-<tr><td><code>--undo</code></td><td>traktor</td><td class="def">off</td></tr>
+<tr><td><code>--undo</code></td><td>names, traktor</td><td class="def">off</td></tr>
 <tr><td><code>--use MODE</code></td><td>train</td><td class="def">unchanged</td></tr>
 <tr><td><code>--use-my-genre</code></td><td>tag</td><td class="def">off</td></tr>
 </tbody></table></div>

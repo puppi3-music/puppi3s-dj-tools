@@ -139,7 +139,8 @@ function nothingToDo(r) {  // as the CLI's say_if_nothing
   const counts = ["written", "would_write", "restored", "would_restore", "top_genre_changed"].filter(k => k in r).map(k => r[k]);
   return (flags.length && !flags.some(Boolean)) || (!flags.length && counts.length && !counts.some(Boolean));
 }
-const TOUCHES_TRAKTOR = new Set(["sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
+const TOUCHES_TRAKTOR = new Set(["names", "names_undo", "sync", "sync_undo", "copy", "copy_undo", "traktor", "traktor_undo", "hype_traktor", "hype_remove", "colors_apply", "colors_recolour", "colors_write_marked", "tempo_load", "tempo_native"]);
+const NAMES = new Set(["names", "names_undo"]);  // file tags, plus Traktor's stamps
 const NO_PREVIEW = new Set(["traktor_undo", "sync_undo", "copy_undo"]);
 const MULTI = new Set(["sync", "copy"]);  // several steps: the preview ticks which to write
 const ONE_UNDO = { sync_undo: "last sync (all of its steps at once)", copy_undo: "last copy from the other DJ app (all of its steps at once)" };
@@ -178,7 +179,8 @@ async function writeDialog(action, options = {}, onDone) {
     show(`${nothing ? `<div><b>Nothing would change:</b> everything is already up to date.</div>` : `<div class="small muted">Preview, nothing written yet:</div>`}
       ${MULTI.has(act) && !nothing ? syncSteps(j.result, st, act === "copy") : resultSummary(j.result)}${open && !nothing ? OPEN_WARN : ""}
       ${!nothing && j.result?.from && j.result?.to ? `<div><b>${act === "update_undo" ? "Back to" : "From"} version ${esc(j.result.from)} to ${esc(j.result.to)}.</b></div>` : ""}
-      ${nothing ? "" : `<div class="note">${TOUCHES_TRAKTOR.has(act) ? `A backup of ${(act === "tempo_native" && st?.tempo?.loaded_app ? st.tempo.loaded_app === "Rekordbox" : st?.dj_app?.app === "rekordbox") ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
+      ${nothing ? "" : `<div class="note">${NAMES.has(act) ? `Only empty artist and title tags are touched${act === "names" ? ", and you can take what was written out again here afterwards" : ""}.${DJ() === "Traktor" ? " Traktor's collection is backed up first, and its entries are marked up to date with the files, so it doesn't read their tags again on deck load (that would replace its genres, colours and comments with the files')." : ""}`
+        : TOUCHES_TRAKTOR.has(act) ? `A backup of ${(act === "tempo_native" && st?.tempo?.loaded_app ? st.tempo.loaded_app === "Rekordbox" : st?.dj_app?.app === "rekordbox") ? "Rekordbox's library" : "Traktor's collection"} is made first, and you can undo it here afterwards.`
         : act === "update" ? "Your data folder (scans, models, training, settings) isn't touched. The app's own files are backed up first, so you can go back to this version. The page then starts again with the new version."
         : act === "update_undo" ? "The page then starts again with that version." : "The files' original tags are saved first, so you can put them back."}</div>`}`,
       nothing ? "" : open ? `<button class="primary" data-again>Check again</button>` : `<button class="primary" data-go>Write it</button>`);

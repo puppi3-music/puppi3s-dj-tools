@@ -9,7 +9,7 @@ from pathlib import Path
 AREAS = {
     "colours.html": ["colors"],
     "library.html": ["setup", "scan", "analyze", "stats", "export", "keys", "styles"],
-    "genres.html": ["tag", "untag", "regenre", "train", "traktor", "hold", "edit"],
+    "genres.html": ["tag", "untag", "names", "regenre", "train", "traktor", "hold", "edit"],
     "hype-sets.html": ["hype", "set", "crates"],
     "cues-grids-sync.html": ["cues", "grids", "sync"],
     "tempo.html": ["tempo", "install"],

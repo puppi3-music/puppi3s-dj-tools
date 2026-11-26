@@ -255,6 +255,57 @@ def track_info(db: str | None = None, rows: dict | None = None) -> dict[str, tup
     return out
 
 
+
+def _meta_rows(db) -> list[dict]:
+    """The fields the Tracks tab's optional columns show, as plain rows (names looked up once per table, not per
+    track)."""
+    def names(get):
+        try:
+            return {str(x.ID): x.Name for x in get()}
+        except Exception:  # an older database without the table
+            return {}
+
+    artists, albums, labels, genres = (names(g) for g in (db.get_artist, db.get_album, db.get_label, db.get_genre))
+    g = lambda c, k: getattr(c, k, None)
+    out = []
+    for c in db.get_content():
+        if g(c, "rb_local_deleted"):
+            continue
+        name = lambda table, k: table.get(str(g(c, k))) if g(c, k) is not None else None
+        out.append({"path": c.FolderPath or "", "artist": name(artists, "ArtistID"), "title": g(c, "Title"), "album": name(albums, "AlbumID"), "genre": name(genres, "GenreID"),
+                    "label": name(labels, "LabelID"), "remixer": name(artists, "RemixerID"),
+                    "producer": name(artists, "ComposerID"), "org_artist": name(artists, "OrgArtistID"),
+                    "lyricist": name(artists, "Lyricist"), "mix": g(c, "Subtitle"), "comment": g(c, "Commnt"),
+                    "rating": g(c, "Rating"), "plays": g(c, "DJPlayCount"), "added": g(c, "StockDate"),
+                    "released": g(c, "ReleaseDate") or g(c, "ReleaseYear"), "track_no": g(c, "TrackNo"),
+                    "bitrate": g(c, "BitRate"), "sample_rate": g(c, "SampleRate"), "size": g(c, "FileSize")})
+    return out
+
+
+def track_meta(db: str | None = None, rows: list[dict] | None = None) -> dict[str, dict]:
+    """{file path: Rekordbox's browser fields} for the Tracks tab's optional columns, with library.META_FIELDS's
+    names; empty fields are left out."""
+    if rows is None:
+        master = open_database(find_collection(db))
+        try:
+            rows = _meta_rows(master)
+        finally:
+            close_database(master)
+    num = lambda v: float(v) if str(v or "").replace(".", "", 1).isdigit() else None
+    out = {}
+    for r in rows:
+        if not r["path"]:
+            continue
+        m = {**r, "plays": num(r.get("plays")), "track_no": num(r.get("track_no")) or None,
+             "bitrate": num(r.get("bitrate")) or None, "sample_rate": num(r.get("sample_rate")) or None,
+             "rating": num(r.get("rating")) or None, "released": str(r["released"]) if r.get("released") else None,
+             "added": (r.get("added") or "")[:10] or None}
+        size = m.pop("size", None)
+        m["size_mb"] = num(size) / 1048576 if num(size) else None
+        m.pop("path")
+        out[norm_path(r["path"])] = {k: v for k, v in m.items() if v not in (None, "")}
+    return out
+
 def playlists(db: str | None = None, rows: dict | None = None) -> list[dict]:
     """Every playlist, for learning genres: [{"path": "A / B / Name", "name": "Name", "files": [...]}] in
     Rekordbox's order. This app's own folders, smart playlists and empty playlists are left out."""

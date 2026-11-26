@@ -169,11 +169,12 @@ def tracks(lib: str = "native") -> dict:
                 r.pop("traktor_color", None)
                 if r["path"] in vc:
                     r["traktor_color"], r["your_colour"] = vc[r["path"]], yours[r["path"]]
+            view_missing = _view_missing({r["path"] for r in rows})
     _unbiased_colours(rows)
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
     by_hand = collection.manual()
     guessed = colour_guesses()
-    from . import cues, gridfix
+    from . import cues, gridfix, names
 
     review = colors.review_marks({r["path"]: r.get("traktor_color") for r in rows}) if not lib or lib == "native" else {}
 
@@ -184,7 +185,16 @@ def tracks(lib: str = "native") -> dict:
     except SystemExit:  # no Traktor collection found
         g = {}
     grid_res, grid_plans, grid_ign = gridfix.results(g=g), gridfix.plans(), gridfix.ignored()
+    meta = dj_meta()
     for r in rows:
+        if r["path"] in meta:  # the DJ app's own fields, for the optional columns
+            r["dj"] = dj = meta[r["path"]]
+            # a file without artist/title tags (imported with the app's tag writing off): the app's names,
+            # where they're more than its split of the file name (`names.usable`); `names` writes them in
+            if not (r.get("artist") and r.get("title")):
+                fill = {k: v for k, v in names.usable(r["path"], dj).items() if not r.get(k)}
+                if fill:
+                    r.update(fill, names_from_dj=list(fill))
         gr, d = grid_res.get(r["path"]), g.get(r["path"])
         if gr and d:  # the beat grid check: off (and not marked right), drifting, or a fix approved
             if r["path"] in grid_plans and gridfix.same(grid_plans[r["path"]], d["bpm"], d["grid_ms"]):
@@ -214,7 +224,17 @@ def tracks(lib: str = "native") -> dict:
             r["colour_guess"] = True
         if r["path"] in review:  # the colour review lists it: Approve / Keep in the panel, written from the Colours tab
             r["colour_review"] = review[r["path"]]
-    return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {})}
+    return {"tracks": rows, **({"corrections_pending": True} if fixes is None else {}),
+            **({"view_missing": view_missing} if lib and lib != "native" and view_missing else {})}
+
+
+def _view_missing(in_view: set[str]) -> int:
+    """How many tracks of the normal scan a tempo view's next scan would add (it has no row for them yet: added
+    since the view was scanned), as `tempo.scan` picks them: a BPM, the file on disk."""
+    from . import tempo
+
+    return sum(1 for p, r in tempo.native_rows().items()
+               if p not in in_view and (r["traktor_bpm"] or r["bpm"]) and os.path.exists(p))
 
 
 def _unbiased_colours(rows: list[dict]) -> None:
@@ -376,6 +396,25 @@ def cue_grids() -> dict:
             _grids.update(mtime=m, data=cues.grids())
     return _grids["data"]
 
+
+
+_meta: dict = {"mtime": None, "data": {}}
+
+
+def dj_meta() -> dict:
+    """The DJ app's browser fields (label, rating, plays …) for the Tracks tab's optional columns, read again only
+    when its library file changes; {} without one."""
+    from . import library as dj_app
+
+    try:
+        f = dj_app.find_collection(None)
+        m = (dj_app.app(), str(f), dj_app.changed_at(f))
+        if _meta["mtime"] != m:
+            _meta.update(mtime=m, data=dj_app.track_meta())
+    except (SystemExit, OSError, ImportError, ValueError) as err:
+        log(f"(the DJ app's track fields not read: {err})")
+        return {}
+    return _meta["data"]
 
 def traktor_nml() -> Path:
     from . import traktor
