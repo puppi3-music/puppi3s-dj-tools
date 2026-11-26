@@ -22,6 +22,8 @@ module's builds, which installs download by themselves.
 - Tempo views: tracks are stretched with Rubber Band's R2 engine for analysis instead of R3. R3 changed the sound for
   the style models far more than the tempo change itself (it could flip a track's genre at +0.6 %). The page's
   player still plays with R3. The 135/145/165 views need a rescan.
+- Track panel: a colour the app guessed has its **It's right** button right next to the colour, instead of below it
+  and again under the colour scale.
 - Tracks tab: the key filter is now called **Key unsure: ours and Traktor's don't agree**.
 
 **Fixed**
