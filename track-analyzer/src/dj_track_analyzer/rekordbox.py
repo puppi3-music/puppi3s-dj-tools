@@ -272,7 +272,7 @@ def _meta_rows(db) -> list[dict]:
         if g(c, "rb_local_deleted"):
             continue
         name = lambda table, k: table.get(str(g(c, k))) if g(c, k) is not None else None
-        out.append({"path": c.FolderPath or "", "album": name(albums, "AlbumID"), "genre": name(genres, "GenreID"),
+        out.append({"path": c.FolderPath or "", "artist": name(artists, "ArtistID"), "title": g(c, "Title"), "album": name(albums, "AlbumID"), "genre": name(genres, "GenreID"),
                     "label": name(labels, "LabelID"), "remixer": name(artists, "RemixerID"),
                     "producer": name(artists, "ComposerID"), "org_artist": name(artists, "OrgArtistID"),
                     "lyricist": name(artists, "Lyricist"), "mix": g(c, "Subtitle"), "comment": g(c, "Commnt"),

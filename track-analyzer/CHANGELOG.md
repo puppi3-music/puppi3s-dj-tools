@@ -6,6 +6,10 @@ module's builds, which installs download by themselves.
 ## Unreleased
 
 **Added**
+- Tracks tab: a file without artist or title tags (say, imported while Traktor's tag writing is off) shows your DJ
+  app's name for it, marked as such, instead of its file name. **Write Traktor's names into N files…** (and the new
+  `names` command) copies them into the files' empty tags, with a preview and an undo; Traktor's entries are marked up
+  to date afterwards, so it doesn't read those files' tags again.
 - `clips describe` and the mix's **Your editor's clips** card: clips someone else cut from the finished video are
   found in the recording by their sound. Each gets its video time, the track playing, LUFS, rise and energy, plus its
   own genre, moods and BPM; **Copy for posts** copies them as text. A clip that isn't found can be placed by hand.

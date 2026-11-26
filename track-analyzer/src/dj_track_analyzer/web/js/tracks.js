@@ -40,7 +40,7 @@ const isRb = () => DJ() === "Rekordbox";
 // id: {h: header (text or function), sort: key for SORTS, r: right-aligned, cell, apps: only for these DJ apps, group}
 const TCOLS = {
   colour: { h: "Colour", sort: SORTS.colour, cell: t => `${colour(colourOf(t), !t.traktor_color)}${t.colour_guess ? guessMark() : ""}${t.held_colour ? lock("Colour") : ""}` },
-  track: { h: "Track", fixed: 1, sort: SORTS.track, cell: t => `${trackName(t)}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? `No cue points or loops set in ${DJ()}` : `Not in ${DJ()}'s collection (or no beat grid)`}">no cues</span>` : ""}` },
+  track: { h: "Track", fixed: 1, sort: SORTS.track, cell: t => `${trackName(t)}${t.names_from_dj ? ` <span class="chip" data-tip="The file has no ${t.names_from_dj.join(" or ")} tag: this is ${DJ()}'s. The button at the top writes it into the file.">${DJ()}'s name</span>` : ""}${t.type === "track" && !t.own_cues ? ` <span class="chip" data-tip="${t.own_cues === 0 ? `No cue points or loops set in ${DJ()}` : `Not in ${DJ()}'s collection (or no beat grid)`}">no cues</span>` : ""}` },
   bpm: { h: "BPM", r: 1, sort: SORTS.bpm, td: t => t.source_bpm ? `data-tip="own tempo ${Math.round(t.source_bpm)} BPM"` : "", cell: t => fmt(t.mix_bpm) },
   key: { h: "Key", sort: SORTS.key, td: t => t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? `data-tip="${DJ()} ${esc(t.traktor_camelot)}, ours ${esc(t.camelot)}"` : "",
     cell: t => `${esc(t.mix_camelot || "–")}${t.traktor_camelot && t.camelot && t.traktor_camelot !== t.camelot ? ` <span class="dim small">(${esc(t.camelot)})</span>` : ""}` },
@@ -174,9 +174,10 @@ async function pageTracks(main, open) {
   if (me !== S.routeId) return;  // a newer page or library was picked meanwhile
   // a filter kept from before (a refresh, the Overview, another library) stays in its menu even when no track has it now
   const genres = [...new Set([TF.genre, ...all.flatMap(t => [t.genre, t.genre_2, t.my_genre])].filter(Boolean))].sort();
+  const nNames = all.filter(t => t.names_from_dj).length;  // names shown from the DJ app: the files' tags have none
   main.innerHTML = `
     <div class="page-head"><div><h2>Tracks</h2><div class="muted" id="tcount"></div></div><div class="spacer"></div>
-      ${!SNAP ? `<button id="t-grids" data-tip="Move every approved beat grid (and its cues) in ${DJ()} (shows what changes first)">Write grid fixes to ${DJ()}…</button><button id="t-write" data-tip="Write every approved track's cues into ${DJ()} (shows what changes first)">Write approved cues to ${DJ()}…</button>` : ""}</div>
+      ${!SNAP && nNames ? `<button id="t-names" data-tip="${nNames} files have no artist or title tags, so this table shows ${DJ()}'s names for them. Writes those names into the files' empty tags (shows what changes first)">Write ${DJ()}'s names into ${nNames} files…</button>` : ""}${!SNAP ? `<button id="t-grids" data-tip="Move every approved beat grid (and its cues) in ${DJ()} (shows what changes first)">Write grid fixes to ${DJ()}…</button><button id="t-write" data-tip="Write every approved track's cues into ${DJ()} (shows what changes first)">Write approved cues to ${DJ()}…</button>` : ""}</div>
     <div class="filters">
       <input type="search" id="f-q" placeholder="Search artist, title, file, album…" style="width:260px" value="${esc(TF.q)}">
       <select id="f-genre"><option value="">All genres</option>${genres.map(g => `<option ${g === TF.genre ? "selected" : ""}>${esc(g)}</option>`).join("")}</select>
@@ -195,6 +196,7 @@ async function pageTracks(main, open) {
   retrainBars($("#t-learn"), ["cues", "colours"]);
   $("#t-write")?.addEventListener("click", () => writeToTraktor(() => S.reloadTracks()));
   $("#t-grids")?.addEventListener("click", () => writeGrids(() => S.reloadTracks()));
+  $("#t-names")?.addEventListener("click", () => writeDialog("names", {}, () => S.reloadTracks()));
   $("#f-type").value = TF.type; $("#f-held").value = TF.held; $("#f-cues").value = TF.cues;
   const bind = (id, key, ev = "input", get = el => el.value) => { $(id).addEventListener(ev, e => { TF[key] = get(e.target); draw(); }); };
   bind("#f-q", "q"); bind("#f-genre", "genre", "change"); bind("#f-colour", "colour", "change"); bind("#f-bmin", "bpmMin");

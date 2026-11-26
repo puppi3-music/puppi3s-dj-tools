@@ -933,7 +933,8 @@ def _num(v, scale: float = 1) -> float | None:
 
 def track_meta(nml: str | None = None) -> dict[str, dict]:
     """{file path: Traktor's browser fields} for the Tracks tab's optional columns, with library.META_FIELDS's
-    names; empty fields are left out. RATING is Traktor's Comment 2, RANKING its stars (51 a star),
+    names plus artist and title (the Tracks tab's names where the file has none); empty fields are left out.
+    RATING is Traktor's Comment 2, RANKING its stars (51 a star),
     FILESIZE kB."""
     root = ET.parse(find_collection(nml)).getroot()
     out = {}
@@ -946,7 +947,7 @@ def track_meta(nml: str | None = None) -> dict[str, dict]:
         al = e.find("ALBUM")
         al = al.attrib if al is not None else {}
         rank = _num(i.get("RANKING"))
-        m = {"album": al.get("TITLE"), "track_no": _num(al.get("TRACK")), "genre": i.get("GENRE"),
+        m = {"artist": e.get("ARTIST"), "title": e.get("TITLE"), "album": al.get("TITLE"), "track_no": _num(al.get("TRACK")), "genre": i.get("GENRE"),
              "label": i.get("LABEL"), "remixer": i.get("REMIXER"), "producer": i.get("PRODUCER"), "mix": i.get("MIX"),
              "comment": i.get("COMMENT"), "comment2": i.get("RATING"), "catalog": i.get("CATALOG_NO"),
              "rating": round(rank / 51) if rank else None, "plays": _num(i.get("PLAYCOUNT")),

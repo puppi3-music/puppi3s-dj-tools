@@ -1110,6 +1110,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `stats` | Summary of the scanned collection | nothing |
 | `export [file]` | Write the CSV again | CSV |
 | `tag` / `untag` | Genres (and BPM/key) into file tags / put the old tags back | **your files** |
+| `names [--dry-run] [--undo]` | Your DJ app's artist and title into files whose tags have none (only empty fields; Traktor's entries marked up to date afterwards) | **your files**, collection.nml (backed up) |
 | `traktor` | Genres, colours and genre Smartlists into Traktor | **Traktor** (undo: `traktor --undo`) |
 | `regenre` | Genres again from saved scores after editing `dj_genres.json` | app database, CSV |
 | `keys` | The key model's key for tracks scanned before it, compared with Essentia's and Traktor's (see [Keys of tracks scanned earlier](#keys-of-tracks-scanned-earlier)) | app database |

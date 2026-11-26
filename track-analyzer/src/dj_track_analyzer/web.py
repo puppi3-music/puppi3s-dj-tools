@@ -173,7 +173,7 @@ def tracks(lib: str = "native") -> dict:
     genre_held, colour_held = collection.held("genre"), collection.held("colour")
     by_hand = collection.manual()
     guessed = colour_guesses()
-    from . import cues, gridfix
+    from . import cues, gridfix, names
 
     review = colors.review_marks({r["path"]: r.get("traktor_color") for r in rows}) if not lib or lib == "native" else {}
 
@@ -187,7 +187,13 @@ def tracks(lib: str = "native") -> dict:
     meta = dj_meta()
     for r in rows:
         if r["path"] in meta:  # the DJ app's own fields, for the optional columns
-            r["dj"] = meta[r["path"]]
+            r["dj"] = dj = meta[r["path"]]
+            # a file without artist/title tags (imported with the app's tag writing off): the app's names,
+            # where they're more than its split of the file name (`names.usable`); `names` writes them in
+            if not (r.get("artist") and r.get("title")):
+                fill = {k: v for k, v in names.usable(r["path"], dj).items() if not r.get(k)}
+                if fill:
+                    r.update(fill, names_from_dj=list(fill))
         gr, d = grid_res.get(r["path"]), g.get(r["path"])
         if gr and d:  # the beat grid check: off (and not marked right), drifting, or a fix approved
             if r["path"] in grid_plans and gridfix.same(grid_plans[r["path"]], d["bpm"], d["grid_ms"]):

@@ -14,7 +14,7 @@ from .mcp_server import protect_stdout, build_mcp
 # Commands that follow the tempo view loaded in Traktor (if any); --native forces the normal library.
 VIEW_CMDS = {"hype", "stats", "export"}
 # Commands that always use the normal analysis (each track at its own tempo).
-NATIVE_CMDS = {"analyze", "scan", "tag", "untag", "traktor", "colors", "regenre", "keys"}
+NATIVE_CMDS = {"analyze", "scan", "tag", "untag", "names", "traktor", "colors", "regenre", "keys"}
 
 
 def pick_library(args) -> None:
@@ -170,6 +170,9 @@ def main() -> None:
     ut = sub.add_parser("untag", help="restore the genre/BPM/key tags files had before tagging")
     ut.add_argument("folders", nargs="*")
     ut.add_argument("--dry-run", action="store_true")
+    nm = sub.add_parser("names", help="copy the DJ app's artist and title into files whose tags have none (only empty fields)")
+    nm.add_argument("--dry-run", action="store_true", help="show what would change without touching anything")
+    nm.add_argument("--undo", action="store_true", help="take the names this wrote out of the files again")
     tk = sub.add_parser("traktor", help="put tagged genres into Traktor's collection and create genre Smartlists")
     tk.add_argument("--nml", default=None, help="path to collection.nml (default: newest Traktor folder in Documents/Native Instruments; on Windows also the real and OneDrive Documents folders)")
     tk.add_argument("--dry-run", action="store_true", help="show what would change without touching anything")
@@ -503,6 +506,12 @@ def main() -> None:
         from . import collection
 
         out = collection.untag(args.folders or None, args.dry_run)
+        print(json.dumps(out, indent=2, ensure_ascii=False))
+        say_if_nothing(out, args.dry_run)
+    elif args.cmd == "names":
+        from . import names
+
+        out = (names.undo if args.undo else names.write)(args.dry_run)
         print(json.dumps(out, indent=2, ensure_ascii=False))
         say_if_nothing(out, args.dry_run)
     elif args.cmd == "traktor":

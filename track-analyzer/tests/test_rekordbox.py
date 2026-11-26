@@ -139,7 +139,7 @@ def test_track_meta_rows(tmp_path):
     assert m[rekordbox.norm_path("/m/a.mp3")] == {
         "album": "Alb", "label": "Lab", "comment": "hi", "rating": 4.0, "plays": 12.0, "added": "2025-08-16",
         "released": "2021", "track_no": 3.0, "bitrate": 320.0, "sample_rate": 44100.0, "size_mb": 2.0}
-    assert set(m[rekordbox.norm_path("/m/a.mp3")]) <= set(library.META_FIELDS)
+    assert set(m[rekordbox.norm_path("/m/a.mp3")]) <= set(library.META_FIELDS) | {"artist", "title"}  # + the names for the Tracks tab
 
 
 def test_traktor_track_meta(tmp_path):
@@ -150,8 +150,8 @@ def test_traktor_track_meta(tmp_path):
                    'RATING="c2" PLAYCOUNT="26" RANKING="204" IMPORT_DATE="2025/8/16" LAST_PLAYED="2026/11/3" '
                    'RELEASE_DATE="2025/1/1" FILESIZE="2048" /></ENTRY></COLLECTION></NML>', encoding="utf-8")
     m = traktor.track_meta(str(nml))
-    assert m and all(v == {"album": "Rel", "track_no": 2.0, "genre": "Techno", "label": "Lab", "comment": "c1",
+    assert m and all(v == {"artist": "A", "title": "T", "album": "Rel", "track_no": 2.0, "genre": "Techno", "label": "Lab", "comment": "c1",
                            "comment2": "c2", "rating": 4, "plays": 26.0, "last_played": "2026-11-03",
                            "added": "2025-08-16", "released": "2025-01-01", "bitrate": 320.0, "size_mb": 2.0}
                      for v in m.values())
-    assert set(next(iter(m.values()))) <= set(library.META_FIELDS)
+    assert set(next(iter(m.values()))) <= set(library.META_FIELDS) | {"artist", "title"}  # + the names for the Tracks tab
