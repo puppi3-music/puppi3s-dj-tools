@@ -15,11 +15,15 @@ async function lexNote() {  // tracks in Traktor that Lexicon hasn't imported: i
   const n = $("#lexnote");
   if (SNAP || !S.libs.lexicon || DJ() !== "Traktor") { n.hidden = true; return; }
   let d; try { d = await api("lexicon/missing"); } catch (e) { return; }
-  n.hidden = !d.count;
-  if (!d.count) return;
+  const key = d.count + ":" + d.missing.join("|");  // dismissed until the list changes
+  let gone = false; try { gone = localStorage.getItem("ta-lexnote-x") === key; } catch (e) {}
+  n.hidden = !d.count || gone;
+  if (n.hidden) return;
   const names = d.missing.map(esc).join(", ") + (d.count > d.missing.length ? ", …" : "");
   n.innerHTML = `<b>${d.count} track${d.count > 1 ? "s" : ""} in Traktor ${d.count > 1 ? "aren't" : "isn't"} in Lexicon yet</b> (${names}). In Lexicon, choose <b>Import → Traktor</b>: its <i>Sync to Traktor</i> only sends tracks the other way.`
-    + (d.lexicon_view ? ` Lexicon has the ${esc(d.lexicon_view)} BPM tempo view loaded: switch it back on the Tempo view tab first.` : "");
+    + (d.lexicon_view ? ` Lexicon has the ${esc(d.lexicon_view)} BPM tempo view loaded: switch it back on the Tempo view tab first.` : "")
+    + `<button class="banner-x" title="Hide until the list of missing tracks changes" aria-label="Hide">×</button>`;
+  n.querySelector(".banner-x").onclick = () => { n.hidden = true; try { localStorage.setItem("ta-lexnote-x", key); } catch (e) {} };
 }
 function libNote() {
   const n = $("#libnote"), v = S.libs.loaded_view, usesLib = ["overview", "tracks", "hype"].includes(S.page);

@@ -1635,7 +1635,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
                  progress: bool = False, tracklist: tuple | None = None, highlights: int = 0,
                  clip_seconds: float = 40.0, own_bpm: float | None = None, clip_mood: float = 0.0,
                  standalone: bool = True, standalone_separate: bool = False,
-                 standalone_multi: bool = True, standalone_solo: bool = True) -> dict:
+                 standalone_multi: bool = True, standalone_solo: bool = True,
+                 standalone_near_db: float | None = None) -> dict:
     """tracklist: (plays, history path, recording start) from tracklist.py, for a mix: adds a per-track
     report and judges genres at the tracks' own BPMs. genre_bpm: a BPM to judge the genre rules by instead of the measured one (scan passes
     Traktor's, which the user may have corrected by hand). tempo: (track's BPM, BPM to play it at)
@@ -1643,7 +1644,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
     measured at the track's own tempo, for the colour model (trained on those; defaults to tempo[0]). progress: print the stage
     being worked on to stderr (the `analyze` command). clip_mood: weight of how party / aggressive a clip sounds in
     the highlights' score (tracklist.highlights' energy_weight). standalone: with a tracklist, find the standalone
-    pieces (standalone.py); standalone_separate: there, separate tracks without a stem file with Demucs (slow)."""
+    pieces (standalone.py); standalone_separate: there, separate tracks without a stem file with Demucs (slow);
+    standalone_near_db: how far below its own level a track still counts as playing (default standalone.NEAR_DB)."""
     def say(msg: str) -> None:
         if progress:
             log(f"[{time.time() - t0:5.1f}s] {msg}")
@@ -1789,7 +1791,8 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
         from . import standalone as sa
 
         result["standalone"] = sa.find(result, mono44, separate_missing=standalone_separate, say=say,
-                                      multi=standalone_multi, solo=standalone_solo)
+                                      multi=standalone_multi, solo=standalone_solo,
+                                      **({} if standalone_near_db is None else {"near_db": standalone_near_db}))
         if any(result["standalone"].get(k) for k in ("picks", "shorts", "solo_picks", "solo_shorts")):  # SoundCloud timestamps for the full set the pieces link to
             from . import tracklist as tl
 

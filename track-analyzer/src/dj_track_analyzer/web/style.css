@@ -285,6 +285,9 @@ details.fold .sub:first-child { margin-top: 0; }
 .sa-piece > summary::before { align-self: center; }
 .sa-piece[open] > summary { border-bottom: 1px solid var(--line); }
 .sa-num { display: inline-block; min-width: 1.6em; text-align: center; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 0 6px; background: var(--accent, #6b8afd); color: #fff; }
+.sa-more { margin-top: 8px; }
+.sa-more > summary { cursor: pointer; color: var(--accent, #6b8afd); padding: 4px 0; }
+.sa-more[open] > summary .sa-m-show, .sa-more:not([open]) > summary .sa-m-hide { display: none; }
 .sa-body { padding: 10px 12px; background: var(--surface, transparent); border-radius: 0 0 8px 8px; }
 .sa-strip { cursor: pointer; margin-top: 4px; }
 .sa-strip svg { display: block; width: 100%; height: 90px; background: var(--surface-2); border-radius: 6px; }
@@ -340,6 +343,9 @@ nav a .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
 .jobbar .progress { width: 160px; }
 .jobbar .jobnow { flex: 1 1 200px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .jobbar[hidden], .banner[hidden] { display: none; }
+#lexnote { position: relative; padding-right: 40px; }
+.banner-x { position: absolute; top: 4px; right: 10px; border: 0; background: none; padding: 0 6px; font-size: 18px; line-height: 1.4; color: var(--text-2); cursor: pointer; }
+.banner-x:hover { color: var(--text); }
 .jobbar button { padding: 1px 10px; font-size: 12px; }
 .jobbar.bad { background: color-mix(in srgb, var(--bad) 12%, var(--surface)); }
 .jobbar.good { background: color-mix(in srgb, var(--good) 12%, var(--surface)); }
