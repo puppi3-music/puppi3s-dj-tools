@@ -191,7 +191,7 @@ def test_mix_job_passes_the_standalone_ticks(tmp_path):
     assert "--standalone-style" not in jobs._analyze_mix({**base, "standalone": False, "standalone_style": "clean"})
 
 
-def test_preview_plays_only_the_recording_a_saved_mix_names(tmp_path):
+def test_preview_plays_only_the_recording_a_saved_mix_names(tmp_path, monkeypatch):
     import json
 
     import pytest
@@ -207,9 +207,57 @@ def test_preview_plays_only_the_recording_a_saved_mix_names(tmp_path):
         web.mix_audio([tmp_path], "0/other.json")
     with pytest.raises(ValueError, match="unknown file"):
         web.mix_audio([tmp_path], "0/../mix.json")
+    monkeypatch.setattr(web, "_recording_folders", list)
     rec.unlink()
-    with pytest.raises(ValueError, match="Reanalyse"):
+    with pytest.raises(ValueError, match="Find recording"):
         web.mix_audio([tmp_path], "0/mix.json")
+
+
+def test_moved_recordings_are_found_and_relinked(tmp_path, monkeypatch):
+    """Recordings moved to another folder (another drive): a saved mix finds its recording by name in Traktor's
+    recordings folders when opened, every other moved mix with it; only "file" changes and the file keeps its date."""
+    import json
+    import os
+
+    import pytest
+
+    from dj_track_analyzer import web
+
+    logs, old, new = tmp_path / "logs", tmp_path / "old", tmp_path / "1TB" / "Recordings"
+    logs.mkdir(); (new / "2026").mkdir(parents=True)
+    for n in ("a", "b", "ü c"):
+        (new / "2026" / f"{n}.wav").write_bytes(b"RIFF")
+        (logs / f"{n}.json").write_text("log line before the JSON\n" + json.dumps(
+            {"file": str(old / f"{n}.wav"), "type": "dj_mix", "tracks": [{"file": str(old / f"{n}.wav")}]},
+            indent=2, ensure_ascii=False), encoding="utf-8")
+        os.utime(logs / f"{n}.json", (1_700_000_000, 1_700_000_000))
+    (logs / "gone.json").write_text(json.dumps({"file": str(old / "gone.wav"), "type": "dj_mix"}))
+    monkeypatch.setattr(web, "_recording_folders", list)
+    assert web.saved_file([logs], "0/a.json")["recording_moved"]  # not in Traktor's folders: the page offers Find
+    monkeypatch.setattr(web, "_recording_folders", lambda: [str(tmp_path / "missing"), str(new)])
+    d = web.saved_file([logs], "0/a.json")
+    assert d["file"] == str(new / "2026" / "a.wav") and "recording_moved" not in d
+    for n in ("a", "b", "ü c"):  # all moved mixes relinked at once, nothing else in them changed
+        text = (logs / f"{n}.json").read_text(encoding="utf-8")
+        assert text.startswith("log line before the JSON")
+        data = web._json_in(logs / f"{n}.json")
+        assert data["file"] == str(new / "2026" / f"{n}.wav") and data["tracks"][0]["file"] == str(old / f"{n}.wav")
+        assert (logs / f"{n}.json").stat().st_mtime == 1_700_000_000  # the Mixes list order and old dates stay
+    assert web.mix_audio([logs], "0/b.json") == new / "2026" / "b.wav"
+    assert web.saved_file([logs], "0/gone.json")["recording_moved"]
+    with pytest.raises(ValueError, match="Find recording"):
+        web.mix_audio([logs], "0/gone.json")
+    # Find recording…: the folder chosen in the dialog; the wrong folder says so, cancel changes nothing
+    (tmp_path / "elsewhere").mkdir(); (tmp_path / "elsewhere" / "gone.wav").write_bytes(b"RIFF")
+    monkeypatch.setattr(web, "pick_file", lambda **k: None)
+    assert web.relink_mix([logs], "0/gone.json") == {"cancelled": True}
+    monkeypatch.setattr(web, "pick_file", lambda **k: str(new))
+    with pytest.raises(ValueError, match="isn't in"):
+        web.relink_mix([logs], "0/gone.json")
+    monkeypatch.setattr(web, "pick_file", lambda **k: str(tmp_path / "elsewhere"))
+    assert web.relink_mix([logs], "0/gone.json") == {"relinked": 1, "found": True}
+    assert web.mix_audio([logs], "0/gone.json") == tmp_path / "elsewhere" / "gone.wav"
+    assert web.relink_mix([logs], "0/a.json") == {"relinked": 0, "found": True}  # not moved: no dialog
 
 
 def test_export_cuts_the_piece_as_adjusted_with_tags(tmp_path):

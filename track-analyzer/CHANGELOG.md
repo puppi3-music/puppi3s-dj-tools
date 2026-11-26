@@ -6,6 +6,9 @@ module's builds, which installs download by themselves.
 ## Unreleased
 
 **Added**
+- Mixes tab: recordings moved to another folder or drive are found again. A mix whose recording is now in one of
+  Traktor's recordings folders is pointed there when you open it (every moved mix at once); otherwise
+  **Find recording…** at the top of the mix asks for the folder. Nothing is analysed again.
 - Tracks tab: a file without artist or title tags (say, imported while Traktor's tag writing is off) shows your DJ
   app's name for it, marked as such, instead of its file name. **Write Traktor's names into N files…** (and the new
   `names` command) copies them into the files' empty tags, with a preview and an undo; Traktor's entries are marked up

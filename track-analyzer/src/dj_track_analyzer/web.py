@@ -1666,9 +1666,89 @@ def delete_saved(dirs: list[Path], ident: str) -> dict:
     return {"moved_to": str(to)}
 
 
+def _set_mix_file(f: Path, old: str, new: str) -> bool:
+    """Point a saved mix analysis at its recording's new place. Only its "file" value changes (log text before the
+    JSON stays as it is), and the file keeps its date: that orders the Mixes list and dates older analyses."""
+    text = f.read_text(encoding="utf-8")
+    i = max(text.find("{"), 0)
+    for enc in dict.fromkeys((json.dumps(old, ensure_ascii=False), json.dumps(old))):
+        m = re.compile(r'"file"\s*:\s*' + re.escape(enc)).search(text, i)
+        if not m:
+            continue
+        out = text[:m.start()] + '"file": ' + json.dumps(new, ensure_ascii=False) + text[m.end():]
+        try:
+            ok = json.JSONDecoder().raw_decode(out[out.find("{"):])[0].get("file") == new
+        except (ValueError, AttributeError):
+            ok = False
+        if not ok:  # the match wasn't the analysis's own "file": leave the file alone
+            return False
+        st = f.stat()
+        tmp = f.with_name(f".{f.name}.relink")
+        tmp.write_text(out, encoding="utf-8")
+        os.replace(tmp, f)
+        os.utime(f, ns=(st.st_atime_ns, st.st_mtime_ns))
+        return True
+    return False
+
+
+def relink_recordings(dirs: list[Path], folders) -> int:
+    """Saved mix analyses whose recording isn't where they say any more, pointed at the file of the same name in one
+    of `folders` (subfolders too). How many were relinked."""
+    found: dict[str, Path] = {}
+    for d in folders:
+        if d and Path(d).is_dir():
+            for x in Path(d).rglob("*"):
+                if x.suffix.lower() in analysis.AUDIO_EXTS and not x.name.startswith(".") and x.is_file():
+                    found.setdefault(x.name, x)
+    n = 0
+    for d in dirs if found else []:
+        for f in sorted(Path(d).glob("*")):
+            if f.suffix.lower() not in (".json", ".txt") or not f.is_file():
+                continue
+            data = _json_in(f)
+            old = str(data.get("file") or "") if isinstance(data, dict) and data.get("type") == "dj_mix" else ""
+            new = found.get(Path(old).name) if old and not Path(old).is_file() else None
+            if new and _set_mix_file(f, old, str(new)):
+                log(f"{f.name}: the recording is now at {new}")
+                n += 1
+    return n
+
+
+def _recording_folders() -> list[str]:
+    return traktor.recording_dirs(settings=("Browser.Dir.Recordings",))
+
+
+def _mix_moved(data) -> bool:
+    p = str(data.get("file") or "") if isinstance(data, dict) and data.get("type") == "dj_mix" else ""
+    return bool(p) and Path(p).suffix.lower() in analysis.AUDIO_EXTS and not Path(p).is_file()
+
+
+def relink_mix(dirs: list[Path], ident: str) -> dict:
+    """A mix's Find recording… button: the folder the recordings were moved to (the system's folder dialog), and every
+    saved mix whose recording is in it (subfolders too) pointed there."""
+    data = _json_in(_saved_path(dirs, ident))
+    if not _mix_moved(data):
+        return {"relinked": 0, "found": True}
+    name = Path(data["file"]).name
+    start = next((Path(d) for d in _recording_folders() if Path(d).is_dir()), Path.home())
+    folder = pick_file(folder=True, start=start, title=f"Choose the folder {name} is in now",
+                       what="the folder the recording is in now")
+    if folder is None:
+        return {"cancelled": True}
+    n = relink_recordings(dirs, [folder])
+    if _mix_moved(_json_in(_saved_path(dirs, ident))):
+        raise ValueError(f"{name} isn't in {folder} (or its subfolders): choose the folder it's in now"
+                         + (f". {n} other mix{'es' if n != 1 else ''} found {'their' if n != 1 else 'its'} recording there" if n else ""))
+    return {"relinked": n, "found": True}
+
+
 def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
+    if _mix_moved(data) and relink_recordings(dirs, _recording_folders()):  # moved within Traktor's recordings folders
+        data = _json_in(f)
+    if _mix_moved(data):
+        data["recording_moved"] = True  # the page offers Find recording…
     if isinstance(data, dict) and data.get("type") == "dj_mix" and "analysed_at" not in data:
         # saved before the date was kept: the file's own date (when it was last written)
         data["analysed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(f.stat().st_mtime))
@@ -1682,10 +1762,12 @@ def mix_audio(dirs: list[Path], ident: str) -> Path:
     """The recording a saved mix analysis was made from, for the page's preview of its standalone pieces: only the file
     that analysis names (never an arbitrary path), and only while it's still there."""
     data = _json_in(_saved_path(dirs, ident))
+    if _mix_moved(data) and relink_recordings(dirs, _recording_folders()):
+        data = _json_in(_saved_path(dirs, ident))
     p = Path(str(data.get("file") or "")) if isinstance(data, dict) and data.get("type") == "dj_mix" else None
     if not p or p.suffix.lower() not in analysis.AUDIO_EXTS or not p.is_file():
-        raise ValueError(f"the recording isn't at {p} any more: use Reanalyse… to point to where it is now" if p
-                         else "not a mix analysis")
+        raise ValueError(f"the recording isn't at {p} any more: use Find recording… at the top of this mix to choose "
+                         "the folder it's in now" if p else "not a mix analysis")
     return p
 
 
@@ -2023,6 +2105,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/saved", respond(lambda q: {"files": saved_files(log_dirs), "folders": [str(d) for d in log_dirs]})),
         Route("/api/saved-file", respond(lambda q: saved_file(log_dirs, q["id"]))),
         Route("/api/saved-file/delete", post(lambda b: delete_saved(log_dirs, str(b["id"]))), methods=["POST"]),
+        Route("/api/saved-file/relink", post(lambda b: relink_mix(log_dirs, str(b["id"]))), methods=["POST"]),
         Route("/api/mixes-report", respond(lambda q: mixreport.report(log_dirs))),
         Route("/api/recordings", respond(lambda q: recordings(log_dirs))),
         Route("/api/recordings/find", post(lambda b: {"path": find_recording(str(b["name"]), int(b["size"]))}), methods=["POST"]),

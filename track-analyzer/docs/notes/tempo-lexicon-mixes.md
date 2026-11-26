@@ -45,7 +45,10 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   `closest_miss`. Output: `picks`, `changes`, `closest_miss`, `measured_with`, `rule` (+ `near_db`, `min_bars`, `gap` for the page's wording), `names`, `timestamps`
   (chapters at offset 0 for the full-set description). Page: `standalonePanel(d)` in web/js/mixes.js: level strip per change from `bars`, preview via
   `/api/mix-audio?id=<saved id>` (web.mix_audio: only the `file` a saved dj_mix names; Range for seeking), timeline row
-  `saTimelineRow`.
+  `saTimelineRow`. Moved recordings: `relink_recordings` finds a missing `file` by name in Traktor's recordings folders
+  (`saved_file`/`mix_audio`, every moved mix at once) or in the folder picked with **Find recording…** (`relink_mix`,
+  shown when `saved_file` sets `recording_moved`). `_set_mix_file` rewrites only that value and keeps the file's mtime
+  (the Mixes list order and older analyses' `analysed_at` come from it).
 
 ### Tempo view (`tempo.py`)
 - `analysis.stretch()` = Rubber Band CLI R2 `-c 6 --centre-focus` for the scan (`brew install rubberband`, 4.0; R3 only for the player, `listen=True`). R3 moved style scores 0.52-0.68 at +0.6 % vs 0.16-0.22 for a plain resample (flipped genres), R2 0.20-0.26 (2026-11-12); `tempo.VIEW_STRETCH` in the view cache version; `analyze_file(tempo=(src, target),

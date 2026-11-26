@@ -54,8 +54,14 @@ async function pageMixes(main, id) {
     catch (e) { if (me === S.routeId && !shownDrop) $("#mix").innerHTML = errBox(e); }
     const f = mixes.find(x => x.id === id), head = $("#mix .page-head");
     if (f && head && !SNAP && me === S.routeId && !shownDrop) {
-      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div>${f.recording ? `<button id="mx-again" data-tip="Analyse ${esc(f.recording)} again with today's models and options: ${f.name === f.recording.replace(/\.[^.]+$/, "") + ".json" ? "the new result replaces this one" : "the new result is saved as well, and this one shows as an older copy"}">Reanalyse…</button>` : ""}<button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
+      head.insertAdjacentHTML("beforeend", `<div class="spacer"></div>${d?.recording_moved ? `<button id="mx-find" data-tip="${esc(f.recording)} isn't where it was analysed any more: choose the folder it's in now. Every saved mix whose recording is in that folder is pointed there, nothing is analysed again">Find recording…</button>` : ""}${f.recording ? `<button id="mx-again" data-tip="Analyse ${esc(f.recording)} again with today's models and options: ${f.name === f.recording.replace(/\.[^.]+$/, "") + ".json" ? "the new result replaces this one" : "the new result is saved as well, and this one shows as an older copy"}">Reanalyse…</button>` : ""}<button id="mx-del" data-tip="Moves ${esc(f.name)} to ${esc(baseName(f.folder))}/deleted/: gone from this list, and you can move it back">Delete…</button>`);
       $("#mx-again")?.addEventListener("click", () => mixDialog(null, id, { separated: Object.values(d?.standalone?.measured_with || {}).includes("separated") }));
+      $("#mx-find")?.addEventListener("click", async e => {
+        const b = e.currentTarget; b.disabled = true;
+        let r; try { r = await postJSON("/api/saved-file/relink", { id }); } catch (err) { b.disabled = false; $("#mix").insertAdjacentHTML("afterbegin", errBox(err)); return; }
+        b.disabled = false;
+        if (!r.cancelled) { LOGS = null; SAP.id = null; route(); }
+      });
       $("#mx-del").onclick = async () => {
         if (!confirm(`Delete this analysis of ${mixTitle(f)}?\n\n${f.name} moves to ${f.folder}${/\\/.test(f.folder) ? "\\" : "/"}deleted. The recording itself isn't touched.`)) return;
         try { await postJSON("/api/saved-file/delete", { id }); } catch (e) { $("#mix").insertAdjacentHTML("afterbegin", errBox(e)); return; }
