@@ -31,9 +31,9 @@ jobs:
           cp -R track-analyzer/docs/img _site/track-analyzer/img  # the guide's screenshots (img/… beside it, as in docs/)
           cp track-analyzer/docs/GUIDE.html _site/track-analyzer/GUIDE.html  # the command reference links back to ../GUIDE.html
           cp -R track-analyzer/docs/commands _site/track-analyzer/commands  # command reference, a page per area
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
