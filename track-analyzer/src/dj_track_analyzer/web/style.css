@@ -282,8 +282,7 @@ details.fold .sub:first-child { margin-top: 0; }
 .sa-piece { border: 1px solid var(--line); border-left: 4px solid var(--accent, #6b8afd); border-radius: 8px; margin-top: 12px; background: var(--surface-2); }
 .sa-piece > summary { cursor: pointer; padding: 8px 12px; list-style: none; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
 .sa-piece > summary::-webkit-details-marker { display: none; }
-.sa-piece > summary::before { content: "▸"; color: var(--text-3); transition: transform .15s; }
-.sa-piece[open] > summary::before { transform: rotate(90deg); }
+.sa-piece > summary::before { align-self: center; }
 .sa-piece[open] > summary { border-bottom: 1px solid var(--line); }
 .sa-num { display: inline-block; min-width: 1.6em; text-align: center; font-size: 12px; font-weight: 600; border-radius: 10px; padding: 0 6px; background: var(--accent, #6b8afd); color: #fff; }
 .sa-body { padding: 10px 12px; background: var(--surface, transparent); border-radius: 0 0 8px 8px; }
@@ -412,8 +411,13 @@ dialog.write .warnbox, #gridbox .warnbox, #updatecard .warnbox { background: col
 }
 /* Folding sections on the mix pages (mixes.js setupFolds) */
 h3.foldable { cursor: pointer; user-select: none; }
-h3.foldable::before { content: "▾"; display: inline-block; width: 14px; color: var(--text-2); font-size: 11px; transition: transform .12s; }
-.card.folded h3.foldable::before { transform: rotate(-90deg); }
+/* One chevron for every fold on the mix pages: drawn with borders so it turns in place, down when open, right when folded */
+h3.foldable::before, .sa-piece > summary::before, details.card > summary::before {
+  content: ""; display: inline-block; flex: none; width: 6px; height: 6px; margin: 0 10px 3px 2px; vertical-align: middle;
+  border-right: 1.5px solid var(--text-2); border-bottom: 1.5px solid var(--text-2); transform: rotate(45deg); transition: transform .12s; }
+.card.folded h3.foldable::before, .sa-piece:not([open]) > summary::before, details.card:not([open]) > summary::before { transform: rotate(-45deg); margin-bottom: 1px; }
+details.card > summary { cursor: pointer; list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
 .card.folded > :not(.fold-head) { display: none; }
 .card.folded > .fold-head, .card.folded > .fold-head h3 { margin-bottom: 0; }
 /* Copy button in the top-right corner of a read-only box (mixes page) */

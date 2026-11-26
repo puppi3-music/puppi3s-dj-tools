@@ -24,6 +24,8 @@ module's builds, which installs download by themselves.
   player still plays with R3. The 135/145/165 views need a rescan.
 - Track panel: a colour the app guessed has its **It's right** button right next to the colour, instead of below it
   and again under the colour scale.
+- Mixes tab: only the big sections fold (small cards and cards side by side stay open), **Mood by fifth of the set**
+  starts folded until you open it, and every fold uses the same arrow.
 - Tracks tab: the key filter is now called **Key unsure: ours and Traktor's don't agree**.
 
 **Fixed**
