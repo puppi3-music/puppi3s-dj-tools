@@ -130,6 +130,7 @@ li > figure.shot { margin: 12px 0 4px; }
   <a class="sub" href="#new-tracks">New tracks</a>
   <a class="sub" href="#sync">Everything in one go</a>
   <a class="sub" href="#recoloured">Recoloured tracks</a>
+  <a class="sub" href="#model-switch">Starter, Both or yours</a>
   <a class="sub" href="#check-colours">Checking colours</a>
   <a class="sub" href="#understand">Understanding the collection</a>
   <a class="sub" href="#hold">Holding a genre or colour</a>
@@ -349,6 +350,22 @@ li > figure.shot { margin: 12px 0 4px; }
   <li>From then on, genre tags, writes to Traktor and Lexicon, recolouring and the tempo view leave that genre or colour alone. Holding writes nothing at the time.</li>
   <li>To let go, tick the tracks and choose <b>Release genre</b> or <b>Release colour</b>, or press <b>Held · release</b> in the panel. The <b>Held or not</b> menu lists what's held.</li>
 </ol>
+
+<h3 id="model-switch">Starter, Both or yours (colours and cue points)</h3>
+<p>Picks which model colours your tracks and suggests cue points, once you've trained your own. Until then the starter that ships with the app is used.</p>
+<ol>
+  <li>On the Setup tab, find <b>Colours used</b> at <b>Your colour scale</b>, or <b>Cue points used</b> at <b>Your cue points</b>.</li>
+  <li>Each button shows how well that choice did on your own tracks:
+    <ul>
+      <li><b>Starter</b>: the model that ships with the app.</li>
+      <li><b>Both (75% yours)</b>: a mix of the two. Training picks the share of yours (25%, 50% or 75%) that comes closest.</li>
+      <li><b>Mine only</b>: your model alone.</li>
+      <li><b>Auto</b> (the default): whichever measured best, shown on its button (<b>Auto: Both (75% yours)</b>) and tagged <b>best</b>.</li>
+    </ul>
+    For colours the number is the average error per colour (lower is better); for cue points, how well it finds your cues to the bar (higher is better). The line below the buttons says what is in use now.</li>
+  <li>Press a choice. Colours: a short job recolours your scanned tracks and tempo views; your DJ app gets them the next time colours are written. Cue points: suggestions change at once. Neither works while another job runs.</li>
+</ol>
+<p>No numbers? Either the starter learned from your own tracks, so it can't be measured fairly (it's only judged on tracks it didn't learn from, and needs 30 of those), or your model was trained before the app could measure the three. In the second case, press <b>Update training</b> once; it's not greyed out then. The same happens after an app update brings a new starter. Without numbers, Auto uses Mine only.</p>
 
 <h3 id="cues">Cue points like mine</h3>
 <p>The picture at the <a href="#top">top of this guide</a> is a track's <b>Cues and phrases</b> section: your hot cues on top, suggestions below, loop ideas named by what plays in them.</p>

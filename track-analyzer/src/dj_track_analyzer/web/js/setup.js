@@ -113,15 +113,40 @@ async function pageSetup(main) {
   const cm = st.colours, colourOk = LIB && LC.coloured >= 30 && sc.tracks >= 30;
   const colourStarter = cm.starter ? ` Until then a starter scale learned from another DJ's colours (Red = hard … Magenta = pretty) predicts them${cm.predicted ? ` (${plural(cm.predicted, "track")} so far)` : ""}.` : "";
   const colourNew = learnNew(cm.new, "colour"), cueNew = learnNew(st.cues.new, "track");
-  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || `Update training after recolouring tracks in ${APP}.`} See the Colours tab.`, jb("su-colours", "Update training", colourNew.any, colourNew.none && "disabled", "Updating wouldn't change anything: no colour is new or changed since the last training"))
+  // The colours / cues switch, as the genres': Auto (the best training measured) or one of the three, each with its measured number
+  const SW_MODES = { starter: "Starter", both: "Both", mine: "Mine only" };
+  const SW = {
+    colours: { label: "Colours used:", id: "su-cmode", model: "colour scale", tracks: "coloured", num: e => e.average_error_per_colour.toFixed(2),
+      what: "average error per colour, lower is better",
+      effect: `Switching recolours your scanned tracks here (a short job); ${APP} gets them the next time colours are written.` },
+    cues: { label: "Cue points used:", id: "su-qmode", model: "cue model", tracks: "cued", num: e => `${Math.round(e.cue_points_exact_bar.f1 * 100)}%`,
+      what: "how well it finds your cue points to the bar, higher is better",
+      effect: "Suggestions in each track's panel follow at once." },
+  };
+  const swNeedsTraining = sw => !!sw?.trained && (!sw.measured || sw.stale);  // Update training measures it, even with nothing new
+  const swBox = (sw, kind) => {
+    if (!sw?.trained) return "";
+    const k = SW[kind], m = sw.measured, e = m?.errors, w = Math.round((sw.both_weight ?? 0.5) * 100);
+    const name = mode => mode === "both" ? `Both (${w}% yours)` : SW_MODES[mode];
+    const btn = (mode, label) => `<button data-mode="${mode}" class="${sw.chosen === mode ? "on" : ""}" ${jobRunning() ? "disabled"
+      : mode !== "mine" && mode !== "auto" && !sw.starter ? `disabled title="There's no starter ${k.model} in this copy of the app"` : ""}>${label}</button>`;
+    const choice = mode => btn(mode, `${name(mode)}${e ? ` <span class="sw-num">${k.num(e[mode])}</span>` : ""}${e && sw.auto === mode ? ` <span class="sw-best" title="The best measured: Auto uses it">best</span>` : ""}`);
+    const why = !m ? `<b>Not measured:</b> your ${k.model} was learned before the app could compare the three. Update training to measure them (it trains again); until then Auto uses Mine only.`
+      : !e ? esc(m.note || "Starter and Both couldn't be measured on your tracks; Auto uses Mine only.")
+      : `Measured on ${m.measured_on} of your ${k.tracks} tracks the starter didn't learn from (${k.what}). Auto uses the best one.`
+        + (sw.stale ? ` <b>The starter has changed since</b> (an app update): update training to measure it again.` : "");
+    return `<div class="sw-row"><span class="small">${k.label}</span><div class="seg-toggle" id="${k.id}">${btn("auto", `Auto: ${name(sw.auto || "mine")}`)}${["starter", "both", "mine"].map(choice).join("")}</div></div>
+      <div class="small" style="margin-top:6px"><b>Now: ${name(sw.mode)}.</b> ${why} ${k.effect}</div><div id="${k.id}-msg" class="small err" hidden></div>`;
+  };
+  const colourStep = cm.model ? step("done", 5, "Your colour scale", `Learned ${esc(cm.model)}; ${plural(cm.predicted, "track")} have a predicted colour. ${colourNew.text || `Update training after recolouring tracks in ${APP}.`} See the Colours tab.${swBox(cm.switch, "colours")}`, jb("su-colours", "Update training", colourNew.any || swNeedsTraining(cm.switch), colourNew.none && !swNeedsTraining(cm.switch) && "disabled", "Updating wouldn't change anything: no colour is new or changed since the last training"))
     : step(colourOk ? "todo" : "blocked", 5, "Learn your colours", colourOk
         ? `Learns what your ${APP} colours mean from the tracks you've coloured, and predicts a colour for the rest. The first time it also listens again for moods and instruments (long, but only once, and resumable). Only reads ${APPLIB}.` + colourStarter
         : `Optional. Needs 30+ tracks you've coloured in ${APP} that are also scanned${LIB ? ` (you have ${LC.coloured} coloured)` : ""}.` + colourStarter,
       colourOk ? jb("su-colours", "Learn your colours", true) : "");
   const cueOk = LIB && LC.cued >= 30;
   const cueStarter = st.cues.starter ? " Until then a starter model learned from another DJ's cues suggests them: listen to your tracks first, then see each track's panel (Tracks tab)." : "";
-  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to ${APP}. Listen to the other tracks to get suggestions for those too. ${cueNew.text}`,
-        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Update training", cueNew.any, cueNew.none && "disabled", "Updating wouldn't change anything: no cues are new or changed since the last training")}`)
+  const cueStep = st.cues.model ? step("done", 6, "Your cue points", `Learned ${esc(st.cues.model)}. Suggestions show in each track's panel (Tracks tab); approve them there and write them to ${APP}. Listen to the other tracks to get suggestions for those too. ${cueNew.text}${swBox(st.cues.switch, "cues")}`,
+        `${jb("su-cues-scan", "Listen to the other tracks")}${jb("su-cues", "Update training", cueNew.any || swNeedsTraining(st.cues.switch), cueNew.none && !swNeedsTraining(st.cues.switch) && "disabled", "Updating wouldn't change anything: no cues are new or changed since the last training")}`)
     : step(cueOk ? "todo" : "blocked", 6, "Learn your cue points", cueOk
         ? `Learns where you put cue points and your mix loop from the tracks you've cued, then suggests them for any track. About 13 minutes the first time for 450 tracks. Only reads ${APPLIB}.` + cueStarter
         : `Optional. Needs 30+ tracks with 3+ of your own cue points in ${APP}${LIB ? ` (you have ${LC.cued})` : ""}.` + cueStarter,
@@ -265,6 +290,16 @@ async function pageSetup(main) {
   on("su-colours", () => go("colors_train", RETRAIN.colours.opts));  // also refreshes the tempo views' colours
   on("su-cues", () => go("cues_train"));
   on("su-cues-scan", () => go("cues_scan"));
+  const swMsg = (id, text) => { const m = $(`#${id}-msg`); if (m) { m.hidden = !text; m.textContent = text || ""; } };
+  document.querySelectorAll("#su-cmode button[data-mode]").forEach(b => b.onclick = () => {
+    if (!b.classList.contains("on")) go("colors_switch", { mode: b.dataset.mode });  // recolours: a job, with progress
+  });
+  document.querySelectorAll("#su-qmode button[data-mode]").forEach(b => b.onclick = async () => {
+    if (b.classList.contains("on")) return;
+    b.disabled = true; swMsg("su-qmode", "");
+    try { await postJSON("/api/cues/use", { mode: b.dataset.mode }); S.tracks = {}; SETUP = null; route(); }
+    catch (err) { b.disabled = false; swMsg("su-qmode", err.message); }
+  });
   const gmsg = (text, bad) => { const m = $("#su-gmsg"); if (!m) return; m.hidden = !text; m.className = `small${bad ? " err" : ""}`; m.textContent = text || ""; };
   const gBox = async () => {
     const box = $("#su-gsrcbox"); if (!box) return;

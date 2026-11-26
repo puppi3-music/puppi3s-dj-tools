@@ -61,6 +61,13 @@ def _scan(o: dict) -> list[str]:
     return [*args, "--rescan"] if o.get("rescan") is True else args
 
 
+def _model_mode(o: dict) -> str:
+    mode = str(o.get("mode") or "")
+    if mode not in ("starter", "both", "mine", "auto"):
+        raise ValueError("mode must be starter, both, mine or auto")
+    return mode
+
+
 def _genres_train(o: dict) -> list[str]:
     for key, flag, what in (("playlists", "--traktor-playlist", "playlists"), ("genres", "--traktor-genre", "genres")):
         if o.get(key):  # Traktor playlists / genres in Traktor's Genre field
@@ -157,6 +164,8 @@ ACTIONS = {
     "hype": ("Score hype", lambda o: ["hype", "--limit", "1", "--json", "--native"], False),
     "colors_train": ("Learn your colours", lambda o: ["colors", "train", *(["--refresh-views"] if o.get("views") else [])], False),
     "cues_train": ("Learn your cue points", lambda o: ["cues", "train"], False),
+    # the Setup tab's colour switch: recolours every scanned track and the tempo views, so a job with progress
+    "colors_switch": ("Switch where your colours come from", lambda o: ["colors", "switch", "--use", _model_mode(o)], False),
     "genres_train": ("Learn your genres", _genres_train, False),
     "cues_scan": ("Listen to the other tracks for cues", lambda o: ["cues", "scan"], False),
     "grids_check": ("Check the beat grids", lambda o: ["grids", "check"], False),
@@ -632,7 +641,7 @@ def setup_status(say=lambda part: None) -> dict:
     part being worked on, for the page's "Loading…" line."""
     import sqlite3
 
-    from . import cues, tempo
+    from . import colors, cues, tempo
 
     st: dict = {"home": str(HOME), "busy": busy(), "brew": bool(BREW), "traktor_running": library.running_state() is True,
                 "actions": {k: app_label(k, v[0]) for k, v in ACTIONS.items()}, "undo": UNDO,
@@ -700,9 +709,9 @@ def setup_status(say=lambda part: None) -> dict:
                   "traktor_tracks": len(tk_files)}
     stamp = lambda p: time.strftime("%Y-%m-%d %H:%M", time.localtime(p.stat().st_mtime)) if p.exists() else None  # noqa: E731
     st["colours"] = {"model": stamp(analysis.COLOR_MODEL), "starter": analysis.STARTER_COLOR_MODEL.exists(),
-                     "predicted": predicted}
+                     "predicted": predicted, "switch": colors.mode_status()}
     st["cues"] = {"model": stamp(cues.MODEL), "starter": cues.STARTER_MODEL.exists(),
-                  "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0}
+                  "approved": len(cues.plans()) if collection.NATIVE_DB.exists() else 0, "switch": cues.mode_status()}
     from . import mygenres
 
     say("your genre model")

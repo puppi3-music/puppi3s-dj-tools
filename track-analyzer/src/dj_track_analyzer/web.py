@@ -242,8 +242,8 @@ def _unbiased_colours(rows: list[dict]) -> None:
     not the final model's, which learned your colour and leans toward it. In a tempo view, plus the view's shift."""
     from . import colors
 
-    b = analysis.color_model()
-    up = colors.unbiased_positions(b)
+    up = colors.unbiased_positions()  # per the colour switch
+    b = analysis.confidence_bundle()
     for r in rows:
         pos = up.get(r["path"])
         if pos is not None:
@@ -461,7 +461,9 @@ def correction_counts() -> dict[str, int] | None:
 
     try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
         f = dj_app.find_collection(None)
-        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), dj_app.changed_at(f))
+        key = (cues.MODEL.stat().st_mtime, cues.model_mode(),  # the cue switch: Both changes the suggestions' moves
+               cues.STARTER_MODEL.stat().st_mtime if cues.STARTER_MODEL.exists() else None,
+               dj_app.app(), str(f), dj_app.changed_at(f))
         g = cue_grids()
     except (OSError, SystemExit):
         return {}
@@ -1106,6 +1108,17 @@ def set_genre_mode(mode: str) -> dict:
         raise SystemExit("A job is running: wait for it (or stop it) before switching your genres on or off.")
     with library("native"):
         return mygenres.set_mode(mode)
+
+
+def set_cue_mode(mode: str) -> dict:
+    """The Setup tab's cue switch (starter / both / mine / auto): only a setting, suggestions follow at once. Not while
+    a job runs (training or listening writes the cue model and suggestions). The colour switch recolours, so it's a job
+    (colors_switch)."""
+    from . import cues
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before switching where cue points come from.")
+    return cues.set_mode(mode)
 
 
 def genres_from_traktor() -> dict:
@@ -2026,6 +2039,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/forget", post(lambda b: colour_forget([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
+        Route("/api/cues/use", post(lambda b: set_cue_mode(str(b.get("mode", "")))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),

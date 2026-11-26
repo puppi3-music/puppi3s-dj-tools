@@ -191,8 +191,9 @@ def main() -> None:
     tk.add_argument("--overwrite-colors", action="store_true", help="also replace colours you set yourself (not recommended)")
     tk.add_argument("--color-min-confidence", type=float, default=0.0, help="only set predicted colours at or above this confidence")
     co = sub.add_parser("colors", help="learn your Traktor colour scale from tracks you've coloured")
-    co.add_argument("action", choices=["train", "review", "explain", "apply", "guessed"],
-                    help="train: learn your scale. review: tracks that disagree with their colour "
+    co.add_argument("action", choices=["train", "review", "explain", "apply", "guessed", "switch"],
+                    help="train: learn your scale. switch: which model colours your tracks, as the Setup tab's switch "
+                         "shows it (with --use: change it, no training). review: tracks that disagree with their colour "
                          "(--apply recolours the clearest ones in Traktor). "
                          "explain: what each colour means in your collection. "
                          "apply: scan new Traktor tracks and colour the uncoloured ones. "
@@ -216,6 +217,10 @@ def main() -> None:
     co.add_argument("--planned", action="store_true",
                     help="review --apply: write what's marked on the web page's Colours tab (approved tracks recoloured, "
                          "kept ones on the keep-always list)")
+    co.add_argument("--use", choices=["starter", "both", "mine", "auto"], default=None,
+                    help="switch (no training) or train (afterwards): set the Setup tab's colour switch: starter = the starter model shipped with the app; "
+                         "both = a mix of yours and the starter's (the share of yours measured best on your tracks); "
+                         "mine = yours only; auto (the default) = the lowest error measured on your tracks")
     co.add_argument("--refresh-views", action="store_true",
                     help="train: afterwards redo every tempo view's colours with the new model (tempo refresh)")
     co.add_argument("--kept", action="store_true",
@@ -312,8 +317,9 @@ def main() -> None:
     te.add_argument("--limit", type=int, default=15, help="report: tracks per list")
     te.add_argument("--json", action="store_true", help="report: print JSON")
     cu = sub.add_parser("cues", help="cue points and a mix loop per track, learned from the cues you set yourself")
-    cu.add_argument("action", choices=["train", "scan", "show", "apply"],
+    cu.add_argument("action", choices=["train", "scan", "show", "apply", "switch"],
                     help="train: learn from your own cues (listens to the cued tracks first). "
+                         "switch: which model suggests, as the Setup tab's switch shows it (with --use: change it). "
                          "scan: listen to every track with a beat grid. show: suggestions for one track. "
                          "apply: write the cues you approved in the web page into Traktor (Traktor closed)")
     cu.add_argument("track", nargs="?", default=None, help="show: part of the track's file name")
@@ -321,6 +327,10 @@ def main() -> None:
     cu.add_argument("--workers", type=int, default=None, help="parallel listeners (default: half your CPU cores, max 5)")
     cu.add_argument("--rescan", action="store_true", help="scan: listen again even if measured")
     cu.add_argument("--dry-run", action="store_true", help="apply: show what would be written, change nothing")
+    cu.add_argument("--use", choices=["starter", "both", "mine", "auto"], default=None,
+                    help="switch (no training) or train (afterwards): set the Setup tab's cue switch: starter = the starter model shipped with the app; "
+                         "both = a mix of yours and the starter's (the share of yours measured best on your tracks); "
+                         "mine = yours only; auto (the default) = the lowest error measured on your tracks")
     gr = sub.add_parser("grids", help="check that Traktor's beat grids sit on the kicks, and move the ones you approve")
     gr.add_argument("action", choices=["check", "show", "apply"],
                     help="check: measure every track with a beat grid (cached). show: one track's measurement and "
@@ -541,8 +551,12 @@ def main() -> None:
             out = colors.explain(args.nml, workers=args.workers)
             print(json.dumps(out, indent=2, ensure_ascii=False) if args.json else colors.explain_text(out))
             return
-        if args.action == "train":
-            out = colors.train(args.nml, deep=not args.no_deep, workers=args.workers)
+        if args.use and args.action not in ("train", "switch"):
+            raise SystemExit("--use goes with switch or train: uv run dj-track-analyzer colors switch --use starter|both|mine|auto")
+        if args.action == "switch":
+            out = colors.set_mode(args.use) if args.use else colors.mode_status()
+        elif args.action == "train":
+            out = colors.train(args.nml, deep=not args.no_deep, workers=args.workers, use=args.use)
             if args.refresh_views:
                 from . import analysis, tempo
 
