@@ -102,3 +102,21 @@ Detail moved out of CLAUDE.md so it loads only when needed. Code is the source o
   changed has passed over those tags (a title renamed in Traktor; a key tagger's "08A - 126 - 7" comment Traktor
   never showed, even after a deck load) and is stamped as usual. Before 2026-11 such tracks never got their Hype.
   Refuses while `tag_writing_on` (would copy Hype into the files) unless `--force`. Hype goes in Comment because Pioneer DDJs show Comment on USB exports, not Comment 2.
+
+## Starter / Both / Mine only switch (colours and cues)
+- Settings `colour_model_mode`, `cue_model_mode`; `analysis.switch_mode` applies them: the starter until you've
+  trained; unset = `switch.auto` in your model (measured at train time; a model from before that: Mine only).
+- Both = w·yours + (1−w)·starter on scale positions (`analysis.predict_color`) and per-bar cue/loop scores
+  (`cues.scores`); w ∈ 25/50/75% chosen at train time (`measure_switch` in colors.py / cues.py), saved with it.
+  Where only one model can place a track (a missing feature), that one alone.
+- Fairness: the starters carry `learned_from`, salted hashes of artist|title (`analysis.track_hash`, written by
+  scripts/make_starter.py). `train` scores the starter and Both only on your tracks not in it; under 30 → Mine only.
+  On the test collection the starters learned from every labelled track, so they're never measured there.
+- Corrections of your own cues: your own OOF scores only, also with Both; none with the starter.
+  Colours' confidence and the page's unbiased colours follow the switch (Both: `switch.starter_position` + your CV).
+- `colors.set_mode` recolours (refresh_predictions + tempo views); `cues.set_mode` only saves the setting.
+  CLI as the page: `colors switch` / `cues switch` show mode_status; `--use MODE` switches without training.
+- Page (Setup tab, setup.js `swBox`): "Colours used:" / "Cue points used:" = Auto (the measured best) + Starter / Both
+  (N% yours) / Mine only, each with its measured number and a "best" tag. Colours switch as job `colors_switch`
+  (recolours, with progress); cues via POST /api/cues/use (setting only; refused while a job runs). No measurement
+  (model from before) or a stale one enables Update training even with nothing new.

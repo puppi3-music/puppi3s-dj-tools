@@ -653,7 +653,19 @@ If you colour-code tracks in Traktor, the app learns your system from the tracks
 
 It works best when your colours mean something that runs in that order. The labels and the LLM tools assume Red = hardest/darkest and Magenta = softest/prettiest; the model itself just learns whatever order you use.
 
-**Starter scale.** Until you train your own, the app uses a starter model that ships with it. It learned from one DJ's colours on a test collection of about 470 tracks (Red = hard, heavy … Magenta = peaceful, pretty). Scans predict colours with it and `colors apply` can write them. `colors review` waits for your own model, since it compares your colours with what it learned from them. `colors train` replaces the starter for good (it stays in the app, unused).
+**Starter scale.** Until you train your own, the app uses a starter model that ships with it. It learned from one DJ's colours on a test collection of about 470 tracks (Red = hard, heavy … Magenta = peaceful, pretty). Scans predict colours with it and `colors apply` can write them. `colors review` waits for your own model, since it compares your colours with what it learned from them. After `colors train`, colours come from the starter, yours or Both (a mix: 25%, 50% or 75% yours, whichever came
+closest). Training tries all three on your coloured tracks, the starter only on tracks it didn't learn from, and
+uses the one with the lowest error. With fewer than 30 such tracks it uses yours. `colors train --use
+starter|both|mine|auto` picks one yourself, and `colors switch [--use MODE]` shows or changes it later without
+training; `--use auto` goes back to the one measured best. `cues train` and `cues switch` do the same for cue
+points.
+
+On the page this is the Setup tab's **Colours used** (at **Your colour scale**) and **Cue points used** (at **Your
+cue points**): **Auto** (the best measured, also tagged **best**), **Starter**, **Both (N% yours)** and **Mine only**, each
+with its measured number (colours: average error per colour, lower is better; cues: how well it finds your cue points
+to the bar, higher is better). Switching colours runs a short job that recolours your scanned tracks; switching cues
+takes effect at once. A model trained before this could be measured shows no numbers: press **Update training** once
+(see the [guide](docs/GUIDE.html#model-switch)).
 
 ```bash
 uv run dj-track-analyzer scan --traktor           # 1. analyse your Traktor tracks
@@ -679,6 +691,7 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `colors review --apply` | Recolour only the clearest disagreements | **closed** (except `--dry-run`) |
 | `colors explain` | What each colour means in your collection (below) | can stay open |
 | `colors guessed` | The colours `apply` / `traktor` wrote that nobody has checked yet (below) | can stay open |
+| `colors switch [--use MODE]` | Which model colours your tracks (starter / both / mine / auto); `--use` changes it, no training | can stay open |
 
 | Option | Works with | What it does | Default |
 |---|---|---|---|
@@ -689,6 +702,7 @@ After training, every scan predicts a `color`, a `position` (5.4 = Blue leaning 
 | `--track PATH` | `review --apply` | Recolour only this track (full path, as `review` lists it), whatever the thresholds, without asking; repeat for several | off |
 | `--planned` | `review --apply` | Write what's marked in the web page's Colours tab: recolour the approved tracks, keep the kept ones always | off |
 | `--refresh-views` | `train` | Afterwards redo every tempo view's colours with the new model (`tempo refresh`) | off |
+| `--use MODE` | `switch`, `train` | Then colour tracks with `starter`, `both` (a mix of yours and the starter's), `mine`, or `auto` (the lowest error measured on your tracks) | auto |
 | `--kept` | `review` | List the tracks on your keep-always list | off |
 | `--keep TEXT` | `review --kept` | Put the coloured tracks whose path contains TEXT on the keep-always list (10 matches at most) | — |
 | `--forget TEXT` | `review --kept` | Take tracks whose path contains TEXT off the keep-always list | — |
@@ -1123,7 +1137,7 @@ Add examples to weak genres and learn again; analysis is cached, so only new tra
 | `train <folder>` | Your own genres (section 9); or `--traktor-playlist PLAYLIST` / `--traktor-genre GENRE` (repeat) from Traktor; `--use starter\|both\|mine` = **Genres used** (`--use starter`: built-in genres only; `--use both`: yours where one fits, built-in elsewhere; `--use mine`: the nearest of yours on every track) | app files |
 | `serve [--http] [--host] [--port]` | MCP server; stdio for LM Studio, HTTP for Open WebUI | nothing |
 | `web [--port 8766] [--logs DIR] [--no-open] [--export FILE.html]` | Everything in a local web page, or a snapshot file to share (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | the hold list only |
-| `cues train\|scan\|show [track] [--workers N] [--rescan]` | Cue points and a mix loop per track, learned from the cues you set yourself (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | app database and model file |
+| `cues train\|scan\|show\|switch [track] [--workers N] [--rescan] [--use MODE]` | Cue points and a mix loop per track, learned from the cues you set yourself (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | app database and model file |
 | `cues apply [--dry-run]` | Write the cues and corrections you approved in the web page | **Traktor** (undo: `traktor --undo`) |
 | `grids check\|show\|apply [track] [--workers N] [--rescan] [--dry-run]` | Check that Traktor's beat grids sit on the kicks; `apply` moves the grids you approved in the web page, with their cues (see [Browse it all in a web page](#browse-it-all-in-a-web-page)) | `check`: app cache; `apply`: **Traktor** (undo: `traktor --undo`) |
 | `hold [--genre TEXT \| --colour TEXT] [--release]` | List, add or remove tracks whose genre / colour the writers leave alone | the hold list (app database) |

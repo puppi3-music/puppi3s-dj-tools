@@ -484,7 +484,7 @@ def _model():
 
 
 def train(nml: str | None = None, workers: int | None = None, progress=log, threshold: float = 0.25,
-          max_cues: int = 7) -> dict:
+          max_cues: int = 7, use: str | None = None) -> dict:
     """Learn your cue points and loops from the tracks you cued yourself (Traktor's collection). Reports
     cross-validated accuracy: each track's cues predicted by models that never saw that track."""
     import joblib
@@ -492,6 +492,8 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
 
     from sklearn.model_selection import GroupKFold
 
+    if use is not None and use not in (*analysis.MODEL_MODES, "auto"):
+        raise ValueError(f"use must be one of {', '.join(analysis.MODEL_MODES)} or auto")
     g = grids(nml)
     tracks = [(p, d) for p, d in _one_path_each(g) if sum(c["type"] == "cue" for c in d["cues"]) >= MIN_CUES]
     if len(tracks) < 30:
@@ -585,6 +587,9 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
     })
     oof = {r[0]: {"grid": _grid_key(r[7], r[5]), "p": Pc[off[i]:off[i + 1]].astype(np.float16)}
            for i, r in enumerate(rows)}  # for correcting your own cues fairly: the model never saw them
+    switch = measure_switch(rows, X, off, Pc, Pl, threshold, max_cues, progress)
+    if switch:
+        out["switch"] = switch
     cue_model, loop_model = _model().fit(X, yc), _model().fit(X, yl) if yl.any() else None
     step("the final models")
     bundle = {"oof": oof, "cue_model": cue_model, "loop_model": loop_model,
@@ -592,13 +597,95 @@ def train(nml: str | None = None, workers: int | None = None, progress=log, thre
               "length_model": length_model,
               "trained_at": time.strftime("%Y-%m-%d %H:%M"), "metrics": {k: v for k, v in out.items() if k != "measuring"},
               "version": BARS_VERSION,
+              **({"switch": switch} if switch else {}),  # the Setup tab's switch, measured (analysis.switch_mode)
               "labels": {p: _label_key(d) for p, d in tracks}}  # what it learned from, for new_labels()
     joblib.dump(bundle, MODEL)
     out["saved_to"] = str(MODEL)
+    if use is not None:
+        set_mode(use)
+    out["model_in_use"] = model_mode()
     out["note"] = ("exact_bar: share of suggested cues on a bar you cued (precision) and of your cues that were "
                    "suggested (recall), for tracks the model never saw. Many misses are 8 or 16 bars off: a phrase "
                    "boundary, but not the one you chose.")
     return out
+
+
+def measure_switch(rows: list, X: np.ndarray, off: np.ndarray, Pc: np.ndarray, Pl: np.ndarray, threshold: float,
+                   max_cues: int, progress=log) -> dict | None:
+    """The switch's three choices on your cued tracks: yours as cross-validated (Pc/Pl, made without seeing each
+    track), the starter's, and Both at each share of yours in SWITCH_WEIGHTS, by F1 on the exact bar of your cue
+    points (the loop found within 4 bars is reported too). Only on tracks the starter didn't learn from (its
+    `learned_from` hashes); with fewer than SWITCH_MIN_FAIR of those it can't be measured and auto is Mine only.
+    None without a usable starter."""
+    sb = starter_model()
+    if sb is None:
+        return None
+    learned = set(sb.get("learned_from") or [])
+    seen = {i for i, r in enumerate(rows) if analysis.track_hash(r[0]) in learned} if learned else set(range(len(rows)))
+    fair = [i for i in range(len(rows)) if i not in seen]
+    out = {"starter_trained_at": sb.get("trained_at"), "tracks": len(rows), "measured_on": len(fair),
+           "starter_learned_from_these": len(seen) if learned else None}
+    if len(fair) < analysis.SWITCH_MIN_FAIR:
+        why = ("this starter doesn't list the tracks it learned from" if not learned else
+               f"the starter learned from {len(seen)} of your {len(rows)} cued tracks")
+        out.update(auto="mine", errors=None,
+                   note=f"Starter and Both not measured: {why}, which leaves {len(fair)} "
+                        f"(needs {analysis.SWITCH_MIN_FAIR}). Mine only is used unless you choose otherwise.")
+        progress(f"  switch: {out['note']}")
+        return out
+    from threadpoolctl import threadpool_limits
+
+    idx = np.concatenate([np.arange(off[i], off[i + 1]) for i in fair])
+    Sc, Sl = np.zeros(len(Pc)), None
+    with threadpool_limits(1):
+        Sc[idx] = sb["cue_model"].predict_proba(X[idx])[:, 1]
+        if sb.get("loop_model") is not None:
+            Sl = np.zeros(len(Pl))
+            Sl[idx] = sb["loop_model"].predict_proba(X[idx])[:, 1]
+
+    def score(pc, pl, thr, k):
+        picks = {i: _pick(pc[off[i]:off[i + 1]], k, thr) for i in fair}
+        cue = _prf([(picks[i], rows[i][2]) for i in fair])
+        with_loop, hits = [i for i in fair if rows[i][3].any()], 0
+        for i in with_loop:  # as train(): the best loop bar not on a suggested cue point, within 4 bars of yours
+            p = pl[off[i]:off[i + 1]].copy()
+            for j in picks[i]:
+                p[max(0, j - 1):j + 2] = 0
+            hits += int(min(abs(np.flatnonzero(rows[i][3]) - int(np.argmax(p))))) <= 4
+        return {"cue_points_exact_bar": cue, "loop_within_4_bars": round(hits / max(len(with_loop), 1), 3)}
+
+    def mixed(w):
+        return w * Pc + (1 - w) * Sc, Pl if Sl is None else w * Pl + (1 - w) * Sl
+
+    both = {w: score(*mixed(w), threshold, max_cues) for w in analysis.SWITCH_WEIGHTS}
+    key = lambda m: -m["cue_points_exact_bar"]["f1"]  # noqa: E731
+    w = min(both, key=lambda k: key(both[k]))
+    errors = {"mine": score(Pc, Pl, threshold, max_cues), "both": both[w],
+              "starter": score(Sc, Pl if Sl is None else Sl, sb.get("threshold", threshold), sb.get("max_cues", max_cues))}
+    auto = min(analysis.MODEL_MODES[::-1], key=lambda k: key(errors[k]))  # a tie goes to yours, then Both
+    out.update(errors=errors, both_weight=w, both_tried={str(k): v for k, v in both.items()}, auto=auto,
+               chosen_by="F1 of your cue points on the exact bar, on the tracks the starter didn't learn from")
+    progress(f"  switch, cue points on the exact bar (F1) on {len(fair)} of your tracks the starter didn't learn "
+             f"from: starter {errors['starter']['cue_points_exact_bar']['f1']}, Both ({round(w * 100)}% yours) "
+             f"{errors['both']['cue_points_exact_bar']['f1']}, Mine only {errors['mine']['cue_points_exact_bar']['f1']}"
+             f" → {auto}")
+    return out
+
+
+def mode_status() -> dict:
+    from . import colors
+
+    return colors.switch_status(own_model(), starter_model(), "cue_model_mode", model_mode())
+
+
+def set_mode(mode: str) -> dict:
+    """The cue switch: "starter", "both", "mine" or "auto" (the best measured at training). Suggestions follow at
+    once; nothing is written anywhere but the setting."""
+    from . import colors
+
+    colors.check_mode(mode, own_model(), starter_model() is not None, "cue points")
+    analysis.save_app_setting("cue_model_mode", None if mode == "auto" else mode)
+    return mode_status()
 
 
 def _label_key(d: dict) -> tuple:
@@ -622,17 +709,58 @@ def new_labels(g: dict[str, dict]) -> dict | None:
 _bundle: dict = {}
 
 
-def model():
-    """Your cue model, else the starter one; reloaded when the file changes (a `cues train` from the web page)."""
-    path = analysis.own_or_starter(MODEL, STARTER_MODEL)
-    if path is None:
+def _load(path: Path | None):
+    if path is None or not path.exists():
         return None
-    key = (path, path.stat().st_mtime)
-    if _bundle.get("key") != key:
+    mtime = (st := path.stat()).st_mtime_ns, st.st_size  # size too: on Windows two quick writes can share a time
+    hit = _bundle.get(path)
+    if not hit or hit[0] != mtime:  # reloaded when the file changes (a `cues train` from the web page)
         import joblib
 
-        _bundle.update(key=key, bundle=joblib.load(path))
-    return _bundle["bundle"]
+        hit = _bundle[path] = (mtime, joblib.load(path))
+    return hit[1]
+
+
+def model():
+    """Your cue model, else the starter one. For what's new to learn; what suggests is the switch (active())."""
+    return _load(analysis.own_or_starter(MODEL, STARTER_MODEL))
+
+
+def own_model():
+    return _load(MODEL) if MODEL.exists() else None
+
+
+def starter_model():
+    """The starter, if its bar features are the ones measured now (an older one can't be read with today's)."""
+    b = _load(STARTER_MODEL)
+    return b if b and b.get("version", BARS_VERSION) == BARS_VERSION else None
+
+
+def model_mode() -> str:
+    """The Setup tab's cue switch as it applies now (analysis.switch_mode): starter / both / mine."""
+    return analysis.switch_mode("cue_model_mode", own_model(), starter_model() is not None)
+
+
+def active() -> tuple[dict | None, dict | None, float]:
+    """(the model whose settings and scores of your own cues are used, the starter to mix in or None, your share)
+    per the switch: the starter alone; yours alone; or Both, yours with the starter's per-bar scores mixed in."""
+    mode = model_mode()
+    if mode == "starter":
+        return starter_model() or model(), None, 1.0
+    own = own_model()
+    return own, starter_model() if mode == "both" else None, analysis.switch_weight(own) if mode == "both" else 1.0
+
+
+def scores(b: dict, mix: dict | None, w: float, X: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    """Per-bar cue and loop scores: b's, or with Both w·yours + (1−w)·the starter's (a model without a loop model:
+    the other's loop scores alone)."""
+    pc = b["cue_model"].predict_proba(X)[:, 1]
+    pl = b["loop_model"].predict_proba(X)[:, 1] if b.get("loop_model") is not None else None
+    if mix is not None:
+        pc = w * pc + (1 - w) * mix["cue_model"].predict_proba(X)[:, 1]
+        sl = mix["loop_model"].predict_proba(X)[:, 1] if mix.get("loop_model") is not None else None
+        pl = sl if pl is None else pl if sl is None else w * pl + (1 - w) * sl
+    return pc, pl
 
 
 # ----------------------------------------------------------------------------
@@ -1017,9 +1145,10 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
             own: list[dict] | None = None) -> dict:
     """Suggested cue points (named by what happens there) and a mix loop for one track, plus the per-bar
     loudness and kick for drawing. Needs `cues train` once, and the track's bars measured."""
-    b = model()
+    b, mix, w = active()
     if b is None:
         raise SystemExit("No cue model yet. Run: uv run dj-track-analyzer cues train")
+    starter_only = bool(b.get("starter"))
     hit = bars(Path(path), bpm, grid_ms) if measure_if_needed else bars_get(Path(path), bpm, grid_ms)
     if hit is None:
         raise SystemExit("This track hasn't been listened to for phrases yet. Run: uv run dj-track-analyzer cues scan")
@@ -1029,8 +1158,7 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
     from threadpoolctl import threadpool_limits
 
     with threadpool_limits(1):  # one track is too small to split over cores: 16 vs ~100 ms, same result
-        pc = b["cue_model"].predict_proba(X)[:, 1]
-        pl_all = b["loop_model"].predict_proba(X)[:, 1] if b.get("loop_model") is not None else None
+        pc, pl_all = scores(b, mix, w, X)
     picks = _pick(pc, b["max_cues"], b["threshold"])
     own = own or []
     mine = _own_bars(starts, bpm, own)
@@ -1057,7 +1185,7 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
             continue
         if j == q["bar"] and dist <= 1.01:
             q["matches"] = c["hotcue"]
-        elif not b.get("starter") and not any(m[1] == q["bar"] for m in mine):
+        elif not starter_only and not any(m[1] == q["bar"] for m in mine):
             q["moves"] = c["hotcue"]
             moved_by_suggestion.append((c, j, dist, q))
     zero_ = int(np.argmin(np.abs(starts - grid_ms / 1000)))
@@ -1065,10 +1193,15 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
     if o is not None and o["grid"] == _grid_key(bpm, grid_ms) and len(o["p"]) == nb:
         fair = np.asarray(o["p"], dtype=float)  # your cues were in training: use the scores made without them
     elif o is None:
-        fair = pc  # not in training (fewer than 3 cues of yours): the model never saw them
+        # not in training (fewer than 3 cues of yours): your model never saw them; your scores alone, also with Both
+        if mix is None:
+            fair = pc
+        else:
+            with threadpool_limits(1):
+                fair = b["cue_model"].predict_proba(X)[:, 1]
     else:
         fair = None  # grid changed since training
-    if b.get("starter"):  # another DJ's habits don't correct your cues
+    if starter_only:  # another DJ's habits don't correct your cues
         fair = None
     fixes = corrections(starts, bpm, own, fair, zero_, b["threshold"]) if fair is not None and own else []
     for c, j, dist, q in moved_by_suggestion:  # the suggestions' moves, unless already proposed
@@ -1115,7 +1248,7 @@ def suggest(path: str, bpm: float, grid_ms: float, measure_if_needed: bool = Fal
             "grid_bar": zero, "bars": nb, "cues": cues, "more_cues": more, "loop": loop,
             "loudness": [round(float(x), 1) for x in info["loud"]],
             "kick": [round(float(x), 1) for x in info["kick"]],
-            "trained_at": b["trained_at"], "starter": bool(b.get("starter"))}
+            "trained_at": b["trained_at"], "starter": starter_only, "model_mode": model_mode()}
 
 
 def scan(nml: str | None = None, workers: int | None = None, rescan: bool = False, progress=log) -> dict:
@@ -1184,7 +1317,7 @@ def set_ignore(path: str, hotcue: int, from_ms: float, to_ms: float, on: bool = 
 def _unticked(todo: dict, g: dict) -> list[tuple[str, dict]]:
     """For each track about to be written: the suggested cue points and loop you didn't tick (not within half a bar
     of a cue you approved or already have), with the free hot-cue slots (none free: not much of a no)."""
-    b, out = model(), []
+    starter_only, out = model_mode() == "starter", []
     for p, pl in todo.items():
         d = g.get(p)
         if not d or not same_grid(pl["grid"], d["bpm"], d["grid_ms"]):
@@ -1199,7 +1332,7 @@ def _unticked(todo: dict, g: dict) -> list[tuple[str, dict]]:
         left = [{"ms": c["ms"], "type": c.get("type", "cue"), "name": c.get("name"), "score": c.get("score")}
                 for c in sug if all(abs(c["ms"] - t) >= half for t in taken)]
         out.append((p, {"grid": pl["grid"], "free_slots": 8 - len({c["hotcue"] for c in d["all_cues"]} - {-1}),
-                        "starter": bool(b and b.get("starter")), "unticked": left,
+                        "starter": starter_only, "unticked": left,
                         "ticked": len(pl["plan"].get("add", []))}))
     return out
 
@@ -1646,8 +1779,13 @@ def apply(nml: str | None = None, dry_run: bool = False, restore: bool = False, 
 
 
 def main(args) -> None:
-    if args.action == "train":
-        out = train(args.nml, workers=args.workers)
+    use = getattr(args, "use", None)
+    if use and args.action not in ("train", "switch"):
+        raise SystemExit("--use goes with switch or train: uv run dj-track-analyzer cues switch --use starter|both|mine|auto")
+    if args.action == "switch":
+        out = set_mode(use) if use else mode_status()
+    elif args.action == "train":
+        out = train(args.nml, workers=args.workers, use=use)
     elif args.action == "scan":
         out = scan(args.nml, workers=args.workers, rescan=args.rescan)
     elif args.action == "apply":

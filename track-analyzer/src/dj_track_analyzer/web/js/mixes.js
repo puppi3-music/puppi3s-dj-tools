@@ -674,7 +674,7 @@ function renderMix(d) {
       : `<div class="seg ${pl.guessed && !str ? "pred" : ""}" style="height:${pl.hype * 10}%;${colour}${fade(i)}" data-tip="${esc(tip)}"></div>`;
   };
   return `
-    <div class="page-head"><div><h2>${esc(mixTitle({ recording: baseName(d.file) }))}</h2><div class="muted">${recDate(d.file) ? `${esc(baseName(d.file))} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysis_seconds ? ` · analysed in ${Math.round(d.analysis_seconds)} s` : ""}</div></div></div>
+    <div class="page-head"><div><h2>${esc(mixTitle({ recording: baseName(d.file) }))}</h2><div class="muted">${recDate(d.file) ? `${esc(baseName(d.file))} · ` : ""}${esc(d.duration)} · ${fmt(d.loudness?.integrated_lufs, 1)} LUFS · range ${fmt(d.loudness?.loudness_range_lu, 1)} LU${d.analysed_at ? ` · analysed ${esc(new Date(d.analysed_at).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }))}` : ""}${d.analysis_seconds ? (d.analysed_at ? ` (took ${Math.round(d.analysis_seconds)} s)` : ` · analysed in ${Math.round(d.analysis_seconds)} s`) : ""}</div></div></div>
     ${d.tracklist_skipped ? `<div class="note" style="margin-bottom:12px"><b>No tracklist check.</b> ${skippedNote(d)}</div>` : ""}
     <div class="grid">
       <div class="card"><h3>Genre of the mix</h3>${bars((d.dj_genre || []).map(g => ({ label: g.genre, value: g.score, sel: { kind: "genre", label: g.genre }, on: isOn("genre", g.genre) })))}
@@ -720,7 +720,7 @@ function renderMix(d) {
         { rowAttr: (t, i) => { const k = trackStr?.strength[i]; if (k == null) return ""; const v = trackStr.value[i];
           return k < 0.5 ? `style="opacity:.45"` : `style="background:color-mix(in srgb, var(--accent) ${Math.round(k ** 2 * 35)}%, transparent)" data-tip="${esc(`${selName}: ${sel.kind === "genre" ? "its genre as heard" : sel.kind === "mood" ? `${pct(v)} over its stretch of the mix` : `${fmt(v, 2)} over its stretch of the mix`}`)}"`; } })}</div>` : ""}
     ${hl.length ? `<div class="card" data-foldable><h3>Video clip suggestions</h3>${table([{ h: "Rank", r: 1, f: h => h.rank }, { h: "Mix time", f: h => `${esc(h.start)}–${esc(h.end)}` },
-        { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, ...(hl.some(h => h.energy != null) ? [{ h: "Energy", r: 1, f: h => pct(h.energy) }] : []), { h: "Track", f: h => esc(h.track || "") }], hl)}
+        { h: "Video time", f: h => esc(h.video || "–") }, { h: "LUFS", r: 1, f: h => fmt(h.lufs, 1) }, { h: "Rise", r: 1, f: h => `${fmt(h.rise_lu, 1)} LU` }, ...(hl.some(h => h.energy != null) ? [{ h: "Energy", r: 1, f: h => pct(h.energy) }] : []), { h: "Track(s)", f: heardCell }], hl)}
       <div class="note">Make previews: <span class="mono">clips &lt;this.json&gt; --video &lt;final.mp4&gt;</span></div></div>` : ""}
     ${standalonePanel(d)}
     <details class="card"><summary class="muted">Raw JSON</summary><div class="tree" style="margin-top:8px">${tree(d)}</div></details>`;
@@ -753,3 +753,10 @@ document.addEventListener("click", e => {
   }
 });
 
+// A clip's tracks: the one heard longest in bold, the others under it with their seconds in the clip.
+function heardCell(c) {
+  const ts = c.tracks || (c.track ? [{ name: c.track }] : []);
+  if (ts.length < 2) return esc(ts[0]?.name || "");
+  return `<b>${esc(ts[0].name)}</b> <span class="dim small">${ts[0].seconds} s</span>`
+    + ts.slice(1).map(t => `<div class="dim small">+ ${esc(t.name)} · ${t.seconds} s</div>`).join("");
+}

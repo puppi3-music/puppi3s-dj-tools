@@ -846,7 +846,20 @@ def describe_highlights(result: dict, offset: float | None) -> None:
         if offset is not None:
             e = _seconds(h["end"])
             h["video"] = f"{fmt_time(to_video(s, lead, offset))}-{fmt_time(to_video(e, lead, offset))}"
-        playing = [t for t in tracks if _seconds(t["start"]) <= s]
-        if playing:
-            t = playing[-1]
-            h["track"] = " - ".join(x for x in (t.get("artist"), t.get("title")) if x)
+        heard = tracks_heard(tracks, s, _seconds(h["end"]))
+        if heard:
+            h["track"], h["tracks"] = heard[0]["name"], heard  # track: the one heard longest, for older readers
+
+
+def tracks_heard(tracks: list[dict], a: float, b: float) -> list[dict]:
+    """The tracks playing between a and b seconds of the mix, the one heard longest first: [{name, seconds}].
+    Each track plays from its start to the next track's start (a blend counts for the new track)."""
+    starts = [_seconds(t["start"]) for t in tracks]
+    out = []
+    for i, t in enumerate(tracks):
+        end = starts[i + 1] if i + 1 < len(tracks) else float("inf")
+        sec = min(b, end) - max(a, starts[i])
+        if sec >= 1:
+            out.append({"name": " - ".join(x for x in (t.get("artist"), t.get("title")) if x) or f"track {t.get('n', i + 1)}",
+                        "seconds": round(sec)})
+    return sorted(out, key=lambda x: -x["seconds"])

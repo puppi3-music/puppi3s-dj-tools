@@ -270,8 +270,13 @@ def extract_deep(paths: list[str], workers: int | None = None, progress=log) -> 
     return {"extracted": done, "errors": errors, "minutes": round((time.time() - t0) / 60, 1)}
 
 
-def train(nml: str | None = None, progress=log, deep: bool = True, workers: int | None = None) -> dict:
+def train(nml: str | None = None, progress=log, deep: bool = True, workers: int | None = None,
+          use: str | None = None) -> dict:
+    """Learn your colour scale; `use`: then set the switch (starter / both / mine / auto) before recolouring."""
     import joblib
+
+    if use is not None and use not in (*analysis.MODEL_MODES, "auto"):
+        raise ValueError(f"use must be one of {', '.join(analysis.MODEL_MODES)} or auto")
 
     nml_path, colors, n_coloured = read_traktor_colors(nml)
     if not colors:
@@ -292,7 +297,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
     if deep:
         deep_info = extract_deep(sorted(rows), workers, progress)  # all scanned tracks, so new ones get a colour too
     maest_count = instr_count = extra_count = 0
-    inputs, y, paths, instr_rows = [], [], [], []
+    inputs, y, paths, instr_rows, raws = [], [], [], [], []
     t0 = time.time()
     for i, (p, c) in enumerate(pairs, 1):
         try:
@@ -311,6 +316,7 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         instr_count += bool(instruments) and not analysis.instruments_missing(instruments)
         extra_count += extra is not None
         inputs.append(analysis.color_inputs(emb_mean, acts_mean, info, maest, instruments, extra))
+        raws.append((emb_mean, acts_mean, info, maest, instruments, extra))  # for the starter, in measure_switch
         instr_rows.append(instruments or {})
         y.append(c)
         paths.append(p)
@@ -390,6 +396,8 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
 
     instrument_check = _instrument_check(instr_rows, y, used) if have_instr else None
 
+    switch = measure_switch(paths, y, pos, raws, progress)
+
     progress(f"  best: {best}. Fitting it on all {len(y)} tracks...")  # the page's bar shows this line
     model, cal = _fit(kind, calibrate, Xs[fs], y, block_weights(fs, inputs[0]))
     COLOR_MODEL.parent.mkdir(parents=True, exist_ok=True)
@@ -400,8 +408,13 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
                  # cross-validated positions, for analysis.color_confidence
                  "cv": {"position": [round(float(v), 3) for v in pos], "truth": [int(v) for v in y], "paths": paths},
                  # the colours it learned from, so new_labels() can tell when there's something new
-                 "labels": dict(pairs), "collection": str(nml_path)}, COLOR_MODEL)
+                 "labels": dict(pairs), "collection": str(nml_path),
+                 # the Setup tab's switch: starter / Both / yours measured on your tracks (analysis.switch_mode)
+                 **({"switch": switch} if switch else {})}, COLOR_MODEL)
     analysis._color_bundle.clear()
+    if use is not None:
+        check_mode(use, analysis.own_color_model(), analysis.STARTER_COLOR_MODEL.exists(), "colours")
+        analysis.save_app_setting("colour_model_mode", None if use == "auto" else use)
 
     updated = refresh_predictions(con, traktor_colors=colors, progress=progress)
     from . import tempo
@@ -420,9 +433,102 @@ def train(nml: str | None = None, progress=log, deep: bool = True, workers: int 
         "instrument_features": f"{instr_count}/{len(y)} tracks" if deep else "off (--no-deep)",
         "biggest_disagreements": [{k: d[k] for k in ("file", "your_colour", "sounds_like", "position")}
                                   for d in disagreements[:10]],
+        **({"switch": {k: v for k, v in switch.items() if k != "starter_position"}} if switch else {}),
+        "model_in_use": analysis.color_model_mode(),
         "predictions_updated": updated, "saved_to": str(COLOR_MODEL),
         **({"tempo_views_refreshed": views} if views else {}),
     }
+
+
+def measure_switch(paths: list[str], y: np.ndarray, mine: np.ndarray, raws: list[tuple], progress=log) -> dict | None:
+    """The switch's three choices on your coloured tracks, by the average error per colour: yours as cross-validated
+    (`mine`, the chosen model's positions made without seeing each track), the starter's (one prediction each), and
+    Both at each share of yours in SWITCH_WEIGHTS. Only on tracks the starter didn't learn from (its `learned_from`
+    hashes), so it isn't judged on tracks it has seen; with fewer than SWITCH_MIN_FAIR of those it can't be measured
+    and auto is Mine only. None without a starter."""
+    sb = analysis.starter_color_model()
+    if sb is None:
+        return None
+    sp = []
+    for raw in raws:
+        got = analysis.color_position(sb, *raw)
+        sp.append(None if got is None else round(got[0], 3))
+    placed = [i for i, v in enumerate(sp) if v is not None]
+    learned = set(sb.get("learned_from") or [])
+    seen = {i for i in placed if analysis.track_hash(paths[i]) in learned} if learned else set(placed)
+    fair = [i for i in placed if i not in seen]
+    out = {"starter_trained_at": sb.get("trained_at"), "tracks": len(y), "measured_on": len(fair),
+           "starter_learned_from_these": len(seen) if learned else None,
+           "starter_couldnt_place": len(y) - len(placed), "starter_position": sp}
+    if len(fair) < analysis.SWITCH_MIN_FAIR:
+        why = ("this starter doesn't list the tracks it learned from" if not learned else
+               f"the starter learned from {len(seen)} of your {len(y)} coloured tracks"
+               + (f" and couldn't place {len(y) - len(placed)}" if len(placed) < len(y) else ""))
+        out.update(auto="mine", errors=None,
+                   note=f"Starter and Both not measured: {why}, which leaves {len(fair)} "
+                        f"(needs {analysis.SWITCH_MIN_FAIR}). Mine only is used unless you choose otherwise.")
+        progress(f"  switch: {out['note']}")
+        return out
+    f = np.array(fair)
+    yy, mm, ss = y[f], mine[f], np.array([sp[i] for i in fair])
+
+    def score(p):
+        return _metrics(p, yy, np.clip(np.round(p), 1, len(COLOR_NAMES)).astype(int))
+
+    both = {w: score(w * mm + (1 - w) * ss) for w in analysis.SWITCH_WEIGHTS}
+    key = lambda m: (m["average_error_per_colour"], m["average_error_in_colours"])  # noqa: E731
+    w = min(both, key=lambda k: key(both[k]))
+    errors = {"mine": score(mm), "both": both[w], "starter": score(ss)}
+    auto = min(analysis.MODEL_MODES[::-1], key=lambda k: key(errors[k]))  # a tie goes to yours, then Both
+    out.update(errors=errors, both_weight=w, both_tried={str(k): v for k, v in both.items()}, auto=auto,
+               chosen_by="average_error_per_colour on the tracks the starter didn't learn from")
+    progress(f"  switch, average error per colour on {len(fair)} of your tracks the starter didn't learn from: "
+             f"starter {errors['starter']['average_error_per_colour']}, Both ({round(w * 100)}% yours) "
+             f"{errors['both']['average_error_per_colour']}, Mine only {errors['mine']['average_error_per_colour']}"
+             f" → {auto}")
+    return out
+
+
+def switch_status(own: dict | None, starter: dict | None, setting: str, mode: str) -> dict:
+    """For the Setup tab, colours and cues alike: the switch as it applies, what you chose (auto: unset), and what
+    training measured (`stale`: the starter has changed since, e.g. an app update; train again to measure it)."""
+    sw = dict((own or {}).get("switch") or {})
+    sw.pop("starter_position", None)
+    return {"trained": bool(own), "starter": starter is not None, "mode": mode,
+            "chosen": analysis.app_setting(setting) or "auto", "auto": sw.get("auto") if own else None,
+            "measured": sw or None, "both_weight": analysis.switch_weight(own) if own else None,
+            "stale": bool(sw and starter and sw.get("starter_trained_at") != starter.get("trained_at"))}
+
+
+def check_mode(mode: str, own: dict | None, starter_ok: bool, what: str) -> None:
+    if mode not in (*analysis.MODEL_MODES, "auto"):
+        raise ValueError(f"mode must be one of {', '.join(analysis.MODEL_MODES)} or auto")
+    if mode != "starter" and not own:
+        raise SystemExit(f"Learn your {what} first (Setup tab); until then the starter is used.")
+    if mode in ("starter", "both") and not starter_ok:
+        raise SystemExit(f"No starter {what} model in this copy of the app; only yours can be used.")
+
+
+def mode_status() -> dict:
+    return switch_status(analysis.own_color_model(), analysis.starter_color_model(), "colour_model_mode",
+                         analysis.color_model_mode())
+
+
+def set_mode(mode: str, progress=log) -> dict:
+    """The colour switch: "starter", "both", "mine", or "auto" (the lowest error training measured). Recolours the
+    scanned tracks and the tempo views in the analyzer's own data; Traktor gets them the next time colours are written."""
+    check_mode(mode, analysis.own_color_model(), analysis.STARTER_COLOR_MODEL.exists(), "colours")
+    analysis.save_app_setting("colour_model_mode", None if mode == "auto" else mode)
+    con = collection.db()
+    try:
+        progress(f"Colours now from: {analysis.color_model_mode()}. Recolouring your scanned tracks...")
+        updated = refresh_predictions(con, progress=progress)
+    finally:
+        con.close()
+    from . import tempo
+
+    views = tempo.refresh_all_views(progress)
+    return {**mode_status(), "predictions_updated": updated, **({"tempo_views_refreshed": views} if views else {})}
 
 
 def usable_labels(colors: dict[str, int]) -> dict[str, int]:
@@ -662,18 +768,28 @@ def review(limit: int = 25, apply: bool = False, dry_run: bool = False, min_gap:
 
 def unbiased_positions(b: dict | None = None) -> dict[str, float]:
     """{path: cross-validated position} for the tracks the colour model learned from: where it places each one
-    without having seen its colour. The final model saw it, so its own guess leans toward the colour you gave."""
-    b = b or analysis.color_model()
+    without having seen its colour. The final model saw it, so its own guess leans toward the colour you gave.
+    Per the switch: nothing with the starter; with Both, the same mix of yours and the starter's (as measured at
+    training) that the page shows."""
+    mode = analysis.color_model_mode()
+    b = b or analysis.own_color_model()
     cv = (b or {}).get("cv")
-    if not cv or b.get("starter"):
+    if not cv or b.get("starter") or mode == "starter":
         return {}
+    pos = list(cv["position"])
+    if mode == "both":
+        sp = (b.get("switch") or {}).get("starter_position")
+        if not sp or len(sp) != len(pos):
+            return {}  # trained before the switch measured the starter: the final colours stand
+        w = analysis.switch_weight(b)
+        pos = [w * p + (1 - w) * s if s is not None else p for p, s in zip(pos, sp)]
     if cv.get("paths"):
-        return dict(zip(cv["paths"], cv["position"]))
+        return dict(zip(cv["paths"], pos))
     # bundles before the paths were stored: the labels are in training order, unless a track was dropped on the way
     labels = b.get("labels") or {}
-    if len(labels) != len(cv["position"]) or any(int(c) != t for c, t in zip(labels.values(), cv["truth"])):
+    if len(labels) != len(pos) or any(int(c) != t for c, t in zip(labels.values(), cv["truth"])):
         return {}
-    return dict(zip(labels, cv["position"]))
+    return dict(zip(labels, pos))
 
 
 def review_marks(colour_now: dict[str, str | None]) -> dict[str, dict]:

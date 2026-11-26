@@ -25,6 +25,7 @@
   <a class="sub" href="#cues-train">cues train</a>
   <a class="sub" href="#cues-scan">cues scan</a>
   <a class="sub" href="#cues-show">cues show</a>
+  <a class="sub" href="#cues-switch">cues switch</a>
   <a class="sub" href="#cues-apply">cues apply</a>
   <a class="sub" href="#grids-check">grids check</a>
   <a class="sub" href="#grids-show">grids show</a>
@@ -63,6 +64,11 @@
   <li>It listens to the cued tracks first, bar by bar on your DJ app's beat grid: about 13 minutes the first time.</li>
   <li>It reports how often its suggestions land on bars you cued, on tracks it didn't learn from.</li>
   <li>Until you train, a starter model that ships with the app makes the suggestions. It doesn't propose corrections of your own cues; your own model does.</li>
+  <li>After training, suggestions come from the starter, yours, or Both (each bar's score a mix of the two: 25%, 50%
+    or 75% yours, whichever found your cues best). Training tries all three on your cued tracks. It scores the
+    starter only on tracks it didn't learn from, and uses the one whose suggestions land on your cued bars most often.
+    With fewer than 30 such tracks it uses yours. Corrections of your own cues always come from your model alone.
+    <code>--use</code> picks one yourself; <a href="#cues-switch">switch</a> changes it later.</li>
   <li>Train again after cueing more tracks.</li>
 </ul>
 <h3>Options</h3>
@@ -70,6 +76,7 @@
 <thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
 <tbody>
 <tr><td><code>--workers N</code></td><td>How many tracks are listened to at once.</td><td class="def">half your cores, max 5</td></tr>
+<tr><td><code>--use MODE</code></td><td>Then chooses which model suggests: <code>starter</code>, <code>both</code>, <code>mine</code>, or <code>auto</code>: the one that found your cues best.</td><td class="def">auto</td></tr>
 <tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
 </tbody></table></div>
 
@@ -108,6 +115,27 @@
 <tbody>
 <tr><td><code>TRACK</code></td><td>Part of the track's file name. Needed.</td><td class="def">none</td></tr>
 <tr><td><code>--nml PATH</code></td><td>Uses this <code>collection.nml</code> instead of the one chosen on the Setup tab or found automatically.</td><td class="def">found</td></tr>
+</tbody></table></div>
+
+<h2 id="cues-switch"><code>cues switch</code></h2>
+<p>Shows which model suggests cues and loops, as the Setup tab's switch does: the one in use, what you chose (<code>auto</code> unless you picked one), and the errors <code>train</code> measured for each choice. With <code>--use</code> it switches, without training again.</p>
+<ul class="facts">
+  <li class="ok"><b>Read only</b> without <code>--use</code></li>
+  <li><b>With <code>--use</code>:</b> the app's settings only; suggestions follow at once</li>
+  <li><b>Needs:</b> <code>cues train</code> once (except <code>--use starter</code>)</li>
+</ul>
+<div class="cmd"><pre>uv run dj-track-analyzer cues switch
+uv run dj-track-analyzer cues switch --use both</pre></div>
+<ul>
+  <li><code>starter</code>: the starter model that ships with the app. <code>mine</code>: yours only.</li>
+  <li><code>both</code>: a mix of the two, at the share of yours that came closest to your own on your tracks (25%, 50% or 75%).</li>
+  <li><code>auto</code>: back to the lowest error measured on your tracks. Yours when the starter couldn't be measured: with fewer than 30 of your tracks it didn't learn from.</li>
+</ul>
+<h3>Options</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Option</th><th>What it does</th><th>Default</th></tr></thead>
+<tbody>
+<tr><td><code>--use MODE</code></td><td><code>starter</code>, <code>both</code>, <code>mine</code> or <code>auto</code>.</td><td class="def">shows only</td></tr>
 </tbody></table></div>
 
 <h2 id="cues-apply"><code>cues apply</code></h2>
@@ -250,6 +278,7 @@ uv run dj-track-analyzer sync --undo</pre></div>
 <tr><td><code>--only STEPS</code></td><td>sync</td><td class="def">all</td></tr>
 <tr><td><code>--rescan</code></td><td>cues scan, grids check</td><td class="def">off</td></tr>
 <tr><td><code>--undo</code></td><td>sync</td><td class="def">off</td></tr>
+<tr><td><code>--use MODE</code></td><td>cues switch, cues train</td><td class="def">auto</td></tr>
 <tr><td><code>--workers N</code></td><td>cues train / scan, grids check</td><td class="def">half your cores, max 5 / 6</td></tr>
 </tbody></table></div>
 

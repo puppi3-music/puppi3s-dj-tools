@@ -600,12 +600,12 @@ def own_or_starter(own: Path, starter: Path) -> Path | None:
     return own if own.exists() else starter if starter.exists() else None
 
 
-def color_model():
-    path = own_or_starter(COLOR_MODEL, STARTER_COLOR_MODEL)
-    if path is None:
+def _load_color(path: Path | None):
+    if path is None or not path.exists():
         return None
-    mtime = (path, path.stat().st_mtime)
-    if _color_bundle.get("mtime") != mtime:
+    mtime = (st := path.stat()).st_mtime_ns, st.st_size  # size too: on Windows two quick writes can share a time
+    hit = _color_bundle.get(path)
+    if not hit or hit[0] != mtime:
         import joblib
 
         from . import colors
@@ -613,8 +613,80 @@ def color_model():
         # Models trained before the move into the dj_track_analyzer package pickled colors.BlockWeights
         # under the plain module name `colors`.
         sys.modules.setdefault("colors", colors)
-        _color_bundle.update(mtime=mtime, bundle=joblib.load(path))
-    return _color_bundle["bundle"]
+        hit = _color_bundle[path] = (mtime, joblib.load(path))
+    return hit[1]
+
+
+def color_model():
+    """Your trained colour model, else the starter. For review, confidence and what's new to learn; what predicts a
+    colour is the switch (color_model_mode)."""
+    return _load_color(own_or_starter(COLOR_MODEL, STARTER_COLOR_MODEL))
+
+
+def starter_color_model():
+    return _load_color(STARTER_COLOR_MODEL)
+
+
+# The Setup tab's colour and cue switches (settings `colour_model_mode`, `cue_model_mode`), labelled as the genre one:
+# the starter (one DJ's habits, shipped with the app), Both (a mix of yours and the starter's, w of yours: the mix
+# measured best on your tracks at training, from SWITCH_WEIGHTS) or Mine only. Unset = auto: the one with the lowest
+# error `train` measured on your tracks, the starter scored only on tracks it didn't learn from (the `switch` record in
+# your model; make_starter.py stores hashes of the tracks each starter learned from).
+MODEL_MODES = ("starter", "both", "mine")
+SWITCH_WEIGHTS = (0.25, 0.5, 0.75)
+SWITCH_MIN_FAIR = 30  # tracks the starter didn't learn from, needed to measure it (and Both) on yours
+SWITCH_DEFAULT_WEIGHT = 0.5  # Both when it couldn't be measured
+
+
+def switch_mode(setting: str, own: dict | None, starter_ok: bool) -> str:
+    """The switch as it applies now: the starter until you've trained (or Mine only when there's no starter);
+    then your choice, or, unset, the lowest measured error (Mine only for a model trained before measuring)."""
+    if not own or own.get("starter"):
+        return "starter"
+    if not starter_ok:
+        return "mine"
+    chosen = app_setting(setting)
+    if chosen in MODEL_MODES:
+        return chosen
+    return (own.get("switch") or {}).get("auto") or "mine"
+
+
+def switch_weight(own: dict | None) -> float:
+    """Both's share of yours: the measured best, else half."""
+    w = ((own or {}).get("switch") or {}).get("both_weight")
+    return float(w) if w is not None else SWITCH_DEFAULT_WEIGHT
+
+
+def own_color_model():
+    return _load_color(COLOR_MODEL) if COLOR_MODEL.exists() else None
+
+
+def color_model_mode() -> str:
+    return switch_mode("colour_model_mode", own_color_model(), STARTER_COLOR_MODEL.exists())
+
+
+def _norm_ident(text: str) -> str:
+    text = "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+    text = re.sub(r"\((original|extended)( mix)?\)|\b(original|extended) mix\b", " ", text.lower())
+    return " ".join(re.sub(r"[^\w]+", " ", text).split())
+
+
+STARTER_SALT = "puppi3-track-analyzer-starter-1"
+
+
+def track_hash(p: Path | str) -> str:
+    """An anonymous id for a track, the same on anyone's computer for the same release: a salted hash of its
+    artist and title tags (normalised; "(Original Mix)" dropped), else of its file name. For the starters' list of
+    tracks they learned from (make_starter.py), so `train` can leave those out when it scores the starter."""
+    from .collection import read_tags
+
+    p = Path(p)
+    t = read_tags(p) if p.exists() else {}
+    if t.get("artist") and t.get("title"):
+        ident = _norm_ident(t["artist"]) + "|" + _norm_ident(t["title"])
+    else:
+        ident = "file|" + _norm_ident(p.stem)
+    return hashlib.sha256(f"{STARTER_SALT}|{ident}".encode()).hexdigest()[:16]
 
 
 def describe_position(pos: float) -> dict:
@@ -629,10 +701,10 @@ def describe_position(pos: float) -> dict:
     return out
 
 
-def predict_color(emb_mean: np.ndarray, acts_mean: np.ndarray | None, info: dict,
-                  maest: np.ndarray | None = None, instruments: dict | None = None,
-                  extra: dict | None = None) -> dict | None:
-    b = color_model()
+def color_position(b: dict | None, emb_mean, acts_mean, info: dict, maest=None, instruments=None,
+                   extra=None) -> tuple[float, int | None, float | None] | None:
+    """One model's (scale position, and for a class model its likeliest colour and how likely), or None when it can't place
+    the track (no model, an older one, a feature it needs is missing)."""
     if b is None or "feature_set" not in b:  # no model, or one from an older version: retrain
         return None
     if "maest" in b["feature_set"] and maest is None:
@@ -648,15 +720,69 @@ def predict_color(emb_mean: np.ndarray, acts_mean: np.ndarray | None, info: dict
     if b["kind"] == "classes":
         probs = b["model"].predict_proba(x)[0]
         classes = list(b["model"].classes_)
-        pos = float(sum(p * c for p, c in zip(probs, classes)))
-        out = describe_position(pos)
-        best = classes[int(np.argmax(probs))]
-        out.update(color=COLOR_NAMES[best - 1], value=int(best), confidence=round(float(probs.max()), 2))
-        return out
+        return (float(sum(p * c for p, c in zip(probs, classes))), int(classes[int(np.argmax(probs))]),
+                round(float(probs.max()), 2))
     pos = float(b["model"].predict(x)[0])
     if b.get("calibrator") is not None:
         pos = float(b["calibrator"].predict([pos])[0])
+    return float(np.clip(pos, 1, len(COLOR_NAMES))), None, None
+
+
+def both_cv(own: dict) -> dict | None:
+    """Both's cross-validated positions (yours from training's cross-validation, the starter's as measured then),
+    for its confidence. None when training didn't record the starter's."""
+    cv, sw = own.get("cv"), own.get("switch") or {}
+    sp = sw.get("starter_position")
+    if not cv or not sp or len(sp) != len(cv["position"]):
+        return None
+    w = switch_weight(own)
+    keep = [i for i, v in enumerate(sp) if v is not None]
+    return {"position": [w * cv["position"][i] + (1 - w) * sp[i] for i in keep],
+            "truth": [cv["truth"][i] for i in keep]}
+
+
+def confidence_bundle() -> dict | None:
+    """What colour confidences are read from, per the switch: the model in use's cross-validated positions (Both:
+    the mix of yours and the starter's measured at training; without that record, yours)."""
+    mode = color_model_mode()
+    if mode == "starter":
+        return starter_color_model()
+    own = own_color_model()
+    cv = both_cv(own) if mode == "both" else None
+    return {"cv": cv} if cv else own
+
+
+def predict_color(emb_mean: np.ndarray, acts_mean: np.ndarray | None, info: dict,
+                  maest: np.ndarray | None = None, instruments: dict | None = None,
+                  extra: dict | None = None) -> dict | None:
+    """The colour per the switch: the starter's, yours, or Both (w of yours + the rest the starter's, on the scale;
+    where only one of them can place the track, that one)."""
+    mode = color_model_mode()
+    args = (emb_mean, acts_mean, info, maest, instruments, extra)
+    own = own_color_model() if mode != "starter" else None
+    b = own if mode != "starter" else starter_color_model()
+    got = color_position(b, *args)
+    if mode == "both":
+        st = color_position(starter_color_model(), *args)
+        if got is None and st is None:
+            return None
+        if got is None or st is None:
+            pos, hard, prob = got or st
+            b = own if got is not None else starter_color_model()
+        else:
+            w = switch_weight(own)
+            pos = w * got[0] + (1 - w) * st[0]
+            out = describe_position(pos)
+            out["confidence"] = color_confidence(confidence_bundle(), pos, out["value"])
+            return out
+    elif got is None:
+        return None
+    else:
+        pos, hard, prob = got
     out = describe_position(pos)
+    if hard is not None:  # a class model: its likeliest colour, and how likely
+        out.update(color=COLOR_NAMES[hard - 1], value=hard, confidence=prob)
+        return out
     out["confidence"] = color_confidence(b, pos, out["value"])
     return out
 
@@ -1468,7 +1594,7 @@ def dj_rules() -> dict:
     """DJ genre rules: data/dj_genres.json if present, else the one shipped here."""
     user = HOME / "dj_genres.json"
     path = user if user.exists() else Path(__file__).with_name("dj_genres.json")
-    mtime = path.stat().st_mtime if path.exists() else 0
+    mtime = ((st := path.stat()).st_mtime_ns, st.st_size) if path.exists() else 0
     if _rules_cache.get("key") != (str(path), mtime):
         rules = json.loads(path.read_text())["genres"] if path.exists() else {}
         _rules_cache.update(key=(str(path), mtime), rules=rules)
@@ -1547,7 +1673,7 @@ def my_genre_bundle() -> dict | None:
     if not GENRE_MODEL.exists():
         _genre_bundle.clear()
         return None
-    mtime = GENRE_MODEL.stat().st_mtime
+    mtime = (st := GENRE_MODEL.stat()).st_mtime_ns, st.st_size
     if _genre_bundle.get("mtime") != mtime:
         import joblib
 
@@ -1799,6 +1925,7 @@ def analyze_file(path: str, segment_seconds: float | None = None, timeline: bool
             result["standalone"]["timestamps"] = tl.chapters(result, 0)
 
     result["analysis_seconds"] = round(time.time() - t0, 1)
+    result["analysed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     return result
 
 

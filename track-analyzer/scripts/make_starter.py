@@ -2,7 +2,9 @@
 
 The starters are used by anyone who hasn't trained their own (`colors train`, `cues train`), which replaces them.
 Kept: the fitted models, their settings and accuracy numbers, and the colour model's cross-validated positions
-(numbers only, for its confidence). Dropped: every track path (colour disagreements, the cue model's per-track
+(numbers only, for its confidence), and `learned_from`: anonymous hashes of the tracks each learned from
+(analysis.track_hash: salted, from artist + title), so another DJ's `train` can leave those out when it measures the
+starter against their own model (the Setup tab's Starter / Both / Mine only switch). Dropped: every track path (colour disagreements, the cue model's per-track
 scores) and the path to your Traktor collection. Refuses to write a file that still holds a path or a file name.
 
     uv run python scripts/make_starter.py
@@ -26,9 +28,19 @@ CUE_KEEP = ["cue_model", "loop_model", "threshold", "loop_align", "max_cues", "l
 PERSONAL = re.compile(rb"/Users/|/home/|[A-Za-z]:\\\\|\.(mp3|flac|wav|aiff?|m4a|nml)\b", re.I)
 
 
+def learned_from(b: dict) -> list[str]:
+    paths = (b.get("cv") or {}).get("paths") or list(b.get("labels") or {})
+    if not paths:
+        raise SystemExit("The model doesn't list the tracks it learned from; train it again first")
+    gone = [p for p in paths if not Path(p).exists()]
+    if gone:
+        print(f"  {len(gone)} of its {len(paths)} tracks aren't on this computer: hashed from their file names")
+    return sorted({analysis.track_hash(p) for p in paths})
+
+
 def clean(src: Path, dst: Path, keep: list[str], empty: dict) -> None:
     b = joblib.load(src)
-    out = {k: b[k] for k in keep if k in b} | empty | {"starter": True}
+    out = {k: b[k] for k in keep if k in b} | empty | {"starter": True, "learned_from": learned_from(b)}
     if "cv" in out:
         out["cv"] = {"position": list(out["cv"]["position"]), "truth": list(out["cv"]["truth"])}
     raw = pickle.dumps(out)  # checked before compression, which would hide the text

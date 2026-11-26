@@ -296,6 +296,11 @@ details.fold .sub:first-child { margin-top: 0; }
 .seg-toggle { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
 .seg-toggle button { border: 0; border-radius: 0; padding: 3px 10px; font-size: 12px; background: transparent; }
 .seg-toggle button.on { background: var(--accent); color: #fff; }
+.sw-row { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sw-row .seg-toggle { flex-wrap: wrap; }
+.sw-num { font-variant-numeric: tabular-nums; opacity: .75; margin-left: 2px; }
+.sw-best { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; padding: 0 4px; border-radius: 4px; color: var(--good); background: color-mix(in srgb, var(--good) 16%, transparent); margin-left: 2px; }
+.seg-toggle button.on .sw-best { color: #fff; background: rgba(255,255,255,.25); }
 .tl-x { position: relative; height: 13px; font-size: 10px; color: var(--text-3); margin-top: 3px; }
 .tl-x span { position: absolute; top: 0; white-space: nowrap; }
 .tl-x span.end { right: 0; }

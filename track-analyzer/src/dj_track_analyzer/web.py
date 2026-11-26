@@ -242,8 +242,8 @@ def _unbiased_colours(rows: list[dict]) -> None:
     not the final model's, which learned your colour and leans toward it. In a tempo view, plus the view's shift."""
     from . import colors
 
-    b = analysis.color_model()
-    up = colors.unbiased_positions(b)
+    up = colors.unbiased_positions()  # per the colour switch
+    b = analysis.confidence_bundle()
     for r in rows:
         pos = up.get(r["path"])
         if pos is not None:
@@ -461,7 +461,10 @@ def correction_counts() -> dict[str, int] | None:
 
     try:  # the DJ app's own library file (Rekordbox's master.db in Rekordbox mode), so a switch of app counts again
         f = dj_app.find_collection(None)
-        key = (cues.MODEL.stat().st_mtime, dj_app.app(), str(f), dj_app.changed_at(f))
+        stamp = lambda m: ((st := m.stat()).st_mtime_ns, st.st_size)  # size too: two quick writes can share a time
+        key = (stamp(cues.MODEL), cues.model_mode(),  # the cue switch: Both changes the suggestions' moves
+               stamp(cues.STARTER_MODEL) if cues.STARTER_MODEL.exists() else None,
+               dj_app.app(), str(f), dj_app.changed_at(f))
         g = cue_grids()
     except (OSError, SystemExit):
         return {}
@@ -1108,6 +1111,17 @@ def set_genre_mode(mode: str) -> dict:
         return mygenres.set_mode(mode)
 
 
+def set_cue_mode(mode: str) -> dict:
+    """The Setup tab's cue switch (starter / both / mine / auto): only a setting, suggestions follow at once. Not while
+    a job runs (training or listening writes the cue model and suggestions). The colour switch recolours, so it's a job
+    (colors_switch)."""
+    from . import cues
+
+    if jobs.busy():
+        raise SystemExit("A job is running: wait for it (or stop it) before switching where cue points come from.")
+    return cues.set_mode(mode)
+
+
 def genres_from_traktor() -> dict:
     """The Setup tab's Traktor choices for learning genres: playlist folders and the Genre field's genres."""
     from . import mygenres
@@ -1655,6 +1669,9 @@ def delete_saved(dirs: list[Path], ident: str) -> dict:
 def saved_file(dirs: list[Path], ident: str):
     f = _saved_path(dirs, ident)
     data = _json_in(f)
+    if isinstance(data, dict) and data.get("type") == "dj_mix" and "analysed_at" not in data:
+        # saved before the date was kept: the file's own date (when it was last written)
+        data["analysed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(f.stat().st_mtime))
     if isinstance(data, dict) and data.get("type") == "dj_mix" and (data.get("tracklist") or {}).get("tracks"):
         colour_sync()  # the timeline's colours as they are in the DJ app now (as the Tracks tab does)
         data["library"] = played_tracks(data["tracklist"]["tracks"])
@@ -2026,6 +2043,7 @@ def build_app(log_dirs: list[Path], hosts: list[str] | None = None):
         Route("/api/colours/accept", post(lambda b: accept_colours([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/forget", post(lambda b: colour_forget([str(p) for p in b["paths"]])), methods=["POST"]),
         Route("/api/colours/mark", post(lambda b: colour_mark([str(p) for p in b["paths"]], b.get("action"))), methods=["POST"]),
+        Route("/api/cues/use", post(lambda b: set_cue_mode(str(b.get("mode", "")))), methods=["POST"]),
         Route("/api/cues/approve", post(lambda b: approve_cues(str(b["path"]), b.get("plan"))), methods=["POST"]),
         Route("/api/cues/slots", post(lambda b: slot_preview(str(b["path"]), b["plan"])), methods=["POST"]),
         Route("/api/cues/ignore", post(lambda b: ignore_correction(str(b["path"]), b["fix"], bool(b.get("on", True)))), methods=["POST"]),

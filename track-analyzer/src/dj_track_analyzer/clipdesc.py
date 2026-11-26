@@ -203,10 +203,9 @@ def describe(analysis: Path, clips: list[Path], recording: Path | None = None, o
             if offset is not None:
                 c["video"] = f"{fmt_time(tl.to_video(s, lead, offset))}-{fmt_time(tl.to_video(s + own['length'], lead, offset))}"
             c["rise_lu"] = _rise(recording, s)
-            playing = [t for t in tracks if tl._seconds(t["start"]) <= s + own["length"] / 2]
-            if playing:
-                t = playing[-1]
-                c["track"] = " - ".join(x for x in (t.get("artist"), t.get("title")) if x)
+            heard = tl.tracks_heard(tracks, s, s + own["length"])
+            if heard:
+                c["track"], c["tracks"] = heard[0]["name"], heard
             c["start_s"] = round(s, 2)
         out.append(c)
     return {"analysis": str(analysis), "recording": str(recording), "offset": offset, "clips": out}
@@ -225,7 +224,7 @@ def line(c: dict, cli: bool = True) -> str:
     rise = f", rises {c['rise_lu']:+.1f} LU" if c.get("rise_lu") is not None and c["rise_lu"] > 1 else ""
     energy = f", energy {c['energy']:.2f}" if c.get("energy") is not None else ""
     lufs = f"  {c['lufs']} LUFS" if c.get("lufs") is not None else ""
-    text = head + span + lufs + rise + energy + (f"  ({c['track']})" if c.get("track") else "")
+    text = head + span + lufs + rise + energy + (f"  ({c['track']}" + "".join(f"; also {t['name']}" for t in c.get("tracks", [])[1:]) + ")" if c.get("track") else "")
     if c.get("placed") == "by hand":
         text += "  [placed by hand]"
     sound = []
